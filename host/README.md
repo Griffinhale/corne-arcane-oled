@@ -20,14 +20,19 @@ On Debian 13 with Nix, build and install the package from this checkout:
 ```bash
 nix-build -E 'with import <nixpkgs> {}; callPackage ./host/package.nix {}'
 nix profile add ./result
+mkdir -p ~/.config/systemd/user
+ln -sfn ~/.nix-profile/share/systemd/user/corne-arcane-host.service \
+  ~/.config/systemd/user/corne-arcane-host.service
 systemctl --user daemon-reload
 systemctl --user enable --now corne-arcane-host
 journalctl --user -u corne-arcane-host -f
 ```
 
 The package supplies the user-systemd unit through the Nix profile's
-`share/systemd/user` directory. If replacing an older profile build, remove its
-`corne-arcane-host` profile entry before adding `./result` again.
+`share/systemd/user` directory. The stable link under `~/.config/systemd/user`
+also covers graphical sessions whose user manager started before the Nix
+profile was added to `XDG_DATA_DIRS`. If replacing an older profile build,
+remove its `corne-arcane-host` profile entry before adding `./result` again.
 
 On NixOS, import `../corne.nix`. Set
 `services.corne-arcane-host.desktopNotifications = false` to disable desktop

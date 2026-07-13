@@ -44,8 +44,10 @@ event client, Zsh hook, PyGObject/Gio runtime, and KWin bridge from `host/`, and
 enables the restarting user service at `graphical-session.target`.
 
 On the Debian/Nix-profile target, `host/package.nix` also installs a standalone
-user unit. After adding the package, activate it with
-`systemctl --user enable --now corne-arcane-host`.
+user unit. Link it from `~/.nix-profile/share/systemd/user` into
+`~/.config/systemd/user`, then activate it with
+`systemctl --user enable --now corne-arcane-host`. The explicit link handles
+user managers that started before the Nix profile entered `XDG_DATA_DIRS`.
 
 ```bash
 systemctl --user status corne-arcane-host
