@@ -76,7 +76,7 @@ source /run/current-system/sw/share/corne-arcane/zsh/corne-arcane.zsh
 Set `services.corne-arcane-host.desktopNotifications = false` or pass
 `--no-desktop-notifications` to disable only desktop notification monitoring.
 
-## Build & flash M10
+## Build & flash M11
 
 ```bash
 cd ~/dev/corne-arcane-oled
@@ -111,6 +111,12 @@ Reassemble: USB into left half only + TRRS connected.
   synthetic event path reaches the physical OLEDs. The remaining stress,
   desktop-adapter, terminal-hook, and recovery checks still gate full hardware
   acceptance.
+- **M11 — Living Grimoire polish and release hardening** ✅ desktop-verified and
+  flashed on both physical halves. Normal typing/notifications, persistent
+  alert recovery across USB disconnect/reconnect, and five-minute synchronized
+  OLED sleep are confirmed. Gallery review, full stress/timing measurements,
+  suspend/resume, rollback, and final sign-off remain tracked in
+  `docs/m11-acceptance.md`.
 
 ## Hardware notes learned this session
 

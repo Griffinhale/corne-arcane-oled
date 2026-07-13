@@ -1,7 +1,10 @@
 # Host test-rig build artifacts (rebuilt by sim_test/run_tests.sh)
 firmware/sim_test/test_runner
 firmware/sim_test/preview
+firmware/sim_test/visual_runner
 firmware/sim_test/.noalloc.o
+firmware/sim_test/gallery/
+artifacts/m11-gallery/
 *.o
 
 # Firmware build outputs

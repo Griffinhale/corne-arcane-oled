@@ -23,6 +23,30 @@
 #define DUEL_CANVAS_W 32
 #define DUEL_CANVAS_H 128
 
+// Protected presentation regions. Layer order is underlay -> combat -> health
+// -> alert -> scry -> recovery -> diagnostics; later layers may deliberately
+// clear/replace earlier pixels only inside their own protected region.
+#define DUEL_ALERT_Y0 1
+#define DUEL_ALERT_Y1 15
+#define DUEL_SCRY_X0  3
+#define DUEL_SCRY_X1 28
+#define DUEL_SCRY_Y0  3
+#define DUEL_SCRY_Y1 41
+#define DUEL_HEALTH_Y0 111
+#define DUEL_HEALTH_Y1 114
+#define DUEL_DIAG_TOP_Y 0
+#define DUEL_DIAG_BOTTOM_Y (DUEL_CANVAS_H - 1)
+
+typedef enum {
+    DUEL_LAYER_UNDERLAY,
+    DUEL_LAYER_COMBAT,
+    DUEL_LAYER_HEALTH,
+    DUEL_LAYER_ALERT,
+    DUEL_LAYER_SCRY,
+    DUEL_LAYER_RECOVERY,
+    DUEL_LAYER_DIAGNOSTICS,
+} duel_render_layer_t;
+
 // 1bpp framebuffer, bit index = y * DUEL_CANVAS_W + x. 512 bytes.
 typedef struct {
     uint8_t bits[DUEL_CANVAS_W * DUEL_CANVAS_H / 8];

@@ -25,8 +25,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <string.h>
 
+#ifdef ARCANE_DIAGNOSTICS
+#    pragma push_macro("TIMER")
+#    undef TIMER
+#    include "hardware/timer.h"
+#    pragma pop_macro("TIMER")
+#endif
+
 #include "transactions.h"
 
+#include "sim/duel_display.h"
 #include "sim/duel_draw.h"
 #include "sim/duel_host.h"
 #include "sim/duel_proto.h"
@@ -36,12 +44,41 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 _Static_assert(DUEL_CANVAS_W == OLED_DISPLAY_HEIGHT && DUEL_CANVAS_H == OLED_DISPLAY_WIDTH,
                "duel canvas dimensions must match the rotated OLED");
 
-// M2 verification overlay (tick odometer + overflow dots). Cheap; keep it on
-// until M2 sign-off, then comment out.
-#define DUEL_DEBUG_HUD
-
 // crkbd/rev1: 8 matrix rows, 4 per hand (left = 0..3, right = 4..7).
 #define DUEL_ROWS_PER_HAND (MATRIX_ROWS / 2)
+
+static duel_display_policy_t duel_display;
+static uint32_t duel_local_wake_ms;
+static bool duel_local_wake_armed;
+
+#ifdef ARCANE_DIAGNOSTICS
+typedef struct {
+    uint16_t queue_overflow;
+    uint16_t catchup_ticks;
+    uint16_t missed_tick_resyncs;
+    uint16_t stale_split_events;
+    uint16_t split_protocol_errors;
+    uint16_t host_malformed_errors;
+    uint16_t host_stale_errors;
+    uint32_t peak_housekeeping_us;
+    uint32_t peak_render_blit_us;
+} duel_diag_t;
+
+// Intentionally non-static: a debugger or map-file budget pass can inspect it
+// without adding release protocol traffic or changing presentation behavior.
+volatile duel_diag_t duel_diag;
+
+static void duel_diag_peak(volatile uint32_t *peak, uint32_t elapsed) {
+    if (elapsed > *peak) *peak = elapsed;
+}
+#endif
+
+static void duel_note_physical_key(void) {
+    uint32_t now = timer_read32();
+    duel_display_note_key(&duel_display, now);
+    duel_local_wake_ms = now;
+    duel_local_wake_armed = true;
+}
 
 // Treat both OLEDs as VERTICAL (portrait). On this build both panels are mounted
 // the same way, so both halves use the same rotation to stand upright. If one
@@ -72,6 +109,7 @@ static void duel_scan_rows(uint8_t row_first, uint8_t row_last, uint8_t side) {
             if (!(diff & ((matrix_row_t)1 << c))) continue;
             uint8_t kind = (cur & ((matrix_row_t)1 << c)) ? SIM_EV_KEYDOWN : SIM_EV_KEYUP;
             sim_evq_push(&duel_evq, (sim_event_t){kind, side, (uint8_t)(r % DUEL_ROWS_PER_HAND), c});
+            if (kind == SIM_EV_KEYDOWN) duel_note_physical_key();
         }
     }
 }
@@ -221,9 +259,9 @@ static bool     duel_session_set;
 static uint16_t duel_tx_seq;
 static uint8_t  duel_fx_sent;
 
-static void duel_master_tx(void) {
+static void duel_master_tx(bool urgent) {
     bool fx_changed = duel_world.fx_seq != duel_fx_sent;
-    if ((duel_world.tick & 1) != 0 && !fx_changed) return; // every 2nd tick, or immediately on an outcome
+    if ((duel_world.tick & 1) != 0 && !fx_changed && !urgent) return; // every 2nd tick, or immediately on presentation changes
     if (!duel_session_set) {
         // Boot nonce: USB-enumeration timing jitter is the entropy; the
         // slave's stale override backstops the rare collision.
@@ -239,8 +277,8 @@ static void duel_master_tx(void) {
     uint8_t external = 0;
     uint8_t alert = 0;
 #endif
-    duel_encode_external_alert(&duel_world, duel_session, ++duel_tx_seq,
-                               external, alert, &pkt);
+    duel_encode_external_alert_display(&duel_world, duel_session, ++duel_tx_seq,
+                                       external, alert, duel_display.phase, &pkt);
     // Fails fast when the cable is out; the next snapshot lands in 80 ms.
     if (transaction_rpc_send(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt)) {
         duel_fx_sent = duel_world.fx_seq;
@@ -261,7 +299,12 @@ static void duel_slave_rx_consume(void) {
     uint8_t v2 = duel_rx_ver;
     if (v1 != v2 || (v1 & 1) || v1 == duel_rx_seen_ver) return; // torn or nothing new
     duel_rx_seen_ver = v1;
-    if (!duel_decode_valid(&pkt)) return;
+    if (!duel_decode_valid(&pkt)) {
+#ifdef ARCANE_DIAGNOSTICS
+        if (duel_diag.split_protocol_errors < UINT16_MAX) duel_diag.split_protocol_errors++;
+#endif
+        return;
+    }
     bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
     if (duel_rx_accept(&duel_rx, &pkt, stale)) {
         duel_last_pkt_ms = timer_read32();
@@ -269,15 +312,22 @@ static void duel_slave_rx_consume(void) {
 }
 
 void housekeeping_task_user(void) {
+#ifdef ARCANE_DIAGNOSTICS
+    uint32_t diag_start_us = time_us_32();
+#endif
     uint32_t now = timer_read32();
 #ifdef ARCANE_HOST_ENABLE
     if (is_keyboard_master()) duel_host_housekeeping(now);
 #endif
     if (!duel_tick_armed) {
         sim_init(&duel_world, is_keyboard_master() ? SIMF_AUTHORITATIVE : 0, 0);
+        duel_display_init(&duel_display, now);
         duel_next_tick_ms = now + SIM_TICK_MS;
         duel_tick_armed   = true;
     }
+    duel_display_phase_t prior_display = duel_display.phase;
+    if (is_keyboard_master()) duel_display_update(&duel_display, now);
+    bool display_changed = duel_display.phase != prior_display;
     bool    ticked = false;
     uint8_t guard  = 0;
     while (timer_expired32(now, duel_next_tick_ms)) {
@@ -287,13 +337,28 @@ void housekeeping_task_user(void) {
         ticked = true;
         duel_next_tick_ms += SIM_TICK_MS;
         if (++guard >= 5) { // long stall (USB suspend): resync instead of replaying
+#ifdef ARCANE_DIAGNOSTICS
+            if (duel_diag.missed_tick_resyncs < UINT16_MAX) duel_diag.missed_tick_resyncs++;
+#endif
             duel_next_tick_ms = now + SIM_TICK_MS;
             break;
         }
     }
+#ifdef ARCANE_DIAGNOSTICS
+    if (guard > 1) {
+        uint16_t add = (uint16_t)(guard - 1);
+        duel_diag.catchup_ticks = UINT16_MAX - duel_diag.catchup_ticks < add
+                                      ? UINT16_MAX : (uint16_t)(duel_diag.catchup_ticks + add);
+    }
+    duel_diag.queue_overflow = duel_world.overflow_count;
+#    ifdef ARCANE_HOST_ENABLE
+    duel_diag.host_malformed_errors = duel_host_state.malformed_packets;
+    duel_diag.host_stale_errors = duel_host_state.stale_packets;
+#    endif
+#endif
 
     if (is_keyboard_master()) {
-        if (ticked) duel_master_tx();
+        if (ticked || display_changed) duel_master_tx(display_changed);
         duel_render.w          = duel_world;
         duel_render.stale_link = false;
 #ifdef ARCANE_HOST_ENABLE
@@ -318,8 +383,19 @@ void housekeeping_task_user(void) {
     } else {
         duel_slave_rx_consume();
         bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
+#ifdef ARCANE_DIAGNOSTICS
+        static bool diag_was_stale;
+        if (stale && !diag_was_stale && duel_diag.stale_split_events < UINT16_MAX)
+            duel_diag.stale_split_events++;
+        diag_was_stale = stale;
+#endif
         if (!stale && duel_rx.have_any) {
             duel_decode_world(&duel_rx.last, &duel_render.w);
+            uint8_t remote_phase = DUEL_FLAGS_DISPLAY(duel_rx.last.flags);
+            bool local_wake_grace = duel_local_wake_armed &&
+                                    timer_elapsed32(duel_local_wake_ms) <= 120;
+            if (!local_wake_grace && remote_phase <= DUEL_DISPLAY_SLEEP)
+                duel_display_follow(&duel_display, (duel_display_phase_t)remote_phase, now);
             duel_render.overlay_host  = DUEL_HOST_CONTEXT_ONLINE(duel_rx.last.external);
             duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(duel_rx.last.external);
             duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(duel_rx.last.external);
@@ -330,6 +406,7 @@ void housekeeping_task_user(void) {
         } else {
             // Local pose-only fallback: never authoritative, never combat.
             duel_render.w = duel_world;
+            duel_display_update(&duel_display, now);
             duel_render.overlay_host  = 0;
             duel_render.overlay_scene = 0;
             duel_render.overlay_notif = 0;
@@ -340,19 +417,51 @@ void housekeeping_task_user(void) {
         }
         duel_render.stale_link = stale;
     }
+#ifdef ARCANE_DIAGNOSTICS
+    duel_diag_peak(&duel_diag.peak_housekeeping_us, time_us_32() - diag_start_us);
+#endif
 }
 
 // Own the whole screen on both halves (returning false stops oled_task_kb from
 // drawing the default layer/keylog + logo).
 bool oled_task_user(void) {
     static duel_fb_t fb;
+    static duel_fb_t last_fb;
+    static bool      last_fb_valid;
     static uint32_t  frame;
+    static uint32_t  last_render_ms;
+    static uint8_t   applied_phase = 0xFF;
     static uint8_t   seen_fx_seq, flash_frames, flash_kind;
     static uint8_t   last_spell_kind[2], flash_spell_kind;
-#ifdef DUEL_DEBUG_HUD
+#ifdef ARCANE_DIAGNOSTICS
     const bool hud = true;
 #else
     const bool hud = false;
+#endif
+    uint32_t now = timer_read32();
+    bool phase_changed = applied_phase != (uint8_t)duel_display.phase;
+    if (phase_changed) {
+        applied_phase = (uint8_t)duel_display.phase;
+        last_fb_valid = false;
+        if (duel_display.phase == DUEL_DISPLAY_SLEEP) {
+            // Stop animation first, then explicitly commit a black framebuffer
+            // before removing panel power. The ordinary OLED task sees no new
+            // dirty blocks while asleep.
+            oled_clear();
+            oled_render_dirty(true);
+            oled_off();
+            return false;
+        }
+        oled_on();
+    }
+    if (duel_display.phase == DUEL_DISPLAY_SLEEP) return false;
+
+    oled_set_brightness(duel_display_brightness(&duel_display, now));
+    uint16_t redraw_ms = duel_display_redraw_ms(&duel_display);
+    if (!phase_changed && timer_elapsed32(last_render_ms) < redraw_ms) return false;
+    last_render_ms = now;
+#ifdef ARCANE_DIAGNOSTICS
+    uint32_t diag_render_start_us = time_us_32();
 #endif
     // Remember the last visible style in each spell slot. Resolution clears
     // the authoritative slot, but its outcome can still scale from this local
@@ -385,12 +494,23 @@ bool oled_task_user(void) {
 
     duel_fb_clear(&fb);
     wiz_draw_scene(&fb, &duel_render, is_keyboard_left(), frame++, hud);
+    if (last_fb_valid && memcmp(&fb, &last_fb, sizeof fb) == 0) {
+#ifdef ARCANE_DIAGNOSTICS
+        duel_diag_peak(&duel_diag.peak_render_blit_us, time_us_32() - diag_render_start_us);
+#endif
+        return false;
+    }
     oled_clear();
     for (int y = 0; y < DUEL_CANVAS_H; y++) {
         for (int x = 0; x < DUEL_CANVAS_W; x++) {
             if (duel_fb_get(&fb, x, y)) oled_write_pixel((uint8_t)x, (uint8_t)y, true);
         }
     }
+    last_fb = fb;
+    last_fb_valid = true;
+#ifdef ARCANE_DIAGNOSTICS
+    duel_diag_peak(&duel_diag.peak_render_blit_us, time_us_32() - diag_render_start_us);
+#endif
     return false;
 }
 

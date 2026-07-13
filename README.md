@@ -57,14 +57,16 @@ git add -A && git commit -m "sync firmware snapshot"
 now select the 200 ms-debounced hybrid Archive scene through the daemon and Raw
 HID on both synchronized OLEDs, while non-browser focus returns both halves to
 Duel. The mechanism is accepted; Archive visual refinement is deferred to the
-polish milestone. **M10 — Notification policy and adapters is implemented and
-hardware-smoke-tested; full acceptance remains.** Both v7 halves boot and type,
-and the packaged daemon's synthetic D-Bus events reach the physical OLEDs. Raw
-HID is now v2/32 bytes and the split snapshot is v7/31 bytes; combat,
-`sim_world_t`, and world hashes remain unchanged. Full detail and the acceptance
-record live in `firmware/README.md`.
+polish milestone. **M10 is implemented and hardware-smoke-tested; its remaining
+physical checks are tracked as the M11 entry gate. M11 is a desktop-verified,
+physically flashed release candidate.** Both v7 halves boot and type, the
+packaged daemon's notifications reach the physical OLEDs, persistent alerts
+survive USB disconnect/reconnect, and the five-minute synchronized OLED sleep
+has been observed. Raw HID is v2/32 bytes and the split snapshot is v7/31 bytes;
+combat, `sim_world_t`, and world hashes remain unchanged. Full stress, timing,
+gallery, and rollback acceptance remains tracked in `docs/m11-acceptance.md`.
 
-## Build & flash M10 (NixOS, user-scope, no sudo)
+## Build & flash the M11 candidate (NixOS, user-scope, no sudo)
 
 ```bash
 cd ~/dev/corne-arcane-oled
@@ -80,6 +82,10 @@ Reassemble: USB into the **left** half only, TRRS connected while unpowered.
 
 Host tests (no keyboard needed): `cd firmware/sim_test && ./run_tests.sh`.
 Daemon tests: `cd host && ./run_tests.sh`.
+
+M11 gates: `make test`, `make visual-test`, `make gallery`, and `make budget`.
+The signed physical checklist and candidate hashes are in
+`docs/m11-acceptance.md`; M12 expansion remains gated in `docs/m12-backlog.md`.
 
 ## Design invariants
 

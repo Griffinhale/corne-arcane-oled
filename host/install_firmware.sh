@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Materialize the accepted firmware fallback as the isolated host keymap.
+# Materialize the M11 firmware candidate as the isolated host keymap.
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 src="$root/firmware"
@@ -11,8 +11,9 @@ if [ ! -d "$dst" ]; then
 fi
 
 rsync -a --delete \
-    --exclude test_runner --exclude preview --exclude .noalloc.o \
+    --exclude test_runner --exclude preview --exclude visual_runner \
+    --exclude gallery --exclude .noalloc.o \
     --exclude '*.o' --exclude '*.uf2' \
     "$src/" "$dst/"
 cp "$root/host/firmware/rules.mk" "$dst/rules.mk"
-echo "installed M10 firmware -> $dst"
+echo "installed M11 release candidate firmware -> $dst"

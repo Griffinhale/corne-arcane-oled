@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "duel_display.h"
 #include "duel_draw.h"
 #include "duel_host.h"
 #include "duel_proto.h"
@@ -128,6 +129,60 @@ static void t0_trace_parse(void) {
         for (int i = 1; i < t.n_ev; i++) ok &= t.ev[i].tick >= t.ev[i - 1].tick;
     }
     CHECK(ok, "t0_trace_parse");
+}
+
+static void t11_display_policy(void) {
+    duel_display_policy_t p = {0};
+    duel_display_init(&p, 1000);
+    bool ok = p.phase == DUEL_DISPLAY_ACTIVE;
+    ok &= duel_display_brightness(&p, 1000) == DUEL_DISPLAY_ACTIVE_BRIGHTNESS;
+    ok &= duel_display_update(&p, 1000 + DUEL_DISPLAY_DIM_MS - 1) == DUEL_DISPLAY_ACTIVE;
+    ok &= duel_display_update(&p, 1000 + DUEL_DISPLAY_DIM_MS) == DUEL_DISPLAY_DIM;
+    ok &= duel_display_brightness(&p, 1000 + DUEL_DISPLAY_DIM_MS) == DUEL_DISPLAY_ACTIVE_BRIGHTNESS;
+    ok &= duel_display_brightness(&p, 1000 + DUEL_DISPLAY_DIM_MS + DUEL_DISPLAY_FADE_MS / 2) == 80;
+    ok &= duel_display_brightness(&p, 1000 + DUEL_DISPLAY_DIM_MS + DUEL_DISPLAY_FADE_MS) == DUEL_DISPLAY_DIM_BRIGHTNESS;
+    ok &= duel_display_redraw_ms(&p) == DUEL_DISPLAY_DIM_REDRAW_MS;
+    ok &= duel_display_update(&p, 1000 + DUEL_DISPLAY_SLEEP_MS) == DUEL_DISPLAY_SLEEP;
+    ok &= duel_display_brightness(&p, 1000 + DUEL_DISPLAY_SLEEP_MS) == 0;
+    duel_display_note_key(&p, 1000 + DUEL_DISPLAY_SLEEP_MS + 1);
+    ok &= p.phase == DUEL_DISPLAY_ACTIVE;
+    ok &= duel_display_redraw_ms(&p) == DUEL_DISPLAY_ACTIVE_REDRAW_MS;
+
+    // Remote phase following synchronizes the slave without treating host or
+    // render activity as a wake source; only note_key can return to ACTIVE.
+    duel_display_follow(&p, DUEL_DISPLAY_SLEEP, 400000);
+    ok &= p.phase == DUEL_DISPLAY_SLEEP;
+    duel_host_state_t host = {0};
+    duel_host_packet_t packet;
+    duel_host_encode_summary(DUEL_HOST_MSG_HELLO, 9, 0, DUEL_HOST_SCENE_DUEL,
+                             0, 0, 0, 0, false, &packet);
+    ok &= duel_host_accept(&host, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    duel_host_encode_summary(DUEL_HOST_MSG_NOTIFY, 9, 1, DUEL_HOST_SCENE_ARCHIVE,
+                             2, DUEL_HOST_CATEGORY_SYSTEM, DUEL_HOST_PRIORITY_CRITICAL,
+                             0, true, &packet);
+    ok &= duel_host_accept(&host, &packet) == DUEL_HOST_APPLIED;
+    ok &= p.phase == DUEL_DISPLAY_SLEEP; // host/focus/notification has no wake path
+    duel_display_follow(&p, DUEL_DISPLAY_DIM, 400100);
+    ok &= p.phase == DUEL_DISPLAY_DIM;
+    CHECK(ok, "t11_display_policy");
+}
+
+static void t11_display_wire_compatibility(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_snapshot_t p;
+    duel_encode_external_alert_display(&w, 7, 11, 0x55, 0x2a,
+                                       DUEL_DISPLAY_SLEEP, &p);
+    bool ok = sizeof p == 31 && duel_decode_valid(&p);
+    ok &= (p.flags & DUEL_FLAGS_WORLD_VALID) != 0;
+    ok &= DUEL_FLAGS_DISPLAY(p.flags) == DUEL_DISPLAY_SLEEP;
+    ok &= p.external == 0x55 && p.alert == 0x2a;
+    sim_world_t decoded;
+    duel_decode_world(&p, &decoded);
+    ok &= decoded.wiz[SIM_SIDE_L].hp == SIM_MAX_HP;
+    ok &= decoded.wiz[SIM_SIDE_R].hp == SIM_MAX_HP;
+    ok &= decoded.flags == 0; // a decoded slave view remains non-authoritative
+    CHECK(ok, "t11_display_wire_compatibility");
 }
 
 /* ---------------- M2: deterministic world loop ---------------- */
@@ -2350,6 +2405,9 @@ int main(int argc, char **argv) {
     t10_split_v7_alert();
     t10_zero_v1_and_category_glyphs();
     t10_mirror_priority_age_persistence_and_scry();
+
+    t11_display_policy();
+    t11_display_wire_compatibility();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

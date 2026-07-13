@@ -48,5 +48,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define DYNAMIC_KEYMAP_LAYER_COUNT 4
 #define TAPPING_TERM 180
 
+// M11 owns OLED power explicitly so host traffic cannot reset QMK's generic
+// timeout. Physical matrix activity is the sole wake source.
+#define OLED_BRIGHTNESS 128
+#define OLED_TIMEOUT 0
+#define OLED_UPDATE_INTERVAL 50
+
 // M3: user split RPC carrying the duel world snapshot (master -> slave).
 #define SPLIT_TRANSACTION_IDS_USER DUEL_SYNC_SNAPSHOT

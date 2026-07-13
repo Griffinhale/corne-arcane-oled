@@ -27,11 +27,18 @@ void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
 void duel_encode_external_alert(const sim_world_t *w, uint8_t session, uint16_t seq,
                                 uint8_t external, uint8_t alert,
                                 duel_snapshot_t *out) {
+    duel_encode_external_alert_display(w, session, seq, external, alert, 0, out);
+}
+
+void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
+                                        uint16_t seq, uint8_t external,
+                                        uint8_t alert, uint8_t display_phase,
+                                        duel_snapshot_t *out) {
     memset(out, 0, sizeof *out);
     out->magic   = DUEL_MAGIC;
     out->ver     = DUEL_VER;
     out->session = session;
-    out->flags   = 1; // world valid
+    out->flags   = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(display_phase);
     out->seq     = seq;
     out->tick16  = (uint16_t)w->tick;
     for (int s = 0; s < 2; s++) {

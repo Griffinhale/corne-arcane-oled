@@ -12,7 +12,8 @@ CC       ?= cc
 CFLAGS   ?= -std=c11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined
 CFLAGS   += -I../sim
 
-SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_proto.c ../sim/duel_host.c
+SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_proto.c ../sim/duel_host.c ../sim/duel_display.c
+SCENARIO_SRC := scenarios.c
 
 test: test_runner
 	# LeakSanitizer cannot run under Codex/CI ptrace; the sim has a separate,
@@ -22,13 +23,25 @@ test: test_runner
 golden: test_runner
 	./test_runner --write-golden traces golden
 
-HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h ../sim/duel_proto.h ../sim/duel_host.h
+HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h ../sim/duel_proto.h ../sim/duel_host.h ../sim/duel_display.h
 
 test_runner: test_main.c trace.c $(SIM_SRC) $(HDRS)
 	$(CC) $(CFLAGS) -o $@ test_main.c trace.c $(SIM_SRC)
 
-preview: preview.c trace.c $(SIM_SRC) $(HDRS)
-	$(CC) $(CFLAGS) -o $@ preview.c trace.c $(SIM_SRC)
+preview: preview.c trace.c $(SIM_SRC) $(SCENARIO_SRC) $(HDRS) scenarios.h
+	$(CC) $(CFLAGS) -o $@ preview.c trace.c $(SIM_SRC) $(SCENARIO_SRC)
+
+visual_runner: visual_test.c $(SIM_SRC) $(SCENARIO_SRC) $(HDRS) scenarios.h
+	$(CC) $(CFLAGS) -o $@ visual_test.c $(SIM_SRC) $(SCENARIO_SRC)
+
+visual-test: visual_runner
+	ASAN_OPTIONS=detect_leaks=0 ./visual_runner golden/visual.hashes
+
+visual-golden: visual_runner
+	ASAN_OPTIONS=detect_leaks=0 ./visual_runner --write-golden golden/visual.hashes
+
+gallery: preview
+	ASAN_OPTIONS=detect_leaks=0 ./preview --gallery gallery
 
 # The "no dynamic allocation in the update path" gate, checked honestly:
 # compile each sim source alone (no sanitizers — they'd add interceptors) and
@@ -42,6 +55,6 @@ noalloc-check:
 	done; rm -f .noalloc.o; echo "PASS noalloc-check"
 
 clean:
-	rm -f test_runner preview .noalloc.o
+	rm -f test_runner preview visual_runner .noalloc.o
 
-.PHONY: test golden noalloc-check clean
+.PHONY: test golden visual-test visual-golden gallery noalloc-check clean

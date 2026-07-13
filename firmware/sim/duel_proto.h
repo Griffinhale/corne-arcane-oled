@@ -22,6 +22,13 @@
 #define DUEL_MAGIC 0xA7
 #define DUEL_VER   7
 
+// Snapshot flags: bit0 world valid; bits1-2 synchronized display phase.
+// The reserved v7 bits carry presentation policy without changing the packet
+// size, version, simulation world, or compatibility with older v7 receivers.
+#define DUEL_FLAGS_WORLD_VALID 0x01u
+#define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
+#define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
+
 // M7.5 charge byte per wizard: bits0-3 wind-up countdown, bits4-5 recipe
 // presentation tier, bits6-7 reserved. This is absolute render state; the
 // slave never advances it independently.
@@ -85,6 +92,10 @@ void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
 void duel_encode_external_alert(const sim_world_t *w, uint8_t session, uint16_t seq,
                                 uint8_t external, uint8_t alert,
                                 duel_snapshot_t *out);
+void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
+                                        uint16_t seq, uint8_t external,
+                                        uint8_t alert, uint8_t display_phase,
+                                        duel_snapshot_t *out);
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.

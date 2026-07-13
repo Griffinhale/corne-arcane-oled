@@ -91,6 +91,8 @@ Run all host checks with `./run_tests.sh`. Do not run the daemon against
 service (Duel fallback returns within 1.5 seconds) and use commit `26c49a2` plus
 its M9 daemon/firmware pair.
 
-**M10 status (2026-07-13): hardware smoke-test passed.** Both split-v7 halves
-boot/type and the packaged daemon's synthetic event path reaches the physical
-OLEDs. Full desktop, terminal-hook, stress, and recovery acceptance remains.
+**M10/M11 status (2026-07-13): physical recovery smoke-test passed.** Both
+split-v7 halves boot/type, the packaged daemon's event path reaches the physical
+OLEDs, and persistent notification state recovers after USB disconnect and
+reconnect. Full desktop-adapter, terminal-hook, stress, suspend, and rollback
+acceptance remains.

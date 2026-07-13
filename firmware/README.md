@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M10 hardware smoke-test passed; full acceptance pending (2026-07-13)
+## Status: M11 flashed release candidate; final physical acceptance pending (2026-07-13)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -19,6 +19,19 @@ recipe-driven spell variety, VOID piercing, and the scry overlay all render
 correctly with typing unaffected. M7.5's combat presentation, 10-tick wind-up,
 recipe-scaled effects, upper-canvas composition, and captured default layout
 are now accepted on both physical halves.
+
+M11 adds the synchronized active/dim/sleep display policy, immutable v7
+reserved-bit phase sync, dirty-frame suppression, protected presentation
+regions, slow Archive variation, a shared 37-scene visual catalog, PBM/HTML
+gallery generation, exact framebuffer hashes, structural visual invariants,
+resource budgets, and opt-in RP2040 diagnostics. The release candidate builds
+at 50,120 flash bytes and 10,204 bytes `.bss`; Raw HID remains 32 bytes, the
+split snapshot remains 31 bytes, and `sim_world_t` remains 56 bytes. See
+`../docs/m11-acceptance.md` for the honest physical gate and artifact hashes.
+Both halves have now been flashed from the same release candidate. Normal
+typing and notifications remain operational, persistent notification state
+recovers across USB disconnect/reconnect, and both OLEDs have completed the
+five-minute synchronized power-off transition on the physical keyboard.
 
 **M7.5 — Combat presentation and composition polish (hardware-verified).**
 Mechanics remain unchanged except

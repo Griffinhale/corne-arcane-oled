@@ -8,4 +8,8 @@ WPM_ENABLE = yes
 
 OPT_DEFS += -DARCANE_HOST_ENABLE
 
-SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_proto.c sim/duel_host.c
+SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_proto.c sim/duel_host.c sim/duel_display.c
+
+ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
+    OPT_DEFS += -DARCANE_DIAGNOSTICS
+endif

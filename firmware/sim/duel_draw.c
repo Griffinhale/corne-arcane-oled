@@ -63,7 +63,7 @@ static void archive_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
 // M9 hybrid Archive underlay. The x coordinates below are authored in desk
 // space with x=31 at the centre gap, then mirrored on the right OLED. All
 // marks stay in y=3..44, clear of actors, combat carriers, and health.
-static void draw_archive(duel_fb_t *fb, const sim_wizard_t *wz, bool is_left) {
+static void draw_archive(duel_fb_t *fb, const sim_wizard_t *wz, bool is_left, uint32_t frame) {
 #define ARCH_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     // A single arch spans the physical gap: apex at each inner edge, falling
     // toward the outer edges. Integer curvature keeps it deterministic.
@@ -86,6 +86,14 @@ static void draw_archive(duel_fb_t *fb, const sim_wizard_t *wz, bool is_left) {
     archive_rect(fb, ARCH_X(5) < ARCH_X(8) ? ARCH_X(5) : ARCH_X(8), 24,
                      ARCH_X(5) < ARCH_X(8) ? ARCH_X(8) : ARCH_X(5), 29);
     wiz_line(fb, ARCH_X(11), 25, ARCH_X(14), 29);
+
+    // A single slow page/rune variation keeps the Archive alive without
+    // turning the shelves into visual noise. It is render-frame-only and is
+    // mirrored in desk space so the physical gap composition stays coherent.
+    int slow = (int)((frame >> 4) & 3u);
+    duel_fb_px(fb, ARCH_X(15 + slow), 38, true);
+    duel_fb_px(fb, ARCH_X(17 - slow), 40, true);
+    if (slow & 1) duel_fb_px(fb, ARCH_X(16), 39, true);
 
     // Shield state is raised by every keydown and lasts ten 40 ms ticks. It
     // drives a bounded expanding activity rune without adding state. During a
@@ -562,7 +570,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     int ward_lane = piercer ? spell_lane_y(piercer->kind) : spell_lane_y(r->flash_spell_kind);
     bool archive = r->overlay_host && r->overlay_scene == DUEL_HOST_SCENE_ARCHIVE;
 
-    if (archive) draw_archive(fb, wz, is_left);
+    if (archive) draw_archive(fb, wz, is_left, frame);
 
     // Lifecycle (M5): each phase has its own tableau, derived purely from
     // (life, life_ticks, variant) so master and slave render identically.

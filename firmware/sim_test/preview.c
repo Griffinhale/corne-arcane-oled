@@ -18,17 +18,26 @@
  */
 #define _POSIX_C_SOURCE 200809L
 
+#include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "duel_draw.h"
 #include "duel_host.h"
 #include "duel_sim.h"
 #include "runner.h"
+#include "scenarios.h"
 #include "trace.h"
 
 #define GAP_COLS 8
+
+typedef enum { SHOW_BOTH, SHOW_LEFT, SHOW_RIGHT } show_side_t;
+static show_side_t output_side = SHOW_BOTH;
+static int output_gap = GAP_COLS;
+static uint32_t output_frame;
 
 static void emit_row_pair(const duel_fb_t *fb, int y) {
     for (int x = 0; x < DUEL_CANVAS_W; x++) {
@@ -40,11 +49,15 @@ static void emit_row_pair(const duel_fb_t *fb, int y) {
 
 static void show(const duel_fb_t *left, const duel_fb_t *right) {
     for (int y = 0; y < DUEL_CANVAS_H; y += 2) {
-        emit_row_pair(left, y);
-        fputs("│", stdout);
-        for (int i = 0; i < GAP_COLS - 2; i++) fputc(' ', stdout);
-        fputs("│", stdout);
-        emit_row_pair(right, y);
+        if (output_side != SHOW_RIGHT) emit_row_pair(left, y);
+        if (output_side == SHOW_BOTH) {
+            if (output_gap >= 2) {
+                fputs("│", stdout);
+                for (int i = 0; i < output_gap - 2; i++) fputc(' ', stdout);
+                fputs("│", stdout);
+            }
+        }
+        if (output_side != SHOW_LEFT) emit_row_pair(right, y);
         fputc('\n', stdout);
     }
 }
@@ -53,9 +66,70 @@ static void show_render(const duel_render_t *r) {
     duel_fb_t left, right;
     duel_fb_clear(&left);
     duel_fb_clear(&right);
-    wiz_draw_scene(&left, r, true, 0, false);
-    wiz_draw_scene(&right, r, false, 0, false);
+    wiz_draw_scene(&left, r, true, output_frame, false);
+    wiz_draw_scene(&right, r, false, output_frame, false);
     show(&left, &right);
+}
+
+static int pbm_write(const char *path, const duel_fb_t *left, const duel_fb_t *right) {
+    enum { SCALE = 4, GAP = 8 };
+    const int source_w = DUEL_CANVAS_W * 2 + GAP;
+    const int width = source_w * SCALE;
+    const int height = DUEL_CANVAS_H * SCALE;
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fprintf(f, "P4\n%d %d\n", width, height);
+    for (int sy = 0; sy < DUEL_CANVAS_H; sy++) {
+        for (int yy = 0; yy < SCALE; yy++) {
+            uint8_t byte = 0;
+            int bit = 7;
+            for (int sx = 0; sx < source_w; sx++) {
+                bool on = sx < DUEL_CANVAS_W ? duel_fb_get(left, sx, sy)
+                        : sx >= DUEL_CANVAS_W + GAP ? duel_fb_get(right, sx - DUEL_CANVAS_W - GAP, sy)
+                                                    : false;
+                for (int xx = 0; xx < SCALE; xx++) {
+                    if (on) byte |= (uint8_t)(1u << bit);
+                    if (--bit < 0) { fputc(byte, f); byte = 0; bit = 7; }
+                }
+            }
+            if (bit != 7) fputc(byte, f);
+        }
+    }
+    return fclose(f);
+}
+
+static int write_gallery(const char *dir) {
+    if (mkdir(dir, 0775) != 0 && errno != EEXIST) {
+        perror(dir);
+        return 1;
+    }
+    char html_path[512];
+    if (snprintf(html_path, sizeof html_path, "%s/index.html", dir) >= (int)sizeof html_path) return 1;
+    FILE *html = fopen(html_path, "w");
+    if (!html) { perror(html_path); return 1; }
+    fputs("<!doctype html><meta charset=\"utf-8\"><title>Corne Arcane M11 gallery</title>"
+          "<style>body{margin:24px;background:#171411;color:#eee7d8;font:14px system-ui}"
+          "h1{font:600 28px Georgia,serif}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:18px}"
+          "figure{margin:0;padding:14px;background:#24201b;border:1px solid #514839}"
+          "img{width:288px;max-width:100%;height:auto;image-rendering:pixelated;background:#090807;filter:invert(1)}"
+          "figcaption{margin-top:8px}.group{color:#bda77e;font-size:12px;text-transform:uppercase}</style>"
+          "<h1>M11 Living Grimoire — canonical frames</h1><div class=\"grid\">", html);
+    for (size_t i = 0; i < duel_scenario_count(); i++) {
+        const duel_scenario_t *s = duel_scenario_at(i);
+        duel_fb_t left, right;
+        duel_scenario_render(s, s->frame, &left, &right);
+        char path[512];
+        if (snprintf(path, sizeof path, "%s/%s.pbm", dir, s->name) >= (int)sizeof path ||
+            pbm_write(path, &left, &right) != 0) {
+            fclose(html); perror(path); return 1;
+        }
+        fprintf(html, "<figure><img src=\"%s.pbm\" alt=\"%s\"><figcaption><span class=\"group\">%s</span><br><b>%s</b> — %s</figcaption></figure>",
+                s->name, s->name, s->group, s->name, s->description);
+    }
+    fputs("</div>", html);
+    if (fclose(html) != 0) return 1;
+    printf("wrote %zu canonical frames and %s\n", duel_scenario_count(), html_path);
+    return 0;
 }
 
 typedef struct {
@@ -105,9 +179,12 @@ static int usage(const char *argv0) {
             "                     |alert-under-scry\n"
             "       %s --host-scene duel|archive|focus\n"
             "       %s --scry [scene]\n"
+            "       %s --scenario NAME [--frame N] [--side left|right|both] [--gap N]\n"
+            "       %s --list-scenarios\n"
+            "       %s --gallery DIR\n"
             "       %s <file.trace> --tick N\n"
             "       %s <file.trace> --play\n",
-            argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0);
+            argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -171,9 +248,37 @@ int main(int argc, char **argv) {
     int      scry_scene = -1; // >= 0 when --scry given
     int      host_scene = -1; // >= 0 means online external context
     const char *scenario = NULL;
+    const char *gallery = NULL;
+    bool list_scenarios = false;
+    bool frame_set = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--scenario") == 0 && i + 1 < argc) {
             scenario = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--frame") == 0 && i + 1 < argc) {
+            if (sscanf(argv[++i], "%u", &output_frame) != 1) return usage(argv[0]);
+            frame_set = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--side") == 0 && i + 1 < argc) {
+            i++;
+            if (strcmp(argv[i], "left") == 0) output_side = SHOW_LEFT;
+            else if (strcmp(argv[i], "right") == 0) output_side = SHOW_RIGHT;
+            else if (strcmp(argv[i], "both") == 0) output_side = SHOW_BOTH;
+            else return usage(argv[0]);
+            continue;
+        }
+        if (strcmp(argv[i], "--gap") == 0 && i + 1 < argc) {
+            if (sscanf(argv[++i], "%d", &output_gap) != 1 || output_gap < 0 || output_gap > 80) return usage(argv[0]);
+            continue;
+        }
+        if (strcmp(argv[i], "--gallery") == 0 && i + 1 < argc) {
+            gallery = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--list-scenarios") == 0) {
+            list_scenarios = true;
             continue;
         }
         if (strcmp(argv[i], "--host-scene") == 0 && i + 1 < argc) {
@@ -237,81 +342,22 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (list_scenarios) {
+        for (size_t i = 0; i < duel_scenario_count(); i++) {
+            const duel_scenario_t *s = duel_scenario_at(i);
+            printf("%-24s %-12s %s\n", s->name, s->group, s->description);
+        }
+        return 0;
+    }
+    if (gallery) return write_gallery(gallery);
+
     if (scenario) {
-        sim_world_t w;
-        sim_init(&w, SIMF_AUTHORITATIVE, 0);
-        duel_render_t r = {.w = w};
-        uint8_t medium_force = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), SPELL_TIER_MEDIUM);
-        bool archive_scenario = strncmp(scenario, "archive-", 8) == 0;
-        if (archive_scenario) {
-            r.overlay_host = 1;
-            r.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
-        }
-        bool alert_scenario = strcmp(scenario, "terminal-completion") == 0 ||
-                              strcmp(scenario, "aggregated-normal") == 0 ||
-                              strcmp(scenario, "persistent-critical") == 0 ||
-                              strcmp(scenario, "aged-alert") == 0 ||
-                              strcmp(scenario, "alert-under-scry") == 0;
-        if (alert_scenario) r.overlay_host = 1;
-        if (strcmp(scenario, "impact") == 0 || strcmp(scenario, "archive-impact") == 0) {
-            r.w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
-            r.flash_frames = 10; r.flash_kind = FX_IMPACT_R; r.flash_spell_kind = medium_force;
-        } else if (strcmp(scenario, "deflect") == 0) {
-            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-            r.flash_frames = 7; r.flash_kind = FX_DEFLECT_R; r.flash_spell_kind = medium_force;
-        } else if (strcmp(scenario, "fizzle") == 0) {
-            r.w.wiz[SIM_SIDE_R].life = LIFE_DOWNED;
-            r.w.wiz[SIM_SIDE_R].life_ticks = SIM_DOWNED_TICKS / 2;
-            r.w.wiz[SIM_SIDE_R].hp = 0;
-            r.flash_frames = 7; r.flash_kind = FX_FIZZLE_R; r.flash_spell_kind = medium_force;
-        } else if (strcmp(scenario, "void-pierce") == 0) {
-            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-            r.w.spell[SIM_SIDE_L] = (sim_spell_t){
-                .active = 1, .pos = 236, .dir = 4,
-                .kind = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_VOID, MOD_NONE, PAY_IMPACT), SPELL_TIER_LONG),
-            };
-        } else if (strcmp(scenario, "short-cast") == 0 || strcmp(scenario, "long-cast") == 0) {
-            r.w.wiz[SIM_SIDE_L].pose = POSE_CAST;
-            r.w.wiz[SIM_SIDE_L].cast_windup = 2;
-            r.w.wiz[SIM_SIDE_L].cast_tier = strcmp(scenario, "short-cast") == 0 ?
-                                                   SPELL_TIER_SHORT : SPELL_TIER_LONG;
-        } else if (strcmp(scenario, "archive-idle") == 0) {
-            // Base world is already the idle hybrid composition.
-        } else if (strcmp(scenario, "archive-pulse") == 0) {
-            r.w.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS / 2;
-            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS / 2;
-        } else if (strcmp(scenario, "archive-cast") == 0) {
-            r.w.wiz[SIM_SIDE_L].pose = POSE_CAST;
-            r.w.wiz[SIM_SIDE_L].cast_windup = 3;
-            r.w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
-        } else if (strcmp(scenario, "archive-ko") == 0) {
-            r.w.wiz[SIM_SIDE_R].life = LIFE_MEDIC;
-            r.w.wiz[SIM_SIDE_R].life_ticks = SIM_MEDIC_TICKS / 2;
-            r.w.wiz[SIM_SIDE_R].hp = 0;
-        } else if (strcmp(scenario, "archive-scry") == 0) {
-            r.w.scry.state = SCRY_ACTIVE;
-            r.w.scry.scene = DUEL_HOST_SCENE_ARCHIVE;
-            r.overlay_layer = 3;
-        } else if (strcmp(scenario, "terminal-completion") == 0) {
-            r.overlay_notif = 1; r.overlay_category = DUEL_HOST_CATEGORY_TERMINAL;
-            r.overlay_priority = DUEL_HOST_PRIORITY_LOW;
-        } else if (strcmp(scenario, "aggregated-normal") == 0) {
-            r.overlay_notif = 4; r.overlay_category = DUEL_HOST_CATEGORY_COMMUNICATION;
-            r.overlay_priority = DUEL_HOST_PRIORITY_NORMAL;
-        } else if (strcmp(scenario, "persistent-critical") == 0) {
-            r.overlay_notif = 2; r.overlay_category = DUEL_HOST_CATEGORY_SECURITY;
-            r.overlay_priority = DUEL_HOST_PRIORITY_CRITICAL; r.overlay_persistent = 1;
-        } else if (strcmp(scenario, "aged-alert") == 0) {
-            r.overlay_notif = 1; r.overlay_category = DUEL_HOST_CATEGORY_TRANSFER;
-            r.overlay_priority = DUEL_HOST_PRIORITY_NORMAL; r.overlay_age = 6;
-        } else if (strcmp(scenario, "alert-under-scry") == 0) {
-            r.overlay_notif = 3; r.overlay_category = DUEL_HOST_CATEGORY_CALENDAR;
-            r.overlay_priority = DUEL_HOST_PRIORITY_CRITICAL; r.overlay_persistent = 1;
-            r.w.scry.state = SCRY_ACTIVE; r.overlay_layer = 3;
-        } else {
-            return usage(argv[0]);
-        }
-        show_render(&r);
+        const duel_scenario_t *canonical = duel_scenario_find(scenario);
+        if (!canonical) return usage(argv[0]);
+        if (!frame_set) output_frame = canonical->frame;
+        duel_fb_t left, right;
+        duel_scenario_render(canonical, output_frame, &left, &right);
+        show(&left, &right);
         return 0;
     }
 
