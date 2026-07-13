@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M10 implemented; awaiting hardware verification (2026-07-13)
+## Status: M10 hardware smoke-test passed; full acceptance pending (2026-07-13)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -531,7 +531,7 @@ between synchronized Archive and Duel correctly. This proves the complete KWin
 be refined further in M11 polish without reopening the M9 mechanism or changing
 its interfaces.
 
-## M10 — Notification policy and adapters (awaiting hardware verification)
+## M10 — Notification policy and adapters (hardware smoke-tested)
 
 The host now owns a bounded monotonic-time policy. Low/normal/transient-critical
 events aggregate in a fixed six-second batch; repeats never extend it. New
@@ -602,7 +602,14 @@ Monitor denial disables only that adapter.
    desktop monitor. Offline Duel must return within 1.5 seconds and every live
    reconnect must converge through a fresh HELLO.
 
-Until all six steps pass, M10 remains implemented/awaiting hardware
-verification. Full rollback is accepted commit `26c49a2` with its M9 daemon and
-v6 firmware pair, or the preserved M7.5 recovery UF2. Do not run the M10 daemon
+**Hardware smoke result (2026-07-13): passed.** Both halves were flashed from
+the same split-v7 build and boot/type together. The packaged Debian user service
+owns its private D-Bus name, and synthetic terminal and persistent-critical
+events reach the physical OLEDs and clear correctly. The remaining stress,
+desktop-adapter, Zsh-hook, suspend/reconnect, and full visual-regression checks
+above still gate final M10 acceptance.
+
+Until all six steps pass, M10 remains hardware-smoke-tested rather than fully
+accepted. Full rollback is accepted commit `26c49a2` with its M9 daemon and v6
+firmware pair, or the preserved M7.5 recovery UF2. Do not run the M10 daemon
 against M9 firmware; stop the service or install the M9 package first.

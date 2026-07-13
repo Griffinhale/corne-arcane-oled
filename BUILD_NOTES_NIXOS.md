@@ -107,7 +107,10 @@ Reassemble: USB into left half only + TRRS connected.
 - **M10 — Notification policy and adapters** ✅ implemented and host-verified;
   Raw HID v2/32 bytes, split v7/31 bytes, bounded policy, synthetic Events
   interface, Konsole/Zsh completion, and redacted Freedesktop monitoring are
-  awaiting the physical hardware sequence. Both halves must be flashed together.
+  complete. Both halves have been flashed together and the packaged daemon's
+  synthetic event path reaches the physical OLEDs. The remaining stress,
+  desktop-adapter, terminal-hook, and recovery checks still gate full hardware
+  acceptance.
 
 ## Hardware notes learned this session
 

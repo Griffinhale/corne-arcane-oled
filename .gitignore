@@ -9,6 +9,10 @@ firmware/sim_test/.noalloc.o
 *.bin
 *.elf
 
+# Nix build result symlinks
+/result
+/result-*
+
 # Editor / OS noise
 *~
 .DS_Store

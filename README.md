@@ -58,9 +58,11 @@ now select the 200 ms-debounced hybrid Archive scene through the daemon and Raw
 HID on both synchronized OLEDs, while non-browser focus returns both halves to
 Duel. The mechanism is accepted; Archive visual refinement is deferred to the
 polish milestone. **M10 — Notification policy and adapters is implemented and
-awaiting hardware verification.** Raw HID is now v2/32 bytes and the split
-snapshot is v7/31 bytes; combat, `sim_world_t`, and world hashes remain
-unchanged. Full detail and the acceptance record live in `firmware/README.md`.
+hardware-smoke-tested; full acceptance remains.** Both v7 halves boot and type,
+and the packaged daemon's synthetic D-Bus events reach the physical OLEDs. Raw
+HID is now v2/32 bytes and the split snapshot is v7/31 bytes; combat,
+`sim_world_t`, and world hashes remain unchanged. Full detail and the acceptance
+record live in `firmware/README.md`.
 
 ## Build & flash M10 (NixOS, user-scope, no sudo)
 
