@@ -1,0 +1,13 @@
+[Unit]
+Description=Corne Arcane focus, notification policy, and Raw HID heartbeat
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+
+[Service]
+Type=simple
+ExecStart=@out@/bin/corne-arcane-host
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

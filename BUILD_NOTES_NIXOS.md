@@ -43,6 +43,10 @@ Then run the normal `sudo nixos-rebuild switch`. The module builds the daemon,
 event client, Zsh hook, PyGObject/Gio runtime, and KWin bridge from `host/`, and
 enables the restarting user service at `graphical-session.target`.
 
+On the Debian/Nix-profile target, `host/package.nix` also installs a standalone
+user unit. After adding the package, activate it with
+`systemctl --user enable --now corne-arcane-host`.
+
 ```bash
 systemctl --user status corne-arcane-host
 journalctl --user -u corne-arcane-host -f

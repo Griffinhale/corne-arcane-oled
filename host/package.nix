@@ -22,12 +22,19 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p "$out/lib/corne-arcane-host" "$out/bin" "$out/share/corne-arcane/zsh"
+    mkdir -p \
+      "$out/lib/corne-arcane-host" \
+      "$out/bin" \
+      "$out/share/corne-arcane/zsh" \
+      "$out/share/systemd/user"
     cp -r arcane_host "$out/lib/corne-arcane-host/"
 
     mkdir -p "$out/share/kwin/scripts/cornearcane"
     cp -r kwin/contents kwin/metadata.json "$out/share/kwin/scripts/cornearcane/"
     cp zsh/corne-arcane.zsh "$out/share/corne-arcane/zsh/"
+    substitute systemd/corne-arcane-host.service \
+      "$out/share/systemd/user/corne-arcane-host.service" \
+      --replace-fail '@out@' "$out"
 
     makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-host" \
       --add-flags "-m arcane_host.daemon" \
