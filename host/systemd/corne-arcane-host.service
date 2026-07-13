@@ -4,7 +4,8 @@ PartOf=graphical-session.target
 After=graphical-session-pre.target
 
 [Service]
-Type=simple
+Type=dbus
+BusName=io.github.Griffinhale.CorneArcane
 ExecStart=@out@/bin/corne-arcane-host
 Restart=always
 RestartSec=2

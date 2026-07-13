@@ -45,7 +45,8 @@ in
       partOf = [ "graphical-session.target" ];
       after = [ "graphical-session-pre.target" ];
       serviceConfig = {
-        Type = "simple";
+        Type = "dbus";
+        BusName = "io.github.Griffinhale.CorneArcane";
         ExecStart = "${lib.getExe corneArcaneHost}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}";
         Restart = "always";
         RestartSec = 2;
