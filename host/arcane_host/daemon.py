@@ -259,7 +259,7 @@ class KWinBridgeLoader:
                     KWIN_SERVICE,
                     f"/Scripting/Script{script_id}",
                     "org.kde.kwin.Script",
-                    "start",
+                    "run",
                     None,
                     None,
                     self.Gio.DBusCallFlags.NONE,

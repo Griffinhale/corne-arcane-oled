@@ -139,7 +139,7 @@ class KWinRestartTests(unittest.TestCase):
             KWinBridgeLoader(FakeGio, FakeGLib, connection, script)
             connection.callback(None, None, None, None, None, FakeVariant((KWIN_SERVICE, "old", "new")))
             loads = [call for call in connection.calls if call[3] == "loadScript"]
-            starts = [call for call in connection.calls if call[3] == "start"]
+            starts = [call for call in connection.calls if call[3] == "run"]
             self.assertEqual(len(loads), 2)
             self.assertEqual(len(starts), 2)
 
