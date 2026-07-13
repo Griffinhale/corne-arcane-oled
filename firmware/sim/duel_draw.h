@@ -66,5 +66,7 @@ bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x);
 // cosmetics key off `frame` (the render frame counter), never off w.tick,
 // so render cadence cannot feed back into simulation outcomes. `debug_hud`
 // adds the M2 verification overlay: a 1-px tick odometer sweeping the bottom
-// row once per second and up to 4 top-corner dots for dropped events.
+// row once per second and up to 4 top-corner dots for dropped events. M9's
+// Archive is selected only by online external scene 1 and remains a pure
+// underlay; Duel/Focus frames take the exact pre-M9 path.
 void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame, bool debug_hud);

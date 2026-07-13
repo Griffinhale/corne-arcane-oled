@@ -22,6 +22,8 @@
  *        presentation-only combat coupling, and charge/tier wire sync.
  * t8_*: M8 host protocol — validation, absolute context, session/sequence
  *       ordering, delayed-old-session rejection, and heartbeat expiry.
+ * t9_*: M9 Archive underlay — scene isolation, mirror/determinism, activity
+ *       tiers, overlay precedence, combat visibility, and hash invariance.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -2017,6 +2019,114 @@ static void t8_host_overlay_scene(void) {
     CHECK(ok, "t8_host_overlay_scene");
 }
 
+static void t9_render(duel_fb_t *fb, const sim_world_t *world, bool is_left,
+                      uint8_t online, uint8_t scene, uint32_t frame) {
+    duel_render_t render = {
+        .w = *world,
+        .overlay_host = online,
+        .overlay_scene = scene,
+    };
+    duel_fb_clear(fb);
+    wiz_draw_scene(fb, &render, is_left, frame, false);
+}
+
+static int fb_pixels_band(const duel_fb_t *fb, int y0, int y1) {
+    int count = 0;
+    for (int y = y0; y <= y1; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++) count += duel_fb_get(fb, x, y);
+    return count;
+}
+
+static void t9_archive_scene_isolated(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_fb_t duel, focus, archive, offline;
+    t9_render(&duel, &world, true, 1, DUEL_HOST_SCENE_DUEL, 0);
+    t9_render(&focus, &world, true, 1, DUEL_HOST_SCENE_FOCUS, 0);
+    t9_render(&archive, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    t9_render(&offline, &world, true, 0, DUEL_HOST_SCENE_ARCHIVE, 0);
+    bool ok = memcmp(duel.bits, focus.bits, sizeof duel.bits) == 0;
+    ok &= memcmp(duel.bits, offline.bits, sizeof duel.bits) == 0;
+    ok &= memcmp(duel.bits, archive.bits, sizeof duel.bits) != 0;
+    // The Archive is an upper-canvas underlay; every combat/health byte below
+    // it remains exactly the accepted Duel frame.
+    for (int y = 45; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            ok &= duel_fb_get(&duel, x, y) == duel_fb_get(&archive, x, y);
+    CHECK(ok, "t9_archive_scene_isolated");
+}
+
+static void t9_archive_deterministic_and_mirrored(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_fb_t left_a, left_b, right;
+    t9_render(&left_a, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
+    t9_render(&left_b, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
+    t9_render(&right, &world, false, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
+    bool ok = memcmp(left_a.bits, left_b.bits, sizeof left_a.bits) == 0;
+    for (int y = 3; y <= 44; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            ok &= duel_fb_get(&left_a, x, y) == duel_fb_get(&right, 31 - x, y);
+    CHECK(ok, "t9_archive_deterministic_and_mirrored");
+}
+
+static void t9_archive_activity_tiers(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_fb_t idle, press, expanded, short_cast, long_cast;
+    t9_render(&idle, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    world.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS;
+    t9_render(&press, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    world.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS / 2;
+    t9_render(&expanded, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    bool ok = memcmp(idle.bits, press.bits, sizeof idle.bits) != 0;
+    ok &= memcmp(press.bits, expanded.bits, sizeof press.bits) != 0;
+
+    world.wiz[SIM_SIDE_L].shield_ticks = 0;
+    world.wiz[SIM_SIDE_L].cast_windup = 4;
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SHORT;
+    t9_render(&short_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    t9_render(&long_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    ok &= fb_pixels_band(&short_cast, 3, 44) < fb_pixels_band(&long_cast, 3, 44);
+    // Bounded even at the richest tier: the sparse archive never fills half
+    // of its 32x42-pixel band.
+    ok &= fb_pixels_band(&long_cast, 3, 44) < (32 * 42 / 2);
+    CHECK(ok, "t9_archive_activity_tiers");
+}
+
+static void t9_archive_precedence_and_invariance(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 123);
+    world.wiz[SIM_SIDE_R].life = LIFE_DOWNED;
+    world.wiz[SIM_SIDE_R].life_ticks = 10;
+    world.wiz[SIM_SIDE_R].hp = 0;
+    uint64_t before = world_hash(&world);
+    duel_fb_t closed, open, stale;
+    t9_render(&closed, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+
+    duel_render_t render = {
+        .w = world,
+        .overlay_host = 1,
+        .overlay_scene = DUEL_HOST_SCENE_ARCHIVE,
+        .overlay_layer = 3,
+    };
+    render.w.scry.state = SCRY_ACTIVE;
+    duel_fb_clear(&open);
+    wiz_draw_scene(&open, &render, true, 0, false);
+    bool ok = duel_fb_get(&closed, 10, 30) && !duel_fb_get(&open, 10, 30);
+    ok &= duel_fb_get(&open, 3, 3); // panel border remains above the cleared art
+
+    render.w.scry.state = SCRY_IDLE;
+    render.stale_link = true;
+    duel_fb_clear(&stale);
+    wiz_draw_scene(&stale, &render, true, 0, true);
+    ok &= duel_fb_get(&stale, 23, 2); // stale marker above Archive
+    ok &= duel_fb_get(&stale, (int)(world.tick % 25), DUEL_CANVAS_H - 1); // HUD above Archive
+    ok &= world_hash(&world) == before; // rendering never mutates authoritative state
+    CHECK(ok, "t9_archive_precedence_and_invariance");
+}
+
 int main(int argc, char **argv) {
     int argi = 1;
     if (argi < argc && strcmp(argv[argi], "--write-golden") == 0) {
@@ -2102,6 +2212,11 @@ int main(int argc, char **argv) {
     t8_host_expiry_and_context();
     t8_host_split_context();
     t8_host_overlay_scene();
+
+    t9_archive_scene_isolated();
+    t9_archive_deterministic_and_mirrored();
+    t9_archive_activity_tiers();
+    t9_archive_precedence_and_invariance();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

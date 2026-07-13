@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M0–M8 hardware-verified (2026-07-13)
+## Status: M0–M8 hardware-verified; M9 awaiting hardware verification (2026-07-13)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -472,10 +472,58 @@ review confirm the ordinary duel fallback and synchronized scry/host
 presentation render cleanly on the real OLEDs without visible clipping or
 corruption. Daemon-driven context works across both halves.
 
-## Next: M9 — arcane archive browser scene
+## M9 — Application-aware Arcane Archive (implemented, awaiting hardware verification)
 
-Map focused applications into the existing three-class host vocabulary, select
-the archive scene for browser focus, and begin with a coarse activity pulse.
-Keep the wizards in the fiction, require no browser extension, and continue to
-send semantic state rather than frames. Scroll direction, clicks, tabs, and
-page semantics remain deferred.
+The packaged Plasma 6 host service receives only KWin `resourceClass` and
+`desktopFileName` over a private session D-Bus method. Browser aliases settle
+to Archive after 200 ms; all empty, unknown, desktop, and non-browser focus
+settles to Duel. No title, URL, tab, document, or page data is read, sent, or
+retained. Automatic arbitration is the daemon default; explicit `--scene` is a
+diagnostic override. HID absence/reconnect and KWin restart are recovered
+without exiting, with a new daemon session and `HELLO` for every keyboard
+reconnect.
+
+When the synchronized external context is online/Archive, the renderer adds a
+mirrored sparse shelf/book/rune arch at `y=3..44` beneath the accepted duel.
+Existing shield state supplies an immediate, bounded ~400 ms typing pulse;
+existing wind-up/tier state strengthens the cast rune. Wizards, wards, spells,
+outcomes, health, KO/medic flow, scry, stale link, and debug HUD retain their
+precedence. Duel and Focus take the byte-identical pre-M9 render path.
+
+Raw HID remains v1/32 bytes, split snapshot remains v6/30 bytes, and
+`sim_world_t`, combat rules, and simulation goldens are unchanged. Terminal
+preview scenarios are `archive-idle`, `archive-pulse`, `archive-cast`,
+`archive-impact`, `archive-ko`, and `archive-scry`; `--host-scene` accepts
+`duel`, `archive`, or `focus`.
+
+### M9 hardware acceptance checklist
+
+1. Import `corne.nix` directly from this checkout, rebuild NixOS, and confirm
+   `systemctl --user status corne-arcane-host` plus the KWin bridge log.
+2. Build `griffin_hostoled` and flash both halves individually from the same
+   source so both receive the M9 renderer.
+3. Confirm Firefox and Chrome enter Archive after about 200 ms; terminal,
+   editor, desktop, empty, and unknown focus return to Duel.
+4. Rapidly Alt-Tab across browser/non-browser windows and confirm no flicker.
+5. Type ordinary prose on both halves: characters must remain immediate while
+   each upper canvas produces a visible bounded pulse.
+6. Compare short and long recipe charges in Archive; the latter is richer but
+   still changes no damage or combat timing.
+7. Exercise impact, deflect, fizzle, VOID penetration, KO, medic, and
+   replacement sequences; all accepted duel grammars must remain clear.
+8. Open and close scry in both scenes. Its panel must stay clear and restore
+   the continuing Archive or Duel beneath it.
+9. Check clipping, health readability, split synchronization, suspend/wake,
+   HID unplug/replug, KWin restart, and the 1.5-second daemon expiry fallback.
+10. Finish with fast typing on both halves and confirm no dropped, reordered,
+    or delayed output.
+
+Rollback is protocol-compatible: stop/disable the user service for complete
+Duel fallback within 1.5 seconds, roll back the NixOS generation, revert only
+the M9 commit(s), or reflash both halves with the M8 build. The preserved M7.5
+rollback UF2 remains
+`~/src/vial-qmk/crkbd_rev1_griffin_anim_m75_verified_rp2040_ce.uf2`.
+
+## Next: M10
+
+M10 is the next milestone after M9 passes the physical keyboard checklist.

@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_host.h"
 
 void duel_fb_clear(duel_fb_t *fb) {
     memset(fb->bits, 0, sizeof fb->bits);
@@ -46,6 +47,85 @@ static void wiz_line(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
         if (e2 > -dy) { err -= dy; x0 += sx; }
         if (e2 <  dx) { err += dx; y0 += sy; }
     }
+}
+
+static void archive_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
+    for (int x = x0; x <= x1; x++) {
+        duel_fb_px(fb, x, y0, true);
+        duel_fb_px(fb, x, y1, true);
+    }
+    for (int y = y0 + 1; y < y1; y++) {
+        duel_fb_px(fb, x0, y, true);
+        duel_fb_px(fb, x1, y, true);
+    }
+}
+
+// M9 hybrid Archive underlay. The x coordinates below are authored in desk
+// space with x=31 at the centre gap, then mirrored on the right OLED. All
+// marks stay in y=3..44, clear of actors, combat carriers, and health.
+static void draw_archive(duel_fb_t *fb, const sim_wizard_t *wz, bool is_left) {
+#define ARCH_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
+    // A single arch spans the physical gap: apex at each inner edge, falling
+    // toward the outer edges. Integer curvature keeps it deterministic.
+    for (int x = 0; x < DUEL_CANVAS_W; x++) {
+        int d = DUEL_CANVAS_W - 1 - x;
+        int y = 3 + d * d / 24; // 3..43
+        duel_fb_px(fb, ARCH_X(x), y, true);
+        if ((d % 7) == 0 && y < 44) duel_fb_px(fb, ARCH_X(x), y + 1, true);
+    }
+
+    // Sparse shelves and small books/rune tablets. Gaps prevent the upper
+    // canvas from becoming a solid 1bpp texture on the real OLED.
+    for (int x = 2; x <= 12; x++) duel_fb_px(fb, ARCH_X(x), 16, true);
+    for (int x = 4; x <= 17; x++) duel_fb_px(fb, ARCH_X(x), 30, true);
+    for (int x = 1; x <= 14; x++) duel_fb_px(fb, ARCH_X(x), 44, true);
+    archive_rect(fb, ARCH_X(3) < ARCH_X(6) ? ARCH_X(3) : ARCH_X(6), 11,
+                     ARCH_X(3) < ARCH_X(6) ? ARCH_X(6) : ARCH_X(3), 15);
+    archive_rect(fb, ARCH_X(8) < ARCH_X(10) ? ARCH_X(8) : ARCH_X(10), 12,
+                     ARCH_X(8) < ARCH_X(10) ? ARCH_X(10) : ARCH_X(8), 15);
+    archive_rect(fb, ARCH_X(5) < ARCH_X(8) ? ARCH_X(5) : ARCH_X(8), 24,
+                     ARCH_X(5) < ARCH_X(8) ? ARCH_X(8) : ARCH_X(5), 29);
+    wiz_line(fb, ARCH_X(11), 25, ARCH_X(14), 29);
+
+    // Shield state is raised by every keydown and lasts ten 40 ms ticks. It
+    // drives a bounded expanding activity rune without adding state. During a
+    // cast the synchronized recipe tier adds arms/rings, but never mechanics.
+    int active = wz->shield_ticks || wz->cast_windup;
+    int radius = 1;
+    if (active) {
+        int elapsed = wz->shield_ticks ? SIM_SHIELD_TICKS - wz->shield_ticks
+                                       : SIM_CAST_WINDUP_TICKS - wz->cast_windup;
+        if (elapsed < 0) elapsed = 0;
+        radius = 2 + elapsed / 3; // immediate light, expands to a bounded 5 px
+        if (radius > 5) radius = 5;
+    }
+    int tier = wz->cast_windup ? (wz->cast_tier & 3) : 0;
+    int cx = ARCH_X(21), cy = 24;
+    duel_fb_px(fb, cx, cy, true);
+    duel_fb_px(fb, cx - radius, cy, true); duel_fb_px(fb, cx + radius, cy, true);
+    duel_fb_px(fb, cx, cy - radius, true); duel_fb_px(fb, cx, cy + radius, true);
+    if (active) {
+        duel_fb_px(fb, cx - radius + 1, cy - radius + 1, true);
+        duel_fb_px(fb, cx + radius - 1, cy - radius + 1, true);
+        duel_fb_px(fb, cx - radius + 1, cy + radius - 1, true);
+        duel_fb_px(fb, cx + radius - 1, cy + radius - 1, true);
+    }
+    if (tier >= SPELL_TIER_MEDIUM) {
+        wiz_line(fb, cx - radius, cy - radius, cx + radius, cy + radius);
+    }
+    if (tier >= SPELL_TIER_LONG) {
+        wiz_line(fb, cx - radius, cy + radius, cx + radius, cy - radius);
+    }
+    if (tier == SPELL_TIER_SATURATED) {
+        archive_rect(fb, cx - radius - 1, cy - radius - 1,
+                     cx + radius + 1, cy + radius + 1);
+    }
+#undef ARCH_X
+}
+
+static void clear_archive_panel(duel_fb_t *fb) {
+    for (int y = 2; y <= 42; y++)
+        for (int x = 2; x <= 29; x++) duel_fb_px(fb, x, y, false);
 }
 
 // A compact standing wizard (~1/3 of the original M1 figure, hardware
@@ -397,6 +477,9 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     bool ward_punctured = piercer != NULL ||
                           (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
     int ward_lane = piercer ? spell_lane_y(piercer->kind) : spell_lane_y(r->flash_spell_kind);
+    bool archive = r->overlay_host && r->overlay_scene == DUEL_HOST_SCENE_ARCHIVE;
+
+    if (archive) draw_archive(fb, wz, is_left);
 
     // Lifecycle (M5): each phase has its own tableau, derived purely from
     // (life, life_ticks, variant) so master and slave render identically.
@@ -560,7 +643,10 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     // M7 scrying overlay, drawn above the world when the layer-key chord is
     // held. The stale-link and debug glyphs draw AFTER, so a broken link is
     // still legible in its corner even with the panel up.
-    if (scry_is_open(&r->w)) draw_overlay(fb, r);
+    if (scry_is_open(&r->w)) {
+        if (archive) clear_archive_panel(fb);
+        draw_overlay(fb, r);
+    }
 
     if (r->stale_link) {
         // Two separated chain links in the top corner nearest the gap.

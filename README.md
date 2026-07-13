@@ -16,12 +16,12 @@ notes. The live firmware is developed in a separate QMK tree (see below).
 | Path | What it is |
 | --- | --- |
 | `firmware/` | **Committed snapshot** of the live keymap (`griffin_anim`): the hardware-agnostic duel engine (`sim/`), the QMK glue (`keymap.c`), and the host test rig (`sim_test/`). See `firmware/README.md` for the deep dive. |
-| `host/` | M8's dependency-free Linux Raw HID daemon, protocol tests, and the isolated `griffin_hostoled` build override. |
+| `host/` | M9's focus-aware Linux Raw HID daemon, private D-Bus/KWin bridge, Nix package, tests, and the isolated `griffin_hostoled` build override. |
 | `Corne_Arcane_OLED_Implementation_Roadmap.docx` | Milestone plan **M0–M11** (the authoritative build order). |
 | `Corne_Arcane_OLED_Design_Audit_Addendum.docx` | Scope guards, failure modes, and the simulation/presentation/**external-context** data-class boundary. |
 | `Corne_Arcane_OLED_Build_Kickoff_Prompt.docx` | The original kickoff brief and stopping rules. |
 | `BUILD_NOTES_NIXOS.md` | How this actually builds on NixOS 26.05 (supersedes the Debian steps in `spike1/`). |
-| `corne.nix` | Durable NixOS module: qmk/vial toolchain, non-root flashing, Vial hidraw uaccess. Not yet applied. |
+| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M9 daemon/bridge, and Plasma user service. Not yet applied. |
 | `spike1/` | Original working notes + helper scripts from the first hardware spikes (Debian-era; some steps superseded by `BUILD_NOTES_NIXOS.md`). |
 | `sync-firmware.sh` | Refresh the `firmware/` snapshot from the live QMK tree. |
 
@@ -46,18 +46,19 @@ git add -A && git commit -m "sync firmware snapshot"
 - **`griffin`** — stable Vial baseline. The recovery keymap; never experimented on.
 - **`griffin_anim`** — the OLED duel (Vial **on**). Everything in `firmware/` here.
   Its compiled four-layer default is captured from `../corne-arcane.vil`.
-- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID,
+- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID
+  and M9 hybrid Archive renderer,
   using the same four-layer default. Vial/VIA are **off** because they cannot
   share QMK's single raw-HID interface with the custom daemon protocol.
 
 ## Milestone status
 
-**M0–M8 are hardware-verified.** The isolated `griffin_hostoled` build has now
-proven the complete offline duel fallback, semantic Raw HID heartbeat, scene
-class, notification summary, synchronized two-screen host context, and clean
-daemon absence/recovery on the physical Corne. **M9 is next.** Full
-per-milestone detail and the hardware checklists live in
-`firmware/README.md`.
+**M0–M8 are hardware-verified. M9 is implemented and awaiting hardware
+verification.** Browser focus now selects a 200 ms-debounced hybrid Archive
+scene through a privacy-bounded KWin bridge, while typing animates the archive
+from existing synchronized duel state. Raw HID v1, split snapshot v6, combat,
+and world hashes are unchanged. M10 is next after M9 hardware acceptance. Full
+detail and the acceptance checklist live in `firmware/README.md`.
 
 ## Build & flash (NixOS, user-scope, no sudo)
 

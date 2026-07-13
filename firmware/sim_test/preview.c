@@ -9,6 +9,7 @@
  *   ./preview --cast L|R|both          force cast pose(s)
  *   ./preview --variant N              roster cosmetic 0..3 on both wizards
  *   ./preview --scry [scene]           M7 scrying overlay open (scene 0..2)
+ *   ./preview --host-scene <name>      online host scene: duel|archive|focus
  *   ./preview --scenario <name>        M7.5 impact/deflect/fizzle/VOID/charge tableau
  *   ./preview --life <phase> [--ticks N]  right wizard mid-lifecycle (M5):
  *                                      phase = collapse|downed|medic|replace
@@ -22,6 +23,7 @@
 #include <time.h>
 
 #include "duel_draw.h"
+#include "duel_host.h"
 #include "duel_sim.h"
 #include "runner.h"
 #include "trace.h"
@@ -54,11 +56,6 @@ static void show_render(const duel_render_t *r) {
     wiz_draw_scene(&left, r, true, 0, false);
     wiz_draw_scene(&right, r, false, 0, false);
     show(&left, &right);
-}
-
-static void show_world(const sim_world_t *w) {
-    duel_render_t r = {.w = *w, .stale_link = false};
-    show_render(&r);
 }
 
 typedef struct {
@@ -102,10 +99,13 @@ static int usage(const char *argv0) {
             "       %s --spell-kind <force|ember|frost|void>/<none|swift|heavy>\n"
             "                         [/short|medium|long|saturated]\n"
             "       %s --scenario impact|deflect|fizzle|void-pierce|short-cast|long-cast\n"
+            "                     |archive-idle|archive-pulse|archive-cast|archive-impact\n"
+            "                     |archive-ko|archive-scry\n"
+            "       %s --host-scene duel|archive|focus\n"
             "       %s --scry [scene]\n"
             "       %s <file.trace> --tick N\n"
             "       %s <file.trace> --play\n",
-            argv0, argv0, argv0, argv0, argv0, argv0, argv0);
+            argv0, argv0, argv0, argv0, argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -167,10 +167,19 @@ int main(int argc, char **argv) {
     int      ticks   = -1;   // --ticks override, else the phase midpoint
     int      spell_kind = -1;
     int      scry_scene = -1; // >= 0 when --scry given
+    int      host_scene = -1; // >= 0 means online external context
     const char *scenario = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--scenario") == 0 && i + 1 < argc) {
             scenario = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--host-scene") == 0 && i + 1 < argc) {
+            i++;
+            if      (strcmp(argv[i], "duel") == 0)    host_scene = DUEL_HOST_SCENE_DUEL;
+            else if (strcmp(argv[i], "archive") == 0) host_scene = DUEL_HOST_SCENE_ARCHIVE;
+            else if (strcmp(argv[i], "focus") == 0)   host_scene = DUEL_HOST_SCENE_FOCUS;
+            else return usage(argv[0]);
             continue;
         }
         if (strcmp(argv[i], "--scry") == 0) {
@@ -231,7 +240,12 @@ int main(int argc, char **argv) {
         sim_init(&w, SIMF_AUTHORITATIVE, 0);
         duel_render_t r = {.w = w};
         uint8_t medium_force = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), SPELL_TIER_MEDIUM);
-        if (strcmp(scenario, "impact") == 0) {
+        bool archive_scenario = strncmp(scenario, "archive-", 8) == 0;
+        if (archive_scenario) {
+            r.overlay_host = 1;
+            r.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+        }
+        if (strcmp(scenario, "impact") == 0 || strcmp(scenario, "archive-impact") == 0) {
             r.w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
             r.flash_frames = 10; r.flash_kind = FX_IMPACT_R; r.flash_spell_kind = medium_force;
         } else if (strcmp(scenario, "deflect") == 0) {
@@ -253,6 +267,23 @@ int main(int argc, char **argv) {
             r.w.wiz[SIM_SIDE_L].cast_windup = 2;
             r.w.wiz[SIM_SIDE_L].cast_tier = strcmp(scenario, "short-cast") == 0 ?
                                                    SPELL_TIER_SHORT : SPELL_TIER_LONG;
+        } else if (strcmp(scenario, "archive-idle") == 0) {
+            // Base world is already the idle hybrid composition.
+        } else if (strcmp(scenario, "archive-pulse") == 0) {
+            r.w.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS / 2;
+            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS / 2;
+        } else if (strcmp(scenario, "archive-cast") == 0) {
+            r.w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+            r.w.wiz[SIM_SIDE_L].cast_windup = 3;
+            r.w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+        } else if (strcmp(scenario, "archive-ko") == 0) {
+            r.w.wiz[SIM_SIDE_R].life = LIFE_MEDIC;
+            r.w.wiz[SIM_SIDE_R].life_ticks = SIM_MEDIC_TICKS / 2;
+            r.w.wiz[SIM_SIDE_R].hp = 0;
+        } else if (strcmp(scenario, "archive-scry") == 0) {
+            r.w.scry.state = SCRY_ACTIVE;
+            r.w.scry.scene = DUEL_HOST_SCENE_ARCHIVE;
+            r.overlay_layer = 3;
         } else {
             return usage(argv[0]);
         }
@@ -270,7 +301,10 @@ int main(int argc, char **argv) {
         w.scry.scene           = (uint8_t)scry_scene;
         w.wiz[SIM_SIDE_L].pose  = POSE_CAST;
         w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-        duel_render_t r = {.w = w, .overlay_layer = 3, .overlay_host = 0, .overlay_notif = 0};
+        duel_render_t r = {.w = w, .overlay_layer = 3,
+                           .overlay_host = host_scene >= 0,
+                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0,
+                           .overlay_notif = 0};
         show_render(&r);
         return 0;
     }
@@ -280,7 +314,9 @@ int main(int argc, char **argv) {
         sim_init(&w, SIMF_AUTHORITATIVE, 0);
         w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 40, .dir = +4, .kind = (uint8_t)spell_kind};
         w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 210, .dir = -4, .kind = (uint8_t)spell_kind};
-        show_world(&w);
+        duel_render_t r = {.w = w, .overlay_host = host_scene >= 0,
+                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0};
+        show_render(&r);
         return 0;
     }
 
@@ -297,7 +333,21 @@ int main(int argc, char **argv) {
         w.wiz[SIM_SIDE_R].hp         = 0;
         // The sim bumps the variant on entering REPLACE; mimic that here.
         if (life == LIFE_REPLACE) w.wiz[SIM_SIDE_R].variant = 1;
-        show_world(&w);
+        duel_render_t r = {.w = w, .overlay_host = host_scene >= 0,
+                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0};
+        show_render(&r);
+        return 0;
+    }
+
+    if (host_scene >= 0) {
+        sim_world_t w;
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        w.wiz[SIM_SIDE_L].pose = cast_l ? POSE_CAST : POSE_IDLE;
+        w.wiz[SIM_SIDE_R].pose = cast_r ? POSE_CAST : POSE_IDLE;
+        w.wiz[SIM_SIDE_L].variant = (uint8_t)variant;
+        w.wiz[SIM_SIDE_R].variant = (uint8_t)variant;
+        duel_render_t r = {.w = w, .overlay_host = 1, .overlay_scene = (uint8_t)host_scene};
+        show_render(&r);
         return 0;
     }
 

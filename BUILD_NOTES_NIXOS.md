@@ -13,8 +13,9 @@ Ignore the spike1 `apt` / Vial-AppImage / `keyd.rvaiya` steps here.
   contains the older documented `shell.nix` entry point.
 - Physical Corne (`4653:0001 foostan Corne`) is attached to this machine.
   Flashing needs no sudo (udisks2 automounts `RPI-RP2`).
-- Durable system config lives in `./corne.nix` — copy to
-  `/etc/nixos/modules/corne.nix`, import it, `rebuild`. **Not yet applied.**
+- Durable system config lives in `./corne.nix`. Import it **directly from this
+  checkout** so the relative packaged host sources remain available, then
+  rebuild. **Not yet applied.**
 
 ## Keymaps
 
@@ -22,8 +23,36 @@ Ignore the spike1 `apt` / Vial-AppImage / `keyd.rvaiya` steps here.
   experiment here.
 - `griffin_anim` — firmware OLED experiments (Vial on). Its compiled default
   layout is captured from `../corne-arcane.vil`.
-- `griffin_hostoled` — complete offline duel plus M8 custom Raw HID. Vial/VIA
-  are off and it shares the same compiled default as `griffin_anim`.
+- `griffin_hostoled` — complete offline duel plus M8 custom Raw HID and M9's
+  hybrid Archive renderer. Vial/VIA are off and it shares the same compiled
+  default as `griffin_anim`.
+
+## NixOS import and service
+
+Add the checkout path directly to `/etc/nixos/configuration.nix`:
+
+```nix
+imports = [
+  /home/griffin/dev/corne-arcane-oled/corne.nix
+];
+```
+
+Then run the normal `sudo nixos-rebuild switch`. The module builds the daemon,
+PyGObject/Gio runtime, and KWin bridge from `host/`, and enables the restarting
+user service at `graphical-session.target`.
+
+```bash
+systemctl --user status corne-arcane-host
+journalctl --user -u corne-arcane-host -f
+systemctl --user restart corne-arcane-host
+
+# Diagnostic fixed-scene override (automatic focus arbitration is disabled):
+systemctl --user stop corne-arcane-host
+corne-arcane-host --scene archive --verbose
+
+# Temporary disable; set services.corne-arcane-host.enable = false for durable disable:
+systemctl --user disable --now corne-arcane-host
+```
 
 ## Build & flash
 
@@ -47,8 +76,11 @@ Reassemble: USB into left half only + TRRS connected.
   physical Corne. Offline duel fallback, synchronized host state, scene class,
   notification count, timeout, and daemon restart all work. The isolated host
   keymap uses split snapshot v6/30 bytes; Vial/VIA remain off.
-- **M9 — Arcane archive browser scene** is next; it begins with coarse focused
-  application class and activity only, without a browser extension.
+- **M9 — Application-aware Arcane Archive** is implemented and awaiting
+  hardware verification. Browser focus, debounce, reconnect behavior, hybrid
+  rendering, test preview scenarios, and NixOS startup are complete without a
+  browser extension or protocol/state changes.
+- **M10** is next after M9 hardware acceptance.
 
 ## Hardware notes learned this session
 
