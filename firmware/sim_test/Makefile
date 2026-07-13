@@ -12,7 +12,7 @@ CC       ?= cc
 CFLAGS   ?= -std=c11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined
 CFLAGS   += -I../sim
 
-SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_proto.c
+SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_proto.c ../sim/duel_host.c
 
 test: test_runner
 	./test_runner traces golden
@@ -20,7 +20,7 @@ test: test_runner
 golden: test_runner
 	./test_runner --write-golden traces golden
 
-HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h
+HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h ../sim/duel_proto.h ../sim/duel_host.h
 
 test_runner: test_main.c trace.c $(SIM_SRC) $(HDRS)
 	$(CC) $(CFLAGS) -o $@ test_main.c trace.c $(SIM_SRC)

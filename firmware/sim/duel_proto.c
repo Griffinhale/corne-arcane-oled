@@ -2,7 +2,7 @@
 
 #include "duel_proto.h"
 
-// CRC-8, polynomial 0x07, no table — 26 bytes per packet doesn't warrant one.
+// CRC-8, polynomial 0x07, no table — 29 bytes per packet doesn't warrant one.
 uint8_t duel_crc8(const void *data, size_t len) {
     const uint8_t *p = data;
     uint8_t crc = 0;
@@ -16,6 +16,11 @@ uint8_t duel_crc8(const void *data, size_t len) {
 }
 
 void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snapshot_t *out) {
+    duel_encode_external(w, session, seq, 0, out);
+}
+
+void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
+                          uint8_t external, duel_snapshot_t *out) {
     memset(out, 0, sizeof *out);
     out->magic   = DUEL_MAGIC;
     out->ver     = DUEL_VER;
@@ -33,10 +38,12 @@ void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snaps
         if (w->spell[s].dir < 0) out->spell_state |= DUEL_SPELLSTATE_NEG(s);
         out->life[s]       = DUEL_LIFE_PACK(w->wiz[s].life, w->wiz[s].variant);
         out->life_ticks[s] = w->wiz[s].life_ticks;
+        out->charge[s]     = DUEL_CHARGE_PACK(w->wiz[s].cast_windup, w->wiz[s].cast_tier);
     }
     out->fx_seq  = w->fx_seq;
     out->fx_kind = w->fx_kind;
     out->scry    = DUEL_SCRY_PACK(scry_is_open(w), w->scry.scene);
+    out->external = external;
     out->crc     = duel_crc8(out, offsetof(duel_snapshot_t, crc));
 }
 
@@ -60,6 +67,8 @@ void duel_decode_world(const duel_snapshot_t *p, sim_world_t *out) {
         out->wiz[s].life         = DUEL_LIFE_STATE(p->life[s]);
         out->wiz[s].variant      = DUEL_LIFE_VARIANT(p->life[s]);
         out->wiz[s].life_ticks   = p->life_ticks[s];
+        out->wiz[s].cast_windup  = DUEL_CHARGE_WINDUP(p->charge[s]);
+        out->wiz[s].cast_tier    = DUEL_CHARGE_TIER(p->charge[s]);
         // regen_ticks stays 0: decoded worlds are render-only and never tick
         // lifecycle/regen (no authority flag).
     }

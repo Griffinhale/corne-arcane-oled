@@ -70,7 +70,7 @@ uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out);
 /* ---- world state -------------------------------------------------------- */
 enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
-#define SIM_CAST_TICKS    9 /* ~360 ms at 25 Hz, re-armed while a key is held */
+#define SIM_CAST_TICKS   12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
 #define SIM_MAX_HP        5
 
@@ -83,7 +83,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
  * runs only when SIMF_AUTHORITATIVE is set (the master), so the slave
  * structurally cannot decide outcomes. */
 #define SIM_SPELL_SPEED       4  /* full flight 8 -> 248 in 60 ticks (2.4 s) */
-#define SIM_CAST_WINDUP_TICKS 6
+#define SIM_CAST_WINDUP_TICKS 10 /* 400 ms: shortest M7.5 hardware candidate */
 #define SIM_CAST_COOLDOWN     25 /* ~1 s between casts per wizard */
 #define SIM_SHIELD_TICKS      10 /* any keydown shields that side ~400 ms */
 #define SIM_SPAWN_L           8
@@ -93,17 +93,29 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 #define SIM_DOORSTEP_L        15
 #define SIM_IMPACT_L          7
 
-// M6 recipe vocabulary. A cast compiles the recent keydown burst into a kind byte.
+// M6 recipe vocabulary. A cast compiles the recent keydown burst into a kind
+// byte. M7.5 uses the two previously spare high bits for a capped presentation
+// tier; it never changes damage or any other combat rule.
 enum { ELEM_FORCE = 0, ELEM_EMBER = 1, ELEM_FROST = 2, ELEM_VOID = 3 };
 enum { MOD_NONE = 0, MOD_SWIFT = 1, MOD_HEAVY = 2 };
 enum { PAY_IMPACT = 0 };
-// kind byte: bits0-1 element, bits2-3 modifier, bits4-5 payload, bits6-7 spare
+enum { SPELL_TIER_SHORT = 0, SPELL_TIER_MEDIUM = 1, SPELL_TIER_LONG = 2, SPELL_TIER_SATURATED = 3 };
+// kind byte: bits0-1 element, bits2-3 modifier, bits4-5 payload, bits6-7 presentation tier
 #define DUEL_KIND_PACK(elem, mod, pay) ((uint8_t)(((elem)&3) | (((mod)&3)<<2) | (((pay)&3)<<4)))
 #define DUEL_KIND_ELEMENT(k)  ((k) & 3)
 #define DUEL_KIND_MODIFIER(k) (((k) >> 2) & 3)
 #define DUEL_KIND_PAYLOAD(k)  (((k) >> 4) & 3)
+#define DUEL_KIND_TIER(k)     (((k) >> 6) & 3)
+#define DUEL_KIND_WITH_TIER(k, tier) ((uint8_t)(((k) & 0x3F) | (((tier) & 3) << 6)))
 #define RECIPE_EXPIRE_TICKS 25   /* ~1s of inactivity closes an open recipe */
 #define RECIPE_N_MAX        15   /* recipe_n saturates here */
+
+static inline uint8_t duel_recipe_tier(uint8_t ingredient_count) {
+    if (ingredient_count <= 2) return SPELL_TIER_SHORT;
+    if (ingredient_count <= 4) return SPELL_TIER_MEDIUM;
+    if (ingredient_count <= 8) return SPELL_TIER_LONG;
+    return SPELL_TIER_SATURATED;
+}
 
 /* ---- lifecycle & roster (M5) ---------------------------------------------
  * When a wizard's hp reaches 0 it walks the COLLAPSE -> DOWNED -> MEDIC ->
@@ -135,7 +147,7 @@ typedef struct {
     uint8_t  recipe_hist;   /* last-4 row classes, 2 bits each, newest in bits0-1; the
                                modifier reads its repetition/alternation pattern */
     uint8_t  recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
-    uint8_t  recipe_rsv;    /* reserved (0): headroom for a future cadence signal */
+    uint8_t  cast_tier;     /* M7.5 capped presentation tier while charging */
     uint8_t  recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
     uint8_t  _pad;          /* explicit padding: keeps world hashing deterministic */
     uint16_t regen_ticks;   /* countdown to next regen pip; local, never in snapshots */

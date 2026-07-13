@@ -1,6 +1,7 @@
 { config, pkgs, lib, ... }:
 
-# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and Vial hidraw access.
+# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and hidraw access for
+# either Vial or the isolated M8 semantic host daemon.
 #
 # INSTALL:
 #   1. Copy this file to /etc/nixos/modules/corne.nix
@@ -10,10 +11,9 @@
 #        ./modules/corne.nix
 #   3. Apply:  rebuild        (your alias for `sudo nixos-rebuild switch`)
 #
-# NOTE: For this build session none of this is required — the dev shell in
-# ~/src/vial-qmk/shell.nix provides qmk/python/arm-gcc user-scope, and flashing
-# works via the udisks2 RPI-RP2 automount. This module makes it permanent and
-# lets the Vial GUI reach the running keyboard without root.
+# NOTE: The current machine already exposes qmk/python/arm-gcc on PATH and
+# flashing works via the udisks2 RPI-RP2 automount. This module makes the setup
+# durable and lets either Vial or arcane_host reach hidraw without root.
 
 {
   environment.systemPackages = with pkgs; [
@@ -26,7 +26,7 @@
   # plugdev group. Covers the RP2040 RPI-RP2 bootloader this board enters.
   hardware.keyboard.qmk.enable = true;
 
-  # Let the Vial app open the RUNNING keyboard's hidraw node without root.
+  # Let Vial or the M8 daemon open the RUNNING keyboard's hidraw node without root.
   # The Corne enumerates as USB vendor 4653 ("foostan Corne"); QMK's Vial raw-hid
   # interface uses HID usage page 0xFF60. uaccess grants the active local user.
   services.udev.extraRules = ''

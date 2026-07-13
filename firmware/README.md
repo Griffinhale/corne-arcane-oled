@@ -4,17 +4,52 @@ Firmware-only OLED experiment keymap for the Corne v3 / RP2040 dual-OLED
 "spell duel" system. Vial stays enabled here. `griffin` remains the stable
 recovery baseline — do not experiment there.
 
-## Status: M7 done (host-verified); hardware-verified through M6 (2026-07-13)
+The compiled four-layer default is captured from the `corne-arcane.vil` export
+in the repository's parent directory and stored in `corne_arcane_layout.h`.
+The live `griffin_anim` and Vial-free
+`griffin_hostoled` keymaps both use this map. A newly built Vial firmware has
+a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
+compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-M0–M6 are all flashed and confirmed on the physical keyboard. The v3 flash is
-a superset, so a single reflash of both halves cleared the M3/M4/M5/M6
-checklists at once: cross-screen bolts, the KO arc (collapse → downed → medic
-drag-off → replacement), and recipe-driven spell variety all render correctly
-with typing unaffected. M6.5 and M7 are host-verified; a hardware eyeball of
-both is pending the next reflash (wire is now v4 — flash both halves).
+## Status: M0–M8 hardware-verified (2026-07-13)
 
-**M6.5 — juice + first outcome-changing element (done, host-verified;
-hardware eyeball pending).** Bench feedback on M6 was that spell variety read
+M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
+wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
+recipe-driven spell variety, VOID piercing, and the scry overlay all render
+correctly with typing unaffected. M7.5's combat presentation, 10-tick wind-up,
+recipe-scaled effects, upper-canvas composition, and captured default layout
+are now accepted on both physical halves.
+
+**M7.5 — Combat presentation and composition polish (hardware-verified).**
+Mechanics remain unchanged except
+for the explicitly requested fictional release delay: wind-up is now 10 ticks
+(400 ms), the shortest candidate in the 10–14 tick range, while emitted typing
+still takes the untouched QMK path immediately. Presentation changes are:
+
+- Impact is local to the defender: directional contact burst, recoil/compression,
+  bounded debris, restrained corner disturbance, and a marker at the lost pip.
+- Deflect keeps a thick flaring ward dominant and throws broken carrier streaks
+  back toward the gap; the wizard remains stable and no impact border is reused.
+- Fizzle contracts from a sparse shell into a small core away from the body,
+  with no flash or recoil.
+- VOID visibly splits/punctures an active ward while the carrier continues
+  through it; the later damaging impact retains the impact grammar.
+- Recipe count maps to capped short/medium/long/saturated presentation tiers.
+  Tier changes charge, carrier, trail, and outcome size only—never damage,
+  flight speed, health, ward rules, or lifecycle.
+- A growing rune and gathering motes occupy the upper canvas during wind-up;
+  element-specific lanes and staff-tip battlefield mapping reduce overlap near
+  the actor.
+
+The authoritative additions are deliberately small: the former recipe-reserved
+byte is now `cast_tier`, the two spare high bits of `spell.kind` carry the spawned
+tier, and two packed charge bytes (wind-up + tier) make anticipation absolute on
+the slave. The snapshot therefore advances from v4/27 bytes to v5/29 bytes,
+still below QMK's 32-byte RPC limit. Recoil, particles, outcome latching, and
+VOID ward deformation remain presentation-only render state.
+
+**M6.5 — juice + first outcome-changing element (done, hardware-verified).**
+Bench feedback on M6 was that spell variety read
 weak and hits/wind-ups were understated. Addressed:
 - Bolder, silhouette-distinct element glyphs — FORCE a solid cannonball,
   FROST a spiky star, VOID a hollow ring, EMBER a comet with a long tail —
@@ -41,7 +76,7 @@ snapshot. Determinism is machine-verified by the host test rig in
 iterates without flashing).
 
 **M3 — Split snapshot proof.** The master's world is authoritative and
-streams CRC'd snapshots (`sim/duel_proto.{h,c}`, grown to 26 bytes by M6) to
+streams CRC'd snapshots (`sim/duel_proto.{h,c}`, now 30 bytes at M8) to
 the slave over a user split RPC every 2nd tick (12.5 Hz). Sequence + session
 acceptance means
 a stale or duplicated packet can never roll the slave's view backward; a
@@ -55,6 +90,9 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
 
 ## Layout
 
+- `corne_arcane_layout.h` — shared compiled four-layer typing default captured
+  from the Vial export. Layer/thumb positions are translated into
+  `LAYOUT_split_3x6_3` physical order, including the reversed right matrix rows.
 - `sim/` — **hardware-agnostic engine core**, compiled into both the firmware
   (via `SRC +=` in `rules.mk`) and the host test rig. No QMK includes, no
   statics, integer math only, no allocation, no time reads.
@@ -66,16 +104,24 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
     M7 adds the layer-key chord machine (`sim_scry_t`, `scry_step`; IDLE →
     FIRST_HELD → PENDING → ACTIVE → SELECT / CANCELLED), a pure level-logic
     state machine on the sampled `scry_mask`, authoritative-only like combat.
-  - `duel_proto.{h,c}` — split snapshot wire format (v4, 27 bytes, CRC-8)
+    M7.5 adds capped recipe presentation tiers and a 10-tick cast wind-up.
+  - `duel_proto.{h,c}` — split snapshot wire format (v6, 30 bytes, CRC-8)
     and the slave-side sequence/session acceptance rules. The M7 `scry` byte
-    (overlay open + scene) rides the wire so both screens show the overlay.
+    carries overlay state; M7.5's two packed charge bytes carry absolute
+    wind-up/tier state so both screens draw the same anticipation; M8's final
+    context byte carries online/scene/notification state without entering the
+    authoritative simulation.
+  - `duel_host.{h,c}` — fixed 32-byte M8 Raw HID envelope, CRC validation,
+    daemon session/sequence ordering, malformed/stale counters, heartbeat
+    expiry, and compact disposable context. It has no clock or QMK dependency.
   - `duel_draw.{h,c}` — all drawing, onto a 512-byte 1bpp `duel_fb_t`
     (portrait 32x128). `wiz_draw` is the M1 silhouette; `wiz_draw_scene`
     renders a full half from a world snapshot (plus the `DUEL_DEBUG_HUD`
     overlay: bottom-row tick odometer sweeping once/second, top-corner
-    dropped-event dots). `draw_overlay` is the M7 scrying panel (eye title,
-    layer readout, host-link glyph, notification dots, scene selector), drawn
-    on top of the running scene whenever `scry_is_open`.
+    dropped-event dots). M7.5 adds progressive upper-canvas charges, capped
+    recipe-scaled carriers, distinct outcome grammars, and visible VOID ward
+    puncture. `draw_overlay` remains the M7 scrying panel drawn on top of the
+    running scene whenever `scry_is_open`.
 - `keymap.c` — QMK glue only:
   - `oled_init_user()` — portrait rotation (`OLED_ROTATION_270` both halves).
   - `matrix_scan_user` / `matrix_slave_scan_user` — XOR matrix rows against
@@ -99,8 +145,9 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
   `./run_tests.sh` builds and runs everything (<1 s) — replay goldens,
   cadence-invariance, snapshot purity, queue overflow, uint32 tick-wrap, and
   a `nm`-based no-allocation gate, all under ASan/UBSan. `make preview`
-  builds a terminal previewer for both canvases (`./preview --cast L`,
-  `./preview --scry 0`, `./preview traces/cast_basic.trace --play`). Regenerate goldens only via
+  builds a terminal previewer for both canvases (`./preview --scenario impact`,
+  `./preview --scenario void-pierce`, `./preview --scry 0`,
+  `./preview traces/duel_ko.trace --play`). Regenerate goldens only via
   `make golden` and review the diff.
 
 ## Design invariants
@@ -117,7 +164,7 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
 ## Build & flash (NixOS, user-scope, no sudo)
 
 ```bash
-cd ~/src/vial-qmk && nix-shell            # qmk + python3 + arm-none-eabi-gcc
+cd ~/src/vial-qmk                         # qmk + arm-none-eabi-gcc are on PATH
 qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce
 # Flash one half at a time (never hot-plug TRRS):
 qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left
@@ -162,7 +209,7 @@ tar -xzf ~/corne-griffin_anim-<stamp>.tar.gz -C ~/src/vial-qmk
 
 **M4 — First cross-screen spell.** One spell slot per wizard on the 0..255
 battlefield axis (0 = left wizard, 255 = right). A rising key edge (slot
-free, ~1 s cooldown) winds up 6 ticks, then the bolt flies 4 units/tick —
+free, ~1 s cooldown) winds up 10 ticks, then the bolt flies 4 units/tick —
 2.4 s per crossing, with u 96..159 deliberately invisible in the physical
 desk gap. Any keydown raises that side's ward for 10 ticks (rendered as an
 arc in front of the wizard): a spell reaching the defender's doorstep
@@ -232,7 +279,8 @@ full KO arc).
 recent burst of physical keydowns is compiled into the spell's `kind`
 (element + modifier), which changes its glyph and flight speed. Each keydown
 contributes its **row class** (top / home / bottom / thumb) as an ingredient;
-the compiler reads the last four. The **element** is the dominant row class
+the compiler reads the last four for element/modifier identity, while M7.5
+uses the full capped count for presentation tier. The **element** is the dominant row class
 (top → FROST, home → FORCE, bottom → EMBER, thumb → VOID; ties break to the
 most recent), drawing four distinct bolt glyphs (plus / diagonal cross /
 hollow ring / comet tail). The **modifier** is the row-class *pattern* — all
@@ -247,12 +295,13 @@ after `RECIPE_EXPIRE_TICKS` (25) of inactivity, so a burst after a pause
 starts clean; the accumulator is bounded (`RECIPE_N_MAX` 15) and never
 allocates. All recipe feed/expiry/compile is gated on `SIMF_AUTHORITATIVE`,
 so the slave structurally never compiles a spell — it renders the master's
-`kind`, which now rides the snapshot. The wire format is therefore **v3 at 26
-bytes** (adds `spell_kind` per slot); mixed versions degrade to the
+`kind`, which now rides the snapshot. M6 advanced the wire format to **v3 at 26
+bytes** (adds `spell_kind` per slot); M7 and M7.5 later advanced it to v5/29
+bytes. Mixed versions degrade to the
 stale-link glyph, so **flash both halves.** Absolute state means a dropped
 packet costs only a frame of glyph — the next snapshot restores the exact
 kind. Host-verified by the `t6_*` suite (`traces/duel_recipes.trace`;
-`./preview --spell-kind frost/swift` and friends render each glyph statically).
+`./preview --spell-kind frost/swift/medium` and friends render each glyph statically).
 
 ## M6 hardware checklist
 
@@ -267,8 +316,8 @@ kind. Host-verified by the `t6_*` suite (`traces/duel_recipes.trace`;
    that a TRRS pull mid-flight recovers the correct glyph on replug.
 6. Type fast prose while spells fly: zero dropped or delayed keys.
 
-**M7 — Layer-key scrying overlay (done, host-verified; hardware eyeball
-pending).** The last firmware-only milestone: a deliberate dense-information
+**M7 — Layer-key scrying overlay (done, hardware-verified).** The last
+firmware-only milestone: a deliberate dense-information
 gesture that opens a temporary overlay above the still-running duel. An
 explicit chord state machine — IDLE → FIRST_HELD → PENDING → ACTIVE →
 SELECT / CANCELLED (`sim_scry_t`, `scry_step`) — is driven purely by a
@@ -284,11 +333,12 @@ release** (that is layer-3 use), and a one-key layer roll never leaves
 FIRST_HELD. Releasing closes the overlay and leaves the underlying scene
 untouched. While ACTIVE, tapping a selector key cycles the scene
 (`SCRY_SCENES` 3). The panel shows concise state only — layer readout, host
-link (offline until M8), notification count (0 until M8), and the scene
+link and notification slots (later populated by M8), plus the scene
 selector. The chord is authoritative-only (only the master's merged matrix
-holds both thumbs), so open+scene ride the snapshot — **wire is now v4, 27
-bytes** (adds a `scry` byte); mixed versions degrade to the stale-link glyph,
-so **flash both halves.** The overlay is pure presentation over the sim: the
+holds both thumbs), so open+scene ride the snapshot — M7 advanced the wire to
+**v4/27 bytes** (adds a `scry` byte), and M7.5 now uses v5/29 bytes. Mixed
+versions degrade to the stale-link glyph, so **flash both halves.** The overlay
+is pure presentation over the sim: the
 duel keeps casting/warding/dying underneath, and `scry_mask` feeds only the
 chord machine (host-verified: a chord-stepped world hashes identically to a
 quiet one once scry state is masked). Host-verified by the `t7_*` suite
@@ -314,10 +364,118 @@ quiet one once scry state is masked). Host-verified by the `t7_*` suite
 6. Type prose with the panel closed and while flicking it open/shut: zero
    dropped or delayed keys.
 
-## Next: M8 — host heartbeat and semantic protocol
+## M7.5 flash and hardware verification checklist
 
-The first host-branch milestone (`griffin_hostoled`, VIA/Vial disabled after
-a static layout capture): versioned Raw HID messages with sequence + daemon
-session ID, a heartbeat, scene class, and one synthetic notification — which
-finally fill in the overlay's host-link and notification stubs. Daemon
-absence/crash must never break the firmware scene.
+The v5 snapshot/shared format changed. Flash **both** halves from the same
+`griffin_anim` build; a mixed v4/v5 pair is not supported.
+
+1. Confirm the recovery keymap `griffin` has not been edited. Disconnect USB,
+   then disconnect TRRS only while the keyboard is unpowered.
+2. Build the experimental keymap:
+   `qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce`.
+   Confirm the artifact is `crkbd_rev1_griffin_anim_rp2040_ce.uf2`.
+3. With the halves separate, flash left with
+   `qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left`.
+4. Flash right from the same source/artifact with
+   `qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-right`.
+5. Power down, reconnect TRRS, then attach USB to the left half only. Confirm
+   neither OLED shows the stale-link glyph after the initial 0.5 s sync window.
+6. Compare short (one or two ingredients) and long (five to eight ingredients)
+   recipes: charge, carrier silhouette, trail, and outcome must be visibly
+   larger/richer, while damage remains one pip in both cases.
+7. Type ordinary prose continuously. The fictional release should anticipate
+   for about 400 ms without any dropped, reordered, or delayed characters.
+8. Trigger a normal impact, ward deflect, and downed-wizard fizzle. Impact must
+   show contact/recoil/lost health; deflect must keep the wizard stable and
+   redirect fragments from a flared ward; fizzle must remain small and harmless.
+9. Cast VOID into an active ward. Observe a visible split/puncture, the carrier
+   continuing through, and then the normal damaging impact grammar.
+10. During short and long wind-ups, verify the growing rune/motes are legible in
+    the upper canvas on both OLEDs—not clipped, inverted, or hidden by the actor.
+11. Watch several elements, tiers, wards, impacts, and health states on both
+    halves. There must be no OLED clipping or accidental wizard/health overlap.
+12. Type rapidly on both halves while spells cross the gap. Confirm no split
+    desynchronization, stale-link marker, backward jump, or mismatched tier.
+13. Run a full five-hit KO: collapse, protected downed pose, medic drag-off, and
+    replacement must remain clear; a cast at the downed wizard must still fizzle.
+14. Open, change, and close the scry overlay on both screens. It must remain
+    intact, synchronized, and return to the unchanged duel scene.
+
+If typing, boot, or split behavior regresses, stop evaluation and flash the
+known-good `griffin` recovery keymap on both halves.
+
+## M8 — host heartbeat and semantic protocol (hardware-verified)
+
+The Vial-free `griffin_hostoled` build now contains the entire accepted duel as
+its offline fallback plus a bounded semantic Raw HID receiver. Reports are
+fixed at 32 bytes with protocol version, type, daemon session ID, sequence,
+absolute scene/notification summary, and CRC-8. A new daemon session is adopted
+only through `HELLO` sequence zero; the previous session is remembered so
+delayed packets cannot roll a restart backward. Only HELLO/HEARTBEAT refresh
+liveness. After 1.5 seconds without one, firmware clears every external field
+and continues the untouched duel.
+
+The Linux daemon in `../host/` uses only Python's standard library. It discovers
+QMK usage page `0xFF60` / usage `0x61`, sends paced absolute reports, and never
+streams framebuffers. Host context is packed into one byte of split snapshot
+v6/30 bytes, so the slave renders the same online bar, scene marker, and
+notification count (visually capped to four dots). Combat state and world-hash
+goldens are unchanged.
+
+### M8 build and flash
+
+Build is already verified; the artifact is
+`~/src/vial-qmk/crkbd_rev1_griffin_hostoled_rp2040_ce.uf2`.
+
+```bash
+cd ~/src/vial-qmk
+# Power down and disconnect TRRS; flash one half at a time.
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-left
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-right
+```
+
+Reassemble only while unpowered: TRRS connected, then USB into the left half.
+Do not open Vial against this build.
+
+### M8 hardware acceptance checklist
+
+1. Before starting the daemon, type on both halves and run several full casts,
+   wards, impacts, a KO/medic/replacement sequence, and the scry chord. The duel
+   and captured layout must behave exactly like accepted M7.5; the scry host row
+   must show the disconnected glyph.
+2. In another terminal run `cd ~/dev/corne-arcane-oled/host && ./run_tests.sh`.
+3. Start `python3 -m arcane_host.daemon --scene archive --notify 2 --verbose`.
+   It should discover exactly one QMK Raw HID device.
+4. Hold the scry chord. Both OLEDs must show the solid host bar, two notification
+   dots, and archive scene marker. Release must return to the continuing duel.
+5. Type rapidly on both halves for at least 30 seconds while heartbeats run.
+   Confirm immediate output, normal spells, no stale split marker, and no OLED
+   pause or desynchronization.
+6. Stop the daemon with Ctrl-C while observing/reopening scry. Within 1.5 seconds
+   both halves must return to the disconnected host glyph, zero dots, and local
+   duel scene; combat must never reset or pause.
+7. Restart with `python3 -m arcane_host.daemon --scene focus --notify 1 --verbose`.
+   Both halves must adopt the new session, focus marker, and one dot without
+   displaying delayed archive context.
+8. Stop/restart it several times and suspend/wake the host once. Every absence
+   must expire cleanly; every new session must converge on both screens.
+9. Confirm Vial is not used with `griffin_hostoled`. Finish with another prose
+   typing pass and full KO sequence.
+
+If the host build regresses typing, split behavior, boot, or offline animation,
+flash `griffin_anim` or the stable `griffin` keymap onto both halves. The exact
+hardware-accepted M7.5 binary is preserved as
+`~/src/vial-qmk/crkbd_rev1_griffin_anim_m75_verified_rp2040_ce.uf2`.
+
+**Hardware result (2026-07-13): accepted.** The physical-keyboard run and photo
+review confirm the ordinary duel fallback and synchronized scry/host
+presentation render cleanly on the real OLEDs without visible clipping or
+corruption. Daemon-driven context works across both halves.
+
+## Next: M9 — arcane archive browser scene
+
+Map focused applications into the existing three-class host vocabulary, select
+the archive scene for browser focus, and begin with a coarse activity pulse.
+Keep the wizards in the fiction, require no browser extension, and continue to
+send semantic state rather than frames. Scroll direction, clicks, tabs, and
+page semantics remain deferred.

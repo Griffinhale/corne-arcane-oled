@@ -9,6 +9,7 @@
  *   ./preview --cast L|R|both          force cast pose(s)
  *   ./preview --variant N              roster cosmetic 0..3 on both wizards
  *   ./preview --scry [scene]           M7 scrying overlay open (scene 0..2)
+ *   ./preview --scenario <name>        M7.5 impact/deflect/fizzle/VOID/charge tableau
  *   ./preview --life <phase> [--ticks N]  right wizard mid-lifecycle (M5):
  *                                      phase = collapse|downed|medic|replace
  *   ./preview <file.trace> --tick N    run the sim, show the frame at tick N
@@ -60,15 +61,51 @@ static void show_world(const sim_world_t *w) {
     show_render(&r);
 }
 
+typedef struct {
+    uint8_t seen_fx_seq;
+    uint8_t flash_frames;
+    uint8_t flash_kind;
+    uint8_t flash_spell_kind;
+    uint8_t last_spell_kind[2];
+} preview_fx_t;
+
+// Mirror keymap.c's render-only outcome latch so trace playback shows the same
+// revised effects as hardware. One trace tick is presented as one render frame.
+static void show_presented_world(preview_fx_t *p, const sim_world_t *w) {
+    for (int s = 0; s < 2; s++) {
+        if (w->spell[s].active) p->last_spell_kind[s] = w->spell[s].kind;
+    }
+    if (w->fx_seq != p->seen_fx_seq) {
+        p->seen_fx_seq = w->fx_seq;
+        p->flash_kind  = w->fx_kind;
+        bool defender_left = p->flash_kind == FX_IMPACT_L || p->flash_kind == FX_DEFLECT_L ||
+                             p->flash_kind == FX_FIZZLE_L;
+        p->flash_spell_kind = p->last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
+        bool impact = p->flash_kind == FX_IMPACT_L || p->flash_kind == FX_IMPACT_R;
+        p->flash_frames = impact ? 12 : 8;
+    } else if (p->flash_frames) {
+        p->flash_frames--;
+    }
+    duel_render_t r = {
+        .w = *w,
+        .flash_frames = p->flash_frames,
+        .flash_kind = p->flash_kind,
+        .flash_spell_kind = p->flash_spell_kind,
+    };
+    show_render(&r);
+}
+
 static int usage(const char *argv0) {
     fprintf(stderr,
             "usage: %s [--cast L|R|both] [--variant N]\n"
             "       %s --life collapse|downed|medic|replace [--ticks N]\n"
             "       %s --spell-kind <force|ember|frost|void>/<none|swift|heavy>\n"
+            "                         [/short|medium|long|saturated]\n"
+            "       %s --scenario impact|deflect|fizzle|void-pierce|short-cast|long-cast\n"
             "       %s --scry [scene]\n"
             "       %s <file.trace> --tick N\n"
             "       %s <file.trace> --play\n",
-            argv0, argv0, argv0, argv0, argv0, argv0);
+            argv0, argv0, argv0, argv0, argv0, argv0, argv0);
     return 2;
 }
 
@@ -79,6 +116,7 @@ int main(int argc, char **argv) {
         if (trace_load(argv[1], &t) != 0) return 1;
         runner_t r;
         runner_init(&r, &t, SIMF_AUTHORITATIVE);
+        preview_fx_t present = {0};
 
         if (strcmp(argv[2], "--play") == 0) {
             const struct timespec frame_time = {0, SIM_TICK_MS * 1000000L};
@@ -86,7 +124,7 @@ int main(int argc, char **argv) {
                 runner_step(&r);
                 fputs("\033[H\033[2J", stdout);
                 printf("tick %u/%u\n", r.ticks_run, t.end_tick - t.start_tick);
-                show_world(&r.w);
+                show_presented_world(&present, &r.w);
                 fflush(stdout);
                 nanosleep(&frame_time, NULL);
             }
@@ -95,9 +133,28 @@ int main(int argc, char **argv) {
         if (strcmp(argv[2], "--tick") == 0 && argc == 4) {
             uint32_t target;
             if (sscanf(argv[3], "%u", &target) != 1) return usage(argv[0]);
-            while (!runner_done(&r) && r.ticks_run < target) runner_step(&r);
+            while (!runner_done(&r) && r.ticks_run < target) {
+                runner_step(&r);
+                // Advance the render-only latch at the same nominal cadence;
+                // only the target frame is emitted below.
+                for (int s = 0; s < 2; s++) {
+                    if (r.w.spell[s].active) present.last_spell_kind[s] = r.w.spell[s].kind;
+                }
+                if (r.w.fx_seq != present.seen_fx_seq) {
+                    present.seen_fx_seq = r.w.fx_seq;
+                    present.flash_kind = r.w.fx_kind;
+                    bool dl = present.flash_kind == FX_IMPACT_L || present.flash_kind == FX_DEFLECT_L ||
+                              present.flash_kind == FX_FIZZLE_L;
+                    present.flash_spell_kind = present.last_spell_kind[dl ? SIM_SIDE_R : SIM_SIDE_L];
+                    present.flash_frames = (present.flash_kind == FX_IMPACT_L || present.flash_kind == FX_IMPACT_R) ? 12 : 8;
+                } else if (present.flash_frames) {
+                    present.flash_frames--;
+                }
+            }
             printf("tick %u\n", r.ticks_run);
-            show_world(&r.w);
+            show_render(&(duel_render_t){.w = r.w, .flash_frames = present.flash_frames,
+                                         .flash_kind = present.flash_kind,
+                                         .flash_spell_kind = present.flash_spell_kind});
             return 0;
         }
         return usage(argv[0]);
@@ -110,7 +167,12 @@ int main(int argc, char **argv) {
     int      ticks   = -1;   // --ticks override, else the phase midpoint
     int      spell_kind = -1;
     int      scry_scene = -1; // >= 0 when --scry given
+    const char *scenario = NULL;
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--scenario") == 0 && i + 1 < argc) {
+            scenario = argv[++i];
+            continue;
+        }
         if (strcmp(argv[i], "--scry") == 0) {
             scry_scene = 0;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
@@ -139,10 +201,11 @@ int main(int argc, char **argv) {
             i++;
             if (sscanf(argv[i], "%d", &ticks) != 1 || ticks < 1) return usage(argv[0]);
         } else if (strcmp(argv[i], "--spell-kind") == 0 && i + 1 < argc) {
-            char element[16], modifier[16];
-            int elem, mod;
+            char element[16], modifier[16], tier_name[16] = "medium";
+            int elem, mod, tier;
             i++;
-            if (sscanf(argv[i], "%15[^/]/%15s", element, modifier) != 2) return usage(argv[0]);
+            int fields = sscanf(argv[i], "%15[^/]/%15[^/]/%15s", element, modifier, tier_name);
+            if (fields < 2) return usage(argv[0]);
             if      (strcmp(element, "force") == 0) elem = ELEM_FORCE;
             else if (strcmp(element, "ember") == 0) elem = ELEM_EMBER;
             else if (strcmp(element, "frost") == 0) elem = ELEM_FROST;
@@ -152,10 +215,49 @@ int main(int argc, char **argv) {
             else if (strcmp(modifier, "swift") == 0) mod = MOD_SWIFT;
             else if (strcmp(modifier, "heavy") == 0) mod = MOD_HEAVY;
             else return usage(argv[0]);
-            spell_kind = DUEL_KIND_PACK(elem, mod, PAY_IMPACT);
+            if      (strcmp(tier_name, "short") == 0)     tier = SPELL_TIER_SHORT;
+            else if (strcmp(tier_name, "medium") == 0)    tier = SPELL_TIER_MEDIUM;
+            else if (strcmp(tier_name, "long") == 0)      tier = SPELL_TIER_LONG;
+            else if (strcmp(tier_name, "saturated") == 0) tier = SPELL_TIER_SATURATED;
+            else return usage(argv[0]);
+            spell_kind = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(elem, mod, PAY_IMPACT), tier);
         } else {
             return usage(argv[0]);
         }
+    }
+
+    if (scenario) {
+        sim_world_t w;
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        duel_render_t r = {.w = w};
+        uint8_t medium_force = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), SPELL_TIER_MEDIUM);
+        if (strcmp(scenario, "impact") == 0) {
+            r.w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
+            r.flash_frames = 10; r.flash_kind = FX_IMPACT_R; r.flash_spell_kind = medium_force;
+        } else if (strcmp(scenario, "deflect") == 0) {
+            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+            r.flash_frames = 7; r.flash_kind = FX_DEFLECT_R; r.flash_spell_kind = medium_force;
+        } else if (strcmp(scenario, "fizzle") == 0) {
+            r.w.wiz[SIM_SIDE_R].life = LIFE_DOWNED;
+            r.w.wiz[SIM_SIDE_R].life_ticks = SIM_DOWNED_TICKS / 2;
+            r.w.wiz[SIM_SIDE_R].hp = 0;
+            r.flash_frames = 7; r.flash_kind = FX_FIZZLE_R; r.flash_spell_kind = medium_force;
+        } else if (strcmp(scenario, "void-pierce") == 0) {
+            r.w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+            r.w.spell[SIM_SIDE_L] = (sim_spell_t){
+                .active = 1, .pos = 236, .dir = 4,
+                .kind = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_VOID, MOD_NONE, PAY_IMPACT), SPELL_TIER_LONG),
+            };
+        } else if (strcmp(scenario, "short-cast") == 0 || strcmp(scenario, "long-cast") == 0) {
+            r.w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+            r.w.wiz[SIM_SIDE_L].cast_windup = 2;
+            r.w.wiz[SIM_SIDE_L].cast_tier = strcmp(scenario, "short-cast") == 0 ?
+                                                   SPELL_TIER_SHORT : SPELL_TIER_LONG;
+        } else {
+            return usage(argv[0]);
+        }
+        show_render(&r);
+        return 0;
     }
 
     if (scry_scene >= 0) {

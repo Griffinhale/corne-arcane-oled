@@ -18,12 +18,17 @@
  * t7_*: M7 acceptance — layer-key chord machine (roll never opens, deliberate
  *       dwell opens, early release, third-key cancel+latch, scene selection,
  *       slave-never-opens, wire sync, overlay rendering, no combat coupling).
+ * t75_*: M7.5 state acceptance — 10-tick anticipation, capped recipe tiers,
+ *        presentation-only combat coupling, and charge/tier wire sync.
+ * t8_*: M8 host protocol — validation, absolute context, session/sequence
+ *       ordering, delayed-old-session rejection, and heartbeat expiry.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_host.h"
 #include "duel_proto.h"
 #include "duel_sim.h"
 #include "runner.h"
@@ -500,9 +505,8 @@ static bool canvas_has_spell_pixels(const sim_world_t *w, bool is_left) {
 }
 
 // The spell renders on the caster's screen early, the defender's late, and
-// NEITHER while crossing the desk gap. Near a wizard the bolt is occluded
-// by the silhouette (u < 48 / u > 207), so ownership is asserted only where
-// the bolt is in the clear.
+// NEITHER while crossing the desk gap. Ownership is sampled well inside each
+// visible range so edge clipping cannot make the assertion ambiguous.
 static void t4_screen_ownership(void) {
     trace_t t;
     if (load_trace_or_fail("cast_impact.trace", &t) != 0) { CHECK(false, "t4_screen_ownership"); return; }
@@ -533,8 +537,8 @@ static void t4_screen_ownership(void) {
 
 // Sweep the defender's tap tick across the flight. Shield lives for
 // SIM_SHIELD_TICKS after the keydown and the spell sits in the doorstep
-// band for 2 ticks (74: u=240, 75: u=244; impact tick 76), so deflects must
-// form exactly the contiguous window T in [65, 75] — 11 ticks wide, and the
+// band for 2 ticks (78: u=240, 79: u=244; impact tick 80), so deflects must
+// form exactly the contiguous window T in [69, 79] — 11 ticks wide, and the
 // outcome flips exactly at the documented thresholds.
 static void t4_shield_window(void) {
     bool ok = true;
@@ -567,7 +571,7 @@ static void t4_shield_window(void) {
             ok = false; // every run must resolve one way or the other
         }
     }
-    ok &= deflects == 11 && first_deflect == 65 && last_deflect == 75;
+    ok &= deflects == 11 && first_deflect == 69 && last_deflect == 79;
     ok &= deflects + impacts == 31; // contiguous window, no holes
     CHECK(ok, "t4_shield_window");
 }
@@ -607,9 +611,9 @@ static void t4_missed_impact_recovery(void) {
 /* ---------------- M5: lifecycle and roster ---------------- */
 
 /* Timing model used throughout t5 (derived from duel_sim.c, not the spec):
- * rising edge at processed tick E -> windup 6 -> spawn during tick E+6 at
- * u=8/247 -> 4 u/tick -> doorstep (240/15) during tick E+64 -> impact
- * (248/7) during tick E+66. A KO during tick K runs COLLAPSE 12 / DOWNED 25 /
+ * rising edge at processed tick E -> windup 10 -> spawn during tick E+10 at
+ * u=8/247 -> 4 u/tick -> doorstep (240/15) during tick E+68 -> impact
+ * (248/7) during tick E+70. A KO during tick K runs COLLAPSE 12 / DOWNED 25 /
  * MEDIC 25 / REPLACE 20 and is ACTIVE again during tick K+82. "Observed at
  * tick T" below means: after the sim_tick call for which w->tick becomes T. */
 
@@ -677,9 +681,9 @@ static void t5_ko_sequence(void) {
     trace_t t;
     memset(&t, 0, sizeof t);
     t.seed     = 1;
-    t.end_tick = 560; // 5th impact at 396, ACTIVE again at 478
+    t.end_tick = 560; // 5th impact at 400, ACTIVE again at 482
     t.n_ev     = 10;
-    for (int i = 0; i < 5; i++) { // presses at 10/90/170/250/330: impacts at 76/156/236/316/396
+    for (int i = 0; i < 5; i++) { // presses at 10/90/170/250/330: impacts at 80/160/240/320/400
         t.ev[2 * i]     = (trace_ev_t){10 + 80u * (uint32_t)i, TRACE_EV_PRESS, 0, 2, 3};
         t.ev[2 * i + 1] = (trace_ev_t){13 + 80u * (uint32_t)i, TRACE_EV_RELEASE, 0, 2, 3};
     }
@@ -890,7 +894,7 @@ static void t5_regen(void) {
             if (hp > prev) regain = d.w.tick;
             prev = hp;
         }
-        ok &= drop == 77;                                // impact during tick 76
+        ok &= drop == 81;                                // impact during tick 80
         ok &= regain == drop + SIM_REGEN_TICKS - 1;      // hp==4 through regain-1
         ok &= d.w.wiz[SIM_SIDE_R].hp == SIM_MAX_HP;
     }
@@ -910,7 +914,7 @@ static void t5_regen(void) {
             prev = hp;
         }
         ok &= n == 4;                                    // 5->4, 4->3, 3->4, 4->5
-        ok &= change[0] == 77 && change[1] == 177;       // impacts at 76 and 176
+        ok &= change[0] == 81 && change[1] == 181;       // impacts at 80 and 180
         ok &= change[2] - change[1] == SIM_REGEN_TICKS - 1;
         ok &= change[3] - change[2] == SIM_REGEN_TICKS;
         ok &= d.w.wiz[SIM_SIDE_R].hp == SIM_MAX_HP;
@@ -961,7 +965,7 @@ static void t5_slave_never_transitions(void) {
 static void t5_snapshot_lifecycle(void) {
     drv_t m;
     drv_init(&m, SIMF_AUTHORITATIVE);
-    m.w.wiz[SIM_SIDE_R].hp = 1; // poke: one impact fells (KO during tick 76)
+    m.w.wiz[SIM_SIDE_R].hp = 1; // poke: one impact fells (KO during tick 80)
     bool            ok = true;
     duel_rx_state_t rx_b = {0}, rx_c = {0}; // b: rejoin mid-MEDIC; c: miss the whole arc
     duel_snapshot_t pkt;
@@ -975,8 +979,8 @@ static void t5_snapshot_lifecycle(void) {
             duel_encode(&m.w, 0x42, 1, &pkt);
             ok &= duel_rx_accept(&rx_b, &pkt, false) && duel_rx_accept(&rx_c, &pkt, false);
         }
-        if (m.w.tick == 100 || m.w.tick == 148) { // (a) mid-DOWNED / mid-REPLACE round-trip
-            ok &= mw->life == (m.w.tick == 100 ? LIFE_DOWNED : LIFE_REPLACE);
+        if (m.w.tick == 104 || m.w.tick == 152) { // (a) mid-DOWNED / mid-REPLACE round-trip
+            ok &= mw->life == (m.w.tick == 104 ? LIFE_DOWNED : LIFE_REPLACE);
             duel_encode(&m.w, 0x42, 99, &pkt);
             duel_decode_world(&pkt, &dec);
             ok &= dec.wiz[SIM_SIDE_R].life == mw->life;
@@ -984,7 +988,7 @@ static void t5_snapshot_lifecycle(void) {
             ok &= dec.wiz[SIM_SIDE_R].variant == mw->variant;
             ok &= dec.wiz[SIM_SIDE_R].hp == mw->hp;
         }
-        if (m.w.tick == 125) { // (b) every packet since tick 70 dropped; rejoin mid-MEDIC
+        if (m.w.tick == 129) { // (b) every packet since tick 70 dropped; rejoin mid-MEDIC
             ok &= mw->life == LIFE_MEDIC;
             duel_encode(&m.w, 0x42, 2, &pkt);
             ok &= duel_rx_accept(&rx_b, &pkt, false);
@@ -992,7 +996,7 @@ static void t5_snapshot_lifecycle(void) {
             ok &= dec.wiz[SIM_SIDE_R].life == LIFE_MEDIC;
             ok &= dec.wiz[SIM_SIDE_R].life_ticks == mw->life_ticks;
         }
-        if (m.w.tick == 165) { // (c) the entire 82-tick downtime was dropped
+        if (m.w.tick == 169) { // (c) the entire 82-tick downtime was dropped
             ok &= mw->life == LIFE_ACTIVE;
             duel_encode(&m.w, 0x42, 2, &pkt);
             ok &= duel_rx_accept(&rx_c, &pkt, false);
@@ -1010,7 +1014,7 @@ static void t5_snapshot_lifecycle(void) {
 static void t5_double_ko(void) {
     drv_t d;
     drv_init(&d, SIMF_AUTHORITATIVE);
-    d.w.wiz[SIM_SIDE_L].hp = 1; // poke both: the mirrored impacts (same tick 76)
+    d.w.wiz[SIM_SIDE_L].hp = 1; // poke both: the mirrored impacts (same tick 80)
     d.w.wiz[SIM_SIDE_R].hp = 1; // fell both wizards at once
     bool     ok = true;
     uint32_t collapse[2] = {0, 0}, active[2] = {0, 0};
@@ -1025,7 +1029,7 @@ static void t5_double_ko(void) {
         }
     }
     ok &= d.w.fx_seq == 2;                       // both impacts resolved
-    ok &= collapse[0] == 77 && collapse[1] == 77; // felled the same tick
+    ok &= collapse[0] == 81 && collapse[1] == 81; // felled the same tick
     ok &= active[0] - collapse[0] == 82 && active[1] - collapse[1] == 82;
     for (int s = 0; s < 2; s++) {
         ok &= d.w.wiz[s].life == LIFE_ACTIVE && d.w.wiz[s].hp == SIM_MAX_HP && d.w.wiz[s].variant == 1;
@@ -1193,7 +1197,7 @@ static void t6_same_recipe_determinism(void) {
     sim_world_t   a, b;
     sim_init(&a, SIMF_AUTHORITATIVE, 0);
     sim_init(&b, SIMF_AUTHORITATIVE, 0);
-    for (int t = 0; t < 8; t++) {
+    for (int t = 0; t <= SIM_CAST_WINDUP_TICKS; t++) {
         int has = t < 3;
         m6_tick(&a, 1, has, SIM_EV_KEYDOWN, SIM_SIDE_L, (uint8_t)(has ? seq[t] : 0), 0);
         m6_tick(&b, 1, has, SIM_EV_KEYDOWN, SIM_SIDE_L, (uint8_t)(has ? seq[t] : 0), 0);
@@ -1257,7 +1261,7 @@ static void t6_inactivity_expiry(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     // One cast to enter cooldown, so a later keydown accumulates without spawning.
     m6_tick(&w, 1, 1, SIM_EV_KEYDOWN, SIM_SIDE_L, 1, 0);        // t0: press home
-    for (int t = 1; t < 7; t++) m6_tick(&w, 0, 0, 0, 0, 0, 0); // spawn at t6
+    for (int t = 0; t < SIM_CAST_WINDUP_TICKS; t++) m6_tick(&w, 0, 0, 0, 0, 0, 0);
     bool ok = w.spell[SIM_SIDE_L].active && w.wiz[SIM_SIDE_L].cast_cooldown > 0;
     // Inject one ingredient during cooldown (no rising-edge cast possible).
     m6_tick(&w, 1, 1, SIM_EV_KEYDOWN, SIM_SIDE_L, 0, 0);
@@ -1319,13 +1323,13 @@ static void t6_slave_never_compiles(void) {
 static void t6_kind_sync(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
-    uint8_t kl = DUEL_KIND_PACK(ELEM_FROST, MOD_SWIFT, PAY_IMPACT);
-    uint8_t kr = DUEL_KIND_PACK(ELEM_VOID, MOD_HEAVY, PAY_IMPACT);
+    uint8_t kl = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FROST, MOD_SWIFT, PAY_IMPACT), SPELL_TIER_LONG);
+    uint8_t kr = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_VOID, MOD_HEAVY, PAY_IMPACT), SPELL_TIER_SATURATED);
     w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 100, .dir = 6, .kind = kl};
     w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 150, .dir = -3, .kind = kr};
     duel_snapshot_t pkt;
     duel_encode(&w, 7, 1, &pkt);
-    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 4;
+    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 6;
     ok &= pkt.spell_kind[0] == kl && pkt.spell_kind[1] == kr;
     // A fresh decode models total packet-loss recovery: absolute kind restored.
     sim_world_t out;
@@ -1352,7 +1356,7 @@ static uint8_t m6_duel_deflect(const uint8_t *atk_rows, int atk_n, int tap_tick)
         sim_event_t ev[2];
         uint8_t     n = 0, dm = 0;
         if ((int)t < atk_n) ev[n++] = (sim_event_t){SIM_EV_KEYDOWN, SIM_SIDE_L, atk_rows[t], 0};
-        if ((int)t < 6) dm |= 1 << SIM_SIDE_L; // hold L through the spawn windup
+        if ((int)t < SIM_CAST_WINDUP_TICKS) dm |= 1 << SIM_SIDE_L; // hold through wind-up
         if ((int)t == tap_tick) {
             ev[n++] = (sim_event_t){SIM_EV_KEYDOWN, SIM_SIDE_R, 1, 0};
             dm |= 1 << SIM_SIDE_R;
@@ -1365,21 +1369,21 @@ static uint8_t m6_duel_deflect(const uint8_t *atk_rows, int atk_n, int tap_tick)
 
 static void t6_deflect_windows(void) {
     bool ok = true;
-    // NONE speed 4: doorstep ticks 64/65, impact 66, deflect if tap in [55,65].
-    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 65) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 66) == FX_IMPACT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 55) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 54) == FX_IMPACT_R;
-    // SWIFT speed 6: doorstep 45, impact 46, deflect if tap in [36,45] (narrower).
-    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 45) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 46) == FX_IMPACT_R;
-    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 36) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 35) == FX_IMPACT_R; // one tick before the window
-    // HEAVY speed 3: doorstep 84/85, impact 86, deflect if tap in [75,85].
-    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 85) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 86) == FX_IMPACT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 75) == FX_DEFLECT_R;
-    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 74) == FX_IMPACT_R; // one tick before the window
+    // NONE speed 4: doorstep ticks 68/69, impact 70, deflect if tap in [59,69].
+    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 69) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 70) == FX_IMPACT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 59) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 58) == FX_IMPACT_R;
+    // SWIFT speed 6: doorstep 49, impact 50, deflect if tap in [40,49] (narrower).
+    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 49) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 50) == FX_IMPACT_R;
+    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 40) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){0, 1, 0}, 3, 39) == FX_IMPACT_R; // one tick before the window
+    // HEAVY speed 3: doorstep 88/89, impact 90, deflect if tap in [79,89].
+    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 89) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 90) == FX_IMPACT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 79) == FX_DEFLECT_R;
+    ok &= m6_duel_deflect((uint8_t[]){1, 1, 1}, 3, 78) == FX_IMPACT_R; // one tick before the window
     CHECK(ok, "t6_deflect_windows");
 }
 
@@ -1388,8 +1392,8 @@ static void t6_void_pierces_ward(void) {
     // Same speed (NONE) and the same in-window ward tap: a FORCE bolt (home) is
     // deflected, but a VOID bolt (thumb) ignores the ward and lands. This is the
     // one place the element changes the OUTCOME, not just the look.
-    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 65) == FX_DEFLECT_R; // FORCE/NONE warded
-    ok &= m6_duel_deflect((uint8_t[]){3}, 1, 65) == FX_IMPACT_R;  // VOID/NONE pierces
+    ok &= m6_duel_deflect((uint8_t[]){1}, 1, 69) == FX_DEFLECT_R; // FORCE/NONE warded
+    ok &= m6_duel_deflect((uint8_t[]){3}, 1, 69) == FX_IMPACT_R;  // VOID/NONE pierces
     CHECK(ok, "t6_void_pierces_ward");
 }
 
@@ -1430,6 +1434,193 @@ static void t6_draw_distinct(void) {
 
 static void t6_replay_golden(void) {
     replay_golden_stream("duel_recipes.trace", "duel_recipes.hashes", "t6_replay_golden", NULL);
+    trace_t t;
+    if (load_trace_or_fail("duel_recipes.trace", &t) != 0) {
+        CHECK(false, "t6_replay_golden_semantics");
+        return;
+    }
+    runner_t r;
+    runner_init(&r, &t, SIMF_AUTHORITATIVE);
+    bool saw_deflect = false;
+    uint8_t fx_seq = 0;
+    while (!runner_done(&r)) {
+        runner_step(&r);
+        if (r.w.fx_seq != fx_seq) {
+            fx_seq = r.w.fx_seq;
+            if (r.w.fx_kind == FX_DEFLECT_R) saw_deflect = true;
+        }
+    }
+    CHECK(saw_deflect, "t6_replay_golden_semantics");
+}
+
+/* ---------------- M7.5: presentation state ----------------------------- */
+
+static void t75_windup_timing(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    sim_event_t press = {SIM_EV_KEYDOWN, SIM_SIDE_L, 1, 0};
+    sim_tick(&w, (sim_inputs_t){.down_mask = 1}, &press, 1);
+    bool ok = SIM_CAST_WINDUP_TICKS == 10 && w.wiz[SIM_SIDE_L].cast_windup == 10 &&
+              !w.spell[SIM_SIDE_L].active;
+    for (int i = 1; i < SIM_CAST_WINDUP_TICKS; i++) {
+        sim_tick(&w, (sim_inputs_t){0}, NULL, 0);
+        ok &= !w.spell[SIM_SIDE_L].active;
+        ok &= w.wiz[SIM_SIDE_L].cast_windup == SIM_CAST_WINDUP_TICKS - i;
+    }
+    sim_tick(&w, (sim_inputs_t){0}, NULL, 0);
+    ok &= w.spell[SIM_SIDE_L].active && w.spell[SIM_SIDE_L].pos == SIM_SPAWN_L;
+    ok &= w.wiz[SIM_SIDE_L].cast_windup == 0 && w.wiz[SIM_SIDE_L].pose == POSE_CAST;
+    CHECK(ok, "t75_windup_timing");
+}
+
+static void t75_recipe_tiers(void) {
+    sim_spell_t short_s = m6_cast_left((uint8_t[]){1}, 1);
+    sim_spell_t medium  = m6_cast_left((uint8_t[]){1, 2, 1}, 3);
+    sim_spell_t long_s  = m6_cast_left((uint8_t[]){1, 2, 1, 2, 1}, 5);
+    sim_spell_t capped  = m6_cast_left((uint8_t[]){1, 2, 1, 2, 1, 2, 1, 2, 1}, 9);
+    bool ok = DUEL_KIND_TIER(short_s.kind) == SPELL_TIER_SHORT;
+    ok &= DUEL_KIND_TIER(medium.kind) == SPELL_TIER_MEDIUM;
+    ok &= DUEL_KIND_TIER(long_s.kind) == SPELL_TIER_LONG;
+    ok &= DUEL_KIND_TIER(capped.kind) == SPELL_TIER_SATURATED;
+    ok &= duel_recipe_tier(RECIPE_N_MAX) == SPELL_TIER_SATURATED;
+    CHECK(ok, "t75_recipe_tiers");
+}
+
+static void t75_tier_no_combat_coupling(void) {
+    sim_world_t a, b;
+    sim_init(&a, SIMF_AUTHORITATIVE, 0);
+    sim_init(&b, SIMF_AUTHORITATIVE, 0);
+    uint8_t base = DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT);
+    a.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 244, .dir = 4,
+                                        .kind = DUEL_KIND_WITH_TIER(base, SPELL_TIER_SHORT)};
+    b.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 244, .dir = 4,
+                                        .kind = DUEL_KIND_WITH_TIER(base, SPELL_TIER_SATURATED)};
+    sim_tick(&a, (sim_inputs_t){0}, NULL, 0);
+    sim_tick(&b, (sim_inputs_t){0}, NULL, 0);
+    bool ok = a.fx_kind == FX_IMPACT_R && b.fx_kind == FX_IMPACT_R;
+    ok &= a.wiz[SIM_SIDE_R].hp == SIM_MAX_HP - 1 && b.wiz[SIM_SIDE_R].hp == SIM_MAX_HP - 1;
+    ok &= a.wiz[SIM_SIDE_R].life == b.wiz[SIM_SIDE_R].life;
+    ok &= a.wiz[SIM_SIDE_R].regen_ticks == b.wiz[SIM_SIDE_R].regen_ticks;
+    CHECK(ok, "t75_tier_no_combat_coupling");
+}
+
+static void t75_charge_sync(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[SIM_SIDE_L].cast_windup = 7;
+    w.wiz[SIM_SIDE_L].cast_tier   = SPELL_TIER_LONG;
+    w.wiz[SIM_SIDE_R].cast_windup = 3;
+    w.wiz[SIM_SIDE_R].cast_tier   = SPELL_TIER_SATURATED;
+    duel_snapshot_t pkt;
+    duel_encode(&w, 5, 9, &pkt);
+    sim_world_t out;
+    duel_decode_world(&pkt, &out);
+    bool ok = sizeof pkt == 30 && DUEL_VER == 6 && duel_decode_valid(&pkt);
+    ok &= out.wiz[SIM_SIDE_L].cast_windup == 7 && out.wiz[SIM_SIDE_L].cast_tier == SPELL_TIER_LONG;
+    ok &= out.wiz[SIM_SIDE_R].cast_windup == 3 && out.wiz[SIM_SIDE_R].cast_tier == SPELL_TIER_SATURATED;
+    duel_snapshot_t bad_charge = pkt;
+    bad_charge.charge[0] ^= 0x01;
+    ok &= !duel_decode_valid(&bad_charge);
+    duel_snapshot_t old_ver = pkt;
+    old_ver.ver = 4;
+    old_ver.crc = duel_crc8(&old_ver, offsetof(duel_snapshot_t, crc));
+    ok &= !duel_decode_valid(&old_ver);
+    CHECK(ok, "t75_charge_sync");
+}
+
+static int fb_pixels(const duel_fb_t *fb) {
+    int n = 0;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++) n += duel_fb_get(fb, x, y);
+    return n;
+}
+
+static void t75_draw_recipe_scale(void) {
+    duel_fb_t spell[4], charge_early, charge_short, charge_long;
+    int       pixels[4];
+    uint8_t base = DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT);
+    for (int tier = 0; tier < 4; tier++) {
+        m6_render_spell(&spell[tier], DUEL_KIND_WITH_TIER(base, tier), true);
+        pixels[tier] = fb_pixels(&spell[tier]);
+    }
+    bool ok = pixels[0] < pixels[1] && pixels[1] < pixels[2] && pixels[2] < pixels[3];
+    for (int i = 0; i < 4; i++)
+        for (int j = i + 1; j < 4; j++) ok &= memcmp(spell[i].bits, spell[j].bits, sizeof spell[i].bits) != 0;
+
+    sim_world_t w;
+    sim_init(&w, 0, 0);
+    w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+    w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    w.wiz[SIM_SIDE_L].cast_windup = SIM_CAST_WINDUP_TICKS;
+    duel_render_t r = {.w = w};
+    duel_fb_clear(&charge_early);
+    wiz_draw_scene(&charge_early, &r, true, 0, false);
+    r.w.wiz[SIM_SIDE_L].cast_windup = 2;
+    duel_fb_clear(&charge_long);
+    wiz_draw_scene(&charge_long, &r, true, 0, false);
+    r.w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SHORT;
+    duel_fb_clear(&charge_short);
+    wiz_draw_scene(&charge_short, &r, true, 0, false);
+    ok &= fb_pixels(&charge_early) < fb_pixels(&charge_long);
+    ok &= fb_pixels(&charge_short) < fb_pixels(&charge_long);
+    bool upper_used = false;
+    for (int y = 20; y < 50; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++) upper_used |= duel_fb_get(&charge_long, x, y);
+    ok &= upper_used;
+    CHECK(ok, "t75_draw_recipe_scale");
+}
+
+static void render_outcome(duel_fb_t *fb, uint8_t fx, uint8_t kind) {
+    sim_world_t w;
+    sim_init(&w, 0, 0);
+    if (fx == FX_IMPACT_R) w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
+    if (fx == FX_DEFLECT_R) w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+    if (fx == FX_FIZZLE_R) {
+        w.wiz[SIM_SIDE_R].life = LIFE_DOWNED;
+        w.wiz[SIM_SIDE_R].life_ticks = SIM_DOWNED_TICKS / 2;
+        w.wiz[SIM_SIDE_R].hp = 0;
+    }
+    duel_render_t r = {.w = w, .flash_frames = fx == FX_IMPACT_R ? 10 : 7,
+                       .flash_kind = fx, .flash_spell_kind = kind};
+    duel_fb_clear(fb);
+    wiz_draw_scene(fb, &r, false, 0, false);
+}
+
+static void t75_outcome_grammars(void) {
+    uint8_t medium = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), SPELL_TIER_MEDIUM);
+    duel_fb_t impact, deflect, fizzle, impact_short, impact_long;
+    render_outcome(&impact, FX_IMPACT_R, medium);
+    render_outcome(&deflect, FX_DEFLECT_R, medium);
+    render_outcome(&fizzle, FX_FIZZLE_R, medium);
+    bool ok = memcmp(impact.bits, deflect.bits, sizeof impact.bits) != 0;
+    ok &= memcmp(impact.bits, fizzle.bits, sizeof impact.bits) != 0;
+    ok &= memcmp(deflect.bits, fizzle.bits, sizeof impact.bits) != 0;
+    // Right-side impact recoil: original apex clears, shifted/compressed apex appears.
+    ok &= !duel_fb_get(&impact, 16, 54) && duel_fb_get(&impact, 18, 55);
+    ok &= duel_fb_get(&deflect, 16, 54); // deflection leaves the defender stable
+    render_outcome(&impact_short, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_SHORT));
+    render_outcome(&impact_long, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_LONG));
+    ok &= fb_pixels(&impact_short) < fb_pixels(&impact_long);
+    CHECK(ok, "t75_outcome_grammars");
+}
+
+static void t75_void_ward_puncture(void) {
+    sim_world_t w;
+    sim_init(&w, 0, 0);
+    w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+    duel_render_t r = {.w = w};
+    duel_fb_t ward, pierced;
+    duel_fb_clear(&ward);
+    wiz_draw_scene(&ward, &r, false, 0, false);
+    r.w.spell[SIM_SIDE_L] = (sim_spell_t){
+        .active = 1, .pos = 236, .dir = 4,
+        .kind = DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_VOID, MOD_NONE, PAY_IMPACT), SPELL_TIER_LONG),
+    };
+    duel_fb_clear(&pierced);
+    wiz_draw_scene(&pierced, &r, false, 0, false);
+    bool ok = duel_fb_get(&ward, 7, 60) && !duel_fb_get(&pierced, 7, 60); // visible split in arc
+    ok &= !duel_fb_get(&ward, 10, 61) && duel_fb_get(&pierced, 10, 61);   // projectile continues inward
+    CHECK(ok, "t75_void_ward_puncture");
 }
 
 /* ---------------- Phase 7: M7 layer-key scrying overlay ----------------
@@ -1565,7 +1756,7 @@ static void t7_slave_never_opens(void) {
     CHECK(ok, "t7_slave_never_opens");
 }
 
-// Wire round-trip: version is 4, open+scene survive, and the scry byte is under
+// Wire round-trip: open+scene survive, and the scry byte is under
 // the CRC so a flipped bit invalidates the packet.
 static void t7_scry_sync(void) {
     sim_world_t w;
@@ -1574,7 +1765,7 @@ static void t7_scry_sync(void) {
     w.scry.scene = 2;
     duel_snapshot_t pkt;
     duel_encode(&w, 3, 1, &pkt);
-    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 4;
+    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 6;
     ok &= DUEL_SCRY_OPEN(pkt.scry) == 1 && DUEL_SCRY_SCENE(pkt.scry) == 2;
     // A closed world clears the open bit.
     sim_world_t c;
@@ -1649,6 +1840,183 @@ static void t7_overlay_no_combat_coupling(void) {
     CHECK(ok, "t7_overlay_no_combat_coupling");
 }
 
+static void host_recrc(duel_host_packet_t *packet) {
+    packet->crc = duel_crc8(packet, offsetof(duel_host_packet_t, crc));
+}
+
+static void t8_host_valid_flow(void) {
+    duel_host_state_t state = {0};
+    duel_host_packet_t packet;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
+                     DUEL_HOST_SCENE_ARCHIVE, 2, &packet);
+    bool ok = duel_host_packet_valid(&packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.online && state.session == 0x11223344u && state.last_seq == 0;
+    ok &= state.scene == DUEL_HOST_SCENE_ARCHIVE && state.notification_count == 2;
+
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, 0x11223344u, 1,
+                     DUEL_HOST_SCENE_FOCUS, 3, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.online && state.last_seq == 1 && state.scene == DUEL_HOST_SCENE_FOCUS;
+
+    duel_host_encode(DUEL_HOST_MSG_NOTIFY, 0x11223344u, 2,
+                     DUEL_HOST_SCENE_ARCHIVE, 4, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED;
+    ok &= state.last_seq == 2 && state.scene == DUEL_HOST_SCENE_ARCHIVE;
+    ok &= state.notification_count == 4;
+    CHECK(ok, "t8_host_valid_flow");
+}
+
+static void t8_host_known_vector(void) {
+    duel_host_packet_t packet;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
+                     DUEL_HOST_SCENE_ARCHIVE, 2, &packet);
+    const uint8_t expected[DUEL_HOST_REPORT_SIZE] = {
+        0xCA, 0x8E, 0x01, 0x01, 0x44, 0x33, 0x22, 0x11,
+        0x00, 0x00, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xBC,
+    };
+    CHECK(memcmp(&packet, expected, sizeof expected) == 0,
+          "t8_host_known_vector");
+}
+
+static void t8_host_malformed(void) {
+    duel_host_state_t state = {0};
+    duel_host_packet_t base;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 7, 0, DUEL_HOST_SCENE_DUEL, 0, &base);
+    bool ok = true;
+
+    duel_host_packet_t bad = base;
+    bad.crc ^= 0x80;
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    bad = base; bad.version++; host_recrc(&bad);
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    bad = base; bad.type = 99; host_recrc(&bad);
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    bad = base; bad.payload_len = 1; host_recrc(&bad);
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    bad = base; bad.payload[0] = DUEL_HOST_SCENE_COUNT; host_recrc(&bad);
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    bad = base; bad.payload[1] = 16; host_recrc(&bad);
+    ok &= duel_host_accept(&state, &bad) == DUEL_HOST_DROP_MALFORMED;
+    ok &= state.malformed_packets == 6 && !state.have_session;
+    CHECK(ok, "t8_host_malformed");
+}
+
+static void t8_host_session_ordering(void) {
+    const uint32_t session_a = 0xA0A0A0A0u;
+    const uint32_t session_b = 0xB0B0B0B0u;
+    duel_host_state_t state = {0};
+    duel_host_packet_t packet;
+    bool ok = true;
+
+    // A data packet cannot invent a session; only sequence-zero HELLO can.
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, session_a, 1, 0, 0, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_DROP_STALE;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, session_a, 0, 1, 1, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, session_a, 1, 1, 1, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_DROP_STALE; // duplicate
+
+    // A clean daemon restart adopts B only through HELLO/0.
+    duel_host_encode(DUEL_HOST_MSG_HELLO, session_b, 0, 2, 2, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.session == session_b && state.previous_session == session_a;
+
+    // Neither delayed A traffic nor A's delayed greeting may roll B back.
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, session_a, 2, DUEL_HOST_SCENE_FOCUS, 3, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_DROP_STALE;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, session_a, 0, DUEL_HOST_SCENE_FOCUS, 3, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_DROP_STALE;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 0xCCCCCCCCu, 1, DUEL_HOST_SCENE_FOCUS, 3, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_DROP_STALE;
+    ok &= state.session == session_b && state.scene == 2 && state.notification_count == 2;
+    ok &= state.stale_packets == 5;
+    CHECK(ok, "t8_host_session_ordering");
+}
+
+static void t8_host_expiry_and_context(void) {
+    duel_host_state_t state = {0};
+    duel_host_packet_t packet;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 42, 0, DUEL_HOST_SCENE_ARCHIVE, 15, &packet);
+    bool ok = duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    uint8_t packed = duel_host_context(&state);
+    ok &= DUEL_HOST_CONTEXT_ONLINE(packed) == 1;
+    ok &= DUEL_HOST_CONTEXT_SCENE(packed) == DUEL_HOST_SCENE_ARCHIVE;
+    ok &= DUEL_HOST_CONTEXT_NOTIF(packed) == 15;
+
+    duel_host_expire(&state);
+    packed = duel_host_context(&state);
+    ok &= !state.online && state.have_session && state.session == 42;
+    ok &= packed == 0; // offline always collapses to duel / zero notifications
+
+    // The same daemon can recover after a scheduling pause without a new HELLO.
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, 42, 1, DUEL_HOST_SCENE_FOCUS, 3, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.online && state.scene == DUEL_HOST_SCENE_FOCUS;
+    ok &= state.notification_count == 3;
+    CHECK(ok, "t8_host_expiry_and_context");
+}
+
+static void t8_host_split_context(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 9);
+    uint8_t context = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_ARCHIVE, 7);
+    duel_snapshot_t packet;
+    duel_encode_external(&world, 4, 12, context, &packet);
+
+    bool ok = sizeof packet == 30 && DUEL_VER == 6 && duel_decode_valid(&packet);
+    ok &= packet.external == context;
+    ok &= DUEL_HOST_CONTEXT_ONLINE(packet.external) == 1;
+    ok &= DUEL_HOST_CONTEXT_SCENE(packet.external) == DUEL_HOST_SCENE_ARCHIVE;
+    ok &= DUEL_HOST_CONTEXT_NOTIF(packet.external) == 7;
+
+    // External context is covered by CRC but deliberately ignored when the
+    // render-only sim_world_t is reconstructed.
+    duel_snapshot_t bad = packet;
+    bad.external ^= 0x08;
+    ok &= !duel_decode_valid(&bad);
+    sim_world_t decoded;
+    duel_decode_world(&packet, &decoded);
+    ok &= decoded.tick == (uint16_t)world.tick;
+
+    duel_encode(&world, 4, 13, &packet);
+    ok &= duel_decode_valid(&packet) && packet.external == 0;
+    CHECK(ok, "t8_host_split_context");
+}
+
+static void t8_host_overlay_scene(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.scry.state = SCRY_ACTIVE;
+    world.scry.scene = 0;
+    duel_render_t render = {
+        .w = world,
+        .overlay_host = 1,
+        .overlay_scene = DUEL_HOST_SCENE_ARCHIVE,
+    };
+    duel_fb_t archive, focus;
+    duel_fb_clear(&archive);
+    wiz_draw_scene(&archive, &render, true, 0, false);
+    render.overlay_scene = DUEL_HOST_SCENE_FOCUS;
+    duel_fb_clear(&focus);
+    wiz_draw_scene(&focus, &render, true, 0, false);
+    bool ok = memcmp(archive.bits, focus.bits, sizeof archive.bits) != 0;
+
+    // Once offline, external context is disposable and the local selector
+    // wins; changing the stale external byte cannot alter the frame.
+    render.overlay_host = 0;
+    duel_fb_clear(&archive);
+    wiz_draw_scene(&archive, &render, true, 0, false);
+    render.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+    duel_fb_clear(&focus);
+    wiz_draw_scene(&focus, &render, true, 0, false);
+    ok &= memcmp(archive.bits, focus.bits, sizeof archive.bits) == 0;
+    CHECK(ok, "t8_host_overlay_scene");
+}
+
 int main(int argc, char **argv) {
     int argi = 1;
     if (argi < argc && strcmp(argv[argi], "--write-golden") == 0) {
@@ -1709,6 +2077,14 @@ int main(int argc, char **argv) {
     t6_draw_distinct();
     t6_replay_golden();
 
+    t75_windup_timing();
+    t75_recipe_tiers();
+    t75_tier_no_combat_coupling();
+    t75_charge_sync();
+    t75_draw_recipe_scale();
+    t75_outcome_grammars();
+    t75_void_ward_puncture();
+
     t7_roll_never_opens();
     t7_deliberate_opens();
     t7_early_release();
@@ -1718,6 +2094,14 @@ int main(int argc, char **argv) {
     t7_scry_sync();
     t7_overlay_draws();
     t7_overlay_no_combat_coupling();
+
+    t8_host_valid_flow();
+    t8_host_known_vector();
+    t8_host_malformed();
+    t8_host_session_ordering();
+    t8_host_expiry_and_context();
+    t8_host_split_context();
+    t8_host_overlay_scene();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

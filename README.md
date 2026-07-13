@@ -16,6 +16,7 @@ notes. The live firmware is developed in a separate QMK tree (see below).
 | Path | What it is |
 | --- | --- |
 | `firmware/` | **Committed snapshot** of the live keymap (`griffin_anim`): the hardware-agnostic duel engine (`sim/`), the QMK glue (`keymap.c`), and the host test rig (`sim_test/`). See `firmware/README.md` for the deep dive. |
+| `host/` | M8's dependency-free Linux Raw HID daemon, protocol tests, and the isolated `griffin_hostoled` build override. |
 | `Corne_Arcane_OLED_Implementation_Roadmap.docx` | Milestone plan **M0–M11** (the authoritative build order). |
 | `Corne_Arcane_OLED_Design_Audit_Addendum.docx` | Scope guards, failure modes, and the simulation/presentation/**external-context** data-class boundary. |
 | `Corne_Arcane_OLED_Build_Kickoff_Prompt.docx` | The original kickoff brief and stopping rules. |
@@ -44,21 +45,24 @@ git add -A && git commit -m "sync firmware snapshot"
 
 - **`griffin`** — stable Vial baseline. The recovery keymap; never experimented on.
 - **`griffin_anim`** — the OLED duel (Vial **on**). Everything in `firmware/` here.
-- **`griffin_hostoled`** — reserved for M8+ Raw HID host work (Vial **off** — VIA/Vial
-  and custom Raw HID cannot share QMK's single raw-HID interface). Not created yet.
+  Its compiled four-layer default is captured from `../corne-arcane.vil`.
+- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID,
+  using the same four-layer default. Vial/VIA are **off** because they cannot
+  share QMK's single raw-HID interface with the custom daemon protocol.
 
 ## Milestone status
 
-Hardware-verified through **M6**; **M6.5** and **M7** host-verified with a hardware
-eyeball pending the next reflash. **M8 (host heartbeat + semantic protocol)** is
-scoped but not started — it waits on the Vial layout being finalized so the static
-layout can be captured before Vial is disabled on `griffin_hostoled`. Full
-per-milestone detail lives in `firmware/README.md`.
+**M0–M8 are hardware-verified.** The isolated `griffin_hostoled` build has now
+proven the complete offline duel fallback, semantic Raw HID heartbeat, scene
+class, notification summary, synchronized two-screen host context, and clean
+daemon absence/recovery on the physical Corne. **M9 is next.** Full
+per-milestone detail and the hardware checklists live in
+`firmware/README.md`.
 
 ## Build & flash (NixOS, user-scope, no sudo)
 
 ```bash
-cd ~/src/vial-qmk && nix-shell   # qmk + python3 + arm-none-eabi-gcc
+cd ~/src/vial-qmk                # qmk + arm-none-eabi-gcc are on PATH
 qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce
 # Flash one half at a time — never hot-plug TRRS:
 qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left
@@ -68,6 +72,7 @@ qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-
 Reassemble: USB into the **left** half only, TRRS connected while unpowered.
 
 Host tests (no keyboard needed): `cd firmware/sim_test && ./run_tests.sh`.
+Daemon tests: `cd host && ./run_tests.sh`.
 
 ## Design invariants
 

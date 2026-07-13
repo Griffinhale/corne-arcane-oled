@@ -100,17 +100,10 @@ static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, i
         duel_fb_px(fb, sx, 62 + yo, true);
         duel_fb_px(fb, sx - facing, 63 + yo, true);
     } else {
-        // Casting: staff raised toward the hat, a bright charging starburst
-        // above the apex so a wind-up reads clearly at a glance.
+        // Casting: staff raised toward the hat. The progressive M7.5 charge is
+        // drawn separately from authoritative wind-up state in wiz_draw_scene.
         wiz_line(fb, cx + facing * 2, 68 + yo, cx + facing * 5, 56 + yo);
-        int bx = cx, by = hat_apex_y - 4;    // burst centre above the hat
-        for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++) duel_fb_px(fb, bx + dx, by + dy, true); // solid orb
-        duel_fb_px(fb, bx - 2, by, true); duel_fb_px(fb, bx + 2, by, true);          // radiating
-        duel_fb_px(fb, bx, by - 2, true); duel_fb_px(fb, bx, by + 2, true);          // sparks
-        // a bolt streaking off toward the gap
-        duel_fb_px(fb, cx + facing * 3, by + 2, true);
-        duel_fb_px(fb, cx + facing * 4, by + 2, true);
+        duel_fb_px(fb, cx + facing * 5, 55 + yo, true); // staff-tip focus
     }
 }
 
@@ -153,63 +146,179 @@ static void medic_draw(duel_fb_t *fb, int x, int facing) {
 bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x) {
     if (is_left) {
         if (u > 95) return false;
-        *x = 16 + u / 6; // wizard (16) -> gap edge (31)
+        *x = 22 + u / 10; // staff tip (22) -> gap edge (31)
         return true;
     }
     if (u < 160) return false;
-    *x = 16 - (255 - u) / 6; // gap edge (1) -> wizard (16)
+    *x = 9 - (255 - u) / 10; // gap edge (0) -> staff tip (9)
     return true;
 }
 
-#define SPELL_Y 64 // flight height ~= the resting staff orb
+#define SPELL_Y_BASE 63
+
+static int spell_lane_y(uint8_t kind) {
+    switch (DUEL_KIND_ELEMENT(kind)) {
+        case ELEM_FROST: return SPELL_Y_BASE - 5;
+        case ELEM_VOID:  return SPELL_Y_BASE - 2;
+        case ELEM_EMBER: return SPELL_Y_BASE + 3;
+        default:         return SPELL_Y_BASE;
+    }
+}
 
 static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
-    int back = dir > 0 ? -1 : +1;
+    int back    = dir > 0 ? -1 : +1;
+    int tier    = DUEL_KIND_TIER(kind);
 
-    // Bolder, silhouette-distinct element glyphs (readable at 32 px): FORCE is
-    // a solid cannonball, FROST a spiky crystalline star, VOID a hollow ring,
-    // EMBER a blazing head with a long comet tail.
+    // Element identity stays primary while the capped recipe tier controls the
+    // carrier's footprint. Short is deliberately compact; medium matches M6's
+    // normal scale; long/saturated add bounded mass and trail complexity.
     switch (DUEL_KIND_ELEMENT(kind)) {
-        case ELEM_FORCE: // solid 3x3 core
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dy = -1; dy <= 1; dy++) duel_fb_px(fb, x + dx, y + dy, true);
+        case ELEM_FORCE: {
+            int rx = tier == SPELL_TIER_SHORT ? 0 : (tier >= SPELL_TIER_LONG ? 2 : 1);
+            int ry = tier == SPELL_TIER_SHORT ? 0 : (tier == SPELL_TIER_SATURATED ? 2 : 1);
+            for (int dx = -rx; dx <= rx; dx++)
+                for (int dy = -ry; dy <= ry; dy++) duel_fb_px(fb, x + dx, y + dy, true);
+            if (tier == SPELL_TIER_LONG) {
+                duel_fb_px(fb, x, y - 2, true);
+                duel_fb_px(fb, x, y + 2, true);
+            }
             break;
-        case ELEM_FROST: // 8-point star reaching +-2 on the axes
-            duel_fb_px(fb, x, y, true);
-            duel_fb_px(fb, x - 2, y, true); duel_fb_px(fb, x + 2, y, true);
-            duel_fb_px(fb, x, y - 2, true); duel_fb_px(fb, x, y + 2, true);
-            duel_fb_px(fb, x - 1, y - 1, true); duel_fb_px(fb, x + 1, y - 1, true);
-            duel_fb_px(fb, x - 1, y + 1, true); duel_fb_px(fb, x + 1, y + 1, true);
+        }
+        case ELEM_FROST: {
+            int radius = tier == SPELL_TIER_SHORT ? 1 : (tier >= SPELL_TIER_LONG ? 3 : 2);
+            for (int d = -radius; d <= radius; d++) {
+                duel_fb_px(fb, x + d, y, true);
+                duel_fb_px(fb, x, y + d, true);
+            }
+            int diag = tier >= SPELL_TIER_LONG ? 2 : 1;
+            duel_fb_px(fb, x - diag, y - diag, true); duel_fb_px(fb, x + diag, y - diag, true);
+            duel_fb_px(fb, x - diag, y + diag, true); duel_fb_px(fb, x + diag, y + diag, true);
+            if (tier == SPELL_TIER_SATURATED) {
+                duel_fb_px(fb, x - 3, y - 3, true); duel_fb_px(fb, x + 3, y - 3, true);
+                duel_fb_px(fb, x - 3, y + 3, true); duel_fb_px(fb, x + 3, y + 3, true);
+            }
             break;
-        case ELEM_VOID: // hollow ring, empty core
-            duel_fb_px(fb, x - 1, y, true); duel_fb_px(fb, x + 1, y, true);
-            duel_fb_px(fb, x, y - 1, true); duel_fb_px(fb, x, y + 1, true);
-            duel_fb_px(fb, x - 1, y - 1, true); duel_fb_px(fb, x + 1, y - 1, true);
-            duel_fb_px(fb, x - 1, y + 1, true); duel_fb_px(fb, x + 1, y + 1, true);
+        }
+        case ELEM_VOID: {
+            int rx = tier == SPELL_TIER_SHORT ? 1 : (tier >= SPELL_TIER_LONG ? 2 + (tier == SPELL_TIER_SATURATED) : 1);
+            int ry = tier >= SPELL_TIER_LONG ? 2 : 1;
+            for (int dx = -rx; dx <= rx; dx++) {
+                duel_fb_px(fb, x + dx, y - ry, true);
+                duel_fb_px(fb, x + dx, y + ry, true);
+            }
+            for (int dy = -ry + 1; dy < ry; dy++) {
+                duel_fb_px(fb, x - rx, y + dy, true);
+                duel_fb_px(fb, x + rx, y + dy, true);
+            }
+            if (tier == SPELL_TIER_SHORT) duel_fb_px(fb, x, y - 1, false); // diamond-like, hollow core
             break;
-        case ELEM_EMBER: // blazing head + long comet tail behind
-            duel_fb_px(fb, x, y, true);
-            duel_fb_px(fb, x - 1, y, true); duel_fb_px(fb, x + 1, y, true);
-            duel_fb_px(fb, x, y - 1, true); duel_fb_px(fb, x, y + 1, true);
-            duel_fb_px(fb, x + 2 * back, y, true);
-            duel_fb_px(fb, x + 3 * back, y, true);
-            duel_fb_px(fb, x + 4 * back, y - 1, true);
+        }
+        case ELEM_EMBER: {
+            int core = tier >= SPELL_TIER_LONG ? 2 : 1;
+            for (int d = -core; d <= core; d++) {
+                duel_fb_px(fb, x + d, y, true);
+                duel_fb_px(fb, x, y + d, true);
+            }
+            int tail = 2 + tier * 2;
+            for (int d = 2; d <= tail; d++) duel_fb_px(fb, x + d * back, y - (d & 1), true);
+            if (tier >= SPELL_TIER_LONG) {
+                duel_fb_px(fb, x + 2 * back, y + 2, true);
+                duel_fb_px(fb, x + 4 * back, y + 1, true);
+            }
             break;
+        }
     }
 
     switch (DUEL_KIND_MODIFIER(kind)) {
         case MOD_NONE:
             break;
-        case MOD_SWIFT: // a long speed streak trailing behind
-            duel_fb_px(fb, x + 2 * back, y, true);
-            duel_fb_px(fb, x + 3 * back, y, true);
-            duel_fb_px(fb, x + 4 * back, y, true);
+        case MOD_SWIFT: // speed streak grows modestly with presentation tier
+            for (int d = 2; d <= 4 + tier; d++) duel_fb_px(fb, x + d * back, y, true);
             break;
-        case MOD_HEAVY: // a heavy diagonal casing (clears FROST's axial spikes)
-            duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y - 2, true);
-            duel_fb_px(fb, x - 2, y + 2, true); duel_fb_px(fb, x + 2, y + 2, true);
+        case MOD_HEAVY: { // a heavy diagonal casing outside the element core
+            int shell = tier >= SPELL_TIER_LONG ? 3 : 2;
+            duel_fb_px(fb, x - shell, y - shell, true); duel_fb_px(fb, x + shell, y - shell, true);
+            duel_fb_px(fb, x - shell, y + shell, true); duel_fb_px(fb, x + shell, y + shell, true);
             break;
+        }
     }
+}
+
+// Progressive upper-canvas anticipation. Growth comes from authoritative
+// wind-up/tier state; only the tiny orbiting accents key off the render frame.
+static void draw_charge(duel_fb_t *fb, const sim_wizard_t *wz, int facing, uint32_t frame) {
+    if (!wz->cast_windup) return;
+    int elapsed = SIM_CAST_WINDUP_TICKS - wz->cast_windup;
+    int stage   = elapsed * 4 / (SIM_CAST_WINDUP_TICKS - 1); // 0..4
+    int tier    = wz->cast_tier & 3;
+    int max_r   = 1 + tier;
+    int radius  = 1 + stage * (max_r - 1) / 4;
+    int cx      = 16 + facing * 2;
+    int cy      = 39;
+
+    duel_fb_px(fb, cx, cy, true);
+    if (stage >= 1) {
+        duel_fb_px(fb, cx - radius, cy, true); duel_fb_px(fb, cx + radius, cy, true);
+        duel_fb_px(fb, cx, cy - radius, true); duel_fb_px(fb, cx, cy + radius, true);
+    }
+    if (stage >= 2) {
+        int d = radius > 1 ? radius - 1 : 1;
+        duel_fb_px(fb, cx - d, cy - d, true); duel_fb_px(fb, cx + d, cy - d, true);
+        duel_fb_px(fb, cx - d, cy + d, true); duel_fb_px(fb, cx + d, cy + d, true);
+    }
+    if (stage >= 3) {
+        for (int d = -radius; d <= radius; d++) {
+            if ((d & 1) == 0) duel_fb_px(fb, cx + d, cy - radius - 2, true);
+        }
+    }
+    if (stage >= 4) {
+        wiz_line(fb, cx - radius - 1, cy + radius + 2, cx + radius + 1, cy + radius + 2);
+    }
+
+    // Gathering motes move inward as the release approaches. Their phase is
+    // cosmetic, but count and maximum spread are capped by the recipe tier.
+    int motes = 2 + tier;
+    for (int i = 0; i < motes; i++) {
+        int side = ((int)(frame + (uint32_t)i) & 1) ? 1 : -1;
+        int dx   = side * (7 - stage - (i & 1));
+        int dy   = 10 - stage * 2 + i * 2;
+        duel_fb_px(fb, cx + dx, cy + dy, true);
+    }
+}
+
+static void draw_ward(duel_fb_t *fb, int facing, int thickness, bool punctured, int puncture_y) {
+    int ax = 16 + facing * 9;
+    for (int t = 0; t < thickness; t++) {
+        int x = ax + facing * t;
+        for (int y = 58; y <= 72; y++) {
+            int d = y - puncture_y;
+            if (d < 0) d = -d;
+            if (punctured && d <= 2) continue;
+            duel_fb_px(fb, x, y, true);
+        }
+        duel_fb_px(fb, x - facing, 56, true);
+        duel_fb_px(fb, x - facing, 57, true);
+        duel_fb_px(fb, x - facing, 73, true);
+        duel_fb_px(fb, x - facing, 74, true);
+    }
+    if (punctured) {
+        // Split lips and inward cracks make the VOID interaction read as an
+        // actual breach rather than a projectile merely overpainting the arc.
+        duel_fb_px(fb, ax - facing, puncture_y - 3, true);
+        duel_fb_px(fb, ax - 2 * facing, puncture_y - 4, true);
+        duel_fb_px(fb, ax - facing, puncture_y + 3, true);
+        duel_fb_px(fb, ax - 2 * facing, puncture_y + 4, true);
+    }
+}
+
+static const sim_spell_t *incoming_void_at_ward(const sim_world_t *w, int defender) {
+    for (int s = 0; s < 2; s++) {
+        const sim_spell_t *sp = &w->spell[s];
+        if (!sp->active || DUEL_KIND_ELEMENT(sp->kind) != ELEM_VOID) continue;
+        if (defender == SIM_SIDE_R && sp->dir > 0 && sp->pos >= 228) return sp;
+        if (defender == SIM_SIDE_L && sp->dir < 0 && sp->pos <= 27) return sp;
+    }
+    return NULL;
 }
 
 // A 3x3 open square, one half of the broken-link stale glyph.
@@ -252,8 +361,7 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
         ov_rect(fb, lx, 15, lx + 3, 18, i == (r->overlay_layer & 3));
     }
 
-    // Host link: solid bar when online, two disconnected boxes when offline
-    // (the M8 heartbeat is not built yet, so the glue reports offline).
+    // Host link: solid bar when online, two disconnected boxes when offline.
     if (r->overlay_host) {
         ov_rect(fb, 6, 23, 13, 27, true);
     } else {
@@ -268,10 +376,12 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
         duel_fb_px(fb, nx, 25, true);     duel_fb_px(fb, nx + 1, 25, true);
     }
 
-    // Scene selector: one marker per scene, the current one filled.
+    // Scene selector: host context owns the readout while online; heartbeat
+    // expiry immediately returns it to the firmware-local scry selection.
+    uint8_t scene = r->overlay_host ? r->overlay_scene : r->w.scry.scene;
     for (int i = 0; i < SCRY_SCENES; i++) {
         int sx = 6 + i * 7;
-        ov_rect(fb, sx, 35, sx + 3, 38, i == (r->w.scry.scene % SCRY_SCENES));
+        ov_rect(fb, sx, 35, sx + 3, 38, i == (scene % SCRY_SCENES));
     }
 }
 
@@ -280,15 +390,26 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     int                 side   = is_left ? SIM_SIDE_L : SIM_SIDE_R;
     const sim_wizard_t *wz     = &w->wiz[side];
     int                 facing = is_left ? +1 : -1; // toward the gap (see header)
+    bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L || r->flash_kind == FX_FIZZLE_L;
+    bool local_fx       = r->flash_frames && defender_left == is_left;
+    bool local_impact   = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
+    const sim_spell_t *piercer = incoming_void_at_ward(w, side);
+    bool ward_punctured = piercer != NULL ||
+                          (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
+    int ward_lane = piercer ? spell_lane_y(piercer->kind) : spell_lane_y(r->flash_spell_kind);
 
     // Lifecycle (M5): each phase has its own tableau, derived purely from
     // (life, life_ticks, variant) so master and slave render identically.
     // Sparks and the shield arc only apply to a standing, active wizard.
     switch (wz->life) {
         case LIFE_ACTIVE:
-            wiz_draw(fb, wz->pose == POSE_CAST, facing, wz->variant);
+            // A damaging hit pushes the defender away from the gap and briefly
+            // compresses the silhouette. Deflect/fizzle leave it rock steady.
+            wiz_body(fb, wz->pose == POSE_CAST, facing, wz->variant,
+                     local_impact ? -facing * (r->flash_frames >= 8 ? 2 : 1) : 0,
+                     local_impact && r->flash_frames >= 8 ? 1 : 0);
 
-            if (wz->pose == POSE_RECOVER) {
+            if (wz->pose == POSE_RECOVER && !local_impact) {
                 // Fading sparks above the hat make RECOVER observable on hardware.
                 duel_fb_px(fb, 14, 50, true);
                 duel_fb_px(fb, 18, 51, true);
@@ -297,13 +418,9 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
             // Shield: a vertical ward arc on the gap side of this half's wizard.
             if (wz->shield_ticks) {
-                int ax = 16 + facing * 9;
-                for (int y = 59; y <= 71; y++) duel_fb_px(fb, ax, y, true);
-                duel_fb_px(fb, ax - facing, 57, true);
-                duel_fb_px(fb, ax - facing, 58, true);
-                duel_fb_px(fb, ax - facing, 72, true);
-                duel_fb_px(fb, ax - facing, 73, true);
+                draw_ward(fb, facing, 1, ward_punctured, ward_lane);
             }
+            draw_charge(fb, wz, facing, frame);
             break;
 
         case LIFE_COLLAPSE: {
@@ -351,7 +468,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
         if (!w->spell[s].active) continue;
         int x;
         if (!duel_battlefield_to_x(w->spell[s].pos, is_left, &x)) continue;
-        int y = SPELL_Y + ((frame >> 1) & 1); // ±1 px bob, render-frame only
+        int y = spell_lane_y(w->spell[s].kind) + ((frame >> 1) & 1); // 1 px cosmetic bob
         spell_glyph(fb, x, y, w->spell[s].kind, w->spell[s].dir);
     }
 
@@ -364,58 +481,78 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
         duel_fb_px(fb, px + 1, 113, true);
     }
 
-    // One-shot outcome flashes (armed by the glue when fx_seq changes).
-    if (r->flash_frames) {
-        bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L || r->flash_kind == FX_FIZZLE_L;
-        bool is_impact     = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R;
-        bool is_fizzle     = r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_FIZZLE_R;
+    // One-shot outcomes use three deliberately different grammars. All of this
+    // is render-frame state: losing it costs only the flourish, never health or
+    // split convergence.
+    if (local_fx) {
+        bool is_impact = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R;
+        bool is_fizzle = r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_FIZZLE_R;
+        int tier       = DUEL_KIND_TIER(r->flash_spell_kind);
+        int fy         = spell_lane_y(r->flash_spell_kind);
+
         if (is_impact) {
-            // Impact: a bold border on BOTH screens — thick and solid for the
-            // first frames, thinning as it fades — plus a shock cross that
-            // bursts out from the hit height. Punchier than a 1-px strobe.
-            int thick = r->flash_frames >= 8 ? 2 : 1;
-            for (int t = 0; t < thick; t++) {
-                for (int x = 0; x < DUEL_CANVAS_W; x++) {
-                    duel_fb_px(fb, x, t, true);
-                    duel_fb_px(fb, x, DUEL_CANVAS_H - 1 - t, true);
-                }
-                for (int y = 0; y < DUEL_CANVAS_H; y++) {
-                    duel_fb_px(fb, t, y, true);
-                    duel_fb_px(fb, DUEL_CANVAS_W - 1 - t, y, true);
+            // Force enters from the gap: contact burst, inward shock line,
+            // local debris, recoil above, and a flashing marker at the pip that
+            // just disappeared. Only the defender's border corners twitch.
+            int hx    = 16 + facing * 5;
+            int reach = 2 + tier + (r->flash_frames >= 8);
+            for (int d = 0; d <= reach; d++) duel_fb_px(fb, hx + facing * d, fy, true);
+            for (int d = 1; d <= reach; d++) {
+                duel_fb_px(fb, hx, fy - d, true);
+                duel_fb_px(fb, hx, fy + d, true);
+            }
+            wiz_line(fb, hx, fy, hx - facing * (3 + tier), fy - 3 - tier);
+            wiz_line(fb, hx, fy, hx - facing * (2 + tier), fy + 4 + tier);
+            duel_fb_px(fb, hx - facing * 6, fy - 8 - tier, true);
+            duel_fb_px(fb, hx - facing * 4, fy + 9 + tier, true);
+            if (tier >= SPELL_TIER_LONG) {
+                duel_fb_px(fb, hx + facing * 2, fy - 7, true);
+                duel_fb_px(fb, hx + facing * 3, fy + 7, true);
+            }
+            if (r->flash_frames >= 7) {
+                for (int d = 0; d < 4; d++) {
+                    duel_fb_px(fb, d, 0, true); duel_fb_px(fb, DUEL_CANVAS_W - 1 - d, 0, true);
+                    duel_fb_px(fb, d, DUEL_CANVAS_H - 1, true);
+                    duel_fb_px(fb, DUEL_CANVAS_W - 1 - d, DUEL_CANVAS_H - 1, true);
                 }
             }
-            if (r->flash_frames >= 5) { // expanding shock cross at the gap edge
-                int reach = 13 - r->flash_frames; // grows as the flash decays
-                int hx    = is_left ? DUEL_CANVAS_W - 2 : 1;
-                for (int d = -reach; d <= reach; d++) {
-                    duel_fb_px(fb, hx, SPELL_Y + d, true);
-                    duel_fb_px(fb, hx - facing * (d < 0 ? -d : d), SPELL_Y, true);
-                }
+            if (wz->hp < SIM_MAX_HP) {
+                int lost = wz->hp;
+                int px   = is_left ? 5 + 4 * lost : 24 - 4 * lost;
+                duel_fb_px(fb, px - 1, 111, true); duel_fb_px(fb, px + 2, 111, true);
+                duel_fb_px(fb, px - 1, 114, true); duel_fb_px(fb, px + 2, 114, true);
             }
-        } else if (defender_left == is_left) {
-            if (is_fizzle) {
-                // Fizzle: a small puff dissipating at the downed wizard's
-                // doorstep — plus shape first, then an expanding diagonal ring.
-                int fx0 = is_left ? 18 : 14;
-                if (r->flash_frames >= 5) {
-                    duel_fb_px(fb, fx0, SPELL_Y, true);
-                    duel_fb_px(fb, fx0 - 1, SPELL_Y, true);
-                    duel_fb_px(fb, fx0 + 1, SPELL_Y, true);
-                    duel_fb_px(fb, fx0, SPELL_Y - 1, true);
-                    duel_fb_px(fb, fx0, SPELL_Y + 1, true);
-                } else {
-                    duel_fb_px(fb, fx0 - 2, SPELL_Y - 2, true);
-                    duel_fb_px(fb, fx0 + 2, SPELL_Y - 2, true);
-                    duel_fb_px(fb, fx0 - 2, SPELL_Y + 2, true);
-                    duel_fb_px(fb, fx0 + 2, SPELL_Y + 2, true);
-                }
+        } else if (is_fizzle) {
+            // Harmless dissipation stays away from the body and contracts from
+            // a sparse outer shell into a tiny core. No border and no recoil.
+            int fx = 16 + facing * 8;
+            if (r->flash_frames >= 5) {
+                int radius = 2 + (tier >= SPELL_TIER_LONG);
+                duel_fb_px(fb, fx - radius, fy - radius, true);
+                duel_fb_px(fb, fx + radius, fy - radius, true);
+                duel_fb_px(fb, fx - radius, fy + radius, true);
+                duel_fb_px(fb, fx + radius, fy + radius, true);
+                duel_fb_px(fb, fx + facing * (radius + 1), fy, true);
             } else {
-                // Deflect flares a double ward arc on the defender's screen only.
-                int ax = 16 + facing * 9;
-                for (int y = 55; y <= 75; y++) {
-                    duel_fb_px(fb, ax, y, true);
-                    if (r->flash_frames & 1) duel_fb_px(fb, ax + facing, y, true);
+                duel_fb_px(fb, fx, fy, true);
+                if (r->flash_frames >= 3) {
+                    duel_fb_px(fb, fx - 1, fy, true);
+                    duel_fb_px(fb, fx + 1, fy, true);
                 }
+            }
+        } else {
+            // Redirection: the ward is the dominant thick shape while the
+            // carrier breaks into two streaks thrown back toward the gap.
+            int ax   = 16 + facing * 9;
+            int dist = 2 + (8 - r->flash_frames) / 2;
+            draw_ward(fb, facing, 2, false, fy);
+            wiz_line(fb, ax + facing, fy, ax + facing * (dist + 2), fy - dist - tier);
+            wiz_line(fb, ax + facing, fy, ax + facing * (dist + 1), fy + dist + tier);
+            duel_fb_px(fb, ax - facing, fy - 5, true);
+            duel_fb_px(fb, ax - facing, fy + 5, true);
+            if (tier >= SPELL_TIER_LONG) {
+                duel_fb_px(fb, ax + facing * (dist + 3), fy - 2, true);
+                duel_fb_px(fb, ax + facing * (dist + 2), fy + 3, true);
             }
         }
     }

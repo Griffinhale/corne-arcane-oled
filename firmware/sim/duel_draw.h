@@ -45,17 +45,19 @@ typedef struct {
     bool        stale_link;   // slave stopped hearing the master (M3)
     uint8_t     flash_frames; // fx flash countdown, in RENDER frames (M4)
     uint8_t     flash_kind;   // FX_* being flashed
+    uint8_t     flash_spell_kind; // cached resolved spell style (M7.5, presentation-only)
     // M7 scry-overlay content — presentation-only, filled by the glue and never
     // fed back to the sim. Whether the overlay draws at all comes from the
     // world (scry_is_open); these only populate its concise readout.
     uint8_t     overlay_layer; // current highest active QMK layer
     uint8_t     overlay_host;  // host link: 0 offline (M8 stub), 1 online
     uint8_t     overlay_notif; // pending notification count (M8 stub)
+    uint8_t     overlay_scene; // disposable host scene class (M8); local scene offline
 } duel_render_t;
 
 // Battlefield u (0..255) -> canvas x for one half. The left canvas shows
-// u in [0, 95] (wizard x=16 out to gap edge x=31), the right shows
-// [160, 255] (gap edge x=1 in to wizard x=16); the band in between is the
+// u in [0, 95] (staff tip x=22 out to gap edge x=31), the right shows
+// [160, 255] (gap edge x=0 in to staff tip x=9); the band in between is the
 // physical desk gap (~25 % of the flight is deliberately invisible).
 // Returns false when u is not on this canvas.
 bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x);

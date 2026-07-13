@@ -8,8 +8,9 @@ Ignore the spike1 `apt` / Vial-AppImage / `keyd.rvaiya` steps here.
 - QMK tree: `~/src/vial-qmk` (branch `vial`, submodules initialized). Our work is
   on branch **`arcane-oled-m1`**.
 - Animations source: `~/src/qmk-animations` (reference only; not used by M1).
-- Toolchain: **user-scope, no sudo** via `~/src/vial-qmk/shell.nix` →
-  `nix-shell` gives `qmk 1.2.0` + `python3` + `arm-none-eabi-gcc`.
+- Toolchain: **user-scope, no sudo**. `qmk`, `python3`, and
+  `arm-none-eabi-gcc` are available directly on `PATH`; the QMK tree no longer
+  contains the older documented `shell.nix` entry point.
 - Physical Corne (`4653:0001 foostan Corne`) is attached to this machine.
   Flashing needs no sudo (udisks2 automounts `RPI-RP2`).
 - Durable system config lives in `./corne.nix` — copy to
@@ -19,13 +20,15 @@ Ignore the spike1 `apt` / Vial-AppImage / `keyd.rvaiya` steps here.
 
 - `griffin` — stable Vial baseline (reconstructed from spike1 scripts). Do not
   experiment here.
-- `griffin_anim` — firmware OLED experiments (Vial on). **M1 lives here.**
-- `griffin_hostoled` — reserved for later Raw HID host work (not created yet).
+- `griffin_anim` — firmware OLED experiments (Vial on). Its compiled default
+  layout is captured from `../corne-arcane.vil`.
+- `griffin_hostoled` — complete offline duel plus M8 custom Raw HID. Vial/VIA
+  are off and it shares the same compiled default as `griffin_anim`.
 
 ## Build & flash
 
 ```bash
-cd ~/src/vial-qmk && nix-shell
+cd ~/src/vial-qmk
 qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce
 # one half at a time; never hot-plug TRRS:
 qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left
@@ -35,15 +38,17 @@ Reassemble: USB into left half only + TRRS connected.
 
 ## Milestone status
 
-- **M0 — Baseline** ✅ reconstructed; `griffin` + `griffin_anim` compile clean;
-  timestamped backups in `~/corne-*.tar.gz`.
-- **M1 — Actor + physical-side proof** ✅ verified on hardware. Portrait wizard
-  per half; each half reacts only to its own typing (cast pose); both upright,
-  dueling toward the centre gap. Details: `keyboards/crkbd/keymaps/griffin_anim/README.md`.
-- **M2 — Deterministic world loop** ⏭️ next. Fixed integer tick (~25 Hz), sim
-  state separated from presentation state, bounded event queue consumed outside
-  the key path, render from a stable snapshot (render cadence must not change
-  outcomes).
+- **M0–M7** ✅ flashed and verified on the physical Corne, including split
+  simulation, recipes, lifecycle/medic replacement, VOID ward piercing, and the
+  scry overlay. Typing remains unaffected.
+- **M7.5 — Combat presentation and composition polish** ✅ flashed and accepted
+  on both physical halves, including the captured Corne Arcane default layout.
+- **M8 — Host heartbeat and semantic protocol** ✅ flashed and accepted on the
+  physical Corne. Offline duel fallback, synchronized host state, scene class,
+  notification count, timeout, and daemon restart all work. The isolated host
+  keymap uses split snapshot v6/30 bytes; Vial/VIA remain off.
+- **M9 — Arcane archive browser scene** is next; it begins with coarse focused
+  application class and activity only, without a browser extension.
 
 ## Hardware notes learned this session
 

@@ -18,65 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include QMK_KEYBOARD_H
 
-const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
-    [0] = LAYOUT_split_3x6_3(
-  //,-----------------------------------------------------.                    ,-----------------------------------------------------.
-       KC_TAB,    KC_Q,    KC_W,    KC_E,    KC_R,    KC_T,                         KC_Y,    KC_U,    KC_I,    KC_O,   KC_P,  KC_BSPC,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LCTL,    KC_A,    KC_S,    KC_D,    KC_F,    KC_G,                         KC_H,    KC_J,    KC_K,    KC_L, KC_SCLN, KC_QUOT,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LSFT,    KC_Z,    KC_X,    KC_C,    KC_V,    KC_B,                         KC_N,    KC_M, KC_COMM,  KC_DOT, KC_SLSH,  KC_ESC,
-  //|--------+--------+--------+--------+--------+--------+--------|  |--------+--------+--------+--------+--------+--------+--------|
-                                          KC_LGUI,   MO(1),  KC_SPC,     KC_ENT,   MO(2), KC_RALT
-                                      //`--------------------------'  `--------------------------'
-
-  ),
-
-    [1] = LAYOUT_split_3x6_3(
-  //,-----------------------------------------------------.                    ,-----------------------------------------------------.
-       KC_TAB,    KC_1,    KC_2,    KC_3,    KC_4,    KC_5,                         KC_6,    KC_7,    KC_8,    KC_9,    KC_0, KC_BSPC,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LCTL, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      KC_LEFT, KC_DOWN,   KC_UP,KC_RIGHT, XXXXXXX, XXXXXXX,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LSFT, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
-  //|--------+--------+--------+--------+--------+--------+--------|  |--------+--------+--------+--------+--------+--------+--------|
-                                          KC_LGUI, _______,  KC_SPC,     KC_ENT,   MO(3), KC_RALT
-                                      //`--------------------------'  `--------------------------'
-  ),
-
-    [2] = LAYOUT_split_3x6_3(
-  //,-----------------------------------------------------.                    ,-----------------------------------------------------.
-       KC_TAB, KC_EXLM,   KC_AT, KC_HASH,  KC_DLR, KC_PERC,                      KC_CIRC, KC_AMPR, KC_ASTR, KC_LPRN, KC_RPRN, KC_BSPC,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LCTL, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      KC_MINS,  KC_EQL, KC_LBRC, KC_RBRC, KC_BSLS,  KC_GRV,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      KC_LSFT, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      KC_UNDS, KC_PLUS, KC_LCBR, KC_RCBR, KC_PIPE, KC_TILD,
-  //|--------+--------+--------+--------+--------+--------+--------|  |--------+--------+--------+--------+--------+--------+--------|
-                                          KC_LGUI,   MO(3),  KC_SPC,     KC_ENT, _______, KC_RALT
-                                      //`--------------------------'  `--------------------------'
-  ),
-
-    [3] = LAYOUT_split_3x6_3(
-  //,-----------------------------------------------------.                    ,-----------------------------------------------------.
-      QK_BOOT, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      RM_TOGG, RM_HUEU, RM_SATU, RM_VALU, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
-  //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
-      RM_NEXT, RM_HUED, RM_SATD, RM_VALD, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
-  //|--------+--------+--------+--------+--------+--------+--------|  |--------+--------+--------+--------+--------+--------+--------|
-                                          KC_LGUI, _______,  KC_SPC,     KC_ENT, _______, KC_RALT
-                                      //`--------------------------'  `--------------------------'
-  )
-};
-
-#ifdef ENCODER_MAP_ENABLE
-const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
-  [0] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU), ENCODER_CCW_CW(KC_MPRV, KC_MNXT), ENCODER_CCW_CW(RM_VALD, RM_VALU), ENCODER_CCW_CW(KC_RGHT, KC_LEFT), },
-  [1] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU), ENCODER_CCW_CW(KC_MPRV, KC_MNXT), ENCODER_CCW_CW(RM_VALD, RM_VALU), ENCODER_CCW_CW(KC_RGHT, KC_LEFT), },
-  [2] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU), ENCODER_CCW_CW(KC_MPRV, KC_MNXT), ENCODER_CCW_CW(RM_VALD, RM_VALU), ENCODER_CCW_CW(KC_RGHT, KC_LEFT), },
-  [3] = { ENCODER_CCW_CW(KC_VOLD, KC_VOLU), ENCODER_CCW_CW(KC_MPRV, KC_MNXT), ENCODER_CCW_CW(RM_VALD, RM_VALU), ENCODER_CCW_CW(KC_RGHT, KC_LEFT), },
-};
-#endif
+#include "corne_arcane_layout.h"
 
 
 #ifdef OLED_ENABLE
@@ -86,6 +28,7 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 #include "transactions.h"
 
 #include "sim/duel_draw.h"
+#include "sim/duel_host.h"
 #include "sim/duel_proto.h"
 #include "sim/duel_sim.h"
 
@@ -144,7 +87,7 @@ void matrix_slave_scan_user(void) {
 }
 
 /* ---- split snapshot sync (M3) --------------------------------------------
- * The master's world is authoritative; it streams 26-byte snapshots to the
+ * The master's world is authoritative; it streams 30-byte snapshots to the
  * slave every 2nd tick (12.5 Hz). The slave renders the last accepted packet
  * and can never be rolled backward (see duel_rx_accept). If snapshots stop
  * for DUEL_STALE_MS the slave shows a broken-link glyph and falls back to
@@ -155,6 +98,54 @@ void matrix_slave_scan_user(void) {
  * stay a guarded memcpy and nothing more. The seqlock (odd version = write
  * in progress) lets housekeeping take a consistent copy without locking. */
 #define DUEL_STALE_MS 500
+
+/* ---- M8 disposable host context -----------------------------------------
+ * Only griffin_hostoled defines ARCANE_HOST_ENABLE. The Vial build compiles
+ * the protocol tests/core but never claims Vial's Raw HID callback.
+ *
+ * The USB callback remains bounded: one 32-byte seqlock-guarded copy. Parsing,
+ * ordering, expiry, and split propagation happen later in housekeeping. The
+ * daemon sends absolute context on every report, so latest-wins is safe. */
+#ifdef ARCANE_HOST_ENABLE
+#    define DUEL_HOST_TIMEOUT_MS 1500
+
+static volatile uint8_t duel_host_rx_ver;
+static duel_host_packet_t duel_host_rx_staging;
+static uint8_t duel_host_rx_seen_ver;
+static duel_host_state_t duel_host_state;
+static uint32_t duel_host_last_heartbeat_ms;
+static bool duel_host_heartbeat_armed;
+
+void raw_hid_receive(uint8_t *data, uint8_t length) {
+    if (length != sizeof(duel_host_packet_t)) return;
+    duel_host_rx_ver++;
+    __asm__ volatile("" ::: "memory");
+    memcpy(&duel_host_rx_staging, data, sizeof duel_host_rx_staging);
+    __asm__ volatile("" ::: "memory");
+    duel_host_rx_ver++;
+}
+
+static void duel_host_housekeeping(uint32_t now) {
+    uint8_t v1 = duel_host_rx_ver;
+    __asm__ volatile("" ::: "memory");
+    duel_host_packet_t packet = duel_host_rx_staging;
+    __asm__ volatile("" ::: "memory");
+    uint8_t v2 = duel_host_rx_ver;
+    if (v1 == v2 && !(v1 & 1) && v1 != duel_host_rx_seen_ver) {
+        duel_host_rx_seen_ver = v1;
+        duel_host_result_t result = duel_host_accept(&duel_host_state, &packet);
+        if (result == DUEL_HOST_APPLIED_HEARTBEAT) {
+            duel_host_last_heartbeat_ms = now;
+            duel_host_heartbeat_armed   = true;
+        }
+    }
+    if (duel_host_heartbeat_armed &&
+        timer_elapsed32(duel_host_last_heartbeat_ms) > DUEL_HOST_TIMEOUT_MS) {
+        duel_host_expire(&duel_host_state);
+        duel_host_heartbeat_armed = false;
+    }
+}
+#endif
 
 static volatile uint8_t duel_rx_ver;
 static duel_snapshot_t  duel_rx_staging;
@@ -241,7 +232,12 @@ static void duel_master_tx(void) {
         duel_session_set = true;
     }
     duel_snapshot_t pkt;
-    duel_encode(&duel_world, duel_session, ++duel_tx_seq, &pkt);
+#ifdef ARCANE_HOST_ENABLE
+    uint8_t external = duel_host_context(&duel_host_state);
+#else
+    uint8_t external = 0;
+#endif
+    duel_encode_external(&duel_world, duel_session, ++duel_tx_seq, external, &pkt);
     // Fails fast when the cable is out; the next snapshot lands in 80 ms.
     if (transaction_rpc_send(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt)) {
         duel_fx_sent = duel_world.fx_seq;
@@ -271,6 +267,9 @@ static void duel_slave_rx_consume(void) {
 
 void housekeeping_task_user(void) {
     uint32_t now = timer_read32();
+#ifdef ARCANE_HOST_ENABLE
+    if (is_keyboard_master()) duel_host_housekeeping(now);
+#endif
     if (!duel_tick_armed) {
         sim_init(&duel_world, is_keyboard_master() ? SIMF_AUTHORITATIVE : 0, 0);
         duel_next_tick_ms = now + SIM_TICK_MS;
@@ -294,14 +293,30 @@ void housekeeping_task_user(void) {
         if (ticked) duel_master_tx();
         duel_render.w          = duel_world;
         duel_render.stale_link = false;
+#ifdef ARCANE_HOST_ENABLE
+        uint8_t external         = duel_host_context(&duel_host_state);
+        duel_render.overlay_host = DUEL_HOST_CONTEXT_ONLINE(external);
+        duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(external);
+        duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(external);
+#else
+        duel_render.overlay_host  = 0;
+        duel_render.overlay_scene = 0;
+        duel_render.overlay_notif = 0;
+#endif
     } else {
         duel_slave_rx_consume();
         bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
         if (!stale && duel_rx.have_any) {
             duel_decode_world(&duel_rx.last, &duel_render.w);
+            duel_render.overlay_host  = DUEL_HOST_CONTEXT_ONLINE(duel_rx.last.external);
+            duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(duel_rx.last.external);
+            duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(duel_rx.last.external);
         } else {
             // Local pose-only fallback: never authoritative, never combat.
             duel_render.w = duel_world;
+            duel_render.overlay_host  = 0;
+            duel_render.overlay_scene = 0;
+            duel_render.overlay_notif = 0;
         }
         duel_render.stale_link = stale;
     }
@@ -313,16 +328,26 @@ bool oled_task_user(void) {
     static duel_fb_t fb;
     static uint32_t  frame;
     static uint8_t   seen_fx_seq, flash_frames, flash_kind;
+    static uint8_t   last_spell_kind[2], flash_spell_kind;
 #ifdef DUEL_DEBUG_HUD
     const bool hud = true;
 #else
     const bool hud = false;
 #endif
+    // Remember the last visible style in each spell slot. Resolution clears
+    // the authoritative slot, but its outcome can still scale from this local
+    // presentation cache without growing combat state or the wire again.
+    for (int s = 0; s < 2; s++) {
+        if (duel_render.w.spell[s].active) last_spell_kind[s] = duel_render.w.spell[s].kind;
+    }
+
     // One-shot fx: arm a short flash each time the world reports a new
     // outcome. Pure presentation — counts render frames, not sim ticks.
     if (duel_render.w.fx_seq != seen_fx_seq) {
         seen_fx_seq  = duel_render.w.fx_seq;
         flash_kind   = duel_render.w.fx_kind;
+        bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L || flash_kind == FX_FIZZLE_L;
+        flash_spell_kind = last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
         // Impacts linger longer than deflects/fizzles so a hit really lands.
         bool imp     = flash_kind == FX_IMPACT_L || flash_kind == FX_IMPACT_R;
         flash_frames = imp ? 12 : 8;
@@ -331,15 +356,12 @@ bool oled_task_user(void) {
     }
     duel_render.flash_frames = flash_frames;
     duel_render.flash_kind   = flash_kind;
+    duel_render.flash_spell_kind = flash_spell_kind;
 
     // M7 overlay content (presentation-only; drawn only while scry_is_open).
     // The layer is the emitted QMK layer — fine to READ for display; the chord
     // that opens the overlay is detected from physical positions, not this.
-    // Host link and notification count are M8 territory, so they read as the
-    // no-daemon stubs until that milestone lands.
     duel_render.overlay_layer = get_highest_layer(layer_state);
-    duel_render.overlay_host  = 0; // offline: no host heartbeat yet (M8)
-    duel_render.overlay_notif = 0; // no notifications yet (M8)
 
     duel_fb_clear(&fb);
     wiz_draw_scene(&fb, &duel_render, is_keyboard_left(), frame++, hud);

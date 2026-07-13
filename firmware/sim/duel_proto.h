@@ -6,7 +6,7 @@
  * state backward. Hardware-agnostic (no QMK includes) so the host harness
  * replays loss/duplication/reordering with exactly the firmware's code.
  *
- * Wire format notes: 27 bytes packed, comfortably under QMK's 32-byte
+ * Wire format notes: 30 bytes packed, under QMK's 32-byte
  * RPC_M2S_BUFFER_SIZE. Both halves (and the test hosts we care about) are
  * little-endian, so the struct ships as raw bytes. The serial protocol only
  * checksums its own framing, hence our CRC over the payload.
@@ -20,7 +20,15 @@
 #include "duel_sim.h"
 
 #define DUEL_MAGIC 0xA7
-#define DUEL_VER   4
+#define DUEL_VER   6
+
+// M7.5 charge byte per wizard: bits0-3 wind-up countdown, bits4-5 recipe
+// presentation tier, bits6-7 reserved. This is absolute render state; the
+// slave never advances it independently.
+#define DUEL_CHARGE_PACK(windup, tier) ((uint8_t)(((windup) & 0x0F) | (((tier) & 3) << 4)))
+#define DUEL_CHARGE_WINDUP(b) ((b) & 0x0F)
+#define DUEL_CHARGE_TIER(b)   (((b) >> 4) & 3)
+_Static_assert(SIM_CAST_WINDUP_TICKS <= 15, "wind-up must fit the 4-bit wire field");
 
 // scry byte (M7): bit0 overlay open, bits1-2 scene selector, bits3-7 reserved
 #define DUEL_SCRY_PACK(open, scene) ((uint8_t)(((open) ? 1 : 0) | (((scene) & 3) << 1)))
@@ -55,16 +63,24 @@ typedef struct __attribute__((packed)) {
     uint8_t  life[2];      /* bits0-2 LIFE_*, bits3-5 roster variant, bits6-7 reserved */
     uint8_t  life_ticks[2]; /* remaining phase ticks; 0 while ACTIVE */
     uint8_t  spell_kind[2];
+    uint8_t  charge[2];     /* M7.5: wind-up countdown + recipe presentation tier */
     uint8_t  scry;         /* M7: bit0 overlay open, bits1-2 scene */
-    uint8_t  crc;          /* duel_crc8 over the 26 preceding bytes */
+    uint8_t  external;     /* M8: absolute disposable host context; see duel_host.h */
+    uint8_t  crc;          /* duel_crc8 over the 29 preceding bytes */
 } duel_snapshot_t;
 
-_Static_assert(sizeof(duel_snapshot_t) == 27, "snapshot must stay under the 32-byte RPC limit");
+_Static_assert(sizeof(duel_snapshot_t) == 30, "snapshot must stay under the 32-byte RPC limit");
 
 uint8_t duel_crc8(const void *data, size_t len);
 
 // Encode the world into a wire packet (computes the CRC).
 void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snapshot_t *out);
+
+// M8 host branch variant: `external` is a packed, disposable presentation
+// summary. The ordinary encoder above always writes zero and remains the
+// firmware-only/Vial path.
+void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
+                          uint8_t external, duel_snapshot_t *out);
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.

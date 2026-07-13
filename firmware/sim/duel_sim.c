@@ -114,7 +114,8 @@ static uint8_t recipe_compile(const sim_wizard_t *wz) {
         if (all_same) modifier = MOD_HEAVY;
         else if (alternating) modifier = MOD_SWIFT;
     }
-    return DUEL_KIND_PACK(element_of_row(winning_rc), modifier, PAY_IMPACT);
+    uint8_t kind = DUEL_KIND_PACK(element_of_row(winning_rc), modifier, PAY_IMPACT);
+    return DUEL_KIND_WITH_TIER(kind, duel_recipe_tier(wz->recipe_n));
 }
 
 static void spell_outcome(sim_world_t *w, sim_spell_t *sp, int defender, bool deflected) {
@@ -200,6 +201,7 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n)
                 wz->recipe_hist = (uint8_t)((wz->recipe_hist << 2) | rc);
                 if (wz->recipe_n < RECIPE_N_MAX) wz->recipe_n++;
                 wz->recipe_idle = 0;
+                wz->cast_tier   = duel_recipe_tier(wz->recipe_n);
             }
             if (w->wiz[ev[i].side].life == LIFE_ACTIVE) {
                 w->wiz[ev[i].side].shield_ticks = SIM_SHIELD_TICKS; // a downed wizard cannot ward
@@ -296,6 +298,7 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n)
                 wz->recipe_hist = 0;
                 wz->recipe_n    = 0;
                 wz->recipe_idle = 0;
+                wz->cast_tier   = SPELL_TIER_SHORT;
             }
             wz->cast_cooldown = SIM_CAST_COOLDOWN;
         }
@@ -328,6 +331,7 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n)
                 wz->recipe_hist = 0;
                 wz->recipe_n    = 0;
                 wz->recipe_idle = 0;
+                wz->cast_tier   = SPELL_TIER_SHORT;
             }
         }
     }
