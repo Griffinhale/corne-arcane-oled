@@ -1,0 +1,14 @@
+# Host test-rig build artifacts (rebuilt by sim_test/run_tests.sh)
+firmware/sim_test/test_runner
+firmware/sim_test/preview
+firmware/sim_test/.noalloc.o
+*.o
+
+# Firmware build outputs
+*.uf2
+*.bin
+*.elf
+
+# Editor / OS noise
+*~
+.DS_Store

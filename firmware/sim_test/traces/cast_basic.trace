@@ -1,0 +1,10 @@
+# One tap on each half, then a short hold on the left.
+version 1
+seed 42
+@10  press   L 2 3
+@13  release L 2 3
+@40  press   R 1 5
+@43  release R 1 5
+@80  press   L 3 1     # held for ~1s: cast pose must re-arm while down
+@105 release L 3 1
+@200 end
