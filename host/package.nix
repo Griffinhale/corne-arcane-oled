@@ -5,7 +5,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "corne-arcane-host";
-  version = "0.9.0";
+  version = "0.10.0";
   src = lib.cleanSource ./.;
 
   nativeBuildInputs = [ makeWrapper ];
@@ -22,22 +22,26 @@ stdenvNoCC.mkDerivation {
 
   installPhase = ''
     runHook preInstall
-    mkdir -p "$out/lib/corne-arcane-host" "$out/bin"
+    mkdir -p "$out/lib/corne-arcane-host" "$out/bin" "$out/share/corne-arcane/zsh"
     cp -r arcane_host "$out/lib/corne-arcane-host/"
 
     mkdir -p "$out/share/kwin/scripts/cornearcane"
     cp -r kwin/contents kwin/metadata.json "$out/share/kwin/scripts/cornearcane/"
+    cp zsh/corne-arcane.zsh "$out/share/corne-arcane/zsh/"
 
     makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-host" \
       --add-flags "-m arcane_host.daemon" \
       --set PYTHONPATH "$out/lib/corne-arcane-host" \
       --set CORNE_ARCANE_KWIN_SCRIPT \
         "$out/share/kwin/scripts/cornearcane/contents/code/main.js"
+    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-event" \
+      --add-flags "-m arcane_host.event" \
+      --set PYTHONPATH "$out/lib/corne-arcane-host"
     runHook postInstall
   '';
 
   meta = {
-    description = "Application-aware semantic host daemon for Corne Arcane OLED";
+    description = "Privacy-redacted notification and focus daemon for Corne Arcane OLED";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "corne-arcane-host";

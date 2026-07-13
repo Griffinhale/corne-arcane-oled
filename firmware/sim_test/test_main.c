@@ -1331,7 +1331,7 @@ static void t6_kind_sync(void) {
     w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 150, .dir = -3, .kind = kr};
     duel_snapshot_t pkt;
     duel_encode(&w, 7, 1, &pkt);
-    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 6;
+    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 7;
     ok &= pkt.spell_kind[0] == kl && pkt.spell_kind[1] == kr;
     // A fresh decode models total packet-loss recovery: absolute kind restored.
     sim_world_t out;
@@ -1517,7 +1517,7 @@ static void t75_charge_sync(void) {
     duel_encode(&w, 5, 9, &pkt);
     sim_world_t out;
     duel_decode_world(&pkt, &out);
-    bool ok = sizeof pkt == 30 && DUEL_VER == 6 && duel_decode_valid(&pkt);
+    bool ok = sizeof pkt == 31 && DUEL_VER == 7 && duel_decode_valid(&pkt);
     ok &= out.wiz[SIM_SIDE_L].cast_windup == 7 && out.wiz[SIM_SIDE_L].cast_tier == SPELL_TIER_LONG;
     ok &= out.wiz[SIM_SIDE_R].cast_windup == 3 && out.wiz[SIM_SIDE_R].cast_tier == SPELL_TIER_SATURATED;
     duel_snapshot_t bad_charge = pkt;
@@ -1767,7 +1767,7 @@ static void t7_scry_sync(void) {
     w.scry.scene = 2;
     duel_snapshot_t pkt;
     duel_encode(&w, 3, 1, &pkt);
-    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 6;
+    bool ok = duel_decode_valid(&pkt) && pkt.ver == DUEL_VER && DUEL_VER == 7;
     ok &= DUEL_SCRY_OPEN(pkt.scry) == 1 && DUEL_SCRY_SCENE(pkt.scry) == 2;
     // A closed world clears the open bit.
     sim_world_t c;
@@ -1874,10 +1874,10 @@ static void t8_host_known_vector(void) {
     duel_host_encode(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
                      DUEL_HOST_SCENE_ARCHIVE, 2, &packet);
     const uint8_t expected[DUEL_HOST_REPORT_SIZE] = {
-        0xCA, 0x8E, 0x01, 0x01, 0x44, 0x33, 0x22, 0x11,
-        0x00, 0x00, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00,
+        0xCA, 0x8E, 0x02, 0x01, 0x44, 0x33, 0x22, 0x11,
+        0x00, 0x00, 0x06, 0x01, 0x02, 0x07, 0x02, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xBC,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1E,
     };
     CHECK(memcmp(&packet, expected, sizeof expected) == 0,
           "t8_host_known_vector");
@@ -1965,11 +1965,11 @@ static void t8_host_expiry_and_context(void) {
 static void t8_host_split_context(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 9);
-    uint8_t context = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_ARCHIVE, 7);
+    uint8_t context = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_ARCHIVE, 7, false);
     duel_snapshot_t packet;
     duel_encode_external(&world, 4, 12, context, &packet);
 
-    bool ok = sizeof packet == 30 && DUEL_VER == 6 && duel_decode_valid(&packet);
+    bool ok = sizeof packet == 31 && DUEL_VER == 7 && duel_decode_valid(&packet);
     ok &= packet.external == context;
     ok &= DUEL_HOST_CONTEXT_ONLINE(packet.external) == 1;
     ok &= DUEL_HOST_CONTEXT_SCENE(packet.external) == DUEL_HOST_SCENE_ARCHIVE;
@@ -2127,6 +2127,134 @@ static void t9_archive_precedence_and_invariance(void) {
     CHECK(ok, "t9_archive_precedence_and_invariance");
 }
 
+/* ---------------- M10: normalized notification presentation ------------ */
+
+static void t10_host_v1_v2_validation(void) {
+    duel_host_packet_t packet;
+    duel_host_state_t state = {0};
+    duel_host_encode_v1(DUEL_HOST_MSG_HELLO, 1, 0, DUEL_HOST_SCENE_DUEL, 3, &packet);
+    bool ok = duel_host_packet_valid(&packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.notification_count == 3;
+    ok &= state.notification_category == DUEL_HOST_CATEGORY_NONE;
+
+    duel_host_encode_summary(DUEL_HOST_MSG_HEARTBEAT, 1, 1,
+        DUEL_HOST_SCENE_ARCHIVE, 2, DUEL_HOST_CATEGORY_SECURITY,
+        DUEL_HOST_PRIORITY_CRITICAL, 7, true, &packet);
+    ok &= duel_host_packet_valid(&packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= state.notification_category == DUEL_HOST_CATEGORY_SECURITY;
+    ok &= state.notification_priority == DUEL_HOST_PRIORITY_CRITICAL;
+    ok &= state.notification_age == 7 && state.notification_persistent;
+
+    duel_host_packet_t bad = packet;
+    bad.payload[3] = DUEL_HOST_PRIORITY_NORMAL; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // persistent normal is impossible
+    bad = packet; bad.payload[1] = 0; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // empty summaries must be all-zero
+    bad = packet; bad.payload[5] = 2; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad);
+
+    // NOTIFY advances ordering but cannot resurrect expired external context.
+    duel_host_expire(&state);
+    duel_host_encode_summary(DUEL_HOST_MSG_NOTIFY, 1, 2, DUEL_HOST_SCENE_FOCUS,
+        1, DUEL_HOST_CATEGORY_TERMINAL, DUEL_HOST_PRIORITY_LOW, 0, false, &packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED;
+    ok &= duel_host_context(&state) == 0 && duel_host_alert(&state) == 0;
+    CHECK(ok, "t10_host_v1_v2_validation");
+}
+
+static void t10_split_v7_alert(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 99);
+    uint8_t external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 15, true);
+    uint8_t alert = DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_SECURITY,
+                                         DUEL_HOST_PRIORITY_CRITICAL, 6);
+    duel_snapshot_t packet;
+    duel_encode_external_alert(&world, 9, 4, external, alert, &packet);
+    bool ok = sizeof packet == 31 && packet.ver == 7 && duel_decode_valid(&packet);
+    ok &= DUEL_HOST_CONTEXT_PERSISTENT(packet.external);
+    ok &= DUEL_HOST_ALERT_CATEGORY(packet.alert) == DUEL_HOST_CATEGORY_SECURITY;
+    ok &= DUEL_HOST_ALERT_PRIORITY(packet.alert) == DUEL_HOST_PRIORITY_CRITICAL;
+    ok &= DUEL_HOST_ALERT_AGE(packet.alert) == 6;
+    packet.alert ^= 0x20;
+    ok &= !duel_decode_valid(&packet);
+    CHECK(ok, "t10_split_v7_alert");
+}
+
+static void t10_render_alert(duel_fb_t *fb, bool is_left, uint8_t count,
+                             uint8_t category, uint8_t priority,
+                             uint8_t age, bool persistent, bool scry) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.scry.state = scry ? SCRY_ACTIVE : SCRY_IDLE;
+    duel_render_t render = {
+        .w = world,
+        .overlay_host = 1,
+        .overlay_notif = count,
+        .overlay_category = category,
+        .overlay_priority = priority,
+        .overlay_age = age,
+        .overlay_persistent = persistent,
+    };
+    duel_fb_clear(fb);
+    wiz_draw_scene(fb, &render, is_left, 0, false);
+}
+
+static void t10_zero_v1_and_category_glyphs(void) {
+    duel_fb_t base, zero, legacy, glyphs[7];
+    t10_render_alert(&base, true, 0, 0, 0, 0, false, false);
+    t10_render_alert(&zero, true, 0, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_CRITICAL, 7, true, false);
+    t10_render_alert(&legacy, true, 3, DUEL_HOST_CATEGORY_NONE,
+                     DUEL_HOST_PRIORITY_NONE, 0, false, false);
+    bool ok = memcmp(base.bits, zero.bits, sizeof base.bits) == 0;
+    ok &= memcmp(base.bits, legacy.bits, sizeof base.bits) == 0;
+    for (int category = 1; category < DUEL_HOST_CATEGORY_COUNT; category++) {
+        t10_render_alert(&glyphs[category - 1], true, 1, (uint8_t)category,
+                         DUEL_HOST_PRIORITY_LOW, 0, false, false);
+        ok &= memcmp(base.bits, glyphs[category - 1].bits, sizeof base.bits) != 0;
+        for (int prior = 1; prior < category; prior++)
+            ok &= memcmp(glyphs[category - 1].bits, glyphs[prior - 1].bits,
+                         sizeof base.bits) != 0;
+    }
+    CHECK(ok, "t10_zero_v1_and_category_glyphs");
+}
+
+static void t10_mirror_priority_age_persistence_and_scry(void) {
+    duel_fb_t left, right, low, normal, critical, aged, anchored, scry, scry_empty;
+    t10_render_alert(&left, true, 4, DUEL_HOST_CATEGORY_TRANSFER,
+                     DUEL_HOST_PRIORITY_NORMAL, 0, false, false);
+    t10_render_alert(&right, false, 4, DUEL_HOST_CATEGORY_TRANSFER,
+                     DUEL_HOST_PRIORITY_NORMAL, 0, false, false);
+    bool ok = true;
+    for (int y = 1; y <= 15; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            ok &= duel_fb_get(&left, x, y) == duel_fb_get(&right, 31 - x, y);
+
+    t10_render_alert(&low, true, 1, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_LOW, 0, false, false);
+    t10_render_alert(&normal, true, 1, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_NORMAL, 0, false, false);
+    t10_render_alert(&critical, true, 1, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_CRITICAL, 0, false, false);
+    t10_render_alert(&aged, true, 1, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_NORMAL, 7, false, false);
+    t10_render_alert(&anchored, true, 1, DUEL_HOST_CATEGORY_SECURITY,
+                     DUEL_HOST_PRIORITY_CRITICAL, 0, true, false);
+    ok &= memcmp(low.bits, normal.bits, sizeof low.bits) != 0;
+    ok &= memcmp(normal.bits, critical.bits, sizeof low.bits) != 0;
+    ok &= memcmp(normal.bits, aged.bits, sizeof low.bits) != 0;
+    ok &= memcmp(critical.bits, anchored.bits, sizeof low.bits) != 0;
+
+    t10_render_alert(&scry, true, 2, DUEL_HOST_CATEGORY_CALENDAR,
+                     DUEL_HOST_PRIORITY_CRITICAL, 0, true, true);
+    t10_render_alert(&scry_empty, true, 0, 0, 0, 0, false, true);
+    ok &= !duel_fb_get(&scry, 2, 4); // transient outer sigil is absent
+    ok &= memcmp(scry.bits, scry_empty.bits, sizeof scry.bits) != 0; // in-panel summary
+    CHECK(ok, "t10_mirror_priority_age_persistence_and_scry");
+}
+
 int main(int argc, char **argv) {
     int argi = 1;
     if (argi < argc && strcmp(argv[argi], "--write-golden") == 0) {
@@ -2217,6 +2345,11 @@ int main(int argc, char **argv) {
     t9_archive_deterministic_and_mirrored();
     t9_archive_activity_tiers();
     t9_archive_precedence_and_invariance();
+
+    t10_host_v1_v2_validation();
+    t10_split_v7_alert();
+    t10_zero_v1_and_category_glyphs();
+    t10_mirror_priority_age_persistence_and_scry();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

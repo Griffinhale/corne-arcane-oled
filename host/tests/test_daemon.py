@@ -4,8 +4,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from arcane_host.daemon import HidHeartbeat, KWinBridgeLoader, KWIN_SERVICE
-from arcane_host.protocol import Message, Scene
+from arcane_host.daemon import EventService, HidHeartbeat, KWinBridgeLoader, KWIN_SERVICE
+from arcane_host.focus import FocusArbiter
+from arcane_host.policy import NotificationPolicy
+from arcane_host.protocol import Category, Message, NotificationSummary, Priority, Scene
 
 
 class FakeDevice:
@@ -85,6 +87,63 @@ class HeartbeatTests(unittest.TestCase):
         heartbeat.request_heartbeat(0.2)
         self.assertTrue(heartbeat.tick(0.2))
         self.assertEqual(device.reports[-1][11], Scene.ARCHIVE)
+
+    def test_notify_is_prompt_and_never_delays_heartbeat(self) -> None:
+        summary = NotificationSummary()
+        device = FakeDevice()
+        heartbeat = HidHeartbeat(
+            lambda: Scene.DUEL,
+            lambda: device,
+            lambda: 7,
+            summary_provider=lambda: summary,
+        )
+        heartbeat.tick(0)
+        summary = NotificationSummary(1, Category.TERMINAL, Priority.LOW)
+        heartbeat.request_notify()
+        self.assertFalse(heartbeat.tick(0.05))
+        self.assertEqual(device.reports[-1][3], Message.NOTIFY)
+        for _ in range(20):
+            heartbeat.request_notify()
+        self.assertTrue(heartbeat.tick(0.1))
+        self.assertEqual(device.reports[-1][3], Message.HEARTBEAT)
+        self.assertFalse(heartbeat.tick(0.11))
+        self.assertTrue(heartbeat.tick(0.6))
+
+    def test_reconnect_hello_carries_complete_summary(self) -> None:
+        summary = NotificationSummary(2, Category.SECURITY, Priority.CRITICAL, 4, True)
+        device = FakeDevice()
+        heartbeat = HidHeartbeat(lambda: Scene.FOCUS, lambda: device, lambda: 3,
+                                 summary_provider=lambda: summary)
+        heartbeat.tick(0)
+        self.assertEqual(device.reports[0][11:17], bytes((Scene.FOCUS, 2, Category.SECURITY,
+                                                          Priority.CRITICAL, 4, 1)))
+
+
+class EventServiceTests(unittest.TestCase):
+    def make_service(self, focus: FocusArbiter, policy: NotificationPolicy, now=20.0):
+        service = EventService.__new__(EventService)
+        service.policy = policy
+        service.focus = focus
+        service.clock = lambda: now
+        service.changed_calls = 0
+        service.changed = lambda: setattr(service, "changed_calls", service.changed_calls + 1)
+        return service
+
+    def test_terminal_threshold_focus_and_priority(self) -> None:
+        policy = NotificationPolicy()
+        focus = FocusArbiter(settle_seconds=0)
+        service = self.make_service(focus, policy)
+        self.assertFalse(service.report_terminal_completion(9999, 0))
+        self.assertTrue(service.report_terminal_completion(10000, 0))
+        self.assertEqual(policy.summary(20).priority, Priority.LOW)
+        policy.clear()
+        focus.report("org.kde.konsole", "org.kde.konsole", 20)
+        focus.poll(20)
+        self.assertFalse(service.report_terminal_completion(11000, 1))
+        focus.report("org.kde.kate", "org.kde.kate", 20)
+        focus.poll(20)
+        self.assertTrue(service.report_terminal_completion(11000, 3))
+        self.assertEqual(policy.summary(20).priority, Priority.NORMAL)
 
 
 class FakeVariant:

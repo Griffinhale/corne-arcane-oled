@@ -1,40 +1,84 @@
-# M9 application-aware host
+# M10 notification policy and adapters
 
-The Linux daemon sends semantic 32-byte Raw HID reports to `griffin_hostoled`;
-it never sends OLED framebuffers. Its default mode owns the private session
-D-Bus service `io.github.Griffinhale.CorneArcane` and receives only KWin's
-`resourceClass` and `desktopFileName`. The bridge never reads window titles,
-URLs, tabs, document names, or page data, and the daemon retains no application
-identifiers after classification.
+The Linux daemon sends only normalized semantic fields to `griffin_hostoled`:
+scene, saturated count, category, priority, age bucket, and critical
+persistence. No framebuffer or notification text crosses Raw HID. The v2 wire
+report remains 32 bytes; `HELLO`, `HEARTBEAT`, and `NOTIFY` are complete
+absolute summaries, and only HELLO/HEARTBEAT refresh the 1.5-second firmware
+liveness deadline.
 
-Firefox/Firefox ESR, Chrome, Chromium, Brave, Vivaldi, and Zen aliases settle
-to Archive after 200 ms. Empty, unknown, desktop, and other applications settle
-to Duel. A rapid Alt-Tab cancels the pending transition. Heartbeats remain at
-500 ms; missing keyboards are retried every two seconds, and every reconnect
-gets a fresh daemon session plus `HELLO`.
+Normal alerts aggregate for a fixed six seconds without repeat extension. A
+ten-second start-to-start budget suppresses cooldown-only events instead of
+replaying them. Non-transient critical alerts persist until their desktop
+notification closes, `corne-arcane-event clear` is used, or the daemon context
+expires. Policy storage and every counter are bounded.
 
-Run tests or an explicit diagnostic override from this directory:
+## Install and operate
+
+On Debian 13 with Nix, build and install the package from this checkout:
 
 ```bash
-./run_tests.sh
-python3 -m arcane_host.daemon --scene archive --notify 2 --verbose
-python3 -m arcane_host.daemon --dry-run --once --session 0x11223344 --scene archive
+nix-build -E 'with import <nixpkgs> {}; callPackage ./host/package.nix {}'
+nix profile install ./result
+systemctl --user restart corne-arcane-host
+journalctl --user -u corne-arcane-host -f
 ```
 
-Automatic focus mode requires PyGObject/Gio and a Plasma 6 session. The NixOS
-module in `../corne.nix` packages those dependencies, the daemon, and the KWin
-bridge, then starts them through `graphical-session.target`.
+On NixOS, import `../corne.nix`. Set
+`services.corne-arcane-host.desktopNotifications = false` to disable desktop
+monitoring durably. For one diagnostic run use:
 
-Do not run this daemon against `griffin_anim`: that Vial-capable keymap reserves
-the same Raw HID interface. The daemon discovers QMK usage page `0xFF60`, usage
-`0x61`; use `--device /dev/hidrawN` only to disambiguate multiple keyboards.
+```bash
+corne-arcane-host --no-desktop-notifications --verbose
+```
 
-The wire remains Raw HID v1. Firmware accepts a new daemon session only through
-`HELLO` sequence zero, rejects stale/duplicate reports, and treats every report
-as an absolute scene/notification summary. Only HELLO and HEARTBEAT refresh the
-1.5-second liveness deadline.
+If session-bus `BecomeMonitor` is denied, only the desktop adapter disables
+itself; focus, terminal completion, synthetic events, Raw HID, and offline Duel
+fallback continue.
 
-**M9 hardware result (2026-07-13): accepted.** Real KWin focus changes on Debian
-13 Plasma/Wayland switch the daemon and both physical OLEDs correctly between
-Archive and Duel. Visual refinement is deferred to M11 polish; M10 notification
-policy and adapters is next.
+## Synthetic proof
+
+The private session D-Bus Events interface is exposed through the packaged
+client:
+
+```bash
+corne-arcane-event notify --category terminal --priority normal
+corne-arcane-event notify --category security --priority critical --persistent
+corne-arcane-event clear
+```
+
+The old daemon option `--notify N` remains a static `other/normal` diagnostic
+override. `--dry-run --once --session 0x11223344 --scene archive` prints known
+wire vectors without requiring D-Bus or a keyboard.
+
+## Konsole/Zsh completion
+
+Source the packaged hook from `.zshrc`:
+
+```zsh
+source /path/to/profile/share/corne-arcane/zsh/corne-arcane.zsh
+```
+
+The hook reads Linux uptime for monotonic elapsed time and reports only commands
+lasting at least ten seconds. Its D-Bus client is detached with output
+suppressed. It never sends or reads command text, working directory,
+environment, or terminal content. Successful commands become `terminal/low`;
+nonzero exits become `terminal/normal`. Both are suppressed while a recognized
+terminal (Konsole first) is focused. Other shells are deferred.
+
+## Desktop privacy boundary
+
+Freedesktop `Notify`, replies, and `NotificationClosed` are observed on a
+separate monitor connection. Summary/body exist only long enough to compute a
+per-daemon-session salted digest, then are discarded. Text, actions, icons,
+URLs, and image data are never logged, persisted, or transmitted. Focused
+source matching retains only salted application-identifier digests. Replacements
+update their existing entry; closing a persistent notification clears it.
+Low/normal focused-source alerts are suppressed, while critical alerts pass.
+
+Run all host checks with `./run_tests.sh`. Do not run the daemon against
+`griffin_anim`: Vial uses the same Raw HID interface. For rollback, stop the
+service (Duel fallback returns within 1.5 seconds) and use commit `26c49a2` plus
+its M9 daemon/firmware pair.
+
+**M10 status (2026-07-13): implemented; awaiting hardware verification.**

@@ -1,4 +1,4 @@
-# M8 host branch: the complete offline duel plus isolated custom Raw HID.
+# M10 host branch: complete offline duel plus isolated custom Raw HID.
 VIA_ENABLE = no
 VIAL_ENABLE = no
 RAW_ENABLE = yes

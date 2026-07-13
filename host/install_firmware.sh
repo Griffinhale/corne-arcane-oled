@@ -15,4 +15,4 @@ rsync -a --delete \
     --exclude '*.o' --exclude '*.uf2' \
     "$src/" "$dst/"
 cp "$root/host/firmware/rules.mk" "$dst/rules.mk"
-echo "installed M8 firmware -> $dst"
+echo "installed M10 firmware -> $dst"

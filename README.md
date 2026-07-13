@@ -16,12 +16,12 @@ notes. The live firmware is developed in a separate QMK tree (see below).
 | Path | What it is |
 | --- | --- |
 | `firmware/` | **Committed snapshot** of the live keymap (`griffin_anim`): the hardware-agnostic duel engine (`sim/`), the QMK glue (`keymap.c`), and the host test rig (`sim_test/`). See `firmware/README.md` for the deep dive. |
-| `host/` | M9's focus-aware Linux Raw HID daemon, private D-Bus/KWin bridge, Nix package, tests, and the isolated `griffin_hostoled` build override. |
+| `host/` | M10's privacy-redacted notification/focus daemon, event client, Zsh hook, private D-Bus/KWin bridge, Nix package, and tests. |
 | `Corne_Arcane_OLED_Implementation_Roadmap.docx` | Milestone plan **M0–M11** (the authoritative build order). |
 | `Corne_Arcane_OLED_Design_Audit_Addendum.docx` | Scope guards, failure modes, and the simulation/presentation/**external-context** data-class boundary. |
 | `Corne_Arcane_OLED_Build_Kickoff_Prompt.docx` | The original kickoff brief and stopping rules. |
 | `BUILD_NOTES_NIXOS.md` | How this actually builds on NixOS 26.05 (supersedes the Debian steps in `spike1/`). |
-| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M9 daemon/bridge, and Plasma user service. Not yet applied. |
+| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M10 daemon/adapters, and Plasma user service. Not yet applied. |
 | `spike1/` | Original working notes + helper scripts from the first hardware spikes (Debian-era; some steps superseded by `BUILD_NOTES_NIXOS.md`). |
 | `sync-firmware.sh` | Refresh the `firmware/` snapshot from the live QMK tree. |
 
@@ -46,8 +46,8 @@ git add -A && git commit -m "sync firmware snapshot"
 - **`griffin`** — stable Vial baseline. The recovery keymap; never experimented on.
 - **`griffin_anim`** — the OLED duel (Vial **on**). Everything in `firmware/` here.
   Its compiled four-layer default is captured from `../corne-arcane.vil`.
-- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID
-  and M9 hybrid Archive renderer,
+- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID,
+  M9 hybrid Archive renderer, and M10 notification sigils,
   using the same four-layer default. Vial/VIA are **off** because they cannot
   share QMK's single raw-HID interface with the custom daemon protocol.
 
@@ -57,18 +57,21 @@ git add -A && git commit -m "sync firmware snapshot"
 now select the 200 ms-debounced hybrid Archive scene through the daemon and Raw
 HID on both synchronized OLEDs, while non-browser focus returns both halves to
 Duel. The mechanism is accepted; Archive visual refinement is deferred to the
-polish milestone. Raw HID v1, split snapshot v6, combat, and world hashes remain
-unchanged. **M10 — Notification policy and adapters is next.** Full detail and
-the acceptance record live in `firmware/README.md`.
+polish milestone. **M10 — Notification policy and adapters is implemented and
+awaiting hardware verification.** Raw HID is now v2/32 bytes and the split
+snapshot is v7/31 bytes; combat, `sim_world_t`, and world hashes remain
+unchanged. Full detail and the acceptance record live in `firmware/README.md`.
 
-## Build & flash (NixOS, user-scope, no sudo)
+## Build & flash M10 (NixOS, user-scope, no sudo)
 
 ```bash
+cd ~/dev/corne-arcane-oled
+./host/install_firmware.sh       # refreshes the isolated live keymap
 cd ~/src/vial-qmk                # qmk + arm-none-eabi-gcc are on PATH
-qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce
+qmk compile -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce
 # Flash one half at a time — never hot-plug TRRS:
-qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left
-qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-right
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-left
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-right
 ```
 
 Reassemble: USB into the **left** half only, TRRS connected while unpowered.

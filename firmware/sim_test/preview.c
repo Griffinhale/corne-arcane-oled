@@ -100,7 +100,9 @@ static int usage(const char *argv0) {
             "                         [/short|medium|long|saturated]\n"
             "       %s --scenario impact|deflect|fizzle|void-pierce|short-cast|long-cast\n"
             "                     |archive-idle|archive-pulse|archive-cast|archive-impact\n"
-            "                     |archive-ko|archive-scry\n"
+            "                     |archive-ko|archive-scry|terminal-completion\n"
+            "                     |aggregated-normal|persistent-critical|aged-alert\n"
+            "                     |alert-under-scry\n"
             "       %s --host-scene duel|archive|focus\n"
             "       %s --scry [scene]\n"
             "       %s <file.trace> --tick N\n"
@@ -245,6 +247,12 @@ int main(int argc, char **argv) {
             r.overlay_host = 1;
             r.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
         }
+        bool alert_scenario = strcmp(scenario, "terminal-completion") == 0 ||
+                              strcmp(scenario, "aggregated-normal") == 0 ||
+                              strcmp(scenario, "persistent-critical") == 0 ||
+                              strcmp(scenario, "aged-alert") == 0 ||
+                              strcmp(scenario, "alert-under-scry") == 0;
+        if (alert_scenario) r.overlay_host = 1;
         if (strcmp(scenario, "impact") == 0 || strcmp(scenario, "archive-impact") == 0) {
             r.w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
             r.flash_frames = 10; r.flash_kind = FX_IMPACT_R; r.flash_spell_kind = medium_force;
@@ -284,6 +292,22 @@ int main(int argc, char **argv) {
             r.w.scry.state = SCRY_ACTIVE;
             r.w.scry.scene = DUEL_HOST_SCENE_ARCHIVE;
             r.overlay_layer = 3;
+        } else if (strcmp(scenario, "terminal-completion") == 0) {
+            r.overlay_notif = 1; r.overlay_category = DUEL_HOST_CATEGORY_TERMINAL;
+            r.overlay_priority = DUEL_HOST_PRIORITY_LOW;
+        } else if (strcmp(scenario, "aggregated-normal") == 0) {
+            r.overlay_notif = 4; r.overlay_category = DUEL_HOST_CATEGORY_COMMUNICATION;
+            r.overlay_priority = DUEL_HOST_PRIORITY_NORMAL;
+        } else if (strcmp(scenario, "persistent-critical") == 0) {
+            r.overlay_notif = 2; r.overlay_category = DUEL_HOST_CATEGORY_SECURITY;
+            r.overlay_priority = DUEL_HOST_PRIORITY_CRITICAL; r.overlay_persistent = 1;
+        } else if (strcmp(scenario, "aged-alert") == 0) {
+            r.overlay_notif = 1; r.overlay_category = DUEL_HOST_CATEGORY_TRANSFER;
+            r.overlay_priority = DUEL_HOST_PRIORITY_NORMAL; r.overlay_age = 6;
+        } else if (strcmp(scenario, "alert-under-scry") == 0) {
+            r.overlay_notif = 3; r.overlay_category = DUEL_HOST_CATEGORY_CALENDAR;
+            r.overlay_priority = DUEL_HOST_PRIORITY_CRITICAL; r.overlay_persistent = 1;
+            r.w.scry.state = SCRY_ACTIVE; r.overlay_layer = 3;
         } else {
             return usage(argv[0]);
         }

@@ -21,6 +21,12 @@ void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snaps
 
 void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
                           uint8_t external, duel_snapshot_t *out) {
+    duel_encode_external_alert(w, session, seq, external, 0, out);
+}
+
+void duel_encode_external_alert(const sim_world_t *w, uint8_t session, uint16_t seq,
+                                uint8_t external, uint8_t alert,
+                                duel_snapshot_t *out) {
     memset(out, 0, sizeof *out);
     out->magic   = DUEL_MAGIC;
     out->ver     = DUEL_VER;
@@ -44,6 +50,7 @@ void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
     out->fx_kind = w->fx_kind;
     out->scry    = DUEL_SCRY_PACK(scry_is_open(w), w->scry.scene);
     out->external = external;
+    out->alert    = alert;
     out->crc     = duel_crc8(out, offsetof(duel_snapshot_t, crc));
 }
 

@@ -1,7 +1,7 @@
 { config, pkgs, lib, ... }:
 
-# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and the M9
-# application-aware semantic host service. Import this file directly from the
+# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and the M10
+# privacy-redacted notification/focus host service. Import this file directly from the
 # checkout: package sources are resolved relative to it.
 
 let
@@ -9,10 +9,17 @@ let
   corneArcaneHost = pkgs.callPackage ./host/package.nix { };
 in
 {
-  options.services.corne-arcane-host.enable = lib.mkOption {
-    type = lib.types.bool;
-    default = true;
-    description = "Run the Corne Arcane focus-aware host daemon in Plasma sessions.";
+  options.services.corne-arcane-host = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Run the Corne Arcane focus and notification daemon in Plasma sessions.";
+    };
+    desktopNotifications = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Mirror privacy-redacted Freedesktop notification metadata.";
+    };
   };
 
   config = {
@@ -33,13 +40,13 @@ in
     '';
 
     systemd.user.services.corne-arcane-host = lib.mkIf cfg.enable {
-      description = "Corne Arcane application focus and Raw HID heartbeat";
+      description = "Corne Arcane focus, notification policy, and Raw HID heartbeat";
       wantedBy = [ "graphical-session.target" ];
       partOf = [ "graphical-session.target" ];
       after = [ "graphical-session-pre.target" ];
       serviceConfig = {
         Type = "simple";
-        ExecStart = lib.getExe corneArcaneHost;
+        ExecStart = "${lib.getExe corneArcaneHost}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}";
         Restart = "always";
         RestartSec = 2;
       };

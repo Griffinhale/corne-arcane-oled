@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from arcane_host.daemon import parse_args
-from arcane_host.focus import FocusArbiter, classify_window, normalize_identifier
+from arcane_host.focus import FocusArbiter, classify_window, is_terminal, normalize_identifier
 from arcane_host.protocol import Scene
 
 
@@ -46,6 +46,14 @@ class FocusTests(unittest.TestCase):
     def test_manual_override_is_explicit(self) -> None:
         self.assertIsNone(parse_args([]).scene)
         self.assertEqual(parse_args(["--scene", "focus"]).scene, "focus")
+
+    def test_coarse_terminal_focus_and_digest_only_retention(self) -> None:
+        focus = FocusArbiter(settle_seconds=0, identifier_digest=lambda value: value.encode())
+        self.assertTrue(is_terminal("org.kde.konsole", ""))
+        focus.report("org.kde.konsole", "org.kde.konsole.desktop", 1)
+        focus.poll(1)
+        self.assertTrue(focus.terminal_focused)
+        self.assertEqual(focus.focused_digests, frozenset({b"org.kde.konsole"}))
 
 
 if __name__ == "__main__":

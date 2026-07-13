@@ -411,6 +411,76 @@ static void draw_box3(duel_fb_t *fb, int x, int y) {
     duel_fb_px(fb, x + 2, y + 1, true);
 }
 
+// M10 normalized alert glyphs. Each row is five bits wide; category identity
+// is deterministic and independent of application/source text.
+static const uint8_t alert_glyphs[DUEL_HOST_CATEGORY_COUNT][7] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, // none
+    {0x1F, 0x10, 0x10, 0x16, 0x10, 0x10, 0x1F}, // terminal prompt
+    {0x0E, 0x11, 0x11, 0x15, 0x0E, 0x04, 0x08}, // communication bubble
+    {0x04, 0x0E, 0x15, 0x04, 0x15, 0x0E, 0x04}, // transfer arrows
+    {0x04, 0x15, 0x0E, 0x1B, 0x0E, 0x15, 0x04}, // system cog
+    {0x0A, 0x1F, 0x11, 0x17, 0x15, 0x11, 0x1F}, // calendar
+    {0x0E, 0x11, 0x11, 0x1F, 0x0E, 0x04, 0x04}, // security shield
+    {0x04, 0x0E, 0x1F, 0x1B, 0x1F, 0x0E, 0x04}, // other diamond
+};
+
+static void draw_alert_bitmap(duel_fb_t *fb, uint8_t category,
+                              int ox, int oy, bool mirror) {
+    if (category >= DUEL_HOST_CATEGORY_COUNT) return;
+    for (int y = 0; y < 7; y++) {
+        for (int x = 0; x < 5; x++) {
+            if (alert_glyphs[category][y] & (1u << (4 - x))) {
+                duel_fb_px(fb, mirror ? ox - x : ox + x, oy + y, true);
+            }
+        }
+    }
+}
+
+static void clear_alert_corner(duel_fb_t *fb, bool is_left) {
+    int x0 = is_left ? 0 : 22;
+    int x1 = is_left ? 9 : 31;
+    for (int y = 1; y <= 15; y++)
+        for (int x = x0; x <= x1; x++) duel_fb_px(fb, x, y, false);
+}
+
+static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+    if (!r->overlay_host || !r->overlay_notif || r->overlay_category == DUEL_HOST_CATEGORY_NONE ||
+        r->overlay_priority == DUEL_HOST_PRIORITY_NONE) return;
+    clear_alert_corner(fb, is_left);
+    // Canonical coordinates describe the left outer corner. The right half is
+    // its exact x mirror, producing a single paired desk-space sigil.
+    draw_alert_bitmap(fb, r->overlay_category, is_left ? 2 : 29, 4, !is_left);
+    if (r->overlay_priority >= DUEL_HOST_PRIORITY_NORMAL) {
+        for (int x = 1; x <= 7; x++) {
+            duel_fb_px(fb, is_left ? x : 31 - x, 3, true);
+            duel_fb_px(fb, is_left ? x : 31 - x, 11, true);
+        }
+        duel_fb_px(fb, is_left ? 1 : 30, 4, true);
+        duel_fb_px(fb, is_left ? 7 : 24, 4, true);
+    }
+    if (r->overlay_priority == DUEL_HOST_PRIORITY_CRITICAL) {
+        for (int y = 3; y <= 11; y++) {
+            duel_fb_px(fb, is_left ? 1 : 30, y, true);
+            duel_fb_px(fb, is_left ? 7 : 24, y, true);
+        }
+        duel_fb_px(fb, is_left ? 9 : 22, 2, true);
+        duel_fb_px(fb, is_left ? 9 : 22, 12, true);
+    }
+    int accents = 3 - (r->overlay_age > 5 ? 3 : r->overlay_age / 2);
+    for (int i = 0; i < accents; i++)
+        duel_fb_px(fb, is_left ? 1 + i * 3 : 30 - i * 3, 1, true);
+    int pips = r->overlay_notif > 4 ? 4 : r->overlay_notif;
+    for (int i = 0; i < pips; i++)
+        duel_fb_px(fb, is_left ? 1 + i * 2 : 30 - i * 2, 13, true);
+    if (r->overlay_persistent) {
+        int ax = is_left ? 4 : 27;
+        duel_fb_px(fb, ax, 13, true); duel_fb_px(fb, ax, 14, true);
+        duel_fb_px(fb, ax, 15, true);
+        duel_fb_px(fb, ax + (is_left ? -1 : 1), 15, true);
+        duel_fb_px(fb, ax + (is_left ? 1 : -1), 15, true);
+    }
+}
+
 // Outlined (or filled) rectangle helper for the M7 overlay panel.
 static void ov_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1, bool fill) {
     for (int y = y0; y <= y1; y++)
@@ -454,6 +524,19 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
         int nx = 17 + i * 3;
         duel_fb_px(fb, nx, 24, true);     duel_fb_px(fb, nx + 1, 24, true);
         duel_fb_px(fb, nx, 25, true);     duel_fb_px(fb, nx + 1, 25, true);
+    }
+
+    // V2 normalized summary: category glyph plus priority marks and critical
+    // persistence anchor. V1/count-only traffic deliberately leaves this area
+    // empty while retaining the legacy count pips above.
+    if (r->overlay_category && r->overlay_priority) {
+        draw_alert_bitmap(fb, r->overlay_category, 18, 27, false);
+        for (int i = 0; i < r->overlay_priority; i++)
+            duel_fb_px(fb, 24 + i, 28, true);
+        if (r->overlay_persistent) {
+            duel_fb_px(fb, 26, 30, true); duel_fb_px(fb, 26, 31, true);
+            duel_fb_px(fb, 25, 31, true); duel_fb_px(fb, 27, 31, true);
+        }
     }
 
     // Scene selector: host context owns the readout while online; heartbeat
@@ -639,6 +722,10 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
             }
         }
     }
+
+    // M10 alert sigil sits above all scene/combat artwork, but an open scry
+    // replaces it with the normalized in-panel summary.
+    if (!scry_is_open(&r->w)) draw_alert_sigil(fb, r, is_left);
 
     // M7 scrying overlay, drawn above the world when the layer-key chord is
     // held. The stale-link and debug glyphs draw AFTER, so a broken link is

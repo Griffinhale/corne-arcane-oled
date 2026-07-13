@@ -53,6 +53,10 @@ typedef struct {
     uint8_t     overlay_host;  // host link: 0 offline (M8 stub), 1 online
     uint8_t     overlay_notif; // pending notification count (M8 stub)
     uint8_t     overlay_scene; // disposable host scene class (M8); local scene offline
+    uint8_t     overlay_category; // normalized M10 alert category
+    uint8_t     overlay_priority; // normalized M10 alert priority
+    uint8_t     overlay_age;      // normalized M10 age bucket
+    uint8_t     overlay_persistent; // critical alert remains until explicit close
 } duel_render_t;
 
 // Battlefield u (0..255) -> canvas x for one half. The left canvas shows

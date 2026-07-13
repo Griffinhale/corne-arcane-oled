@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import secrets
@@ -10,14 +11,25 @@ import sys
 import time
 from typing import Callable
 
+from .desktop import DesktopMonitor, DesktopNotificationAdapter
 from .focus import FocusArbiter
 from .hidraw import Device, choose_device
-from .protocol import Message, Scene, build_packet
+from .policy import NotificationPolicy
+from .protocol import (
+    Category,
+    EMPTY_SUMMARY,
+    Message,
+    NotificationSummary,
+    Priority,
+    Scene,
+    build_packet,
+)
 
 SCENES = {scene.name.lower(): scene for scene in Scene}
 BUS_NAME = "io.github.Griffinhale.CorneArcane"
 OBJECT_PATH = "/io/github/Griffinhale/CorneArcane"
 FOCUS_INTERFACE = "io.github.Griffinhale.CorneArcane.Focus"
+EVENTS_INTERFACE = "io.github.Griffinhale.CorneArcane.Events"
 KWIN_SERVICE = "org.kde.KWin"
 
 
@@ -31,6 +43,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="diagnostic fixed-scene override; disables focus arbitration",
     )
     parser.add_argument("--notify", type=int, default=0, metavar="COUNT")
+    parser.add_argument(
+        "--no-desktop-notifications",
+        action="store_true",
+        help="disable privacy-redacted Freedesktop notification monitoring",
+    )
     parser.add_argument("--interval", type=float, default=0.5, metavar="SECONDS")
     parser.add_argument("--retry-interval", type=float, default=2.0, metavar="SECONDS")
     parser.add_argument("--once", action="store_true", help="send one heartbeat after HELLO and exit")
@@ -57,6 +74,7 @@ class HidHeartbeat:
         device_factory: Callable[[], object],
         session_factory: Callable[[], int],
         *,
+        summary_provider: Callable[[], NotificationSummary] | None = None,
         notification_count: int = 0,
         interval: float = 0.5,
         retry_interval: float = 2.0,
@@ -65,7 +83,11 @@ class HidHeartbeat:
         self.scene_provider = scene_provider
         self.device_factory = device_factory
         self.session_factory = session_factory
-        self.notification_count = notification_count
+        self.summary_provider = summary_provider or (
+            lambda: EMPTY_SUMMARY
+            if notification_count == 0
+            else NotificationSummary(notification_count, Category.OTHER, Priority.NORMAL)
+        )
         self.interval = interval
         self.retry_interval = retry_interval
         self.verbose = verbose
@@ -75,6 +97,8 @@ class HidHeartbeat:
         self.next_connect = 0.0
         self.next_heartbeat = 0.0
         self.heartbeats = 0
+        self.notifications = 0
+        self.notify_pending = False
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -106,7 +130,7 @@ class HidHeartbeat:
                     self.session,
                     0,
                     self.scene_provider(),
-                    self.notification_count,
+                    summary=self.summary_provider(),
                 )
             )
         except (OSError, RuntimeError) as error:
@@ -120,6 +144,7 @@ class HidHeartbeat:
             return
         self.device = device
         self.next_heartbeat = now + 0.1
+        self.notify_pending = False
         self._log(f"connected session=0x{self.session:08x}")
 
     def tick(self, now: float) -> bool:
@@ -128,27 +153,39 @@ class HidHeartbeat:
             if now >= self.next_connect:
                 self._connect(now)
             return False
-        if now < self.next_heartbeat:
+        heartbeat_due = now >= self.next_heartbeat
+        if not heartbeat_due and not self.notify_pending:
             return False
         self.sequence = (self.sequence + 1) & 0xFFFF
+        message = Message.HEARTBEAT if heartbeat_due else Message.NOTIFY
+        summary = self.summary_provider()
         try:
             self.device.send(  # type: ignore[attr-defined]
                 build_packet(
-                    Message.HEARTBEAT,
+                    message,
                     self.session,
                     self.sequence,
                     self.scene_provider(),
-                    self.notification_count,
+                    summary=summary,
                 )
             )
         except OSError as error:
             self._disconnect(now, error)
             return False
+        if message == Message.NOTIFY:
+            self.notify_pending = False
+            self.notifications += 1
+            self._log(
+                f"notify seq={self.sequence} category={summary.category.name.lower()} "
+                f"priority={summary.priority.name.lower()} count={summary.count}"
+            )
+            return False
+        self.notify_pending = False
         self.next_heartbeat = now + self.interval
         self.heartbeats += 1
         self._log(
             f"heartbeat seq={self.sequence} scene={self.scene_provider().name.lower()} "
-            f"notify={self.notification_count}"
+            f"notify={summary.count}"
         )
         return True
 
@@ -156,6 +193,11 @@ class HidHeartbeat:
         """Make a settled semantic change visible without waiting 500 ms."""
         if self.device is not None:
             self.next_heartbeat = min(self.next_heartbeat, now)
+
+    def request_notify(self) -> None:
+        """Coalesce an absolute semantic update behind any due heartbeat."""
+        if self.device is not None:
+            self.notify_pending = True
 
     def close(self) -> None:
         self._disconnect(time.monotonic())
@@ -192,6 +234,104 @@ class FocusService:
             invocation.return_value(None)
             return
         invocation.return_dbus_error(f"{FOCUS_INTERFACE}.UnknownMethod", method)
+
+
+EVENTS_XML = f"""
+<node>
+  <interface name='{EVENTS_INTERFACE}'>
+    <method name='ReportTerminalCompletion'>
+      <arg type='u' name='durationMilliseconds' direction='in'/>
+      <arg type='i' name='exitStatus' direction='in'/>
+    </method>
+    <method name='InjectSynthetic'>
+      <arg type='y' name='category' direction='in'/>
+      <arg type='y' name='priority' direction='in'/>
+      <arg type='b' name='persistent' direction='in'/>
+    </method>
+    <method name='ClearNotifications'/>
+  </interface>
+</node>
+"""
+
+
+class EventService:
+    """Private diagnostic and redacted terminal-completion ingress."""
+
+    def __init__(
+        self,
+        Gio,
+        connection,
+        policy: NotificationPolicy,
+        focus: FocusArbiter,
+        changed: Callable[[], None],
+        clock=time.monotonic,
+    ) -> None:
+        self.policy = policy
+        self.focus = focus
+        self.changed = changed
+        self.clock = clock
+        info = Gio.DBusNodeInfo.new_for_xml(EVENTS_XML)
+        self.registration_id = connection.register_object(
+            OBJECT_PATH, info.interfaces[0], self._method_call, None, None
+        )
+
+    def report_terminal_completion(self, duration_ms: int, exit_status: int) -> bool:
+        if duration_ms < 10_000 or self.focus.terminal_focused:
+            return False
+        priority = Priority.LOW if exit_status == 0 else Priority.NORMAL
+        changed = self.policy.inject(
+            Category.TERMINAL,
+            priority,
+            False,
+            self.clock(),
+        )
+        if changed:
+            self.changed()
+        return changed
+
+    def inject_synthetic(self, category: int, priority: int, persistent: bool) -> bool:
+        try:
+            changed = self.policy.inject(
+                Category(category), Priority(priority), bool(persistent), self.clock()
+            )
+        except (ValueError, TypeError):
+            return False
+        if changed:
+            self.changed()
+        return changed
+
+    def clear(self) -> None:
+        self.policy.clear()
+        self.changed()
+
+    def _method_call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
+        del connection, sender, path, interface
+        if method == "ReportTerminalCompletion":
+            self.report_terminal_completion(*parameters.unpack())
+            invocation.return_value(None)
+            return
+        if method == "InjectSynthetic":
+            category, priority, persistent = parameters.unpack()
+            try:
+                Category(category)
+                parsed_priority = Priority(priority)
+                if category == Category.NONE or parsed_priority == Priority.NONE:
+                    raise ValueError
+                if persistent and parsed_priority != Priority.CRITICAL:
+                    raise ValueError
+            except (ValueError, TypeError):
+                invocation.return_dbus_error(
+                    f"{EVENTS_INTERFACE}.InvalidArguments", "invalid notification fields"
+                )
+            else:
+                self.inject_synthetic(category, priority, persistent)
+                invocation.return_value(None)
+            return
+        if method == "ClearNotifications":
+            self.clear()
+            invocation.return_value(None)
+            return
+        invocation.return_dbus_error(f"{EVENTS_INTERFACE}.UnknownMethod", method)
 
 
 class KWinBridgeLoader:
@@ -281,7 +421,15 @@ def default_kwin_script() -> Path:
 
 
 def run(args: argparse.Namespace) -> int:
-    arbiter = FocusArbiter()
+    salt = secrets.token_bytes(16)
+
+    def identifier_digest(value: str) -> bytes:
+        return hashlib.blake2s(
+            value.encode("utf-8", "surrogatepass"), key=salt, digest_size=16
+        ).digest()
+
+    arbiter = FocusArbiter(identifier_digest=identifier_digest)
+    policy = NotificationPolicy()
     override = SCENES[args.scene] if args.scene is not None else None
 
     def scene_provider() -> Scene:
@@ -303,11 +451,20 @@ def run(args: argparse.Namespace) -> int:
     session_factory = (
         (lambda: fixed_session) if fixed_session is not None else (lambda: secrets.randbits(32) or 1)
     )
+    legacy_summary = (
+        EMPTY_SUMMARY
+        if args.notify == 0
+        else NotificationSummary(args.notify, Category.OTHER, Priority.NORMAL)
+    )
+
+    def summary_provider() -> NotificationSummary:
+        return legacy_summary if args.notify else policy.summary(time.monotonic())
+
     heartbeat = HidHeartbeat(
         scene_provider,
         device_factory,
         session_factory,
-        notification_count=args.notify,
+        summary_provider=summary_provider,
         interval=args.interval,
         retry_interval=args.retry_interval,
         verbose=args.verbose,
@@ -334,12 +491,31 @@ def run(args: argparse.Namespace) -> int:
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     owner_id = 0
     focus_service = None
+    event_service = None
+    desktop_monitor = None
     owned_objects = {}
     if override is None:
         focus_service = FocusService(Gio, connection, arbiter)
 
-        def name_acquired(bus_connection, name) -> None:
-            del name
+    event_service = EventService(Gio, connection, policy, arbiter, heartbeat.request_notify)
+
+    if not args.no_desktop_notifications:
+        desktop_adapter = DesktopNotificationAdapter(
+            policy, salt, arbiter.matches_focused
+        )
+        desktop_monitor = DesktopMonitor(
+            Gio, GLib, desktop_adapter, time.monotonic, args.verbose
+        )
+        if not desktop_monitor.start() and args.verbose:
+            print(
+                "arcane-host: desktop notification monitor unavailable; adapter disabled",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    def name_acquired(bus_connection, name) -> None:
+        del name
+        if override is None:
             owned_objects["bridge"] = KWinBridgeLoader(
                 Gio,
                 GLib,
@@ -348,9 +524,9 @@ def run(args: argparse.Namespace) -> int:
                 args.verbose,
             )
 
-        owner_id = Gio.bus_own_name_on_connection(
-            connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE, name_acquired, None
-        )
+    owner_id = Gio.bus_own_name_on_connection(
+        connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE, name_acquired, None
+    )
 
     loop = GLib.MainLoop()
 
@@ -360,6 +536,11 @@ def run(args: argparse.Namespace) -> int:
             prior_scene = arbiter.scene
             if arbiter.poll(now) != prior_scene:
                 heartbeat.request_heartbeat(now)
+        current_summary = summary_provider()
+        prior_summary = owned_objects.get("last_summary")
+        if prior_summary != current_summary:
+            owned_objects["last_summary"] = current_summary
+            heartbeat.request_notify()
         sent = heartbeat.tick(now)
         if sent and args.once:
             loop.quit()
@@ -373,7 +554,7 @@ def run(args: argparse.Namespace) -> int:
         if args.verbose:
             print("arcane-host: stopped; firmware context expires within 1.5 s")
     finally:
-        del focus_service
+        del focus_service, event_service, desktop_monitor
         owned_objects.clear()
         if owner_id:
             Gio.bus_unown_name(owner_id)

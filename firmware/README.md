@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M0–M9 hardware-verified (2026-07-13)
+## Status: M10 implemented; awaiting hardware verification (2026-07-13)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -76,7 +76,7 @@ snapshot. Determinism is machine-verified by the host test rig in
 iterates without flashing).
 
 **M3 — Split snapshot proof.** The master's world is authoritative and
-streams CRC'd snapshots (`sim/duel_proto.{h,c}`, now 30 bytes at M8) to
+streams CRC'd snapshots (`sim/duel_proto.{h,c}`, now 31 bytes at M10) to
 the slave over a user split RPC every 2nd tick (12.5 Hz). Sequence + session
 acceptance means
 a stale or duplicated packet can never roll the slave's view backward; a
@@ -105,7 +105,7 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
     FIRST_HELD → PENDING → ACTIVE → SELECT / CANCELLED), a pure level-logic
     state machine on the sampled `scry_mask`, authoritative-only like combat.
     M7.5 adds capped recipe presentation tiers and a 10-tick cast wind-up.
-  - `duel_proto.{h,c}` — split snapshot wire format (v6, 30 bytes, CRC-8)
+  - `duel_proto.{h,c}` — split snapshot wire format (v7, 31 bytes, CRC-8)
     and the slave-side sequence/session acceptance rules. The M7 `scry` byte
     carries overlay state; M7.5's two packed charge bytes carry absolute
     wind-up/tier state so both screens draw the same anticipation; M8's final
@@ -531,9 +531,78 @@ between synchronized Archive and Duel correctly. This proves the complete KWin
 be refined further in M11 polish without reopening the M9 mechanism or changing
 its interfaces.
 
-## Next: M10 — Notification policy and adapters
+## M10 — Notification policy and adapters (awaiting hardware verification)
 
-Start with synthetic events and then unfocused terminal-command completion.
-Desktop notification mirroring remains gated on aggregation, deduplication,
-redaction, expiry, and rate limiting; firmware must not require message bodies
-or other private text.
+The host now owns a bounded monotonic-time policy. Low/normal/transient-critical
+events aggregate in a fixed six-second batch; repeats never extend it. New
+batches have a ten-second start-to-start budget, and cooldown-only arrivals are
+suppressed and counted rather than replayed. Non-transient critical alerts
+bypass that budget and persist until their desktop notification closes, the
+private clear method is called, or daemon context expires. Counts saturate at
+15. Category ties select the newest distinct event at the highest active
+priority, while age remains anchored to its first occurrence.
+
+Raw HID advances to v2 without changing the 32-byte report. Every message is an
+absolute six-field summary: scene, count, category, priority, age, and
+persistence. NOTIFY makes changes prompt but never refreshes liveness;
+500 ms heartbeats take scheduling priority. Firmware also accepts the old
+v1/two-byte summaries, which retain count-only scry behavior and do not draw a
+corner glyph. Split sync advances to v7/31 bytes: the old external byte uses its
+top bit for persistence and a new packed byte carries category/priority/age;
+CRC covers both.
+
+Each half draws a deterministic mirrored 5x7 category sigil in its outer upper
+corner. Priority adds framing/sparks, count adds up to four pips, age removes
+accents, and persistence adds an anchor. It draws above Duel/Archive/combat and
+below scry, stale-link, and debug overlays. Opening scry replaces the outer
+sigil with the normalized panel summary. Count-zero Duel, Focus, and Archive
+frames remain byte-identical; `sim_world_t`, mechanics, combat, and all replay
+goldens are unchanged. Preview scenarios are `terminal-completion`,
+`aggregated-normal`, `persistent-critical`, `aged-alert`, and
+`alert-under-scry`.
+
+The existing private D-Bus object now also exposes synthetic injection, clear,
+and redacted terminal completion. The packaged `corne-arcane-event` client and
+Zsh hook report only monotonic duration plus exit status for commands lasting
+at least ten seconds, asynchronously and only when a recognized terminal is
+unfocused. Freedesktop monitoring uses a separate monitor connection. Summary
+and body are discarded immediately after a per-session salted digest; actions,
+icons, URLs, images, and plaintext are never logged, persisted, or transmitted.
+Monitor denial disables only that adapter.
+
+### M10 hardware acceptance sequence
+
+1. Refresh and build `griffin_hostoled`, then power down, disconnect TRRS, and
+   flash **both halves** from the same source. Split v7 is incompatible with v6:
+
+   ```bash
+   cd ~/dev/corne-arcane-oled
+   ./host/install_firmware.sh
+   cd ~/src/vial-qmk
+   qmk compile -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce
+   qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-left
+   qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-right
+   ```
+2. Inject terminal/normal, repeated and distinct normal, aged, and
+   security/critical/persistent events with `corne-arcane-event`. Confirm fixed
+   aggregation expiry, cooldown suppression, mirrored glyph grammar, scry
+   replacement, persistence, and explicit clear.
+3. Source the packaged Zsh hook. Run a 10+ second command, leave Konsole before
+   completion, and confirm a terminal alert. Repeat while Konsole remains
+   focused and confirm suppression; verify success is low and failure normal.
+4. Send low, normal, transient-critical, and persistent-critical desktop
+   notifications, including replacement and dismissal. Confirm focused-source
+   suppression, critical pass-through, replacement without count growth, and
+   persistent removal on close.
+5. Flood repeated notifications while typing rapidly on both halves. Confirm
+   key output, 500 ms heartbeat, split convergence, and scene changes remain
+   immediate; run combat, KO/medic, Archive pulse, scry, stale marker, and debug
+   checks for visibility.
+6. Stop/restart the daemon, unplug/replug HID, suspend/wake, and test a denied
+   desktop monitor. Offline Duel must return within 1.5 seconds and every live
+   reconnect must converge through a fresh HELLO.
+
+Until all six steps pass, M10 remains implemented/awaiting hardware
+verification. Full rollback is accepted commit `26c49a2` with its M9 daemon and
+v6 firmware pair, or the preserved M7.5 recovery UF2. Do not run the M10 daemon
+against M9 firmware; stop the service or install the M9 package first.

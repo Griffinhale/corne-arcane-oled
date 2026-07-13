@@ -1,6 +1,6 @@
 # Corne Arcane OLED — Build Notes (NixOS) & Milestone Status
 
-The M9 hardware verification host is **Debian 13 (trixie)** with the Nix package
+The target host is **Debian 13 (trixie)** with the Nix package
 manager, Plasma, and Wayland. `corne.nix` remains the declarative NixOS 26.05
 deployment option; on Debian, build `host/package.nix` directly with Nix.
 Ignore the older spike1 Vial-AppImage / `keyd.rvaiya` steps here.
@@ -25,9 +25,9 @@ Ignore the older spike1 Vial-AppImage / `keyd.rvaiya` steps here.
   experiment here.
 - `griffin_anim` — firmware OLED experiments (Vial on). Its compiled default
   layout is captured from `../corne-arcane.vil`.
-- `griffin_hostoled` — complete offline duel plus M8 custom Raw HID and M9's
-  hybrid Archive renderer. Vial/VIA are off and it shares the same compiled
-  default as `griffin_anim`.
+- `griffin_hostoled` — complete offline duel plus custom Raw HID, M9's hybrid
+  Archive renderer, and M10 notification sigils. Vial/VIA are off and it shares
+  the same compiled default as `griffin_anim`.
 
 ## NixOS import and service
 
@@ -40,13 +40,18 @@ imports = [
 ```
 
 Then run the normal `sudo nixos-rebuild switch`. The module builds the daemon,
-PyGObject/Gio runtime, and KWin bridge from `host/`, and enables the restarting
-user service at `graphical-session.target`.
+event client, Zsh hook, PyGObject/Gio runtime, and KWin bridge from `host/`, and
+enables the restarting user service at `graphical-session.target`.
 
 ```bash
 systemctl --user status corne-arcane-host
 journalctl --user -u corne-arcane-host -f
 systemctl --user restart corne-arcane-host
+
+# Synthetic policy checks:
+corne-arcane-event notify --category terminal --priority normal
+corne-arcane-event notify --category security --priority critical --persistent
+corne-arcane-event clear
 
 # Diagnostic fixed-scene override (automatic focus arbitration is disabled):
 systemctl --user stop corne-arcane-host
@@ -56,14 +61,25 @@ corne-arcane-host --scene archive --verbose
 systemctl --user disable --now corne-arcane-host
 ```
 
-## Build & flash
+Source the completion hook from `.zshrc` using its installed profile path:
+
+```zsh
+source /run/current-system/sw/share/corne-arcane/zsh/corne-arcane.zsh
+```
+
+Set `services.corne-arcane-host.desktopNotifications = false` or pass
+`--no-desktop-notifications` to disable only desktop notification monitoring.
+
+## Build & flash M10
 
 ```bash
+cd ~/dev/corne-arcane-oled
+./host/install_firmware.sh
 cd ~/src/vial-qmk
-qmk compile -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce
+qmk compile -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce
 # one half at a time; never hot-plug TRRS:
-qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-left
-qmk flash -kb crkbd/rev1 -km griffin_anim -e CONVERT_TO=rp2040_ce -bl uf2-split-right
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-left
+qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-right
 ```
 Reassemble: USB into left half only + TRRS connected.
 
@@ -82,7 +98,10 @@ Reassemble: USB into left half only + TRRS connected.
   Plasma/Wayland, and the physical Corne. Real application focus switches the
   daemon and both OLEDs between Archive and Duel correctly. The mechanism is
   accepted; further Archive appearance tuning is deferred to M11 polish.
-- **M10 — Notification policy and adapters** is next.
+- **M10 — Notification policy and adapters** ✅ implemented and host-verified;
+  Raw HID v2/32 bytes, split v7/31 bytes, bounded policy, synthetic Events
+  interface, Konsole/Zsh completion, and redacted Freedesktop monitoring are
+  awaiting the physical hardware sequence. Both halves must be flashed together.
 
 ## Hardware notes learned this session
 

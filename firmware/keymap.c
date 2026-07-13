@@ -87,7 +87,7 @@ void matrix_slave_scan_user(void) {
 }
 
 /* ---- split snapshot sync (M3) --------------------------------------------
- * The master's world is authoritative; it streams 30-byte snapshots to the
+ * The master's world is authoritative; it streams 31-byte snapshots to the
  * slave every 2nd tick (12.5 Hz). The slave renders the last accepted packet
  * and can never be rolled backward (see duel_rx_accept). If snapshots stop
  * for DUEL_STALE_MS the slave shows a broken-link glyph and falls back to
@@ -234,10 +234,13 @@ static void duel_master_tx(void) {
     duel_snapshot_t pkt;
 #ifdef ARCANE_HOST_ENABLE
     uint8_t external = duel_host_context(&duel_host_state);
+    uint8_t alert = duel_host_alert(&duel_host_state);
 #else
     uint8_t external = 0;
+    uint8_t alert = 0;
 #endif
-    duel_encode_external(&duel_world, duel_session, ++duel_tx_seq, external, &pkt);
+    duel_encode_external_alert(&duel_world, duel_session, ++duel_tx_seq,
+                               external, alert, &pkt);
     // Fails fast when the cable is out; the next snapshot lands in 80 ms.
     if (transaction_rpc_send(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt)) {
         duel_fx_sent = duel_world.fx_seq;
@@ -295,13 +298,22 @@ void housekeeping_task_user(void) {
         duel_render.stale_link = false;
 #ifdef ARCANE_HOST_ENABLE
         uint8_t external         = duel_host_context(&duel_host_state);
+        uint8_t alert            = duel_host_alert(&duel_host_state);
         duel_render.overlay_host = DUEL_HOST_CONTEXT_ONLINE(external);
         duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(external);
         duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(external);
+        duel_render.overlay_category = DUEL_HOST_ALERT_CATEGORY(alert);
+        duel_render.overlay_priority = DUEL_HOST_ALERT_PRIORITY(alert);
+        duel_render.overlay_age = DUEL_HOST_ALERT_AGE(alert);
+        duel_render.overlay_persistent = DUEL_HOST_CONTEXT_PERSISTENT(external);
 #else
         duel_render.overlay_host  = 0;
         duel_render.overlay_scene = 0;
         duel_render.overlay_notif = 0;
+        duel_render.overlay_category = 0;
+        duel_render.overlay_priority = 0;
+        duel_render.overlay_age = 0;
+        duel_render.overlay_persistent = 0;
 #endif
     } else {
         duel_slave_rx_consume();
@@ -311,12 +323,20 @@ void housekeeping_task_user(void) {
             duel_render.overlay_host  = DUEL_HOST_CONTEXT_ONLINE(duel_rx.last.external);
             duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(duel_rx.last.external);
             duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(duel_rx.last.external);
+            duel_render.overlay_category = DUEL_HOST_ALERT_CATEGORY(duel_rx.last.alert);
+            duel_render.overlay_priority = DUEL_HOST_ALERT_PRIORITY(duel_rx.last.alert);
+            duel_render.overlay_age = DUEL_HOST_ALERT_AGE(duel_rx.last.alert);
+            duel_render.overlay_persistent = DUEL_HOST_CONTEXT_PERSISTENT(duel_rx.last.external);
         } else {
             // Local pose-only fallback: never authoritative, never combat.
             duel_render.w = duel_world;
             duel_render.overlay_host  = 0;
             duel_render.overlay_scene = 0;
             duel_render.overlay_notif = 0;
+            duel_render.overlay_category = 0;
+            duel_render.overlay_priority = 0;
+            duel_render.overlay_age = 0;
+            duel_render.overlay_persistent = 0;
         }
         duel_render.stale_link = stale;
     }

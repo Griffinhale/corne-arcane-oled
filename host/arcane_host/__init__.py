@@ -1,1 +1,1 @@
-"""Corne Arcane M8 semantic host daemon."""
+"""Corne Arcane M10 privacy-redacted semantic host."""
