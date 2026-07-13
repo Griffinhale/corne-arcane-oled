@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M0–M8 hardware-verified; M9 awaiting hardware verification (2026-07-13)
+## Status: M0–M9 hardware-verified (2026-07-13)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -472,7 +472,7 @@ review confirm the ordinary duel fallback and synchronized scry/host
 presentation render cleanly on the real OLEDs without visible clipping or
 corruption. Daemon-driven context works across both halves.
 
-## M9 — Application-aware Arcane Archive (implemented, awaiting hardware verification)
+## M9 — Application-aware Arcane Archive (hardware-verified)
 
 The packaged Plasma 6 host service receives only KWin `resourceClass` and
 `desktopFileName` over a private session D-Bus method. Browser aliases settle
@@ -524,6 +524,16 @@ the M9 commit(s), or reflash both halves with the M8 build. The preserved M7.5
 rollback UF2 remains
 `~/src/vial-qmk/crkbd_rev1_griffin_anim_m75_verified_rp2040_ce.uf2`.
 
-## Next: M10
+**Hardware result (2026-07-13): accepted.** On Debian 13 Plasma/Wayland, real
+application-focus changes reach the daemon and switch both physical OLEDs
+between synchronized Archive and Duel correctly. This proves the complete KWin
+→ session D-Bus → daemon → Raw HID → split-render path. The Archive artwork can
+be refined further in M11 polish without reopening the M9 mechanism or changing
+its interfaces.
 
-M10 is the next milestone after M9 passes the physical keyboard checklist.
+## Next: M10 — Notification policy and adapters
+
+Start with synthetic events and then unfocused terminal-command completion.
+Desktop notification mirroring remains gated on aggregation, deduplication,
+redaction, expiry, and rate limiting; firmware must not require message bodies
+or other private text.

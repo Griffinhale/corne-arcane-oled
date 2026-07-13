@@ -1,7 +1,9 @@
 # Corne Arcane OLED — Build Notes (NixOS) & Milestone Status
 
-This project builds on **NixOS 26.05**, not the Debian 13 the `spike1/` docs assume.
-Ignore the spike1 `apt` / Vial-AppImage / `keyd.rvaiya` steps here.
+The M9 hardware verification host is **Debian 13 (trixie)** with the Nix package
+manager, Plasma, and Wayland. `corne.nix` remains the declarative NixOS 26.05
+deployment option; on Debian, build `host/package.nix` directly with Nix.
+Ignore the older spike1 Vial-AppImage / `keyd.rvaiya` steps here.
 
 ## Environment
 
@@ -76,11 +78,11 @@ Reassemble: USB into left half only + TRRS connected.
   physical Corne. Offline duel fallback, synchronized host state, scene class,
   notification count, timeout, and daemon restart all work. The isolated host
   keymap uses split snapshot v6/30 bytes; Vial/VIA remain off.
-- **M9 — Application-aware Arcane Archive** is implemented and awaiting
-  hardware verification. Browser focus, debounce, reconnect behavior, hybrid
-  rendering, test preview scenarios, and NixOS startup are complete without a
-  browser extension or protocol/state changes.
-- **M10** is next after M9 hardware acceptance.
+- **M9 — Application-aware Arcane Archive** ✅ hardware-verified on Debian 13,
+  Plasma/Wayland, and the physical Corne. Real application focus switches the
+  daemon and both OLEDs between Archive and Duel correctly. The mechanism is
+  accepted; further Archive appearance tuning is deferred to M11 polish.
+- **M10 — Notification policy and adapters** is next.
 
 ## Hardware notes learned this session
 

@@ -53,12 +53,13 @@ git add -A && git commit -m "sync firmware snapshot"
 
 ## Milestone status
 
-**M0–M8 are hardware-verified. M9 is implemented and awaiting hardware
-verification.** Browser focus now selects a 200 ms-debounced hybrid Archive
-scene through a privacy-bounded KWin bridge, while typing animates the archive
-from existing synchronized duel state. Raw HID v1, split snapshot v6, combat,
-and world hashes are unchanged. M10 is next after M9 hardware acceptance. Full
-detail and the acceptance checklist live in `firmware/README.md`.
+**M0–M9 are hardware-verified.** On the physical Corne, real KWin focus changes
+now select the 200 ms-debounced hybrid Archive scene through the daemon and Raw
+HID on both synchronized OLEDs, while non-browser focus returns both halves to
+Duel. The mechanism is accepted; Archive visual refinement is deferred to the
+polish milestone. Raw HID v1, split snapshot v6, combat, and world hashes remain
+unchanged. **M10 — Notification policy and adapters is next.** Full detail and
+the acceptance record live in `firmware/README.md`.
 
 ## Build & flash (NixOS, user-scope, no sudo)
 

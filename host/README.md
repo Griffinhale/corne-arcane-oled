@@ -33,3 +33,8 @@ The wire remains Raw HID v1. Firmware accepts a new daemon session only through
 `HELLO` sequence zero, rejects stale/duplicate reports, and treats every report
 as an absolute scene/notification summary. Only HELLO and HEARTBEAT refresh the
 1.5-second liveness deadline.
+
+**M9 hardware result (2026-07-13): accepted.** Real KWin focus changes on Debian
+13 Plasma/Wayland switch the daemon and both physical OLEDs correctly between
+Archive and Duel. Visual refinement is deferred to M11 polish; M10 notification
+policy and adapters is next.
