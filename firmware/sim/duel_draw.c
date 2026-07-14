@@ -186,78 +186,84 @@ static void floor_dome(duel_fb_t *fb, int lo, int hi, int top_y) {
     }
 }
 
-// Occupation anchors (the fixed furniture / stations) for one archetype, drawn
-// in the current city's architectural language. Two zones: a gap-side apparatus
-// and an outer-side rack, both inside the floor band and clear of the resident's
-// standing spots. Authored in desk space (gap at x=31) and mirrored on the right.
+// A large framed window set into the outer wall. This is the single biggest
+// legibility win for the floor: one bold rectangle reads instantly as "a lived
+// room" from across the desk and fills the otherwise-dead upper-outer void.
+// Astral arches its crown and carries a lone centre mullion (curves); mechanical
+// squares it with a full cross of mullions (four panes).
+static void floor_window(duel_fb_t *fb, int x0, int x1, int y0, int y1, bool is_left) {
+    int cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    archive_rect(fb, x0, y0, x1, y1);
+    for (int y = y0 + 1; y < y1; y++) duel_fb_px(fb, cx, y, true);   // centre mullion
+    if (is_left) {
+        floor_dome(fb, x0, x1, y0 - 3);                             // astral arched crown
+    } else {
+        wiz_hspan(fb, x0 + 1, x1 - 1, cy);                          // mechanical transom -> 4 panes
+    }
+}
+
+// Something hanging from the ceiling beam into the centre void: fills the dead
+// air between the beam and the ground-level furniture and gives the room a
+// vertical anchor. Astral hangs a glowing lantern; mechanical hangs a hoist
+// block on a chain. cx is authored in desk space by the caller.
+static void floor_hanging(duel_fb_t *fb, int cx, bool is_left) {
+    for (int y = 62; y <= 69; y++) duel_fb_px(fb, cx, y, true);      // short chain from the beam
+    if (is_left) {
+        floor_dome(fb, cx - 2, cx + 2, 70);                         // lantern cap
+        archive_rect(fb, cx - 2, 72, cx + 2, 79);                   // lantern body
+        duel_fb_px(fb, cx, 75, true); duel_fb_px(fb, cx, 76, true); // flame/core
+    } else {
+        archive_rect(fb, cx - 2, 71, cx + 2, 78);                   // hoist block
+        wiz_hspan(fb, cx - 1, cx + 1, 74);                          // block strap
+        duel_fb_px(fb, cx, 79, true);                               // hook shank
+        duel_fb_px(fb, cx - 1, 80, true);                           // hook curl
+    }
+}
+
+// Occupation furniture for the floor: two bold ground-level masses that match
+// the window's weight and frame the resident working among them — a tall gap-side
+// cabinet (balances the outer-wall window) and an open counter beneath the
+// window. The floor archetype only *accents* these; the brick-wipe transition
+// (not the furniture) is what sells a floor change, so all three archetypes
+// share this silhouette rather than each cramming a distinct, tiny one. Tops sit
+// at waist height with open fronts so a resident at a station reads as standing
+// AT the piece, not boxed inside it. Authored in desk space (gap at x=31) and
+// mirrored on the right.
 static void draw_floor_anchors(duel_fb_t *fb, uint8_t floor, bool is_left) {
 #define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
-    int ga = FLR_X(19), gb = FLR_X(27); int glo = ga < gb ? ga : gb, ghi = ga < gb ? gb : ga;
-    int oa = FLR_X(3),  ob = FLR_X(11); int olo = oa < ob ? oa : ob, ohi = oa < ob ? ob : oa;
+    int ga = FLR_X(23), gb = FLR_X(28); int glo = ga < gb ? ga : gb, ghi = ga < gb ? gb : ga;
+    int oa = FLR_X(2),  ob = FLR_X(9);  int olo = oa < ob ? oa : ob, ohi = oa < ob ? ob : oa;
     int gmid = (glo + ghi) / 2, omid = (olo + ohi) / 2;
 
+    // Gap-side cabinet: a tall, solid-outlined mass with an interior shelf and a
+    // city-styled crown.
+    archive_rect(fb, glo, 88, ghi, 104);
+    wiz_hspan(fb, glo, ghi, 96);                                    // interior shelf
+    if (is_left) {
+        floor_dome(fb, glo, ghi, 86);                              // astral arched crown
+        duel_fb_px(fb, gmid, 84, true);                            // finial
+    } else {
+        wiz_hspan(fb, glo, ghi, 86);                               // mechanical lintel
+        floor_gear(fb, gmid, 84, 1);                               // drive gear atop
+    }
+
+    // Outer counter beneath the window: an open-front bench (solid top + legs).
+    wiz_hspan(fb, olo, ohi, 99);                                   // counter top
+    wiz_hspan(fb, olo, ohi, 100);
+    for (int y = 101; y <= 104; y++) { duel_fb_px(fb, olo, y, true); duel_fb_px(fb, ohi, y, true); }
+
+    // Archetype accent — small; not required to read as a distinct floor.
     switch (floor) {
     case DUEL_M12_FLOOR_RESEARCH:
-        // Tall study apparatus + a stack of catalog shelves.
-        archive_rect(fb, glo, 74, ghi, 104);
-        wiz_hspan(fb, glo, ghi, 84);
-        wiz_hspan(fb, glo, ghi, 94);
-        wiz_hspan(fb, olo, ohi, 80);
-        wiz_hspan(fb, olo, ohi, 88);
-        wiz_hspan(fb, olo, ohi, 96);
-        if (is_left) {           // astral: an orrery orb crowning the apparatus
-            floor_dome(fb, glo, ghi, 72);
-            duel_fb_px(fb, gmid, 70, true);
-        } else {                 // mechanical: a bracket with two gauge dials
-            wiz_hspan(fb, glo, ghi, 72);
-            duel_fb_px(fb, glo, 71, true); duel_fb_px(fb, ghi, 71, true);
-        }
+        wiz_hspan(fb, glo, ghi, 92);                               // extra catalog shelf
+        duel_fb_px(fb, omid, 97, true); duel_fb_px(fb, omid, 98, true); // upright on the counter
         break;
-
     case DUEL_M12_FLOOR_WORKSHOP:
-        if (is_left) {
-            // Forge / rune-smithing: anvil, a curved forge hood, rune-flame
-            // licking up, and an outer rack of vertical rune tallies.
-            archive_rect(fb, glo, 100, ghi, 104);
-            wiz_hspan(fb, glo, ghi, 100);
-            floor_dome(fb, glo + 1, ghi - 1, 92);
-            duel_fb_px(fb, gmid, 90, true);
-            duel_fb_px(fb, gmid - 1, 88, true);
-            duel_fb_px(fb, gmid + 1, 86, true);
-            for (int y = 86; y <= 104; y += 4) { duel_fb_px(fb, olo, y, true); duel_fb_px(fb, ohi, y, true); }
-            wiz_hspan(fb, olo, ohi, 104);
-        } else {
-            // Mechanical assembly: a heavy squared bench, a big drive gear, and
-            // an outer toothed conveyor.
-            archive_rect(fb, glo, 96, ghi, 104);
-            wiz_hspan(fb, glo, ghi, 100);
-            floor_gear(fb, gmid, 88, 3);
-            wiz_hspan(fb, olo, ohi, 96);
-            wiz_hspan(fb, olo, ohi, 104);
-            for (int x = olo; x <= ohi; x += 2) duel_fb_px(fb, x, 100, true);
-        }
+        if (is_left) { duel_fb_px(fb, gmid, 82, true); duel_fb_px(fb, gmid - 1, 80, true); } // forge flame
+        else floor_gear(fb, gmid, 92, 2);                         // drive gear in the cabinet
+        duel_fb_px(fb, omid, 97, true); duel_fb_px(fb, omid + 1, 97, true);  // tool on the bench
         break;
-
-    case DUEL_M12_FLOOR_COMMONS:
-    default:
-        if (is_left) {
-            // Astral commons: a domed shrine/hearth with a finial and a curved
-            // notice arch on the outer wall.
-            archive_rect(fb, glo, 98, ghi, 104);
-            floor_dome(fb, glo, ghi, 94);
-            duel_fb_px(fb, gmid, 92, true);
-            floor_dome(fb, olo, ohi, 98);
-            wiz_hspan(fb, olo, ohi, 104);
-        } else {
-            // Mechanical commons (post office): a squared service kiosk with a
-            // counter slot and an outer grid of sorting pigeonholes.
-            archive_rect(fb, glo, 94, ghi, 104);
-            wiz_hspan(fb, glo, ghi, 99);
-            archive_rect(fb, olo, 96, ohi, 104);
-            wiz_hspan(fb, olo, ohi, 100);
-            duel_fb_px(fb, omid, 96, true); duel_fb_px(fb, omid, 104, true);
-        }
-        break;
+    default: break; // Commons: plain
     }
 #undef FLR_X
 }
@@ -282,10 +288,10 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         render_scene(r) == DUEL_HOST_SCENE_ARCHIVE)
         floor = DUEL_M12_FLOOR_RESEARCH;
 
-    // Ceiling beam splitting the rooftop from the floor. Left dashes it (astral);
-    // right leaves it solid and studs it with rivets (mechanical).
+    // Solid ceiling beam splitting the rooftop from the floor (both cities).
+    // City character lives in the details below the beam, not the beam itself.
     for (int x = 0; x < DUEL_CANVAS_W; x++)
-        if (!is_left || (x & 3) != 3) duel_fb_px(fb, x, 61, true);
+        duel_fb_px(fb, x, 61, true);
     if (is_left) {
         // A hanging astral arc under the beam near the gap.
         duel_fb_px(fb, FLR_X(28), 62, true);
@@ -314,7 +320,20 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         duel_fb_px(fb, FLR_X(29), 64, true); duel_fb_px(fb, FLR_X(28), 64, true); // gear teeth
     }
 
-    // Ground line of the room, one row clear of the health band (111-114).
+    // Big fixtures that own the empty upper two-thirds of the room: a framed
+    // window set into the outer wall and a fixture hanging in the centre void.
+    // Both are large, bold shapes chosen to read at desk distance (hardware
+    // feedback: the old furniture was too thin/low to register). Authored in
+    // desk space and mirrored per canvas.
+    int wa = FLR_X(2), wb = FLR_X(10);
+    int wlo = wa < wb ? wa : wb, whi = wa < wb ? wb : wa;
+    floor_window(fb, wlo, whi, 66, 84, is_left);
+    // Off the courier lifecycle columns (duel_courier life_ax = {24,17,11,26})
+    // so a hanging fixture never swallows a courier's density tell, and clear of
+    // the gap-side cabinet so the two don't stack up.
+    floor_hanging(fb, FLR_X(15), is_left);
+
+    // Ground line of the room.
     wiz_hspan(fb, 0, DUEL_CANVAS_W - 1, 110);
 
     // Occupation furniture, then the session-seeded resident living among it.
@@ -322,14 +341,35 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     m12_resident_t res = m12_resident_derive(r->seed, is_left, floor, mode, r->civic_phase);
     m12_resident_draw(fb, &res, is_left, mode, 0);
 
-    // Foundation / trim below the health band, clear of the y127 odometer. Left
-    // is sparse astral dotting; right is denser mechanical coursing.
+    // Paving course in the band freed by relocating HP up to the rooftop
+    // (y112-115). A 1-byte session seed staggers the pattern so each boot lays a
+    // slightly different pavement without streaming anything. Astral sets rounded
+    // cobbles; mechanical lays rectangular flagstones with joints.
+    uint8_t g = r->seed;
     if (is_left) {
-        for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 3) == 0) duel_fb_px(fb, x, 117, true);
-        for (int x = 2; x < DUEL_CANVAS_W; x += 8) duel_fb_px(fb, x, 121, true);
+        for (int x = (g & 3); x < DUEL_CANVAS_W; x += 4) {
+            duel_fb_px(fb, x + 1, 113, true);                      // cobble crown
+            duel_fb_px(fb, x, 114, true);
+            duel_fb_px(fb, x + 1, 114, true);
+            duel_fb_px(fb, x + 2, 114, true);
+        }
     } else {
-        for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 1) == 0) duel_fb_px(fb, x, 117, true);
-        for (int x = 1; x < DUEL_CANVAS_W; x += 4) { duel_fb_px(fb, x, 120, true); duel_fb_px(fb, x, 122, true); }
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (((x + (g & 1)) & 3) != 3) duel_fb_px(fb, x, 114, true); // flagstone tops
+        for (int x = 1 + (g & 3); x < DUEL_CANVAS_W; x += 4)
+            duel_fb_px(fb, x, 112, true);                          // vertical joints
+    }
+
+    // Foundation coursing, clear of the y127 odometer. The capstone line reads as
+    // masonry base; regular joints below give texture without noise. Left is a
+    // sparser astral course; right a denser mechanical one.
+    wiz_hspan(fb, 0, DUEL_CANVAS_W - 1, 117);                       // capstone (both cities)
+    if (is_left) {
+        for (int x = 2; x < DUEL_CANVAS_W; x += 8)                 // sparse ashlar joints
+            for (int y = 119; y <= 122; y++) duel_fb_px(fb, x, y, true);
+    } else {
+        for (int x = 0; x < DUEL_CANVAS_W; x += 4)                 // dense brick joints, offset course
+            for (int y = 119; y <= 122; y++) duel_fb_px(fb, x + ((y >> 1) & 1) * 2, y, true);
     }
 #undef FLR_X
 }
@@ -866,7 +906,24 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
         spell_glyph(fb, x, y, spell.kind, spell.dir);
     }
 
-    // HP pips for THIS half's wizard, bottom corner away from the gap.
+    // HP pips for THIS half's wizard.
+#ifdef ARCANE_M12
+    // M12: a vertical pip column standing on the rooftop just outside the robe
+    // on the away-from-gap side, so health reads as the champion's own and the
+    // whole bottom band (y111+) frees up for ground texture. Depletes top-down.
+    {
+        const int robe_bot = 75 + DUEL_ROOF_DY;      // matches wiz_body
+        const int hx = is_left ? 8 : DUEL_CANVAS_W - 1 - 9; // 8 / 22, just outside the robe
+        for (int i = 0; i < wz->hp && i < SIM_MAX_HP; i++) {
+            int py = robe_bot - 1 - 3 * i;
+            duel_fb_px(fb, hx,     py,     true);
+            duel_fb_px(fb, hx + 1, py,     true);
+            duel_fb_px(fb, hx,     py + 1, true);
+            duel_fb_px(fb, hx + 1, py + 1, true);
+        }
+    }
+#else
+    // Release (frozen M11.5 layout): pips in the bottom corner away from the gap.
     for (int i = 0; i < wz->hp && i < SIM_MAX_HP; i++) {
         int px = is_left ? 5 + 4 * i : 24 - 4 * i;
         duel_fb_px(fb, px, 112, true);
@@ -874,6 +931,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
         duel_fb_px(fb, px, 113, true);
         duel_fb_px(fb, px + 1, 113, true);
     }
+#endif
 
     // One-shot outcomes use three deliberately different grammars. All of this
     // is render-frame state: losing it costs only the flourish, never health or
@@ -912,9 +970,18 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
             }
             if (wz->hp < SIM_MAX_HP) {
                 int lost = wz->hp;
+#ifdef ARCANE_M12
+                // Twin the corner-flash to the pip that just vanished from the
+                // rooftop HP column (the first empty slot above the survivors).
+                int hx = is_left ? 8 : DUEL_CANVAS_W - 1 - 9;
+                int py = (75 + DUEL_ROOF_DY) - 1 - 3 * lost;
+                duel_fb_px(fb, hx - 1, py, true);     duel_fb_px(fb, hx + 2, py, true);
+                duel_fb_px(fb, hx - 1, py + 1, true); duel_fb_px(fb, hx + 2, py + 1, true);
+#else
                 int px   = is_left ? 5 + 4 * lost : 24 - 4 * lost;
                 duel_fb_px(fb, px - 1, 111, true); duel_fb_px(fb, px + 2, 111, true);
                 duel_fb_px(fb, px - 1, 114, true); duel_fb_px(fb, px + 2, 114, true);
+#endif
             }
         } else if (is_fizzle) {
             // Harmless dissipation stays away from the body and contracts from

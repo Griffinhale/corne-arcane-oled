@@ -82,14 +82,17 @@ m12_resident_t m12_resident_derive(uint8_t seed, bool is_left, uint8_t floor,
 // right OLED by the caller's FLR macro). feet_y is the ground the figure stands
 // on; the ~8 px figure rises to feet_y-7, staying inside the floor band.
 typedef struct { int8_t x; uint8_t feet_y; } rez_station_t;
+// Feet stand on/near the ground line (y110); x spots keep clear of the tall
+// gap-side cabinet (x23-28) so a working resident reads as standing AT the
+// furniture, not boxed inside it.
 static const rez_station_t stations[DUEL_M12_ACTION_COUNT] = {
-    /* WORK            */ { 8, 104},
-    /* WALK            */ {15, 107},
-    /* INSPECT         */ {22, 104},
-    /* REST            */ { 5, 108},
-    /* WATCH_ROOF      */ {13, 100},
-    /* HANDLE_DELIVERY */ {27, 100},
-    /* REACT           */ {16, 103},
+    /* WORK            */ { 6, 105},   // at the outer counter
+    /* WALK            */ {15, 107},   // crossing the open floor
+    /* INSPECT         */ {21, 105},   // in front of the cabinet
+    /* REST            */ { 4, 107},   // seated by the counter
+    /* WATCH_ROOF      */ {13, 105},   // centre, gazing up
+    /* HANDLE_DELIVERY */ {22, 105},   // gap-side, passing to the cabinet/lift
+    /* REACT           */ {16, 105},   // centre
 };
 
 void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
@@ -103,25 +106,28 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
     const int fy = st.feet_y;
     const int gapward = f;                      // +x on left canvas points at gap
 
-    // A small standing person: round-ish head, neck, shoulders, torso, split
-    // legs. Deliberately narrower/shorter than the champion (no pointed hat)
-    // and unlike the furniture anchors (which are filled rectangles/spans).
-    int head_y = fy - 6;
+    // A standing person: round head, neck, a solid shoulder line, spine, and
+    // split legs. Scaled up from the first pass (hardware feedback: read too
+    // small) to ~10px, still clearly under the champion and unlike the
+    // filled-rectangle furniture.
+    int head_y = fy - 8;
     bool rest = res->action == DUEL_M12_ACTION_REST;
-    if (rest) head_y = fy - 5; // seated/hunched: whole figure settles one row
+    if (rest) head_y = fy - 7; // seated/hunched: whole figure settles one row
 
     duel_fb_px(fb, cx, head_y - 1, true);            // crown
-    duel_fb_px(fb, cx - 1, head_y, true);            // head
-    duel_fb_px(fb, cx,     head_y, true);
-    duel_fb_px(fb, cx + 1, head_y, true);
-    duel_fb_px(fb, cx, head_y + 1, true);            // neck
-    for (int y = head_y + 2; y <= fy - 2; y++)       // torso
-        duel_fb_px(fb, cx, y, true);
+    for (int x = cx - 1; x <= cx + 1; x++) {         // head (3x2, rounder)
+        duel_fb_px(fb, x, head_y, true);
+        duel_fb_px(fb, x, head_y + 1, true);
+    }
+    duel_fb_px(fb, cx, head_y + 2, true);            // neck
 
-    // Default shoulders/arms row.
-    int arm_y = head_y + 2;
+    // Solid 3-wide shoulder line, then a spine down to the hips.
+    int arm_y = head_y + 3;
     duel_fb_px(fb, cx - 1, arm_y, true);
+    duel_fb_px(fb, cx,     arm_y, true);
     duel_fb_px(fb, cx + 1, arm_y, true);
+    for (int y = arm_y + 1; y <= fy - 2; y++)        // spine/torso
+        duel_fb_px(fb, cx, y, true);
 
     // Legs / feet.
     if (rest) {
@@ -161,10 +167,11 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
             if (res->progress & 2u) duel_fb_px(fb, cx, head_y - 2, true);
             break;
         case DUEL_M12_ACTION_WATCH_ROOF: {
-            // Gaze up toward the rooftop champion: an arm up and a short sight
-            // line rising to the ceiling beam (kept inside the band).
+            // Gaze up toward the rooftop champion: a raised arm and a short
+            // upward glance (three rising dots), not a full-height sight-line.
             duel_fb_px(fb, cx + gapward, head_y - 1, true);
-            for (int y = head_y - 2; y >= 63; y -= 2) duel_fb_px(fb, cx + gapward, y, true);
+            duel_fb_px(fb, cx + gapward, head_y - 3, true);
+            duel_fb_px(fb, cx + gapward, head_y - 5, true);
             break;
         }
         case DUEL_M12_ACTION_HANDLE_DELIVERY:
