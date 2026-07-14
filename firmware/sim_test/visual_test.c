@@ -182,6 +182,49 @@ static void test_isolation_and_restoration(void) {
     VCHECK(scry_differs && restores, "visual_scry_restoration");
 }
 
+static void test_m12_floor_and_resident(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
+    r.seed = 21;
+    r.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL,
+                              DUEL_M12_INTENSITY_CALM);
+
+    // 1) The floor room occupies its band (y61-110) and stays clear of the
+    //    raised rooftop: rows y59-60 (the gap between the lifted cluster and the
+    //    ceiling beam) carry no floor pixels with an idle champion.
+    r.civic_phase = 0;
+    duel_fb_t fb0;
+    render_direct(&fb0, &r, true, 0, false);
+    bool floor_present = pixel_count(&fb0, 0, 61, 31, 110) > 0;
+    bool separated = pixel_count(&fb0, 0, 59, 31, 60) == 0;
+    VCHECK(floor_present && separated, "visual_m12_floor_within_band");
+
+    // 2) Sweeping the civic phase advances ONLY the resident (nothing else keys
+    //    off phase here). Every pixel that changes must fall inside y61-110, so
+    //    the resident stays in its room; that it changes at all proves it is a
+    //    distinct actor, separate from the static occupation anchors.
+    bool moved = false, in_band = true;
+    duel_fb_t prev = fb0;
+    for (int ph = 16; ph <= 208; ph += 16) {
+        r.civic_phase = (uint8_t)ph;
+        duel_fb_t cur;
+        render_direct(&cur, &r, true, 0, false);
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cur, x, y) != duel_fb_get(&prev, x, y)) {
+                    moved = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        prev = cur;
+    }
+    VCHECK(in_band, "visual_m12_resident_within_floor_band");
+    VCHECK(moved, "visual_m12_resident_distinct_from_anchors");
+#endif
+}
+
 static void test_precedence_and_alert_grammar(void) {
     duel_fb_t alert_impact_l, alert_impact_r, stack_l, stack_r;
     const duel_scenario_t *impact = duel_scenario_find("alert-impact");
@@ -249,6 +292,7 @@ int main(int argc, char **argv) {
     test_density_and_distinction();
     test_archive_continuity_and_variation();
     test_isolation_and_restoration();
+    test_m12_floor_and_resident();
     test_precedence_and_alert_grammar();
     VCHECK(exact_hashes(path, write), "visual_exact_framebuffer_hashes");
     if (failures) { printf("%d visual test(s) FAILED\n", failures); return 1; }

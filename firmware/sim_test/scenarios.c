@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "duel_host.h"
+#include "duel_resident.h"
 #include "duel_sim.h"
 #include "scenarios.h"
 
@@ -45,6 +46,24 @@ static const duel_scenario_t scenarios[] = {
     SCENE("archive-alert", "precedence", "alert protected above Archive", 4, false),
     SCENE("alert-under-scry", "precedence", "alert summarized inside scry", 0, false),
     SCENE("scry-stale-diagnostics", "precedence", "scry, stale link, and diagnostics", 7, true),
+#ifdef ARCANE_M12
+    // M12 Twin Cities canonical gallery. These entries exist only under
+    // ARCANE_M12 so the accepted M11.5 visual golden (visual.hashes) is
+    // untouched; they flow into visual_m12.hashes.
+    SCENE("floor-commons", "floors", "Commons/post floor, both city-states", 0, false),
+    SCENE("floor-research", "floors", "Archive/Research floor, both city-states", 0, false),
+    SCENE("floor-workshop", "floors", "Workshop/Forge floor, both city-states", 0, false),
+    SCENE("city-astral", "cities", "astral (left) vs mechanical (right) commons", 0, false),
+    SCENE("city-mechanical", "cities", "astral vs mechanical workshop architecture", 0, false),
+    SCENE("civic-quiet", "cities", "QUIET civic mode subdues the resident", 0, false),
+    SCENE("resident-diligent", "residents", "diligent resident at work", 0, false),
+    SCENE("resident-curious", "residents", "curious resident inspecting", 0, false),
+    SCENE("resident-nervous", "residents", "nervous resident watching the roof", 0, false),
+    SCENE("resident-proud", "residents", "proud resident", 0, false),
+    SCENE("resident-distracted", "residents", "distracted resident", 0, false),
+    SCENE("workshop-idle", "workshop", "forge and assembly residents at work", 0, false),
+    SCENE("workshop-cast", "workshop", "combat over the workshop floor", 3, false),
+#endif
 };
 
 size_t duel_scenario_count(void) {
@@ -79,6 +98,16 @@ static void set_alert(duel_render_t *r, uint8_t count, uint8_t category,
     r->alert = DUEL_HOST_ALERT_PACK(category, priority, age);
 }
 
+#ifdef ARCANE_M12
+// Smallest seed whose LEFT city resident carries the wanted personality, so the
+// personality gallery shows all five deterministically without hand-tuning hashes.
+static uint8_t seed_for_personality(uint8_t want) {
+    for (int s = 0; s < 256; s++)
+        if (m12_resident_personality((uint8_t)s, true) == want) return (uint8_t)s;
+    return 0;
+}
+#endif
+
 bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     if (!scenario || !r) return false;
     sim_world_t w;
@@ -89,6 +118,12 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
 
     if (strncmp(name, "archive-", 8) == 0) {
         r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE, 0, false);
+#ifdef ARCANE_M12
+        // M12 drives the floor occupation from the civic byte, not the scene:
+        // the Archive scenarios now name the Research floor explicitly.
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL,
+                                   DUEL_M12_INTENSITY_CALM);
+#endif
     }
 
     if (strcmp(name, "duel-idle") == 0 || strcmp(name, "archive-idle") == 0) {
@@ -178,6 +213,50 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE,
                                              DUEL_HOST_CONTEXT_NOTIF(r->external),
                                              DUEL_HOST_CONTEXT_PERSISTENT(r->external));
+#ifdef ARCANE_M12
+    } else if (strcmp(name, "floor-commons") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "floor-research") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "floor-workshop") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "city-astral") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 17; r->civic_phase = 72;
+    } else if (strcmp(name, "city-mechanical") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 17; r->civic_phase = 88;
+    } else if (strcmp(name, "civic-quiet") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, DUEL_M12_INTENSITY_CALM);
+        r->seed = 5; r->civic_phase = 104;
+    } else if (strcmp(name, "resident-diligent") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_DILIGENT); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-curious") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_CURIOUS); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-nervous") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_NERVOUS); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-proud") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_PROUD); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-distracted") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_DISTRACTED); r->civic_phase = 40;
+    } else if (strcmp(name, "workshop-idle") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 9; r->civic_phase = 24;
+    } else if (strcmp(name, "workshop-cast") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_URGENT, DUEL_M12_INTENSITY_BUSY);
+        r->seed = 9; r->civic_phase = 24;
+        w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        w.wiz[SIM_SIDE_L].cast_windup = 3;
+        w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+#endif
     } else {
         return false;
     }

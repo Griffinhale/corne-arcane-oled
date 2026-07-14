@@ -9,6 +9,7 @@
 
 #include "duel_draw.h"
 #include "duel_host.h"
+#include "duel_resident.h"
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world) {
     duel_view_from_world(world, &render->view);
@@ -158,59 +159,176 @@ static void clear_archive_panel(duel_fb_t *fb) {
 #endif // !ARCANE_M12
 
 #ifdef ARCANE_M12
-// M12 tower floor beneath the raised rooftop. A schematic cutaway room: ceiling
-// beam, outer wall, implied lift shaft, ground line, two occupation anchors, and
-// foundation trim. Authored in desk space (x=31 at the gap) and mirrored on the
-// right OLED like draw_archive. The occupation (Commons vs Research) is selected
-// by the host scene, so scene=ARCHIVE renders a distinct Research floor rather
-// than the retired upper archive art. Full per-city motif tables land in Phase 2;
-// this shell only needs to read as a room and stay distinct per city/occupation.
+// A tiny 1bpp gear: hub, cross spokes, and eight teeth. The mechanical (right)
+// city's signature motif — squared, radial, industrial.
+static void floor_gear(duel_fb_t *fb, int cx, int cy, int r) {
+    for (int d = -r; d <= r; d++) {
+        duel_fb_px(fb, cx + d, cy, true);
+        duel_fb_px(fb, cx, cy + d, true);
+    }
+    duel_fb_px(fb, cx + r + 1, cy, true); duel_fb_px(fb, cx - r - 1, cy, true);
+    duel_fb_px(fb, cx, cy + r + 1, true); duel_fb_px(fb, cx, cy - r - 1, true);
+    duel_fb_px(fb, cx + r, cy + r, true); duel_fb_px(fb, cx - r, cy - r, true);
+    duel_fb_px(fb, cx + r, cy - r, true); duel_fb_px(fb, cx - r, cy + r, true);
+}
+
+// A shallow integer-curvature dome peaking in the middle: the astral (left)
+// city's signature motif — curved arches, domes, orbs.
+static void floor_dome(duel_fb_t *fb, int lo, int hi, int top_y) {
+    int cx = (lo + hi) / 2;
+    int half = (hi - lo) / 2;
+    if (half < 1) half = 1;
+    for (int dx = -half; dx <= half; dx++) {
+        int y = top_y + (dx * dx) / half / 2;
+        duel_fb_px(fb, cx + dx, y, true);
+    }
+}
+
+// Occupation anchors (the fixed furniture / stations) for one archetype, drawn
+// in the current city's architectural language. Two zones: a gap-side apparatus
+// and an outer-side rack, both inside the floor band and clear of the resident's
+// standing spots. Authored in desk space (gap at x=31) and mirrored on the right.
+static void draw_floor_anchors(duel_fb_t *fb, uint8_t floor, bool is_left) {
+#define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
+    int ga = FLR_X(19), gb = FLR_X(27); int glo = ga < gb ? ga : gb, ghi = ga < gb ? gb : ga;
+    int oa = FLR_X(3),  ob = FLR_X(11); int olo = oa < ob ? oa : ob, ohi = oa < ob ? ob : oa;
+    int gmid = (glo + ghi) / 2, omid = (olo + ohi) / 2;
+
+    switch (floor) {
+    case DUEL_M12_FLOOR_RESEARCH:
+        // Tall study apparatus + a stack of catalog shelves.
+        archive_rect(fb, glo, 74, ghi, 104);
+        wiz_hspan(fb, glo, ghi, 84);
+        wiz_hspan(fb, glo, ghi, 94);
+        wiz_hspan(fb, olo, ohi, 80);
+        wiz_hspan(fb, olo, ohi, 88);
+        wiz_hspan(fb, olo, ohi, 96);
+        if (is_left) {           // astral: an orrery orb crowning the apparatus
+            floor_dome(fb, glo, ghi, 72);
+            duel_fb_px(fb, gmid, 70, true);
+        } else {                 // mechanical: a bracket with two gauge dials
+            wiz_hspan(fb, glo, ghi, 72);
+            duel_fb_px(fb, glo, 71, true); duel_fb_px(fb, ghi, 71, true);
+        }
+        break;
+
+    case DUEL_M12_FLOOR_WORKSHOP:
+        if (is_left) {
+            // Forge / rune-smithing: anvil, a curved forge hood, rune-flame
+            // licking up, and an outer rack of vertical rune tallies.
+            archive_rect(fb, glo, 100, ghi, 104);
+            wiz_hspan(fb, glo, ghi, 100);
+            floor_dome(fb, glo + 1, ghi - 1, 92);
+            duel_fb_px(fb, gmid, 90, true);
+            duel_fb_px(fb, gmid - 1, 88, true);
+            duel_fb_px(fb, gmid + 1, 86, true);
+            for (int y = 86; y <= 104; y += 4) { duel_fb_px(fb, olo, y, true); duel_fb_px(fb, ohi, y, true); }
+            wiz_hspan(fb, olo, ohi, 104);
+        } else {
+            // Mechanical assembly: a heavy squared bench, a big drive gear, and
+            // an outer toothed conveyor.
+            archive_rect(fb, glo, 96, ghi, 104);
+            wiz_hspan(fb, glo, ghi, 100);
+            floor_gear(fb, gmid, 88, 3);
+            wiz_hspan(fb, olo, ohi, 96);
+            wiz_hspan(fb, olo, ohi, 104);
+            for (int x = olo; x <= ohi; x += 2) duel_fb_px(fb, x, 100, true);
+        }
+        break;
+
+    case DUEL_M12_FLOOR_COMMONS:
+    default:
+        if (is_left) {
+            // Astral commons: a domed shrine/hearth with a finial and a curved
+            // notice arch on the outer wall.
+            archive_rect(fb, glo, 98, ghi, 104);
+            floor_dome(fb, glo, ghi, 94);
+            duel_fb_px(fb, gmid, 92, true);
+            floor_dome(fb, olo, ohi, 98);
+            wiz_hspan(fb, olo, ohi, 104);
+        } else {
+            // Mechanical commons (post office): a squared service kiosk with a
+            // counter slot and an outer grid of sorting pigeonholes.
+            archive_rect(fb, glo, 94, ghi, 104);
+            wiz_hspan(fb, glo, ghi, 99);
+            archive_rect(fb, olo, 96, ohi, 104);
+            wiz_hspan(fb, olo, ohi, 100);
+            duel_fb_px(fb, omid, 96, true); duel_fb_px(fb, omid, 104, true);
+        }
+        break;
+    }
+#undef FLR_X
+}
+
+// M12 tower floor beneath the raised rooftop. A schematic cutaway room whose
+// OCCUPATION is chosen by the civic byte (DUEL_CIVIC_FLOOR): Commons/post,
+// Archive/Research, or Workshop/Forge. The two cities render the same room in
+// clearly different architectural languages — left is astral/curved (dashed
+// beams, domes, orbs, buttresses); right is mechanical/squared (solid beams,
+// rivets, gears, tie-bars). One session-seeded resident lives in the floor,
+// derived and drawn locally (duel_resident.c). Authored in desk space (gap at
+// x=31) and mirrored on the right OLED like the retired draw_archive.
 static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 #define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
-    bool research = render_host(r) && render_scene(r) == DUEL_HOST_SCENE_ARCHIVE;
+    uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
+    uint8_t mode  = DUEL_CIVIC_MODE(r->civic);
+    // The civic byte is authoritative for the occupation. Until the glue layer
+    // (keymap) translates scene->civic in a later wave, bridge the legacy
+    // scene channel: an online Archive scene with a default (Commons) civic byte
+    // shows the Research floor, honouring the scene-driven world-test contract.
+    if (floor == DUEL_M12_FLOOR_COMMONS && render_host(r) &&
+        render_scene(r) == DUEL_HOST_SCENE_ARCHIVE)
+        floor = DUEL_M12_FLOOR_RESEARCH;
 
-    // Ceiling beam splitting rooftop from floor. Left city (astral) dashes it;
-    // right city (mechanical) leaves it solid.
+    // Ceiling beam splitting the rooftop from the floor. Left dashes it (astral);
+    // right leaves it solid and studs it with rivets (mechanical).
     for (int x = 0; x < DUEL_CANVAS_W; x++)
         if (!is_left || (x & 3) != 3) duel_fb_px(fb, x, 61, true);
+    if (is_left) {
+        // A hanging astral arc under the beam near the gap.
+        duel_fb_px(fb, FLR_X(28), 62, true);
+        duel_fb_px(fb, FLR_X(29), 63, true);
+        duel_fb_px(fb, FLR_X(30), 64, true);
+    } else {
+        for (int x = 1; x < DUEL_CANVAS_W; x += 6) duel_fb_px(fb, x, 62, true);
+    }
 
-    // Outer wall (edge away from the gap) plus a short lift-shaft stub by the gap.
+    // Outer wall (edge away from the gap) with city texture, plus a short
+    // lift-shaft stub by the gap.
     for (int y = 63; y <= 109; y++) duel_fb_px(fb, FLR_X(0), y, true);
-    for (int y = 63; y <= 70; y++)  duel_fb_px(fb, FLR_X(30), y, true);
+    if (is_left) {
+        // Astral: curved buttress studs bowing inward, with two wall orbs.
+        for (int y = 66; y <= 106; y += 8) duel_fb_px(fb, FLR_X(1), y, true);
+        duel_fb_px(fb, FLR_X(2), 74, true);
+        duel_fb_px(fb, FLR_X(2), 96, true);
+    } else {
+        // Mechanical: riveted plating and straight tie-bars.
+        for (int y = 65; y <= 107; y += 6) { duel_fb_px(fb, FLR_X(1), y, true); duel_fb_px(fb, FLR_X(2), y, true); }
+    }
+    for (int y = 63; y <= 70; y++) duel_fb_px(fb, FLR_X(30), y, true);
+    if (is_left) {
+        duel_fb_px(fb, FLR_X(29), 66, true);                              // counterweight orb
+    } else {
+        duel_fb_px(fb, FLR_X(29), 64, true); duel_fb_px(fb, FLR_X(28), 64, true); // gear teeth
+    }
 
     // Ground line of the room, one row clear of the health band (111-114).
     wiz_hspan(fb, 0, DUEL_CANVAS_W - 1, 110);
 
-    // Gap-side anchor: a tall Research apparatus vs a low Commons desk/shrine.
-    {
-        int a = FLR_X(19), b = FLR_X(27);
-        int lo = a < b ? a : b, hi = a < b ? b : a;
-        if (research) {
-            archive_rect(fb, lo, 74, hi, 104);
-            wiz_hspan(fb, lo, hi, 84);
-            wiz_hspan(fb, lo, hi, 94);
-        } else {
-            archive_rect(fb, lo, 92, hi, 104);
-            duel_fb_px(fb, (lo + hi) / 2, 88, true);
-            duel_fb_px(fb, (lo + hi) / 2, 90, true);
-        }
-    }
-    // Outer-side anchor: a Research shelf/catalog vs a Commons post counter.
-    {
-        int a = FLR_X(3), b = FLR_X(11);
-        int lo = a < b ? a : b, hi = a < b ? b : a;
-        if (research) {
-            wiz_hspan(fb, lo, hi, 80);
-            wiz_hspan(fb, lo, hi, 88);
-            wiz_hspan(fb, lo, hi, 96);
-        } else {
-            archive_rect(fb, lo, 98, hi, 105);
-        }
-    }
+    // Occupation furniture, then the session-seeded resident living among it.
+    draw_floor_anchors(fb, floor, is_left);
+    m12_resident_t res = m12_resident_derive(r->seed, is_left, floor, mode, r->civic_phase);
+    m12_resident_draw(fb, &res, is_left, mode, 0);
 
-    // Foundation / trim: sparse, clear of the health band and the y127 odometer.
-    for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 1) == 0) duel_fb_px(fb, x, 117, true);
-    for (int x = 2; x < DUEL_CANVAS_W; x += 8) { duel_fb_px(fb, x, 120, true); duel_fb_px(fb, x, 123, true); }
+    // Foundation / trim below the health band, clear of the y127 odometer. Left
+    // is sparse astral dotting; right is denser mechanical coursing.
+    if (is_left) {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 3) == 0) duel_fb_px(fb, x, 117, true);
+        for (int x = 2; x < DUEL_CANVAS_W; x += 8) duel_fb_px(fb, x, 121, true);
+    } else {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 1) == 0) duel_fb_px(fb, x, 117, true);
+        for (int x = 1; x < DUEL_CANVAS_W; x += 4) { duel_fb_px(fb, x, 120, true); duel_fb_px(fb, x, 122, true); }
+    }
 #undef FLR_X
 }
 #endif
