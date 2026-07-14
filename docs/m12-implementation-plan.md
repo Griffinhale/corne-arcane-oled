@@ -2,6 +2,46 @@
 
 Grounded in the locked design spec and a fresh read of the codebase. Every file:line anchor verified.
 
+---
+
+## IMPLEMENTATION STATUS (desktop-complete; physical acceptance pending)
+
+All waves are implemented behind `ARCANE_M12`, converged, and desktop-verified on branch
+`m12-twin-cities`. The release build stays byte-identical to M11.5.
+
+| Wave | What landed | State |
+|---|---|---|
+| Phase 1 geography | Rooftop raised 17px; M9 archive underlay retired; scene/city-aware floor shell | ✅ desktop |
+| Interface | Civic wire contract, enums, `m12_*_state_t`, `duel_render_t` civic fields | ✅ |
+| Track R | Civic-driven floors (Commons/Research/Workshop), distinct astral/mechanical cities, resident engine (5 personalities, bounded civic tick) | ✅ desktop |
+| Track P | 31-byte v8+civic snapshot (civic/secondary/shared_pres/revision), CRC/recovery, Raw HID payload[6/7] | ✅ desktop |
+| Track H | Host floor/mode/secondary classification; civic byte packing; 59 pytest | ✅ |
+| Phase 5 convergence | `keymap.c` relays civic; seed + bounded civic_phase clock | ✅ firmware-compiled |
+| Wave 6 ecology | Courier forms (messenger/parcel/beacon/sentinel), category routing, count/age lifecycle | ✅ desktop |
+| Wave 7 rare events | Deterministic weighted deck (6 families, 75/25, cooldowns, safety gates), local + shared rendering | ✅ desktop |
+| Wave 6/7 convergence | `keymap.c` derives + relays visitor (`shared_pres`) and rare-event (`revision`) | ✅ firmware-compiled |
+
+**Verification:** desktop matrix green — firmware sim (both `ARCANE_M12` on/off variants, world-hash
+streams **identical** = mechanics untouched), 69 canonical M12 gallery scenarios + all structural
+invariants, no-alloc gate, ASan/UBSan; host 59 pytest. Firmware compile-verified via a throwaway
+keymap (host config, `ARCANE_M12`): links clean.
+
+**Resource deltas (crkbd/rev1, rp2040, host branch):**
+- Release flash: **49,944 bytes** — byte-identical to M11.5 baseline.
+- Full M12 flash: **53,776 bytes** (+3,832 for the entire milestone). Ample headroom on RP2040.
+- Split snapshot: 27 B release / **31 B** under M12 (1 reserve byte). Raw HID report unchanged at 32 B.
+
+**Wire budget used:** civic (floor/mode/intensity), secondary (activity), shared_pres (visitor
+kind/city/lifecycle + 2 reserved bits used for count density), revision (event id/phase/target).
+
+**Still pending — physical (yours):** actual-size legibility acceptance across the real desk gap;
+on-hardware stress/power/suspend/rollback; and flashing. NOTE the live QMK tree is a stale copy —
+materialize repo→live first (`host/install_firmware.sh` for the host keymap; the anim equivalent),
+then `qmk compile ... -e ARCANE_M12=yes`. Some floor/courier/event motifs are deliberately schematic
+and are the natural place to iterate after seeing them at actual size.
+
+---
+
 **Scope decision (this session): implement M12.0, M12.1, and M12.2 together as one integrated M12.**
 The spec staged them (§15.2); we are merging them. This is viable because the M12.0 data model was
 designed with reserved seams (floor enum, civic bits, secondary codes, visitor kinds, event-id space) —
