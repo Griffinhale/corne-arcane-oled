@@ -57,3 +57,13 @@ courier-aging            5394e7f7ddfd2dca f84cf8fb35b10189
 courier-resolving        ff471e8fdff10e53 7bf26b357111e221
 courier-count-few        5394e7f7ddfd2dca 75de7e9dc92692e1
 courier-count-many       5394e7f7ddfd2dca 5b4c8ae997e66064
+event-scroll             ea711fbd2de2e11b 4adb1df8c5244713
+event-gear               e36f392f9c9960f1 a65a83fd08fd8a67
+event-break              7c37e10fb3b2dc45 f6b04d49063ced86
+event-complaint          bc2f83eb32990d36 7782416c2c0ca6a0
+event-courier            c39a220637e7c551 bceaf83bdb20dceb
+event-sky                9a97e124e27d6e68 127d6a87a2b9246e
+event-armed              23020ba169a77bcb 452f0940864c2d07
+event-cooldown           bc81c1da8c50c0d1 81b65607fd539794
+event-quiet              9fb21f4189d3d8f5 452f0940864c2d07
+event-suppressed         03a5376960f7d9f4 ec1157e50b388653
