@@ -150,6 +150,12 @@ typedef struct {
     uint8_t     secondary;    // DUEL_SECONDARY_* : one supporting activity channel
     uint8_t     shared_pres;  // shared rare-event id/phase + visitor assignment
     uint8_t     revision;     // monotonic shared-presentation coherence counter
+    // Presentation session seed (== the 1-byte split session) and the coarse
+    // civic-tick phase (~250-500 ms per step). The resident/floor derive their
+    // whole state from these plus (is_left, floor, personality); the render-skip
+    // memcmp gate therefore only advances when civic_phase advances (plan §2 D3).
+    uint8_t     seed;         // session-persistent presentation seed
+    uint8_t     civic_phase;  // coarse civic-tick counter (NOT w.tick, NOT frame)
 #endif
 } duel_render_t;
 
