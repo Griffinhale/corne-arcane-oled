@@ -5,6 +5,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "duel_courier.h" // Wave 6 couriers
+#include "duel_event.h"   // Wave 7 rare events
 #include "duel_host.h"
 #include "duel_sim.h"
 #include "scenarios.h"
@@ -113,6 +115,26 @@ static void test_density_and_distinction(void) {
 }
 
 static void test_archive_continuity_and_variation(void) {
+#ifdef ARCANE_M12
+    // M12 retires the upper archive underlay: "archive-idle" now renders the
+    // Research tower FLOOR (y61-110). The two city-states are architecturally
+    // DISTINCT (astral left vs mechanical right), so the floor is deliberately
+    // NOT gap-mirrored; it is present, and fully static (no frame variation),
+    // unlike the old animated archive rune.
+    const duel_scenario_t *s = duel_scenario_find("archive-idle");
+    duel_fb_t l0, r0, l1, r1;
+    duel_scenario_render(s, 0, &l0, &r0);
+    duel_scenario_render(s, 32, &l1, &r1);
+    bool cities_differ = false, has_floor = false, floor_static = true;
+    for (int y = 61; y <= 110; y++)
+        for (int x = 0; x < 32; x++) {
+            if (duel_fb_get(&l0, x, y) != duel_fb_get(&r0, 31 - x, y)) cities_differ = true;
+            has_floor |= duel_fb_get(&l0, x, y);
+            floor_static &= duel_fb_get(&l0, x, y) == duel_fb_get(&l1, x, y);
+        }
+    VCHECK(cities_differ && has_floor, "visual_archive_gap_continuity_asymmetry");
+    VCHECK(floor_static, "visual_archive_sparse_static_variation");
+#else
     const duel_scenario_t *s = duel_scenario_find("archive-idle");
     duel_fb_t l0, r0, l1, r1;
     duel_scenario_render(s, 0, &l0, &r0);
@@ -128,6 +150,7 @@ static void test_archive_continuity_and_variation(void) {
     bool upper_varies = memcmp(l0.bits, l1.bits, sizeof l0.bits) != 0;
     VCHECK(mirror && asymmetric, "visual_archive_gap_continuity_asymmetry");
     VCHECK(upper_varies && lower_static, "visual_archive_sparse_static_variation");
+#endif
 }
 
 static void render_direct(duel_fb_t *fb, duel_render_t *r, bool left, uint32_t frame, bool diag) {
@@ -159,6 +182,213 @@ static void test_isolation_and_restoration(void) {
     bool restores = memcmp(archive.bits, restored.bits, sizeof archive.bits) == 0;
     VCHECK(isolated, "visual_scene_isolation");
     VCHECK(scry_differs && restores, "visual_scry_restoration");
+}
+
+static void test_m12_floor_and_resident(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
+    r.seed = 21;
+    r.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL,
+                              DUEL_M12_INTENSITY_CALM);
+
+    // 1) The floor room occupies its band (y61-110) and stays clear of the
+    //    raised rooftop: rows y59-60 (the gap between the lifted cluster and the
+    //    ceiling beam) carry no floor pixels with an idle champion.
+    r.civic_phase = 0;
+    duel_fb_t fb0;
+    render_direct(&fb0, &r, true, 0, false);
+    bool floor_present = pixel_count(&fb0, 0, 61, 31, 110) > 0;
+    bool separated = pixel_count(&fb0, 0, 59, 31, 60) == 0;
+    VCHECK(floor_present && separated, "visual_m12_floor_within_band");
+
+    // 2) Sweeping the civic phase advances ONLY the resident (nothing else keys
+    //    off phase here). Every pixel that changes must fall inside y61-110, so
+    //    the resident stays in its room; that it changes at all proves it is a
+    //    distinct actor, separate from the static occupation anchors.
+    bool moved = false, in_band = true;
+    duel_fb_t prev = fb0;
+    for (int ph = 16; ph <= 208; ph += 16) {
+        r.civic_phase = (uint8_t)ph;
+        duel_fb_t cur;
+        render_direct(&cur, &r, true, 0, false);
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cur, x, y) != duel_fb_get(&prev, x, y)) {
+                    moved = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        prev = cur;
+    }
+    VCHECK(in_band, "visual_m12_resident_within_floor_band");
+    VCHECK(moved, "visual_m12_resident_distinct_from_anchors");
+#endif
+}
+
+// --- Wave 6 couriers ---
+static void test_m12_courier_band_and_city(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
+    r.seed = 42;
+    r.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                              DUEL_M12_INTENSITY_CALM);
+    r.civic_phase = 48;
+
+    // Baseline: no courier assigned (COURIER_NONE), both halves are floor-only.
+    r.shared_pres = 0;
+    duel_fb_t base_l, base_r;
+    render_direct(&base_l, &r, true, 0, false);
+    render_direct(&base_r, &r, false, 0, false);
+
+    // A courier assigned to one city must appear ONLY on that half and ONLY
+    // inside the floor band (y61-110); the other half stays byte-identical to
+    // the floor-only baseline. Sweep every lifecycle and each courier form.
+    static const uint8_t right_kind[4] = {
+        DUEL_M12_COURIER_PARCEL, DUEL_M12_COURIER_BEACON,
+        DUEL_M12_COURIER_SENTINEL, DUEL_M12_COURIER_PARCEL };
+    bool city_isolated = true, in_band = true, drawn = true;
+    for (uint8_t life = 0; life < 4; life++) {
+        duel_fb_t cl, cr;
+
+        // Left city: the messenger draws on the left only.
+        r.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0u, life);
+        render_direct(&cl, &r, true, 0, false);
+        render_direct(&cr, &r, false, 0, false);
+        city_isolated &= memcmp(cr.bits, base_r.bits, sizeof cr.bits) == 0;
+        bool diff = false;
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cl, x, y) != duel_fb_get(&base_l, x, y)) {
+                    diff = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        drawn &= diff;
+
+        // Right city: parcel / beacon / sentinel draw on the right only.
+        r.shared_pres = DUEL_VISITOR_PACK(right_kind[life], 1u, life);
+        render_direct(&cl, &r, true, 0, false);
+        render_direct(&cr, &r, false, 0, false);
+        city_isolated &= memcmp(cl.bits, base_l.bits, sizeof cl.bits) == 0;
+        diff = false;
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cr, x, y) != duel_fb_get(&base_r, x, y)) {
+                    diff = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        drawn &= diff;
+    }
+    VCHECK(city_isolated, "visual_m12_courier_assigned_city_only");
+    VCHECK(in_band && drawn, "visual_m12_courier_within_floor_band");
+
+    // Routing sanity: derivation lands each category on the intended form/city
+    // (§11.3), with persistent/security overriding to a stationed sentinel.
+    m12_visitor_state_t comm = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 1, false);
+    m12_visitor_state_t xfer = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, false);
+    m12_visitor_state_t sys  = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_SYSTEM, 1, 1, false);
+    m12_visitor_state_t sec  = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_SECURITY, 1, 1, false);
+    m12_visitor_state_t pers = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, true);
+    m12_visitor_state_t none = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_COMMUNICATION, 0, 1, false);
+    bool routing =
+        DUEL_VISITOR_STATE_KIND(comm) == DUEL_M12_COURIER_MESSENGER && DUEL_VISITOR_STATE_CITY(comm) == 0u &&
+        DUEL_VISITOR_STATE_KIND(xfer) == DUEL_M12_COURIER_PARCEL    && DUEL_VISITOR_STATE_CITY(xfer) == 1u &&
+        DUEL_VISITOR_STATE_KIND(sys)  == DUEL_M12_COURIER_BEACON    && DUEL_VISITOR_STATE_CITY(sys)  == 1u &&
+        DUEL_VISITOR_STATE_KIND(sec)  == DUEL_M12_COURIER_SENTINEL  && DUEL_VISITOR_STATE_CITY(sec)  == 0u &&
+        DUEL_VISITOR_STATE_KIND(pers) == DUEL_M12_COURIER_SENTINEL  && DUEL_VISITOR_STATE_CITY(pers) == 1u &&
+        DUEL_VISITOR_STATE_KIND(none) == DUEL_M12_COURIER_NONE;
+    VCHECK(routing, "visual_m12_courier_category_routing");
+#endif
+}
+
+// --- Wave 7 rare events ---
+// Structural invariants for the rare-event slot: an active LOCAL event only adds
+// pixels inside the floor band (y61-110); a suppressed (ineligible) event adds
+// nothing; and the deck is deterministic, honours the back-to-back cooldown, and
+// keeps the ~75/25 local/shared weighting.
+static void test_m12_rare_event(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t base = {0};
+    duel_render_from_world(&base, &w);
+    base.seed = 33;
+    base.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                                 DUEL_M12_INTENSITY_CALM);
+    base.civic_phase = 8;
+
+    // Baseline floor with an empty rare-event slot (revision == 0 -> NONE).
+    duel_fb_t noev;
+    render_direct(&noev, &base, true, 0, false);
+
+    // An ACTIVE local event targeted at this (left) city must add pixels, and
+    // every added pixel must lie inside the floor band y61-110.
+    duel_render_t ev = base;
+    ev.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
+                                  DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    duel_fb_t withev;
+    render_direct(&withev, &ev, true, 0, false);
+    bool added = false, in_band = true;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (duel_fb_get(&withev, x, y) != duel_fb_get(&noev, x, y)) {
+                added = true;
+                if (y < 61 || y > 110) in_band = false;
+            }
+    VCHECK(added && in_band, "visual_m12_rare_event_local_within_band");
+
+    // A LOCAL event targeted at the OTHER city draws nothing on this half.
+    duel_render_t other = base;
+    other.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR,
+                                     DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    duel_fb_t otherfb;
+    render_direct(&otherfb, &other, true, 0, false);
+    bool other_city_quiet = memcmp(otherfb.bits, noev.bits, sizeof noev.bits) == 0;
+
+    // Suppressed (ineligible) slot: the derived state is NONE, so nothing extra.
+    duel_render_t sup = base;
+    m12_event_state_t s = m12_event_derive(base.seed, base.civic_phase, false);
+    sup.revision = m12_event_revision(s);
+    duel_fb_t supfb;
+    render_direct(&supfb, &sup, true, 0, false);
+    bool suppressed_noop = memcmp(supfb.bits, noev.bits, sizeof noev.bits) == 0;
+    VCHECK(other_city_quiet && suppressed_noop, "visual_m12_rare_event_suppressed_noop");
+
+    // Deck determinism + back-to-back cooldown across the whole phase range for a
+    // sweep of seeds; and the family weighting stays ~75/25 local/shared.
+    bool deterministic = true, cooldown = true;
+    long local_hits = 0, shared_hits = 0;
+    for (int seed = 0; seed < 256; seed++) {
+        for (int phase = 0; phase < 256; phase++) {
+            m12_event_state_t a = m12_event_derive((uint8_t)seed, (uint8_t)phase, true);
+            m12_event_state_t b = m12_event_derive((uint8_t)seed, (uint8_t)phase, true);
+            if (a.id_target != b.id_target || a.phase != b.phase) deterministic = false;
+            uint8_t family = DUEL_EVENT_ID(a.id_target);
+            if (family >= DUEL_M12_EVENT_DIPLOMATIC_COURIER) shared_hits++; else local_hits++;
+        }
+    }
+    // Adjacent-cycle inequality (the back-to-back cooldown), checked directly on
+    // the per-cycle family (sampled at the ACTIVE sub-phase of each cycle).
+    for (int seed = 0; seed < 256 && cooldown; seed++) {
+        uint8_t prev = DUEL_M12_EVENT_NONE;
+        for (int cyc = 0; cyc < 32; cyc++) {
+            m12_event_state_t st = m12_event_derive((uint8_t)seed, (uint8_t)(cyc * 8 + 2), true);
+            uint8_t family = DUEL_EVENT_ID(st.id_target);
+            if (cyc > 0 && family == prev) cooldown = false;
+            prev = family;
+        }
+    }
+    long total = local_hits + shared_hits;
+    double shared_frac = total ? (double)shared_hits / (double)total : 0.0;
+    bool weighting = shared_frac > 0.15 && shared_frac < 0.35;
+    VCHECK(deterministic, "visual_m12_rare_event_deterministic");
+    VCHECK(cooldown, "visual_m12_rare_event_family_cooldown");
+    VCHECK(weighting, "visual_m12_rare_event_local_shared_weighting");
+#endif
 }
 
 static void test_precedence_and_alert_grammar(void) {
@@ -228,6 +458,9 @@ int main(int argc, char **argv) {
     test_density_and_distinction();
     test_archive_continuity_and_variation();
     test_isolation_and_restoration();
+    test_m12_floor_and_resident();
+    test_m12_courier_band_and_city(); // Wave 6
+    test_m12_rare_event();            // Wave 7
     test_precedence_and_alert_grammar();
     VCHECK(exact_hashes(path, write), "visual_exact_framebuffer_hashes");
     if (failures) { printf("%d visual test(s) FAILED\n", failures); return 1; }

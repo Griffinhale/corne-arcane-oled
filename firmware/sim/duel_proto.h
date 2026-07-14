@@ -38,10 +38,26 @@ typedef struct __attribute__((packed)) {
     duel_view_t view;      /* canonical transport/render projection */
     uint8_t  external;     /* M8: absolute disposable host context; see duel_host.h */
     uint8_t  alert;        /* M10: packed category, priority, and age */
-    uint8_t  crc;          /* duel_crc8 over the 26 preceding bytes */
+#ifdef ARCANE_M12
+    /* M12 Twin Cities: absolute civic presentation relayed master->slave. All
+     * four bytes are CRC-covered (the checksum spans offsetof(crc)), so a
+     * corrupted civic byte is caught exactly like the combat view. See
+     * duel_host.h for the DUEL_CIVIC / DUEL_SECONDARY bit layouts; the master
+     * writes them via duel_snapshot_set_civic. Release stays 27 bytes. */
+    uint8_t  civic;        /* DUEL_CIVIC_* : floor, mode, host intensity */
+    uint8_t  secondary;    /* DUEL_SECONDARY_* : one supporting activity channel */
+    uint8_t  shared_pres;  /* shared rare-event id/phase + visitor assignment */
+    uint8_t  revision;     /* monotonic shared-presentation coherence counter */
+#endif
+    uint8_t  crc;          /* duel_crc8 over the preceding bytes (offsetof(crc)) */
 } duel_snapshot_t;
 
+#ifdef ARCANE_M12
+_Static_assert(sizeof(duel_snapshot_t) == 31,
+               "M12 snapshot adds four civic bytes, one RPC byte reserved");
+#else
 _Static_assert(sizeof(duel_snapshot_t) == 27, "v8 snapshot must leave five RPC bytes free");
+#endif
 
 typedef struct __attribute__((packed)) {
     uint8_t  magic;
@@ -75,6 +91,15 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
                                         uint16_t seq, uint8_t external,
                                         uint8_t alert, uint8_t display_phase,
                                         duel_snapshot_t *out);
+
+#ifdef ARCANE_M12
+// M12 Phase-5 convergence setter: overwrite the four civic bytes on an already
+// encoded snapshot and recompute the CRC. The encoders above always zero these
+// bytes, so a packet is well-formed with or without this call; the master glue
+// (keymap.c) invokes it after encoding to relay the current civic state.
+void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
+                             uint8_t shared_pres, uint8_t revision);
+#endif
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.

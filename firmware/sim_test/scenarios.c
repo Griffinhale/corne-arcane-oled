@@ -1,6 +1,9 @@
 #include <string.h>
 
+#include "duel_courier.h" // Wave 6 couriers
+#include "duel_event.h"   // Wave 7 rare events
 #include "duel_host.h"
+#include "duel_resident.h"
 #include "duel_sim.h"
 #include "scenarios.h"
 
@@ -45,6 +48,47 @@ static const duel_scenario_t scenarios[] = {
     SCENE("archive-alert", "precedence", "alert protected above Archive", 4, false),
     SCENE("alert-under-scry", "precedence", "alert summarized inside scry", 0, false),
     SCENE("scry-stale-diagnostics", "precedence", "scry, stale link, and diagnostics", 7, true),
+#ifdef ARCANE_M12
+    // M12 Twin Cities canonical gallery. These entries exist only under
+    // ARCANE_M12 so the accepted M11.5 visual golden (visual.hashes) is
+    // untouched; they flow into visual_m12.hashes.
+    SCENE("floor-commons", "floors", "Commons/post floor, both city-states", 0, false),
+    SCENE("floor-research", "floors", "Archive/Research floor, both city-states", 0, false),
+    SCENE("floor-workshop", "floors", "Workshop/Forge floor, both city-states", 0, false),
+    SCENE("city-astral", "cities", "astral (left) vs mechanical (right) commons", 0, false),
+    SCENE("city-mechanical", "cities", "astral vs mechanical workshop architecture", 0, false),
+    SCENE("civic-quiet", "cities", "QUIET civic mode subdues the resident", 0, false),
+    SCENE("resident-diligent", "residents", "diligent resident at work", 0, false),
+    SCENE("resident-curious", "residents", "curious resident inspecting", 0, false),
+    SCENE("resident-nervous", "residents", "nervous resident watching the roof", 0, false),
+    SCENE("resident-proud", "residents", "proud resident", 0, false),
+    SCENE("resident-distracted", "residents", "distracted resident", 0, false),
+    SCENE("workshop-idle", "workshop", "forge and assembly residents at work", 0, false),
+    SCENE("workshop-cast", "workshop", "combat over the workshop floor", 3, false),
+    // --- Wave 6 couriers ---
+    SCENE("courier-messenger", "couriers", "communication messenger bird (left)", 0, false),
+    SCENE("courier-parcel", "couriers", "transfer parcel cart (right)", 0, false),
+    SCENE("courier-beacon", "couriers", "system signal beacon (right)", 0, false),
+    SCENE("courier-sentinel", "couriers", "persistent security sentinel (left)", 0, false),
+    SCENE("courier-arriving", "couriers", "messenger arriving by the gap lift", 0, false),
+    SCENE("courier-aging", "couriers", "parcel aged and gathering dust", 0, false),
+    SCENE("courier-resolving", "couriers", "messenger departing, resolved", 0, false),
+    SCENE("courier-count-few", "couriers", "beacon, 2-4 count bucket", 0, false),
+    SCENE("courier-count-many", "couriers", "beacon, 5+ count bucket", 0, false),
+    // --- Wave 7 rare events ---
+    // All six families across representative phases, a QUIET-calmed case, and a
+    // safety-gate-suppressed case that draws nothing extra (floor only).
+    SCENE("event-scroll", "rare_events", "runaway scroll unrolling (left city)", 0, false),
+    SCENE("event-gear", "rare_events", "jammed gear grinding (right city)", 0, false),
+    SCENE("event-break", "rare_events", "work-break steaming mug (left city)", 0, false),
+    SCENE("event-complaint", "rare_events", "damage complaint crack resolving (right city)", 0, false),
+    SCENE("event-courier", "rare_events", "diplomatic courier banner across the gap", 0, false),
+    SCENE("event-sky", "rare_events", "civic sky aurora across both cities", 0, false),
+    SCENE("event-armed", "rare_events", "runaway scroll armed (pre-active)", 0, false),
+    SCENE("event-cooldown", "rare_events", "jammed gear cooldown residue", 0, false),
+    SCENE("event-quiet", "rare_events", "QUIET mode calms a work-break event", 0, false),
+    SCENE("event-suppressed", "rare_events", "safety-gated slot draws nothing extra", 0, false),
+#endif
 };
 
 size_t duel_scenario_count(void) {
@@ -79,6 +123,25 @@ static void set_alert(duel_render_t *r, uint8_t count, uint8_t category,
     r->alert = DUEL_HOST_ALERT_PACK(category, priority, age);
 }
 
+#ifdef ARCANE_M12
+// Smallest seed whose LEFT city resident carries the wanted personality, so the
+// personality gallery shows all five deterministically without hand-tuning hashes.
+static uint8_t seed_for_personality(uint8_t want) {
+    for (int s = 0; s < 256; s++)
+        if (m12_resident_personality((uint8_t)s, true) == want) return (uint8_t)s;
+    return 0;
+}
+
+// --- Wave 6 couriers ---
+// Drive the courier scenarios through the real derivation engine, then pack the
+// result into shared_pres exactly as the master would relay it (D1/§11.3).
+static void set_courier(duel_render_t *r, uint8_t category, uint8_t count,
+                        uint8_t age, bool persistent) {
+    r->shared_pres = m12_visitor_shared_pres(
+        m12_visitor_derive(r->seed, r->civic_phase, category, count, age, persistent));
+}
+#endif
+
 bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     if (!scenario || !r) return false;
     sim_world_t w;
@@ -89,6 +152,12 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
 
     if (strncmp(name, "archive-", 8) == 0) {
         r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE, 0, false);
+#ifdef ARCANE_M12
+        // M12 drives the floor occupation from the civic byte, not the scene:
+        // the Archive scenarios now name the Research floor explicitly.
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL,
+                                   DUEL_M12_INTENSITY_CALM);
+#endif
     }
 
     if (strcmp(name, "duel-idle") == 0 || strcmp(name, "archive-idle") == 0) {
@@ -178,6 +247,133 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE,
                                              DUEL_HOST_CONTEXT_NOTIF(r->external),
                                              DUEL_HOST_CONTEXT_PERSISTENT(r->external));
+#ifdef ARCANE_M12
+    } else if (strcmp(name, "floor-commons") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "floor-research") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "floor-workshop") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 3; r->civic_phase = 8;
+    } else if (strcmp(name, "city-astral") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 17; r->civic_phase = 72;
+    } else if (strcmp(name, "city-mechanical") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 17; r->civic_phase = 88;
+    } else if (strcmp(name, "civic-quiet") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, DUEL_M12_INTENSITY_CALM);
+        r->seed = 5; r->civic_phase = 104;
+    } else if (strcmp(name, "resident-diligent") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_DILIGENT); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-curious") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_CURIOUS); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-nervous") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_NERVOUS); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-proud") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_PROUD); r->civic_phase = 40;
+    } else if (strcmp(name, "resident-distracted") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = seed_for_personality(DUEL_M12_PERSONALITY_DISTRACTED); r->civic_phase = 40;
+    } else if (strcmp(name, "workshop-idle") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_ACTIVE);
+        r->seed = 9; r->civic_phase = 24;
+    } else if (strcmp(name, "workshop-cast") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_URGENT, DUEL_M12_INTENSITY_BUSY);
+        r->seed = 9; r->civic_phase = 24;
+        w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        w.wiz[SIM_SIDE_L].cast_windup = 3;
+        w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    // --- Wave 6 couriers --- (all on a shared COMMONS/seed/phase base so the
+    // courier itself is the only difference between the pairs).
+    } else if (strncmp(name, "courier-", 8) == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                                   DUEL_M12_INTENSITY_CALM);
+        r->seed = 42; r->civic_phase = 48;
+        if (strcmp(name, "courier-messenger") == 0) {
+            // communication, 1, pending -> messenger / left / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 1, false);
+        } else if (strcmp(name, "courier-parcel") == 0) {
+            // transfer, 1, pending -> parcel / right / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, false);
+        } else if (strcmp(name, "courier-beacon") == 0) {
+            // system, 1, pending -> beacon / right / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 1, 1, false);
+        } else if (strcmp(name, "courier-sentinel") == 0) {
+            // persistent security, 2, old -> sentinel / left / AGING / few
+            set_courier(r, DUEL_HOST_CATEGORY_SECURITY, 2, 4, true);
+        } else if (strcmp(name, "courier-arriving") == 0) {
+            // communication, 1, new -> messenger / left / ARRIVING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 0, false);
+        } else if (strcmp(name, "courier-aging") == 0) {
+            // transfer, 3, old -> parcel / right / AGING / few
+            set_courier(r, DUEL_HOST_CATEGORY_TRANSFER, 3, 5, false);
+        } else if (strcmp(name, "courier-resolving") == 0) {
+            // communication, 1, dismissed -> messenger / left / RESOLVING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 7, false);
+        } else if (strcmp(name, "courier-count-few") == 0) {
+            // system, 4 -> beacon / right / WAITING / few
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 4, 1, false);
+        } else if (strcmp(name, "courier-count-many") == 0) {
+            // system, 15 -> beacon / right / WAITING / many
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 15, 1, false);
+        } else {
+            return false;
+        }
+    // --- Wave 7 rare events ---
+    // Each event scenario stands the floor up (so a suppressed slot still shows
+    // the room) and drives the rare-event slot through r->revision. Distinct
+    // seeds keep both the floor/resident and the event art unique per scenario.
+    } else if (strcmp(name, "event-scroll") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 41; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-gear") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 42; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-break") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 43; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_WORK_BREAK, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-complaint") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 44; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DAMAGE_COMPLAINT, DUEL_M12_EVENT_PHASE_RESOLVING, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-courier") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 45; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DIPLOMATIC_COURIER, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_SHARED);
+    } else if (strcmp(name, "event-sky") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 46; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_CIVIC_SKY, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_SHARED);
+    } else if (strcmp(name, "event-armed") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 47; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, DUEL_M12_EVENT_PHASE_ARMED, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-cooldown") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 48; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR, DUEL_M12_EVENT_PHASE_COOLDOWN, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-quiet") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_QUIET, DUEL_M12_INTENSITY_CALM);
+        r->seed = 49; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_WORK_BREAK, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-suppressed") == 0) {
+        // Ineligible (a safety gate fired): the deck returns NONE and the slot
+        // draws nothing; only the floor room remains. Derived, not hand-packed,
+        // to exercise the real engine path.
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 50; r->civic_phase = 20;
+        r->revision = m12_event_revision(m12_event_derive(r->seed, r->civic_phase, false));
+#endif
     } else {
         return false;
     }

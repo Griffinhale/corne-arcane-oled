@@ -41,6 +41,14 @@ _Static_assert(TRACE_EV_PRESS == SIM_EV_KEYDOWN && TRACE_EV_RELEASE == SIM_EV_KE
                "trace event kinds must match sim event kinds");
 _Static_assert(sizeof(sim_world_t) == 56, "sim_world_t wire-independent hash layout changed");
 
+// Wire snapshot size is flag-dependent: M12 relays four civic bytes between
+// `alert` and `crc` (27 -> 31, one RPC reserve byte); release stays 27.
+#ifdef ARCANE_M12
+#define DUEL_SNAPSHOT_SIZE 31u
+#else
+#define DUEL_SNAPSHOT_SIZE 27u
+#endif
+
 static int g_failures;
 static int g_write_golden;
 static const char *g_traces_dir;
@@ -209,7 +217,7 @@ static void t11_display_wire_compatibility(void) {
     duel_snapshot_t p;
     duel_encode_external_alert_display(&w, 7, 11, 0x55, 0x2a,
                                        DUEL_DISPLAY_SLEEP, &p);
-    bool ok = sizeof p == 27 && duel_decode_valid(&p);
+    bool ok = sizeof p == DUEL_SNAPSHOT_SIZE && duel_decode_valid(&p);
     ok &= (p.flags & DUEL_FLAGS_WORLD_VALID) != 0;
     ok &= DUEL_FLAGS_DISPLAY(p.flags) == DUEL_DISPLAY_SLEEP;
     ok &= p.external == 0x55 && p.alert == 0x2a;
@@ -250,9 +258,13 @@ static void t11_presentation_clock(void) {
 }
 
 static void t115_canonical_view_and_event_bounds(void) {
-    bool ok = sizeof(duel_view_t) == 18 && sizeof(duel_snapshot_t) == 27 &&
+    bool ok = sizeof(duel_view_t) == 18 && sizeof(duel_snapshot_t) == DUEL_SNAPSHOT_SIZE &&
               sizeof(sim_event_t) == 1 && sizeof(sim_evq_t) == 18 &&
+#ifdef ARCANE_M12
+              sizeof(duel_render_t) <= 36;
+#else
               sizeof(duel_render_t) <= 32;
+#endif
     for (uint8_t side = 0; side < 2; side++) {
         for (uint8_t row = 0; row < 4; row++) {
             for (uint8_t col = 0; col < 6; col++) {
@@ -1734,7 +1746,7 @@ static void t75_charge_sync(void) {
     duel_encode(&w, 5, 9, &pkt);
     sim_world_t out;
     duel_decode_world(&pkt, &out);
-    bool ok = sizeof pkt == 27 && DUEL_VER == 8 && duel_decode_valid(&pkt);
+    bool ok = sizeof pkt == DUEL_SNAPSHOT_SIZE && DUEL_VER == 8 && duel_decode_valid(&pkt);
     ok &= out.wiz[SIM_SIDE_L].cast_windup == 7 && out.wiz[SIM_SIDE_L].cast_tier == SPELL_TIER_LONG;
     ok &= out.wiz[SIM_SIDE_R].cast_windup == 3 && out.wiz[SIM_SIDE_R].cast_tier == SPELL_TIER_SATURATED;
     duel_snapshot_t bad_charge = pkt;
@@ -1819,8 +1831,9 @@ static void t75_outcome_grammars(void) {
     ok &= memcmp(impact.bits, fizzle.bits, sizeof impact.bits) != 0;
     ok &= memcmp(deflect.bits, fizzle.bits, sizeof impact.bits) != 0;
     // Right-side impact recoil: original apex clears, shifted/compressed apex appears.
-    ok &= !duel_fb_get(&impact, 16, 54) && duel_fb_get(&impact, 18, 55);
-    ok &= duel_fb_get(&deflect, 16, 54); // deflection leaves the defender stable
+    // Coordinates track the M12 rooftop lift (DUEL_ROOF_DY is 0 in release builds).
+    ok &= !duel_fb_get(&impact, 16, 54 + DUEL_ROOF_DY) && duel_fb_get(&impact, 18, 55 + DUEL_ROOF_DY);
+    ok &= duel_fb_get(&deflect, 16, 54 + DUEL_ROOF_DY); // deflection leaves the defender stable
     render_outcome(&impact_short, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_SHORT));
     render_outcome(&impact_long, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_LONG));
     ok &= fb_pixels(&impact_short) < fb_pixels(&impact_long);
@@ -1842,8 +1855,8 @@ static void t75_void_ward_puncture(void) {
     duel_render_from_world(&r, &w);
     duel_fb_clear(&pierced);
     wiz_draw_scene(&pierced, &r, false, 0, false);
-    bool ok = duel_fb_get(&ward, 7, 60) && !duel_fb_get(&pierced, 7, 60); // visible split in arc
-    ok &= !duel_fb_get(&ward, 10, 61) && duel_fb_get(&pierced, 10, 61);   // projectile continues inward
+    bool ok = duel_fb_get(&ward, 7, 60 + DUEL_ROOF_DY) && !duel_fb_get(&pierced, 7, 60 + DUEL_ROOF_DY); // visible split in arc
+    ok &= !duel_fb_get(&ward, 10, 61 + DUEL_ROOF_DY) && duel_fb_get(&pierced, 10, 61 + DUEL_ROOF_DY);   // projectile continues inward
     CHECK(ok, "t75_void_ward_puncture");
 }
 
@@ -2197,7 +2210,7 @@ static void t8_host_split_context(void) {
     duel_snapshot_t packet;
     duel_encode_external(&world, 4, 12, context, &packet);
 
-    bool ok = sizeof packet == 27 && DUEL_VER == 8 && duel_decode_valid(&packet);
+    bool ok = sizeof packet == DUEL_SNAPSHOT_SIZE && DUEL_VER == 8 && duel_decode_valid(&packet);
     ok &= packet.external == context;
     ok &= DUEL_HOST_CONTEXT_ONLINE(packet.external) == 1;
     ok &= DUEL_HOST_CONTEXT_SCENE(packet.external) == DUEL_HOST_SCENE_ARCHIVE;
@@ -2270,11 +2283,21 @@ static void t9_archive_scene_isolated(void) {
     bool ok = memcmp(duel.bits, focus.bits, sizeof duel.bits) == 0;
     ok &= memcmp(duel.bits, offline.bits, sizeof duel.bits) == 0;
     ok &= memcmp(duel.bits, archive.bits, sizeof duel.bits) != 0;
+#ifdef ARCANE_M12
+    // M12 inverts the model: DUEL selects the Commons floor and ARCHIVE the
+    // Research floor. They share an identical rooftop (y<=60) and health/HUD
+    // band (y>=111); the two occupations differ only inside the floor (61-110).
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (y <= 60 || y >= 111)
+                ok &= duel_fb_get(&duel, x, y) == duel_fb_get(&archive, x, y);
+#else
     // The Archive is an upper-canvas underlay; every combat/health byte below
     // it remains exactly the accepted Duel frame.
     for (int y = 45; y < DUEL_CANVAS_H; y++)
         for (int x = 0; x < DUEL_CANVAS_W; x++)
             ok &= duel_fb_get(&duel, x, y) == duel_fb_get(&archive, x, y);
+#endif
     CHECK(ok, "t9_archive_scene_isolated");
 }
 
@@ -2286,15 +2309,46 @@ static void t9_archive_deterministic_and_mirrored(void) {
     t9_render(&left_b, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
     t9_render(&right, &world, false, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
     bool ok = memcmp(left_a.bits, left_b.bits, sizeof left_a.bits) == 0;
+#ifdef ARCANE_M12
+    // M12 city-states are architecturally distinct, not gap-mirrored: the left
+    // (astral) and right (mechanical) tower floors must differ across the gap.
+    // The render stays deterministic (left_a == left_b, asserted above).
+    bool cities_differ = false;
+    for (int y = 61; y <= 110; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (duel_fb_get(&left_a, x, y) != duel_fb_get(&right, 31 - x, y)) cities_differ = true;
+    ok &= cities_differ;
+#else
     for (int y = 3; y <= 44; y++)
         for (int x = 0; x < DUEL_CANVAS_W; x++)
             ok &= duel_fb_get(&left_a, x, y) == duel_fb_get(&right, 31 - x, y);
+#endif
     CHECK(ok, "t9_archive_deterministic_and_mirrored");
 }
 
 static void t9_archive_activity_tiers(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
+#ifdef ARCANE_M12
+    // M12 retires the archive activity rune. Instead: the floor occupation
+    // (Commons vs Research) is a distinct room, the room stays sparse (never a
+    // filled texture), and cast anticipation still scales with tier in the
+    // now-raised rooftop band.
+    duel_fb_t commons, research, short_cast, long_cast;
+    t9_render(&commons, &world, true, 1, DUEL_HOST_SCENE_DUEL, 0);
+    t9_render(&research, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    bool ok = memcmp(commons.bits, research.bits, sizeof commons.bits) != 0;
+    int floor_px = fb_pixels_band(&research, 61, 110);
+    ok &= floor_px > 25 && floor_px < (32 * 50 / 2); // a room, not a solid block
+
+    world.wiz[SIM_SIDE_L].cast_windup = 4;
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SHORT;
+    t9_render(&short_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    t9_render(&long_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    ok &= fb_pixels_band(&short_cast, 16, 60) < fb_pixels_band(&long_cast, 16, 60);
+    CHECK(ok, "t9_archive_activity_tiers");
+#else
     duel_fb_t idle, press, expanded, short_cast, long_cast;
     t9_render(&idle, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
     world.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS;
@@ -2315,6 +2369,7 @@ static void t9_archive_activity_tiers(void) {
     // of its 32x42-pixel band.
     ok &= fb_pixels_band(&long_cast, 3, 44) < (32 * 42 / 2);
     CHECK(ok, "t9_archive_activity_tiers");
+#endif
 }
 
 static void t9_archive_precedence_and_invariance(void) {
@@ -2333,7 +2388,13 @@ static void t9_archive_precedence_and_invariance(void) {
     render.view.scry = DUEL_SCRY_PACK(true, world.scry.scene);
     duel_fb_clear(&open);
     wiz_draw_scene(&open, &render, true, 0, false);
+#ifdef ARCANE_M12
+    // The scry overlay occupies the upper band (y3-41); the tower floor below it
+    // (here the outer wall at the away-from-gap edge) is untouched by the panel.
+    bool ok = duel_fb_get(&closed, 0, 80) && duel_fb_get(&open, 0, 80);
+#else
     bool ok = duel_fb_get(&closed, 10, 30) && !duel_fb_get(&open, 10, 30);
+#endif
     ok &= duel_fb_get(&open, 3, 3); // panel border remains above the cleared art
 
     render.view.scry = DUEL_SCRY_PACK(false, world.scry.scene);
@@ -2392,7 +2453,7 @@ static void t10_split_v8_alert(void) {
                                          DUEL_HOST_PRIORITY_CRITICAL, 6);
     duel_snapshot_t packet;
     duel_encode_external_alert(&world, 9, 4, external, alert, &packet);
-    bool ok = sizeof packet == 27 && packet.ver == 8 && duel_decode_valid(&packet);
+    bool ok = sizeof packet == DUEL_SNAPSHOT_SIZE && packet.ver == 8 && duel_decode_valid(&packet);
     ok &= DUEL_HOST_CONTEXT_PERSISTENT(packet.external);
     ok &= DUEL_HOST_ALERT_CATEGORY(packet.alert) == DUEL_HOST_CATEGORY_SECURITY;
     ok &= DUEL_HOST_ALERT_PRIORITY(packet.alert) == DUEL_HOST_PRIORITY_CRITICAL;
@@ -2468,6 +2529,175 @@ static void t10_mirror_priority_age_persistence_and_scry(void) {
     ok &= memcmp(scry.bits, scry_empty.bits, sizeof scry.bits) != 0; // in-panel summary
     CHECK(ok, "t10_mirror_priority_age_persistence_and_scry");
 }
+
+#ifdef ARCANE_M12
+/* ---------------- M12: civic wire relay + host civic bytes ---------------- */
+
+// The four civic bytes ride the snapshot between `alert` and `crc`, are covered
+// by the CRC, and survive a full encode -> set_civic -> validate round-trip.
+// The combat view and existing external/alert relay are untouched.
+static void t12_snapshot_civic_roundtrip(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 7);
+    duel_snapshot_t p;
+    duel_encode_external_alert(&w, 0x42, 100, 0x55, 0x2a, &p);
+    // Encoders zero the civic bytes so the CRC is deterministic before set.
+    bool ok = sizeof p == 31 && duel_decode_valid(&p);
+    ok &= p.civic == 0 && p.secondary == 0 && p.shared_pres == 0 && p.revision == 0;
+
+    uint8_t civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_URGENT,
+                                    DUEL_M12_INTENSITY_BUSY);
+    uint8_t secondary = DUEL_SECONDARY_PACK(DUEL_M12_SECONDARY_TRANSFER);
+    duel_snapshot_set_civic(&p, civic, secondary, 0x9C, 0x0B);
+    ok &= duel_decode_valid(&p); // CRC recomputed to cover the new bytes
+    ok &= p.civic == civic && p.secondary == secondary &&
+          p.shared_pres == 0x9C && p.revision == 0x0B;
+    // The relayed bytes decode back to their logical civic fields.
+    ok &= DUEL_CIVIC_FLOOR(p.civic) == DUEL_M12_FLOOR_WORKSHOP &&
+          DUEL_CIVIC_MODE(p.civic) == DUEL_M12_MODE_URGENT &&
+          DUEL_CIVIC_INTENSITY(p.civic) == DUEL_M12_INTENSITY_BUSY &&
+          DUEL_SECONDARY_ACTIVITY(p.secondary) == DUEL_M12_SECONDARY_TRANSFER;
+    // External/alert survive alongside the civic relay.
+    ok &= p.external == 0x55 && p.alert == 0x2a;
+
+    sim_world_t decoded;
+    duel_decode_world(&p, &decoded);
+    ok &= decoded.wiz[SIM_SIDE_L].hp == SIM_MAX_HP && decoded.flags == 0;
+    CHECK(ok, "t12_snapshot_civic_roundtrip");
+}
+
+// Corrupting any single civic byte must fail the CRC, exactly like combat-view
+// corruption — the absolute-recovery invariant now covers the new bytes.
+static void t12_snapshot_civic_crc(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 3);
+    duel_snapshot_t base;
+    duel_encode(&w, 0x11, 5, &base);
+    duel_snapshot_set_civic(&base, 0x2d, 0x04, 0x77, 0x0A);
+    bool ok = duel_decode_valid(&base);
+
+    const size_t offs[4] = {
+        offsetof(duel_snapshot_t, civic), offsetof(duel_snapshot_t, secondary),
+        offsetof(duel_snapshot_t, shared_pres), offsetof(duel_snapshot_t, revision),
+    };
+    for (int i = 0; i < 4; i++) {
+        duel_snapshot_t bad = base;
+        ((uint8_t *)&bad)[offs[i]] ^= 0x40; // a bit flip the CRC must catch
+        ok &= !duel_decode_valid(&bad);
+    }
+    CHECK(ok, "t12_snapshot_civic_crc");
+}
+
+// Session/seq/stale recovery stays deterministic with 31-byte civic packets:
+// the newest sequence wins and carries its civic bytes; stale/dup lose; a
+// stale-link override still forces adoption of a lower-seq reboot packet.
+static void t12_recovery_deterministic(void) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 50);
+    duel_rx_state_t rx = {0};
+    duel_snapshot_t p10, p5;
+
+    duel_encode(&w, 0x42, 10, &p10);
+    duel_snapshot_set_civic(&p10, 0x21, 0x02, 0x33, 0x04);
+    bool ok = duel_rx_accept(&rx, &p10, false);
+    ok &= rx.last.civic == 0x21 && rx.last.secondary == 0x02;
+
+    // Older sequence with different civic bytes cannot roll the slave back.
+    duel_encode(&w, 0x42, 5, &p5);
+    duel_snapshot_set_civic(&p5, 0x00, 0x00, 0x00, 0x00);
+    ok &= !duel_rx_accept(&rx, &p5, false);
+    ok &= memcmp(&rx.last, &p10, sizeof p10) == 0; // full packet incl. civic
+
+    duel_snapshot_t dup = p10;
+    ok &= !duel_rx_accept(&rx, &dup, false); // duplicate rejected
+
+    // Session restart (new nonce) adopts immediately, carrying its civic bytes.
+    duel_snapshot_t reboot;
+    duel_encode(&w, 0x43, 1, &reboot);
+    duel_snapshot_set_civic(&reboot, 0x2e, 0x03, 0x55, 0x06);
+    ok &= duel_rx_accept(&rx, &reboot, false);
+    ok &= rx.last.session == 0x43 && rx.last.civic == 0x2e && rx.last.secondary == 0x03;
+
+    // Nonce collision + lower seq: only the stale-link override adopts it.
+    duel_snapshot_t collide;
+    duel_encode(&w, 0x43, 0, &collide);
+    duel_snapshot_set_civic(&collide, 0x10, 0x01, 0x22, 0x03);
+    ok &= !duel_rx_accept(&rx, &collide, false); // stale without override
+    ok &= duel_rx_accept(&rx, &collide, true);   // link-stale override adopts
+    ok &= rx.last.civic == 0x10 && rx.last.seq == 0;
+    CHECK(ok, "t12_recovery_deterministic");
+}
+
+// Raw HID v2 civic summary: encode payload[6]/[7] with len 8, validate, accept,
+// expose via accessors, and confirm offline/legacy paths zero the civic bytes.
+static void t12_host_civic_roundtrip(void) {
+    duel_host_state_t state = {0};
+    duel_host_packet_t packet;
+    uint8_t civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET,
+                                    DUEL_M12_INTENSITY_ACTIVE);
+    uint8_t secondary = DUEL_SECONDARY_PACK(DUEL_M12_SECONDARY_MEDIA);
+
+    duel_host_encode_civic(DUEL_HOST_MSG_HELLO, 0x99, 0, DUEL_HOST_SCENE_ARCHIVE,
+                           2, DUEL_HOST_CATEGORY_COMMUNICATION,
+                           DUEL_HOST_PRIORITY_NORMAL, 0, false, civic, secondary,
+                           &packet);
+    bool ok = sizeof packet == DUEL_HOST_REPORT_SIZE;
+    ok &= packet.payload_len == DUEL_HOST_PAYLOAD_LEN_M12;
+    ok &= packet.payload[DUEL_HOST_PAYLOAD_CIVIC] == civic &&
+          packet.payload[DUEL_HOST_PAYLOAD_SECONDARY] == secondary;
+    ok &= duel_host_packet_valid(&packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= duel_host_civic(&state) == civic && duel_host_secondary(&state) == secondary;
+    ok &= DUEL_CIVIC_FLOOR(duel_host_civic(&state)) == DUEL_M12_FLOOR_RESEARCH;
+
+    // Offline collapses the civic bytes to zero, like context/alert.
+    duel_host_expire(&state);
+    ok &= duel_host_civic(&state) == 0 && duel_host_secondary(&state) == 0;
+
+    // A legacy 6-byte v2 heartbeat still validates and leaves civic state clear.
+    duel_host_encode_summary(DUEL_HOST_MSG_HEARTBEAT, 0x99, 1, DUEL_HOST_SCENE_DUEL,
+                             0, 0, 0, 0, false, &packet);
+    ok &= packet.payload_len == 6 && duel_host_packet_valid(&packet);
+    ok &= duel_host_accept(&state, &packet) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= duel_host_civic(&state) == 0 && duel_host_secondary(&state) == 0;
+    CHECK(ok, "t12_host_civic_roundtrip");
+}
+
+// payload_len 8 validates; reserved civic/secondary bits, out-of-range
+// secondary, unknown lengths, and CRC flips on the civic bytes are rejected.
+static void t12_host_civic_validation(void) {
+    duel_host_packet_t base;
+    duel_host_encode_civic(DUEL_HOST_MSG_HEARTBEAT, 5, 3, DUEL_HOST_SCENE_FOCUS, 1,
+                           DUEL_HOST_CATEGORY_TERMINAL, DUEL_HOST_PRIORITY_LOW, 0,
+                           false,
+                           DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS,
+                                           DUEL_M12_MODE_NORMAL,
+                                           DUEL_M12_INTENSITY_CALM),
+                           DUEL_SECONDARY_PACK(DUEL_M12_SECONDARY_SYSTEM), &base);
+    bool ok = base.payload_len == DUEL_HOST_PAYLOAD_LEN_M12 &&
+              duel_host_packet_valid(&base);
+
+    duel_host_packet_t bad = base;
+    bad.payload[DUEL_HOST_PAYLOAD_CIVIC] |= 0x40; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // reserved civic bits must be zero
+    bad = base; bad.payload[DUEL_HOST_PAYLOAD_SECONDARY] |= 0x08; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // reserved secondary bits must be zero
+    bad = base;
+    bad.payload[DUEL_HOST_PAYLOAD_SECONDARY] = DUEL_M12_SECONDARY_CALENDAR + 1;
+    host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // secondary beyond the enum
+    bad = base; bad.payload[DUEL_HOST_PAYLOAD_CIVIC] ^= 0x01; // no recrc
+    ok &= !duel_host_packet_valid(&bad); // CRC flip on a civic byte caught
+    bad = base; bad.payload_len = 7; host_recrc(&bad);
+    ok &= !duel_host_packet_valid(&bad); // only 6 or 8 are legal v2 lengths
+
+    // The legacy 6-byte v2 summary still validates under M12.
+    duel_host_packet_t legacy;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 5, 0, DUEL_HOST_SCENE_DUEL, 2, &legacy);
+    ok &= legacy.payload_len == 6 && duel_host_packet_valid(&legacy);
+    CHECK(ok, "t12_host_civic_validation");
+}
+#endif /* ARCANE_M12 */
 
 int main(int argc, char **argv) {
     int argi = 1;
@@ -2571,6 +2801,14 @@ int main(int argc, char **argv) {
     t11_display_wire_compatibility();
     t11_presentation_clock();
     t115_canonical_view_and_event_bounds();
+
+#ifdef ARCANE_M12
+    t12_snapshot_civic_roundtrip();
+    t12_snapshot_civic_crc();
+    t12_recovery_deterministic();
+    t12_host_civic_roundtrip();
+    t12_host_civic_validation();
+#endif
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

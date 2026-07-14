@@ -15,7 +15,7 @@ LDFLAGS += -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref
 
 OPT_DEFS += -DARCANE_HOST_ENABLE
 
-SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_host.c sim/duel_display.c
+SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_host.c sim/duel_display.c sim/duel_resident.c sim/duel_courier.c sim/duel_event.c
 
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
     OPT_DEFS += -DARCANE_DIAGNOSTICS
@@ -23,4 +23,9 @@ endif
 
 ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
     OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
+endif
+
+# M12 Twin Cities (see firmware/rules.mk). Off by default; release stays M11.5.
+ifeq ($(strip $(ARCANE_M12)),yes)
+    OPT_DEFS += -DARCANE_M12
 endif
