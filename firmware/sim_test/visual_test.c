@@ -113,6 +113,26 @@ static void test_density_and_distinction(void) {
 }
 
 static void test_archive_continuity_and_variation(void) {
+#ifdef ARCANE_M12
+    // M12 retires the upper archive underlay: "archive-idle" now renders the
+    // Research tower FLOOR (y61-110). The two city-states are architecturally
+    // DISTINCT (astral left vs mechanical right), so the floor is deliberately
+    // NOT gap-mirrored; it is present, and fully static (no frame variation),
+    // unlike the old animated archive rune.
+    const duel_scenario_t *s = duel_scenario_find("archive-idle");
+    duel_fb_t l0, r0, l1, r1;
+    duel_scenario_render(s, 0, &l0, &r0);
+    duel_scenario_render(s, 32, &l1, &r1);
+    bool cities_differ = false, has_floor = false, floor_static = true;
+    for (int y = 61; y <= 110; y++)
+        for (int x = 0; x < 32; x++) {
+            if (duel_fb_get(&l0, x, y) != duel_fb_get(&r0, 31 - x, y)) cities_differ = true;
+            has_floor |= duel_fb_get(&l0, x, y);
+            floor_static &= duel_fb_get(&l0, x, y) == duel_fb_get(&l1, x, y);
+        }
+    VCHECK(cities_differ && has_floor, "visual_archive_gap_continuity_asymmetry");
+    VCHECK(floor_static, "visual_archive_sparse_static_variation");
+#else
     const duel_scenario_t *s = duel_scenario_find("archive-idle");
     duel_fb_t l0, r0, l1, r1;
     duel_scenario_render(s, 0, &l0, &r0);
@@ -128,6 +148,7 @@ static void test_archive_continuity_and_variation(void) {
     bool upper_varies = memcmp(l0.bits, l1.bits, sizeof l0.bits) != 0;
     VCHECK(mirror && asymmetric, "visual_archive_gap_continuity_asymmetry");
     VCHECK(upper_varies && lower_static, "visual_archive_sparse_static_variation");
+#endif
 }
 
 static void render_direct(duel_fb_t *fb, duel_render_t *r, bool left, uint32_t frame, bool diag) {

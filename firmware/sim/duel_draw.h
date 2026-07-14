@@ -37,6 +37,18 @@
 #define DUEL_DIAG_TOP_Y 0
 #define DUEL_DIAG_BOTTOM_Y (DUEL_CANVAS_H - 1)
 
+// M12 rooftop relocation. Under ARCANE_M12 the whole combat cluster (champion,
+// ward, spell lanes, charge anticipation, recovery sparks, downed/medic) shifts
+// UP by this many pixels to open a tower-floor band beneath it. The lift is
+// bounded by the alert region: draw_charge reaches cy-6, which must stay below
+// DUEL_ALERT_Y1 (15), so with cy=39 the safe maximum is -17. Zero in release
+// builds, where it constant-folds away and output stays bit-identical to M11.5.
+#ifdef ARCANE_M12
+#define DUEL_ROOF_DY (-17)
+#else
+#define DUEL_ROOF_DY 0
+#endif
+
 typedef enum {
     DUEL_LAYER_UNDERLAY,
     DUEL_LAYER_COMBAT,

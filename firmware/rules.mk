@@ -20,3 +20,10 @@ endif
 ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
     OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
 endif
+
+# M12 Twin Cities. Opt-in so the accepted M11.5 release stays bit-identical:
+# `qmk compile ... -e ARCANE_M12=yes`. Every M12 addition is compiled out when
+# this is absent, and DUEL_ROOF_DY constant-folds to 0.
+ifeq ($(strip $(ARCANE_M12)),yes)
+    OPT_DEFS += -DARCANE_M12
+endif

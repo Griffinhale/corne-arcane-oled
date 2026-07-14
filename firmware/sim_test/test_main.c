@@ -1819,8 +1819,9 @@ static void t75_outcome_grammars(void) {
     ok &= memcmp(impact.bits, fizzle.bits, sizeof impact.bits) != 0;
     ok &= memcmp(deflect.bits, fizzle.bits, sizeof impact.bits) != 0;
     // Right-side impact recoil: original apex clears, shifted/compressed apex appears.
-    ok &= !duel_fb_get(&impact, 16, 54) && duel_fb_get(&impact, 18, 55);
-    ok &= duel_fb_get(&deflect, 16, 54); // deflection leaves the defender stable
+    // Coordinates track the M12 rooftop lift (DUEL_ROOF_DY is 0 in release builds).
+    ok &= !duel_fb_get(&impact, 16, 54 + DUEL_ROOF_DY) && duel_fb_get(&impact, 18, 55 + DUEL_ROOF_DY);
+    ok &= duel_fb_get(&deflect, 16, 54 + DUEL_ROOF_DY); // deflection leaves the defender stable
     render_outcome(&impact_short, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_SHORT));
     render_outcome(&impact_long, FX_IMPACT_R, DUEL_KIND_WITH_TIER(medium, SPELL_TIER_LONG));
     ok &= fb_pixels(&impact_short) < fb_pixels(&impact_long);
@@ -1842,8 +1843,8 @@ static void t75_void_ward_puncture(void) {
     duel_render_from_world(&r, &w);
     duel_fb_clear(&pierced);
     wiz_draw_scene(&pierced, &r, false, 0, false);
-    bool ok = duel_fb_get(&ward, 7, 60) && !duel_fb_get(&pierced, 7, 60); // visible split in arc
-    ok &= !duel_fb_get(&ward, 10, 61) && duel_fb_get(&pierced, 10, 61);   // projectile continues inward
+    bool ok = duel_fb_get(&ward, 7, 60 + DUEL_ROOF_DY) && !duel_fb_get(&pierced, 7, 60 + DUEL_ROOF_DY); // visible split in arc
+    ok &= !duel_fb_get(&ward, 10, 61 + DUEL_ROOF_DY) && duel_fb_get(&pierced, 10, 61 + DUEL_ROOF_DY);   // projectile continues inward
     CHECK(ok, "t75_void_ward_puncture");
 }
 
@@ -2270,11 +2271,21 @@ static void t9_archive_scene_isolated(void) {
     bool ok = memcmp(duel.bits, focus.bits, sizeof duel.bits) == 0;
     ok &= memcmp(duel.bits, offline.bits, sizeof duel.bits) == 0;
     ok &= memcmp(duel.bits, archive.bits, sizeof duel.bits) != 0;
+#ifdef ARCANE_M12
+    // M12 inverts the model: DUEL selects the Commons floor and ARCHIVE the
+    // Research floor. They share an identical rooftop (y<=60) and health/HUD
+    // band (y>=111); the two occupations differ only inside the floor (61-110).
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (y <= 60 || y >= 111)
+                ok &= duel_fb_get(&duel, x, y) == duel_fb_get(&archive, x, y);
+#else
     // The Archive is an upper-canvas underlay; every combat/health byte below
     // it remains exactly the accepted Duel frame.
     for (int y = 45; y < DUEL_CANVAS_H; y++)
         for (int x = 0; x < DUEL_CANVAS_W; x++)
             ok &= duel_fb_get(&duel, x, y) == duel_fb_get(&archive, x, y);
+#endif
     CHECK(ok, "t9_archive_scene_isolated");
 }
 
@@ -2286,15 +2297,46 @@ static void t9_archive_deterministic_and_mirrored(void) {
     t9_render(&left_b, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
     t9_render(&right, &world, false, 1, DUEL_HOST_SCENE_ARCHIVE, 17);
     bool ok = memcmp(left_a.bits, left_b.bits, sizeof left_a.bits) == 0;
+#ifdef ARCANE_M12
+    // M12 city-states are architecturally distinct, not gap-mirrored: the left
+    // (astral) and right (mechanical) tower floors must differ across the gap.
+    // The render stays deterministic (left_a == left_b, asserted above).
+    bool cities_differ = false;
+    for (int y = 61; y <= 110; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (duel_fb_get(&left_a, x, y) != duel_fb_get(&right, 31 - x, y)) cities_differ = true;
+    ok &= cities_differ;
+#else
     for (int y = 3; y <= 44; y++)
         for (int x = 0; x < DUEL_CANVAS_W; x++)
             ok &= duel_fb_get(&left_a, x, y) == duel_fb_get(&right, 31 - x, y);
+#endif
     CHECK(ok, "t9_archive_deterministic_and_mirrored");
 }
 
 static void t9_archive_activity_tiers(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
+#ifdef ARCANE_M12
+    // M12 retires the archive activity rune. Instead: the floor occupation
+    // (Commons vs Research) is a distinct room, the room stays sparse (never a
+    // filled texture), and cast anticipation still scales with tier in the
+    // now-raised rooftop band.
+    duel_fb_t commons, research, short_cast, long_cast;
+    t9_render(&commons, &world, true, 1, DUEL_HOST_SCENE_DUEL, 0);
+    t9_render(&research, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    bool ok = memcmp(commons.bits, research.bits, sizeof commons.bits) != 0;
+    int floor_px = fb_pixels_band(&research, 61, 110);
+    ok &= floor_px > 25 && floor_px < (32 * 50 / 2); // a room, not a solid block
+
+    world.wiz[SIM_SIDE_L].cast_windup = 4;
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SHORT;
+    t9_render(&short_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    t9_render(&long_cast, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
+    ok &= fb_pixels_band(&short_cast, 16, 60) < fb_pixels_band(&long_cast, 16, 60);
+    CHECK(ok, "t9_archive_activity_tiers");
+#else
     duel_fb_t idle, press, expanded, short_cast, long_cast;
     t9_render(&idle, &world, true, 1, DUEL_HOST_SCENE_ARCHIVE, 0);
     world.wiz[SIM_SIDE_L].shield_ticks = SIM_SHIELD_TICKS;
@@ -2315,6 +2357,7 @@ static void t9_archive_activity_tiers(void) {
     // of its 32x42-pixel band.
     ok &= fb_pixels_band(&long_cast, 3, 44) < (32 * 42 / 2);
     CHECK(ok, "t9_archive_activity_tiers");
+#endif
 }
 
 static void t9_archive_precedence_and_invariance(void) {
@@ -2333,7 +2376,13 @@ static void t9_archive_precedence_and_invariance(void) {
     render.view.scry = DUEL_SCRY_PACK(true, world.scry.scene);
     duel_fb_clear(&open);
     wiz_draw_scene(&open, &render, true, 0, false);
+#ifdef ARCANE_M12
+    // The scry overlay occupies the upper band (y3-41); the tower floor below it
+    // (here the outer wall at the away-from-gap edge) is untouched by the panel.
+    bool ok = duel_fb_get(&closed, 0, 80) && duel_fb_get(&open, 0, 80);
+#else
     bool ok = duel_fb_get(&closed, 10, 30) && !duel_fb_get(&open, 10, 30);
+#endif
     ok &= duel_fb_get(&open, 3, 3); // panel border remains above the cleared art
 
     render.view.scry = DUEL_SCRY_PACK(false, world.scry.scene);

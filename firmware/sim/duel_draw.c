@@ -77,9 +77,12 @@ static void archive_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
     }
 }
 
+#ifndef ARCANE_M12
 // M9 hybrid Archive underlay. The x coordinates below are authored in desk
 // space with x=31 at the centre gap, then mirrored on the right OLED. All
 // marks stay in y=3..44, clear of actors, combat carriers, and health.
+// Retired under M12 (the raised rooftop owns this band; archival life moves to
+// the tower floor), so its definition compiles only in the M11.5 release path.
 static void draw_archive(duel_fb_t *fb, const duel_view_wizard_t *wz, bool is_left, uint32_t frame) {
 #define ARCH_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     // A single arch spans the physical gap: apex at each inner edge, falling
@@ -152,6 +155,65 @@ static void clear_archive_panel(duel_fb_t *fb) {
     for (int y = 2; y <= 42; y++)
         for (int x = 2; x <= 29; x++) duel_fb_px(fb, x, y, false);
 }
+#endif // !ARCANE_M12
+
+#ifdef ARCANE_M12
+// M12 tower floor beneath the raised rooftop. A schematic cutaway room: ceiling
+// beam, outer wall, implied lift shaft, ground line, two occupation anchors, and
+// foundation trim. Authored in desk space (x=31 at the gap) and mirrored on the
+// right OLED like draw_archive. The occupation (Commons vs Research) is selected
+// by the host scene, so scene=ARCHIVE renders a distinct Research floor rather
+// than the retired upper archive art. Full per-city motif tables land in Phase 2;
+// this shell only needs to read as a room and stay distinct per city/occupation.
+static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+#define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
+    bool research = render_host(r) && render_scene(r) == DUEL_HOST_SCENE_ARCHIVE;
+
+    // Ceiling beam splitting rooftop from floor. Left city (astral) dashes it;
+    // right city (mechanical) leaves it solid.
+    for (int x = 0; x < DUEL_CANVAS_W; x++)
+        if (!is_left || (x & 3) != 3) duel_fb_px(fb, x, 61, true);
+
+    // Outer wall (edge away from the gap) plus a short lift-shaft stub by the gap.
+    for (int y = 63; y <= 109; y++) duel_fb_px(fb, FLR_X(0), y, true);
+    for (int y = 63; y <= 70; y++)  duel_fb_px(fb, FLR_X(30), y, true);
+
+    // Ground line of the room, one row clear of the health band (111-114).
+    wiz_hspan(fb, 0, DUEL_CANVAS_W - 1, 110);
+
+    // Gap-side anchor: a tall Research apparatus vs a low Commons desk/shrine.
+    {
+        int a = FLR_X(19), b = FLR_X(27);
+        int lo = a < b ? a : b, hi = a < b ? b : a;
+        if (research) {
+            archive_rect(fb, lo, 74, hi, 104);
+            wiz_hspan(fb, lo, hi, 84);
+            wiz_hspan(fb, lo, hi, 94);
+        } else {
+            archive_rect(fb, lo, 92, hi, 104);
+            duel_fb_px(fb, (lo + hi) / 2, 88, true);
+            duel_fb_px(fb, (lo + hi) / 2, 90, true);
+        }
+    }
+    // Outer-side anchor: a Research shelf/catalog vs a Commons post counter.
+    {
+        int a = FLR_X(3), b = FLR_X(11);
+        int lo = a < b ? a : b, hi = a < b ? b : a;
+        if (research) {
+            wiz_hspan(fb, lo, hi, 80);
+            wiz_hspan(fb, lo, hi, 88);
+            wiz_hspan(fb, lo, hi, 96);
+        } else {
+            archive_rect(fb, lo, 98, hi, 105);
+        }
+    }
+
+    // Foundation / trim: sparse, clear of the health band and the y127 odometer.
+    for (int x = 0; x < DUEL_CANVAS_W; x++) if ((x & 1) == 0) duel_fb_px(fb, x, 117, true);
+    for (int x = 2; x < DUEL_CANVAS_W; x += 8) { duel_fb_px(fb, x, 120, true); duel_fb_px(fb, x, 123, true); }
+#undef FLR_X
+}
+#endif
 
 // A compact standing wizard (~1/3 of the original M1 figure, hardware
 // feedback: full-size read as a blob at actual OLED scale). Centred at x=16
@@ -162,8 +224,8 @@ static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, i
     const int cx = DUEL_CANVAS_W / 2 + xo;   // 16 + xo
 
     // Pointed hat: filled triangle apex -> base (max half-width 3).
-    const int hat_apex_y = 54 + yo;
-    const int hat_base_y = 61 + yo;
+    const int hat_apex_y = 54 + yo + DUEL_ROOF_DY;
+    const int hat_base_y = 61 + yo + DUEL_ROOF_DY;
     for (int y = hat_apex_y; y <= hat_base_y; y++) {
         int hw = (y - hat_apex_y) * 3 / (hat_base_y - hat_apex_y); // 0..3
         wiz_hspan(fb, cx - hw, cx + hw, y);
@@ -173,7 +235,7 @@ static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, i
 
     // Robe: trapezoid widening toward the base (half-width 2..4).
     const int robe_top = hat_base_y + 2;   // 63 + yo
-    const int robe_bot = 75 + yo;
+    const int robe_bot = 75 + yo + DUEL_ROOF_DY;
     for (int y = robe_top; y <= robe_bot; y++) {
         int hw = 2 + (y - robe_top) * 2 / (robe_bot - robe_top); // 2..4
         wiz_hspan(fb, cx - hw, cx + hw, y);
@@ -201,14 +263,14 @@ static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, i
     int sx = cx + facing * 6;
     if (!casting) {
         // Resting: vertical staff with an orb finial near the top.
-        for (int y = 64 + yo; y <= robe_bot; y++) duel_fb_px(fb, sx, y, true);
-        duel_fb_px(fb, sx, 62 + yo, true);
-        duel_fb_px(fb, sx - facing, 63 + yo, true);
+        for (int y = 64 + yo + DUEL_ROOF_DY; y <= robe_bot; y++) duel_fb_px(fb, sx, y, true);
+        duel_fb_px(fb, sx, 62 + yo + DUEL_ROOF_DY, true);
+        duel_fb_px(fb, sx - facing, 63 + yo + DUEL_ROOF_DY, true);
     } else {
         // Casting: staff raised toward the hat. The progressive M7.5 charge is
         // drawn separately from authoritative wind-up state in wiz_draw_scene.
-        wiz_line(fb, cx + facing * 2, 68 + yo, cx + facing * 5, 56 + yo);
-        duel_fb_px(fb, cx + facing * 5, 55 + yo, true); // staff-tip focus
+        wiz_line(fb, cx + facing * 2, 68 + yo + DUEL_ROOF_DY, cx + facing * 5, 56 + yo + DUEL_ROOF_DY);
+        duel_fb_px(fb, cx + facing * 5, 55 + yo + DUEL_ROOF_DY, true); // staff-tip focus
     }
 }
 
@@ -225,27 +287,27 @@ static void wiz_downed(duel_fb_t *fb, int facing, uint8_t variant, int xo) {
     int head = cx - facing * 5;              // head end, away from the gap
     int feet = cx + facing * 3;
     int lo = head < feet ? head : feet, hi = head < feet ? feet : head;
-    wiz_hspan(fb, lo, hi, 72);
-    wiz_hspan(fb, lo, hi, 73);
+    wiz_hspan(fb, lo, hi, 72 + DUEL_ROOF_DY);
+    wiz_hspan(fb, lo, hi, 73 + DUEL_ROOF_DY);
     // Fallen hat just past the head: 3-px base with a 1-px apex row on top.
     int hx = head - facing * 2;              // hat centre, one px clear of the head
-    wiz_hspan(fb, hx < head ? hx - 1 : head + 1, hx < head ? head - 1 : hx + 1, 72);
-    duel_fb_px(fb, hx, 71, true);
-    if ((variant & 3) == 3) duel_fb_px(fb, hx, 70, true); // pompom stayed on
+    wiz_hspan(fb, hx < head ? hx - 1 : head + 1, hx < head ? head - 1 : hx + 1, 72 + DUEL_ROOF_DY);
+    duel_fb_px(fb, hx, 71 + DUEL_ROOF_DY, true);
+    if ((variant & 3) == 3) duel_fb_px(fb, hx, 70 + DUEL_ROOF_DY, true); // pompom stayed on
     // Dropped staff: flat on the ground, toward the gap.
-    for (int i = 1; i <= 5; i++) duel_fb_px(fb, cx + facing * i, 75, true);
+    for (int i = 1; i <= 5; i++) duel_fb_px(fb, cx + facing * i, 75 + DUEL_ROOF_DY, true);
 }
 
 // M5 medic: a short hatless figure (8 px, clearly not a wizard) leaning into
 // the drag — 2x2 head, torso kinked 1 px toward -facing, splayed legs.
 static void medic_draw(duel_fb_t *fb, int x, int facing) {
-    duel_fb_px(fb, x, 66, true); duel_fb_px(fb, x + 1, 66, true);
-    duel_fb_px(fb, x, 67, true); duel_fb_px(fb, x + 1, 67, true);
-    for (int y = 68; y <= 70; y++) duel_fb_px(fb, x, y, true);
-    duel_fb_px(fb, x - facing, 71, true);
-    duel_fb_px(fb, x - facing, 72, true);
-    duel_fb_px(fb, x - facing - 1, 73, true);
-    duel_fb_px(fb, x - facing + 1, 73, true);
+    duel_fb_px(fb, x, 66 + DUEL_ROOF_DY, true); duel_fb_px(fb, x + 1, 66 + DUEL_ROOF_DY, true);
+    duel_fb_px(fb, x, 67 + DUEL_ROOF_DY, true); duel_fb_px(fb, x + 1, 67 + DUEL_ROOF_DY, true);
+    for (int y = 68 + DUEL_ROOF_DY; y <= 70 + DUEL_ROOF_DY; y++) duel_fb_px(fb, x, y, true);
+    duel_fb_px(fb, x - facing, 71 + DUEL_ROOF_DY, true);
+    duel_fb_px(fb, x - facing, 72 + DUEL_ROOF_DY, true);
+    duel_fb_px(fb, x - facing - 1, 73 + DUEL_ROOF_DY, true);
+    duel_fb_px(fb, x - facing + 1, 73 + DUEL_ROOF_DY, true);
 }
 
 bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x) {
@@ -259,7 +321,7 @@ bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x) {
     return true;
 }
 
-#define SPELL_Y_BASE 63
+#define SPELL_Y_BASE (63 + DUEL_ROOF_DY)
 
 static int spell_lane_y(uint8_t kind) {
     switch (DUEL_KIND_ELEMENT(kind)) {
@@ -359,7 +421,7 @@ static void draw_charge(duel_fb_t *fb, const duel_view_wizard_t *wz, int facing,
     int max_r   = 1 + tier;
     int radius  = 1 + stage * (max_r - 1) / 4;
     int cx      = 16 + facing * 2;
-    int cy      = 39;
+    int cy      = 39 + DUEL_ROOF_DY;
 
     duel_fb_px(fb, cx, cy, true);
     if (stage >= 1) {
@@ -395,16 +457,16 @@ static void draw_ward(duel_fb_t *fb, int facing, int thickness, bool punctured, 
     int ax = 16 + facing * 9;
     for (int t = 0; t < thickness; t++) {
         int x = ax + facing * t;
-        for (int y = 58; y <= 72; y++) {
+        for (int y = 58 + DUEL_ROOF_DY; y <= 72 + DUEL_ROOF_DY; y++) {
             int d = y - puncture_y;
             if (d < 0) d = -d;
             if (punctured && d <= 2) continue;
             duel_fb_px(fb, x, y, true);
         }
-        duel_fb_px(fb, x - facing, 56, true);
-        duel_fb_px(fb, x - facing, 57, true);
-        duel_fb_px(fb, x - facing, 73, true);
-        duel_fb_px(fb, x - facing, 74, true);
+        duel_fb_px(fb, x - facing, 56 + DUEL_ROOF_DY, true);
+        duel_fb_px(fb, x - facing, 57 + DUEL_ROOF_DY, true);
+        duel_fb_px(fb, x - facing, 73 + DUEL_ROOF_DY, true);
+        duel_fb_px(fb, x - facing, 74 + DUEL_ROOF_DY, true);
     }
     if (punctured) {
         // Split lips and inward cracks make the VOID interaction read as an
@@ -597,7 +659,14 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     int ward_lane = have_piercer ? spell_lane_y(piercer.kind) : spell_lane_y(r->flash_spell_kind);
     bool archive = render_host(r) && render_scene(r) == DUEL_HOST_SCENE_ARCHIVE;
 
+#ifdef ARCANE_M12
+    // M12 retires the M9 upper archive underlay: the raised rooftop now owns that
+    // band, and the archival occupation moves into the tower floor below.
+    (void)archive;
+    draw_floor(fb, r, is_left);
+#else
     if (archive) draw_archive(fb, wz, is_left, frame);
+#endif
 
     // Lifecycle (M5): each phase has its own tableau, derived purely from
     // (life, life_ticks, variant) so master and slave render identically.
@@ -612,9 +681,9 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
             if (wz->pose == POSE_RECOVER && !local_impact) {
                 // Fading sparks above the hat make RECOVER observable on hardware.
-                duel_fb_px(fb, 14, 50, true);
-                duel_fb_px(fb, 18, 51, true);
-                if (wz->pose_ticks >= 2) duel_fb_px(fb, 16, 49, true);
+                duel_fb_px(fb, 14, 50 + DUEL_ROOF_DY, true);
+                duel_fb_px(fb, 18, 51 + DUEL_ROOF_DY, true);
+                if (wz->pose_ticks >= 2) duel_fb_px(fb, 16, 49 + DUEL_ROOF_DY, true);
             }
 
             // Shield: a vertical ward arc on the gap side of this half's wizard.
@@ -639,9 +708,9 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
             wiz_downed(fb, facing, wz->variant, 0);
             // "Protected" halo over the body, blinking (render-frame cosmetic).
             if (!((frame >> 2) & 1)) {
-                duel_fb_px(fb, 15, 69, true);
-                duel_fb_px(fb, 16, 69, true);
-                duel_fb_px(fb, 17, 69, true);
+                duel_fb_px(fb, 15, 69 + DUEL_ROOF_DY, true);
+                duel_fb_px(fb, 16, 69 + DUEL_ROOF_DY, true);
+                duel_fb_px(fb, 17, 69 + DUEL_ROOF_DY, true);
             }
             break;
 
@@ -767,7 +836,9 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     // held. The stale-link and debug glyphs draw AFTER, so a broken link is
     // still legible in its corner even with the panel up.
     if (duel_view_scry_open(&r->view)) {
+#ifndef ARCANE_M12
         if (archive) clear_archive_panel(fb);
+#endif
         draw_overlay(fb, r);
     }
 

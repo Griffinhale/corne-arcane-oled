@@ -24,3 +24,8 @@ endif
 ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
     OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
 endif
+
+# M12 Twin Cities (see firmware/rules.mk). Off by default; release stays M11.5.
+ifeq ($(strip $(ARCANE_M12)),yes)
+    OPT_DEFS += -DARCANE_M12
+endif
