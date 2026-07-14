@@ -11,12 +11,10 @@ bool sim_evq_push(sim_evq_t *q, sim_event_t e) {
     return true;
 }
 
-uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out) {
+uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out, uint8_t *dropped) {
     uint8_t n = q->n;
     memcpy(out, q->ev, (size_t)n * sizeof *out);
-    if (q->dropped) {
-        out[n++] = (sim_event_t){SIM_EV_OVERFLOW, 0, q->dropped, 0};
-    }
+    *dropped = q->dropped;
     q->n       = 0;
     q->dropped = 0;
     return n;
@@ -189,22 +187,25 @@ static void scry_step(sim_scry_t *sc, uint8_t mask) {
     }
 }
 
-void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n) {
+void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
+              uint8_t dropped) {
+    if (dropped) {
+        uint32_t sum = (uint32_t)w->overflow_count + dropped;
+        w->overflow_count = sum > 0xFFFF ? 0xFFFF : (uint16_t)sum;
+    }
     for (uint8_t i = 0; i < n; i++) {
-        if (ev[i].kind == SIM_EV_OVERFLOW) {
-            uint32_t sum = (uint32_t)w->overflow_count + ev[i].row;
-            w->overflow_count = sum > 0xFFFF ? 0xFFFF : (uint16_t)sum;
-        } else if (ev[i].kind == SIM_EV_KEYDOWN && ev[i].side < 2) {
+        if (SIM_EV_KIND(ev[i]) == SIM_EV_KEYDOWN) {
+            uint8_t side = SIM_EV_SIDE(ev[i]);
             if (w->flags & SIMF_AUTHORITATIVE) {
-                sim_wizard_t *wz = &w->wiz[ev[i].side];
-                uint8_t       rc = ev[i].row & 3;
+                sim_wizard_t *wz = &w->wiz[side];
+                uint8_t       rc = SIM_EV_ROW(ev[i]);
                 wz->recipe_hist = (uint8_t)((wz->recipe_hist << 2) | rc);
                 if (wz->recipe_n < RECIPE_N_MAX) wz->recipe_n++;
                 wz->recipe_idle = 0;
                 wz->cast_tier   = duel_recipe_tier(wz->recipe_n);
             }
-            if (w->wiz[ev[i].side].life == LIFE_ACTIVE) {
-                w->wiz[ev[i].side].shield_ticks = SIM_SHIELD_TICKS; // a downed wizard cannot ward
+            if (w->wiz[side].life == LIFE_ACTIVE) {
+                w->wiz[side].shield_ticks = SIM_SHIELD_TICKS; // a downed wizard cannot ward
             }
         }
         // KEYUP does not feed recipes.

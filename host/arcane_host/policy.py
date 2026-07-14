@@ -172,3 +172,21 @@ class NotificationPolicy:
     @property
     def entry_count(self) -> int:
         return len(self._normal) + len(self._critical)
+
+    def next_deadline(self, now: float) -> float | None:
+        """Return the next expiry or visible age-bucket boundary."""
+        self._expire_batch(now)
+        deadlines: list[float] = []
+        if self._batch_started is not None:
+            deadlines.append(self._batch_expires)
+        active = tuple(self._critical.values()) + tuple(self._normal.values())
+        if active:
+            representative = max(
+                active, key=lambda entry: (int(entry.priority), entry.newest_distinct)
+            )
+            age = now - representative.first
+            for threshold in AGE_THRESHOLDS:
+                if threshold > age:
+                    deadlines.append(representative.first + threshold)
+                    break
+        return min(deadlines) if deadlines else None

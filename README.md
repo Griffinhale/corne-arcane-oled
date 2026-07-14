@@ -16,12 +16,12 @@ notes. The live firmware is developed in a separate QMK tree (see below).
 | Path | What it is |
 | --- | --- |
 | `firmware/` | **Committed snapshot** of the live keymap (`griffin_anim`): the hardware-agnostic duel engine (`sim/`), the QMK glue (`keymap.c`), and the host test rig (`sim_test/`). See `firmware/README.md` for the deep dive. |
-| `host/` | M10's privacy-redacted notification/focus daemon, event client, Zsh hook, private D-Bus/KWin bridge, Nix package, and tests. |
+| `host/` | M11.5's revision/deadline-driven semantic daemon, privacy-redacted adapters, event client, Zsh/Git hook, private D-Bus/KWin bridge, Nix package, and tests. |
 | `Corne_Arcane_OLED_Implementation_Roadmap.docx` | Milestone plan **M0–M11** (the authoritative build order). |
 | `Corne_Arcane_OLED_Design_Audit_Addendum.docx` | Scope guards, failure modes, and the simulation/presentation/**external-context** data-class boundary. |
 | `Corne_Arcane_OLED_Build_Kickoff_Prompt.docx` | The original kickoff brief and stopping rules. |
 | `BUILD_NOTES_NIXOS.md` | How this actually builds on NixOS 26.05 (supersedes the Debian steps in `spike1/`). |
-| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M10 daemon/adapters, and Plasma user service. Not yet applied. |
+| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M11.5 daemon/adapters, and Plasma user service. Not yet applied. |
 | `spike1/` | Original working notes + helper scripts from the first hardware spikes (Debian-era; some steps superseded by `BUILD_NOTES_NIXOS.md`). |
 | `sync-firmware.sh` | Refresh the `firmware/` snapshot from the live QMK tree. |
 
@@ -47,7 +47,8 @@ git add -A && git commit -m "sync firmware snapshot"
 - **`griffin_anim`** — the OLED duel (Vial **on**). Everything in `firmware/` here.
   Its compiled four-layer default is captured from `../corne-arcane.vil`.
 - **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID,
-  M9 hybrid Archive renderer, and M10 notification sigils,
+  M9 hybrid Archive renderer, M10 notification sigils, and the M11.5 canonical
+  view/v8 split pipeline,
   using the same four-layer default. Vial/VIA are **off** because they cannot
   share QMK's single raw-HID interface with the custom daemon protocol.
 
@@ -59,16 +60,18 @@ HID on both synchronized OLEDs, while non-browser focus returns both halves to
 Duel. The mechanism is accepted; Archive visual refinement is deferred to the
 polish milestone. **M10 is implemented and hardware-smoke-tested; its remaining
 physical checks are tracked as the M11 entry gate. M11 is a desktop-verified,
-physically flashed release candidate. M11.1 is now a desktop-verified resource
-and hot-path release candidate; its physical acceptance is still pending.**
-Both v7 M11 halves boot and type, the
+physically flashed release candidate. M11.1 was merged under an explicit
+physical-gate waiver. M11.5 is now a desktop-verified protocol/data-flow
+candidate; it has not been flashed or physically accepted.**
+The previously flashed v7 M11 halves boot and type, the
 packaged daemon's notifications reach the physical OLEDs, persistent alerts
 survive USB disconnect/reconnect, and the five-minute synchronized OLED sleep
-has been observed. Raw HID is v2/32 bytes and the split snapshot is v7/31 bytes;
-combat, `sim_world_t`, and world hashes remain unchanged. Full stress, timing,
-gallery, and rollback acceptance remains tracked in `docs/m11-acceptance.md`.
+has been observed. The M11.5 candidate keeps Raw HID at v2/32 bytes, moves the
+absolute CRC split snapshot to v8/27 bytes, and leaves five RPC bytes free;
+combat, `sim_world_t`, world hashes, and exact visual hashes remain unchanged.
+Its desktop evidence and physical gate are in `docs/m11.5-acceptance.md`.
 
-## Build & flash the M11.1 candidate (NixOS, user-scope, no sudo)
+## Build & flash the M11.5 candidate (NixOS, user-scope, no sudo)
 
 ```bash
 cd ~/dev/corne-arcane-oled
@@ -85,11 +88,11 @@ Reassemble: USB into the **left** half only, TRRS connected while unpowered.
 Host tests (no keyboard needed): `cd firmware/sim_test && ./run_tests.sh`.
 Daemon tests: `cd host && ./run_tests.sh`.
 
-M11.1 gates: `make test`, `make visual-test`, `make gallery`, and `make budget`.
-The measured hardening record and pending physical checklist are in
-`docs/m11.1-acceptance.md`; inherited M11 evidence remains in
-`docs/m11-acceptance.md`. M12 expansion remains gated in
-`docs/m12-backlog.md`.
+M11.5 gates: `make test`, `make visual-test`, host `./run_tests.sh`, clean
+release/diagnostic QMK builds, and `scripts/m11_budget.sh`. The measured record,
+cadence A/B switch, and pending physical checklist are in
+`docs/m11.5-acceptance.md`; inherited evidence remains in the M11/M11.1
+records. M12 expansion remains gated in `docs/m12-backlog.md`.
 
 ## Design invariants
 

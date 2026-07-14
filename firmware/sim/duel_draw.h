@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "duel_sim.h"
+#include "duel_view.h"
 
 #define DUEL_CANVAS_W 32
 #define DUEL_CANVAS_H 128
@@ -66,23 +66,22 @@ void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
 // Everything the renderer needs for one frame: a stable world snapshot plus
 // presentation-only state the glue layer maintains (never fed back to the sim).
 typedef struct {
-    sim_world_t w;
-    bool        stale_link;   // slave stopped hearing the master (M3)
+    duel_view_t view;
+    uint8_t     external;     // canonical packed host context
+    uint8_t     alert;        // canonical packed host alert
+    uint8_t     layer;
+    uint8_t     flags;
     uint8_t     flash_frames; // remaining normalized 50 ms presentation quanta
     uint8_t     flash_kind;   // FX_* being flashed
     uint8_t     flash_spell_kind; // cached resolved spell style (M7.5, presentation-only)
-    // M7 scry-overlay content — presentation-only, filled by the glue and never
-    // fed back to the sim. Whether the overlay draws at all comes from the
-    // world (scry_is_open); these only populate its concise readout.
-    uint8_t     overlay_layer; // current highest active QMK layer
-    uint8_t     overlay_host;  // host link: 0 offline (M8 stub), 1 online
-    uint8_t     overlay_notif; // pending notification count (M8 stub)
-    uint8_t     overlay_scene; // disposable host scene class (M8); local scene offline
-    uint8_t     overlay_category; // normalized M10 alert category
-    uint8_t     overlay_priority; // normalized M10 alert priority
-    uint8_t     overlay_age;      // normalized M10 age bucket
-    uint8_t     overlay_persistent; // critical alert remains until explicit close
+    uint16_t    diag_overflow;
+    uint8_t     diag_tick;
 } duel_render_t;
+
+#define DUEL_RENDER_STALE 0x01u
+_Static_assert(sizeof(duel_render_t) <= 32, "render state must remain compact");
+
+void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 
 // Battlefield u (0..255) -> canvas x for one half. The left canvas shows
 // u in [0, 95] (staff tip x=22 out to gap edge x=31), the right shows

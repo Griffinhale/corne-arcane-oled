@@ -42,6 +42,17 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.notify(serial=1))
         self.assertTrue(self.notify(serial=2, hints={"urgency": 2}))
 
+    def test_profile_aliases_share_focus_digest_and_override_category(self) -> None:
+        self.assertEqual(
+            self.adapter.digest_identifier("firefox"),
+            self.adapter.digest_identifier("org.mozilla.firefox.desktop"),
+        )
+        self.adapter.handle_notify(
+            1, "Slack", 0, "secret", "body", {}, 0, ""
+        )
+        self.adapter.handle_reply(1, 10, 0)
+        self.assertEqual(self.policy.summary(0).category, Category.COMMUNICATION)
+
     def test_replacement_and_close_correlation(self) -> None:
         self.notify(serial=1, hints={"urgency": 2, "category": "security.auth"})
         self.adapter.handle_reply(1, 50, 0)

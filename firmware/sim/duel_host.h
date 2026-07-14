@@ -25,6 +25,39 @@ enum {
     DUEL_HOST_MSG_NOTIFY    = 3,
 };
 
+/*
+ * Diagnostics use the same physical Raw HID endpoint but a deliberately
+ * separate, diagnostics-build-only protocol.  The request/response envelope
+ * stays fixed at one QMK report; two response pages expose the complete
+ * master and reverse-RPC measurements without allocating release traffic.
+ */
+#define DUEL_HOST_DIAG_VERSION 1
+#define DUEL_HOST_DIAG_PAGES   2
+
+enum {
+    DUEL_HOST_MSG_DIAG_REQUEST  = 0x70,
+    DUEL_HOST_MSG_DIAG_RESPONSE = 0x71,
+};
+
+enum {
+    DUEL_HOST_DIAG_FLAG_FIXED_SPLIT_CADENCE = 0x01,
+};
+
+typedef struct __attribute__((packed)) {
+    uint8_t  magic0;
+    uint8_t  magic1;
+    uint8_t  version;
+    uint8_t  type;
+    uint8_t  page;
+    uint8_t  page_count;
+    uint16_t nonce;
+    uint8_t  payload[23];
+    uint8_t  crc;
+} duel_host_diag_packet_t;
+
+_Static_assert(sizeof(duel_host_diag_packet_t) == DUEL_HOST_REPORT_SIZE,
+               "diagnostic report must match QMK RAW_EPSIZE");
+
 enum {
     DUEL_HOST_CATEGORY_NONE = 0,
     DUEL_HOST_CATEGORY_TERMINAL,
@@ -74,21 +107,20 @@ _Static_assert(sizeof(duel_host_packet_t) == DUEL_HOST_REPORT_SIZE,
                "host report must match QMK RAW_EPSIZE");
 
 typedef struct {
-    bool     have_session;
-    bool     have_previous;
-    bool     online;
     uint32_t session;
     uint32_t previous_session;
     uint16_t last_seq;
-    uint8_t  scene;
-    uint8_t  notification_count;
-    uint8_t  notification_category;
-    uint8_t  notification_priority;
-    uint8_t  notification_age;
-    bool     notification_persistent;
+    uint8_t  state_flags;
+    uint8_t  external;
+    uint8_t  alert;
+#ifdef ARCANE_DIAGNOSTICS
     uint16_t malformed_packets;
     uint16_t stale_packets;
+#endif
 } duel_host_state_t;
+
+#define DUEL_HOST_STATE_HAVE_SESSION  0x01u
+#define DUEL_HOST_STATE_HAVE_PREVIOUS 0x02u
 
 typedef enum {
     DUEL_HOST_DROP_MALFORMED = 0,
@@ -129,7 +161,7 @@ void duel_host_expire(duel_host_state_t *state);
 #define DUEL_HOST_CONTEXT_NOTIF(value)  ((uint8_t)(((value) >> 3) & 15u))
 #define DUEL_HOST_CONTEXT_PERSISTENT(value) ((uint8_t)(((value) >> 7) & 1u))
 
-// Split v7 alert byte: bits0-2 category, bits3-4 priority, bits5-7 age.
+// Canonical split alert byte: bits0-2 category, bits3-4 priority, bits5-7 age.
 #define DUEL_HOST_ALERT_PACK(category, priority, age) \
     ((uint8_t)(((category) & 7u) | (((priority) & 3u) << 3) | (((age) & 7u) << 5)))
 #define DUEL_HOST_ALERT_CATEGORY(value) ((uint8_t)((value) & 7u))

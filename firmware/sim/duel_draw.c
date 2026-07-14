@@ -10,6 +10,22 @@
 #include "duel_draw.h"
 #include "duel_host.h"
 
+void duel_render_from_world(duel_render_t *render, const sim_world_t *world) {
+    duel_view_from_world(world, &render->view);
+}
+
+static uint8_t render_host(const duel_render_t *render) {
+    return DUEL_HOST_CONTEXT_ONLINE(render->external);
+}
+
+static uint8_t render_scene(const duel_render_t *render) {
+    return DUEL_HOST_CONTEXT_SCENE(render->external);
+}
+
+static uint8_t render_notif(const duel_render_t *render) {
+    return DUEL_HOST_CONTEXT_NOTIF(render->external);
+}
+
 void duel_fb_clear(duel_fb_t *fb) {
     memset(fb->bits, 0, sizeof fb->bits);
 }
@@ -64,7 +80,7 @@ static void archive_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
 // M9 hybrid Archive underlay. The x coordinates below are authored in desk
 // space with x=31 at the centre gap, then mirrored on the right OLED. All
 // marks stay in y=3..44, clear of actors, combat carriers, and health.
-static void draw_archive(duel_fb_t *fb, const sim_wizard_t *wz, bool is_left, uint32_t frame) {
+static void draw_archive(duel_fb_t *fb, const duel_view_wizard_t *wz, bool is_left, uint32_t frame) {
 #define ARCH_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     // A single arch spans the physical gap: apex at each inner edge, falling
     // toward the outer edges. Integer curvature keeps it deterministic.
@@ -335,7 +351,7 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
 
 // Progressive upper-canvas anticipation. Growth comes from authoritative
 // wind-up/tier state; only the tiny orbiting accents key off the render frame.
-static void draw_charge(duel_fb_t *fb, const sim_wizard_t *wz, int facing, uint32_t frame) {
+static void draw_charge(duel_fb_t *fb, const duel_view_wizard_t *wz, int facing, uint32_t frame) {
     if (!wz->cast_windup) return;
     int elapsed = SIM_CAST_WINDUP_TICKS - wz->cast_windup;
     int stage   = elapsed * 4 / (SIM_CAST_WINDUP_TICKS - 1); // 0..4
@@ -400,14 +416,18 @@ static void draw_ward(duel_fb_t *fb, int facing, int thickness, bool punctured, 
     }
 }
 
-static const sim_spell_t *incoming_void_at_ward(const sim_world_t *w, int defender) {
+static bool incoming_void_at_ward(const duel_view_t *view, int defender,
+                                  duel_view_spell_t *incoming) {
     for (int s = 0; s < 2; s++) {
-        const sim_spell_t *sp = &w->spell[s];
-        if (!sp->active || DUEL_KIND_ELEMENT(sp->kind) != ELEM_VOID) continue;
-        if (defender == SIM_SIDE_R && sp->dir > 0 && sp->pos >= 228) return sp;
-        if (defender == SIM_SIDE_L && sp->dir < 0 && sp->pos <= 27) return sp;
+        duel_view_spell_t spell = duel_view_spell(view, (uint8_t)s);
+        if (!spell.active || DUEL_KIND_ELEMENT(spell.kind) != ELEM_VOID) continue;
+        if ((defender == SIM_SIDE_R && spell.dir > 0 && spell.pos >= 228) ||
+            (defender == SIM_SIDE_L && spell.dir < 0 && spell.pos <= 27)) {
+            *incoming = spell;
+            return true;
+        }
     }
-    return NULL;
+    return false;
 }
 
 // A 3x3 open square, one half of the broken-link stale glyph.
@@ -453,13 +473,16 @@ static void clear_alert_corner(duel_fb_t *fb, bool is_left) {
 }
 
 static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
-    if (!r->overlay_host || !r->overlay_notif || r->overlay_category == DUEL_HOST_CATEGORY_NONE ||
-        r->overlay_priority == DUEL_HOST_PRIORITY_NONE) return;
+    uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
+    uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
+    uint8_t age = DUEL_HOST_ALERT_AGE(r->alert);
+    if (!render_host(r) || !render_notif(r) || category == DUEL_HOST_CATEGORY_NONE ||
+        priority == DUEL_HOST_PRIORITY_NONE) return;
     clear_alert_corner(fb, is_left);
     // Canonical coordinates describe the left outer corner. The right half is
     // its exact x mirror, producing a single paired desk-space sigil.
-    draw_alert_bitmap(fb, r->overlay_category, is_left ? 2 : 29, 4, !is_left);
-    if (r->overlay_priority >= DUEL_HOST_PRIORITY_NORMAL) {
+    draw_alert_bitmap(fb, category, is_left ? 2 : 29, 4, !is_left);
+    if (priority >= DUEL_HOST_PRIORITY_NORMAL) {
         for (int x = 1; x <= 7; x++) {
             duel_fb_px(fb, is_left ? x : 31 - x, 3, true);
             duel_fb_px(fb, is_left ? x : 31 - x, 11, true);
@@ -467,7 +490,7 @@ static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left
         duel_fb_px(fb, is_left ? 1 : 30, 4, true);
         duel_fb_px(fb, is_left ? 7 : 24, 4, true);
     }
-    if (r->overlay_priority == DUEL_HOST_PRIORITY_CRITICAL) {
+    if (priority == DUEL_HOST_PRIORITY_CRITICAL) {
         for (int y = 3; y <= 11; y++) {
             duel_fb_px(fb, is_left ? 1 : 30, y, true);
             duel_fb_px(fb, is_left ? 7 : 24, y, true);
@@ -475,13 +498,13 @@ static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left
         duel_fb_px(fb, is_left ? 9 : 22, 2, true);
         duel_fb_px(fb, is_left ? 9 : 22, 12, true);
     }
-    int accents = 3 - (r->overlay_age > 5 ? 3 : r->overlay_age / 2);
+    int accents = 3 - (age > 5 ? 3 : age / 2);
     for (int i = 0; i < accents; i++)
         duel_fb_px(fb, is_left ? 1 + i * 3 : 30 - i * 3, 1, true);
-    int pips = r->overlay_notif > 4 ? 4 : r->overlay_notif;
+    int pips = render_notif(r) > 4 ? 4 : render_notif(r);
     for (int i = 0; i < pips; i++)
         duel_fb_px(fb, is_left ? 1 + i * 2 : 30 - i * 2, 13, true);
-    if (r->overlay_persistent) {
+    if (DUEL_HOST_CONTEXT_PERSISTENT(r->external)) {
         int ax = is_left ? 4 : 27;
         duel_fb_px(fb, ax, 13, true); duel_fb_px(fb, ax, 14, true);
         duel_fb_px(fb, ax, 15, true);
@@ -517,18 +540,18 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
     // Layer readout: four slots, the active layer filled solid, the rest hollow.
     for (int i = 0; i < 4; i++) {
         int lx = 6 + i * 5;
-        ov_rect(fb, lx, 15, lx + 3, 18, i == (r->overlay_layer & 3));
+        ov_rect(fb, lx, 15, lx + 3, 18, i == (r->layer & 3));
     }
 
     // Host link: solid bar when online, two disconnected boxes when offline.
-    if (r->overlay_host) {
+    if (render_host(r)) {
         ov_rect(fb, 6, 23, 13, 27, true);
     } else {
         ov_rect(fb, 6, 23, 8, 27, false);
         ov_rect(fb, 11, 23, 13, 27, false);
     }
     // Notification count: up to four 2x2 dots on the right of the host row.
-    int notif = r->overlay_notif > 4 ? 4 : r->overlay_notif;
+    int notif = render_notif(r) > 4 ? 4 : render_notif(r);
     for (int i = 0; i < notif; i++) {
         int nx = 17 + i * 3;
         duel_fb_px(fb, nx, 24, true);     duel_fb_px(fb, nx + 1, 24, true);
@@ -538,11 +561,13 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
     // V2 normalized summary: category glyph plus priority marks and critical
     // persistence anchor. V1/count-only traffic deliberately leaves this area
     // empty while retaining the legacy count pips above.
-    if (r->overlay_category && r->overlay_priority) {
-        draw_alert_bitmap(fb, r->overlay_category, 18, 27, false);
-        for (int i = 0; i < r->overlay_priority; i++)
+    uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
+    uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
+    if (category && priority) {
+        draw_alert_bitmap(fb, category, 18, 27, false);
+        for (int i = 0; i < priority; i++)
             duel_fb_px(fb, 24 + i, 28, true);
-        if (r->overlay_persistent) {
+        if (DUEL_HOST_CONTEXT_PERSISTENT(r->external)) {
             duel_fb_px(fb, 26, 30, true); duel_fb_px(fb, 26, 31, true);
             duel_fb_px(fb, 25, 31, true); duel_fb_px(fb, 27, 31, true);
         }
@@ -550,7 +575,7 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
 
     // Scene selector: host context owns the readout while online; heartbeat
     // expiry immediately returns it to the firmware-local scry selection.
-    uint8_t scene = r->overlay_host ? r->overlay_scene : r->w.scry.scene;
+    uint8_t scene = render_host(r) ? render_scene(r) : DUEL_SCRY_SCENE(r->view.scry);
     for (int i = 0; i < SCRY_SCENES; i++) {
         int sx = 6 + i * 7;
         ov_rect(fb, sx, 35, sx + 3, 38, i == (scene % SCRY_SCENES));
@@ -558,18 +583,19 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
 }
 
 void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame, bool debug_hud) {
-    const sim_world_t  *w      = &r->w;
-    int                 side   = is_left ? SIM_SIDE_L : SIM_SIDE_R;
-    const sim_wizard_t *wz     = &w->wiz[side];
+    int side = is_left ? SIM_SIDE_L : SIM_SIDE_R;
+    duel_view_wizard_t wizard = duel_view_wizard(&r->view, (uint8_t)side);
+    const duel_view_wizard_t *wz = &wizard;
     int                 facing = is_left ? +1 : -1; // toward the gap (see header)
     bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L || r->flash_kind == FX_FIZZLE_L;
     bool local_fx       = r->flash_frames && defender_left == is_left;
     bool local_impact   = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
-    const sim_spell_t *piercer = incoming_void_at_ward(w, side);
-    bool ward_punctured = piercer != NULL ||
+    duel_view_spell_t piercer;
+    bool have_piercer = incoming_void_at_ward(&r->view, side, &piercer);
+    bool ward_punctured = have_piercer ||
                           (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
-    int ward_lane = piercer ? spell_lane_y(piercer->kind) : spell_lane_y(r->flash_spell_kind);
-    bool archive = r->overlay_host && r->overlay_scene == DUEL_HOST_SCENE_ARCHIVE;
+    int ward_lane = have_piercer ? spell_lane_y(piercer.kind) : spell_lane_y(r->flash_spell_kind);
+    bool archive = render_host(r) && render_scene(r) == DUEL_HOST_SCENE_ARCHIVE;
 
     if (archive) draw_archive(fb, wz, is_left, frame);
 
@@ -640,11 +666,12 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
     // Spells in flight, wherever the battlefield axis lands on this canvas.
     for (int s = 0; s < 2; s++) {
-        if (!w->spell[s].active) continue;
+        duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s);
+        if (!spell.active) continue;
         int x;
-        if (!duel_battlefield_to_x(w->spell[s].pos, is_left, &x)) continue;
-        int y = spell_lane_y(w->spell[s].kind) + ((frame >> 1) & 1); // 1 px cosmetic bob
-        spell_glyph(fb, x, y, w->spell[s].kind, w->spell[s].dir);
+        if (!duel_battlefield_to_x(spell.pos, is_left, &x)) continue;
+        int y = spell_lane_y(spell.kind) + ((frame >> 1) & 1); // 1 px cosmetic bob
+        spell_glyph(fb, x, y, spell.kind, spell.dir);
     }
 
     // HP pips for THIS half's wizard, bottom corner away from the gap.
@@ -734,17 +761,17 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
     // M10 alert sigil sits above all scene/combat artwork, but an open scry
     // replaces it with the normalized in-panel summary.
-    if (!scry_is_open(&r->w)) draw_alert_sigil(fb, r, is_left);
+    if (!duel_view_scry_open(&r->view)) draw_alert_sigil(fb, r, is_left);
 
     // M7 scrying overlay, drawn above the world when the layer-key chord is
     // held. The stale-link and debug glyphs draw AFTER, so a broken link is
     // still legible in its corner even with the panel up.
-    if (scry_is_open(&r->w)) {
+    if (duel_view_scry_open(&r->view)) {
         if (archive) clear_archive_panel(fb);
         draw_overlay(fb, r);
     }
 
-    if (r->stale_link) {
+    if (r->flags & DUEL_RENDER_STALE) {
         // Two separated chain links in the top corner nearest the gap.
         int bx = is_left ? 23 : 2;
         draw_box3(fb, bx, 2);
@@ -752,8 +779,8 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     }
 
     if (debug_hud) {
-        duel_fb_px(fb, (int)(w->tick % 25), DUEL_CANVAS_H - 1, true);
-        int dots = w->overflow_count > 4 ? 4 : w->overflow_count;
+        duel_fb_px(fb, r->diag_tick, DUEL_CANVAS_H - 1, true);
+        int dots = r->diag_overflow > 4 ? 4 : r->diag_overflow;
         for (int i = 0; i < dots; i++) duel_fb_px(fb, 1 + 2 * i, 0, true);
     }
 }

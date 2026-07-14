@@ -25,14 +25,17 @@
 #define SIMF_AUTHORITATIVE 0x01
 
 /* ---- events: the detail channel ----------------------------------------
- * Row/col are captured from day one: M6 spell recipes group events by row
- * class and position, so the queue format never has to change. 4 bytes.
- * SIM_EV_OVERFLOW is injected by the queue at drain time; its `row` field
- * carries the number of dropped events. */
-enum { SIM_EV_KEYDOWN = 1, SIM_EV_KEYUP = 2, SIM_EV_OVERFLOW = 3 };
-typedef struct {
-    uint8_t kind, side, row, col;
-} sim_event_t;
+ * One packed byte retains row/column/side and both edge directions. Overflow
+ * remains queue metadata rather than consuming an event slot. */
+enum { SIM_EV_KEYDOWN = 1, SIM_EV_KEYUP = 2 };
+typedef uint8_t sim_event_t;
+#define SIM_EV_PACK(kind, side, row, col) \
+    ((sim_event_t)(((col) & 0x07u) | (((row) & 0x03u) << 3) | \
+                   (((side) & 0x01u) << 5) | (((kind) == SIM_EV_KEYDOWN) ? 0x40u : 0u)))
+#define SIM_EV_KIND(event) (((event) & 0x40u) ? SIM_EV_KEYDOWN : SIM_EV_KEYUP)
+#define SIM_EV_SIDE(event) (((event) >> 5) & 0x01u)
+#define SIM_EV_ROW(event)  (((event) >> 3) & 0x03u)
+#define SIM_EV_COL(event)  ((event) & 0x07u)
 
 /* ---- inputs: the level-sampled robustness channel ----------------------
  * Poses and cast edges key off sampled key levels, so a dropped event can
@@ -53,7 +56,7 @@ typedef struct {
 /* ---- bounded event queue ------------------------------------------------
  * Producer and consumer both run in the firmware main loop (scan hooks and
  * housekeeping), so no atomics are needed. Overflow is explicit: pushes fail,
- * dropped events are counted, and drain injects one SIM_EV_OVERFLOW. */
+ * dropped events are counted separately from ordinary event storage. */
 #define SIM_EVQ_CAP 16
 typedef struct {
     sim_event_t ev[SIM_EVQ_CAP];
@@ -63,9 +66,9 @@ typedef struct {
 
 // Returns false (and counts the drop) when the queue is full.
 bool sim_evq_push(sim_evq_t *q, sim_event_t e);
-// Copies queued events to out (capacity >= SIM_EVQ_CAP + 1), appending one
-// SIM_EV_OVERFLOW carrying the drop count if any push failed. Resets q.
-uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out);
+// Copies queued events to out (capacity >= SIM_EVQ_CAP), returns the saturating
+// overflow count separately, and resets the queue.
+uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out, uint8_t *dropped);
 
 /* ---- world state -------------------------------------------------------- */
 enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
@@ -215,4 +218,5 @@ static inline bool scry_is_open(const sim_world_t *w) {
 // start_tick is normally 0; wrap tests initialise near UINT32_MAX.
 void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick);
 // Advances exactly one tick. `ev` is the batch drained for this tick.
-void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n);
+void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
+              uint8_t dropped);

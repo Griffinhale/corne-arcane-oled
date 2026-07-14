@@ -138,22 +138,23 @@ static void render_direct(duel_fb_t *fb, duel_render_t *r, bool left, uint32_t f
 static void test_isolation_and_restoration(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
-    duel_render_t r = {.w = w};
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
     duel_fb_t duel, focus, offline_archive, archive, restored;
     render_direct(&duel, &r, true, 0, false);
-    r.overlay_host = 1; r.overlay_scene = DUEL_HOST_SCENE_FOCUS;
+    r.external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_FOCUS, 0, false);
     render_direct(&focus, &r, true, 0, false);
-    r.overlay_host = 0; r.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+    r.external = DUEL_HOST_CONTEXT_PACK(0, DUEL_HOST_SCENE_ARCHIVE, 0, false);
     render_direct(&offline_archive, &r, true, 0, false);
     bool isolated = memcmp(duel.bits, focus.bits, sizeof duel.bits) == 0 &&
                     memcmp(duel.bits, offline_archive.bits, sizeof duel.bits) == 0;
 
-    r.overlay_host = 1; r.overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+    r.external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE, 0, false);
     render_direct(&archive, &r, true, 0, false);
-    r.w.scry.state = SCRY_ACTIVE;
+    r.view.scry = DUEL_SCRY_PACK(true, 0);
     render_direct(&restored, &r, true, 0, false);
     bool scry_differs = memcmp(archive.bits, restored.bits, sizeof archive.bits) != 0;
-    r.w.scry.state = SCRY_IDLE;
+    r.view.scry = DUEL_SCRY_PACK(false, 0);
     render_direct(&restored, &r, true, 0, false);
     bool restores = memcmp(archive.bits, restored.bits, sizeof archive.bits) == 0;
     VCHECK(isolated, "visual_scene_isolation");
