@@ -113,6 +113,10 @@ typedef struct {
     uint8_t  state_flags;
     uint8_t  external;
     uint8_t  alert;
+#ifdef ARCANE_M12
+    uint8_t  civic;      /* last accepted DUEL_CIVIC_* byte (payload[6]) */
+    uint8_t  secondary;  /* last accepted DUEL_SECONDARY_* byte (payload[7]) */
+#endif
 #ifdef ARCANE_DIAGNOSTICS
     uint16_t malformed_packets;
     uint16_t stale_packets;
@@ -142,6 +146,17 @@ void duel_host_encode_summary(uint8_t type, uint32_t session, uint16_t seq,
 void duel_host_encode_v1(uint8_t type, uint32_t session, uint16_t seq,
                          uint8_t scene, uint8_t notification_count,
                          duel_host_packet_t *out);
+
+#ifdef ARCANE_M12
+// M12 v2 civic encoder: a full v2 summary plus payload[6]=civic/[7]=secondary
+// with payload_len promoted to DUEL_HOST_PAYLOAD_LEN_M12 (8). The 32-byte report
+// size is unchanged; only two previously-zero payload bytes now carry meaning.
+void duel_host_encode_civic(uint8_t type, uint32_t session, uint16_t seq,
+                            uint8_t scene, uint8_t notification_count,
+                            uint8_t category, uint8_t priority, uint8_t age,
+                            bool persistent, uint8_t civic, uint8_t secondary,
+                            duel_host_packet_t *out);
+#endif
 
 bool duel_host_packet_valid(const duel_host_packet_t *packet);
 duel_host_result_t duel_host_accept(duel_host_state_t *state,
@@ -228,3 +243,10 @@ enum {
 
 uint8_t duel_host_context(const duel_host_state_t *state);
 uint8_t duel_host_alert(const duel_host_state_t *state);
+
+#ifdef ARCANE_M12
+// Disposable civic context: mirrors duel_host_context/alert gating — both
+// collapse to zero while the daemon is offline (expiry clears them too).
+uint8_t duel_host_civic(const duel_host_state_t *state);
+uint8_t duel_host_secondary(const duel_host_state_t *state);
+#endif
