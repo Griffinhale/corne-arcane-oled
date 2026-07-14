@@ -59,14 +59,16 @@ HID on both synchronized OLEDs, while non-browser focus returns both halves to
 Duel. The mechanism is accepted; Archive visual refinement is deferred to the
 polish milestone. **M10 is implemented and hardware-smoke-tested; its remaining
 physical checks are tracked as the M11 entry gate. M11 is a desktop-verified,
-physically flashed release candidate.** Both v7 halves boot and type, the
+physically flashed release candidate. M11.1 is now a desktop-verified resource
+and hot-path release candidate; its physical acceptance is still pending.**
+Both v7 M11 halves boot and type, the
 packaged daemon's notifications reach the physical OLEDs, persistent alerts
 survive USB disconnect/reconnect, and the five-minute synchronized OLED sleep
 has been observed. Raw HID is v2/32 bytes and the split snapshot is v7/31 bytes;
 combat, `sim_world_t`, and world hashes remain unchanged. Full stress, timing,
 gallery, and rollback acceptance remains tracked in `docs/m11-acceptance.md`.
 
-## Build & flash the M11 candidate (NixOS, user-scope, no sudo)
+## Build & flash the M11.1 candidate (NixOS, user-scope, no sudo)
 
 ```bash
 cd ~/dev/corne-arcane-oled
@@ -83,14 +85,18 @@ Reassemble: USB into the **left** half only, TRRS connected while unpowered.
 Host tests (no keyboard needed): `cd firmware/sim_test && ./run_tests.sh`.
 Daemon tests: `cd host && ./run_tests.sh`.
 
-M11 gates: `make test`, `make visual-test`, `make gallery`, and `make budget`.
-The signed physical checklist and candidate hashes are in
-`docs/m11-acceptance.md`; M12 expansion remains gated in `docs/m12-backlog.md`.
+M11.1 gates: `make test`, `make visual-test`, `make gallery`, and `make budget`.
+The measured hardening record and pending physical checklist are in
+`docs/m11.1-acceptance.md`; inherited M11 evidence remains in
+`docs/m11-acceptance.md`. M12 expansion remains gated in
+`docs/m12-backlog.md`.
 
 ## Design invariants
 
-- Keyboard output never waits on display logic; key-path hooks only record compact events.
+- Keyboard output never waits on display logic; key-path hooks only record
+  compact key-down events while held/release state is level-sampled.
 - One authoritative fixed-tick simulation (master owns shared state); the firmware
   always retains a complete duel fallback, so the host daemon is enrichment, never a dependency.
 - Deterministic sim: identical init + identical per-tick input/event streams produce
-  bit-identical worlds. Cosmetics key off the render frame, never the sim tick.
+  bit-identical worlds. Outcome durations use a presentation-only wall clock,
+  never the sim tick or the number of OLED callbacks.

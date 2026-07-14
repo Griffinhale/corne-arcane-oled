@@ -47,7 +47,8 @@ typedef enum {
     DUEL_LAYER_DIAGNOSTICS,
 } duel_render_layer_t;
 
-// 1bpp framebuffer, bit index = y * DUEL_CANVAS_W + x. 512 bytes.
+// 1bpp framebuffer in QMK's native page-major OLED layout. Each byte is one
+// vertical 8-pixel column: index = x + (y >> 3) * width, bit = y & 7.
 typedef struct {
     uint8_t bits[DUEL_CANVAS_W * DUEL_CANVAS_H / 8];
 } duel_fb_t;
@@ -67,7 +68,7 @@ void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
 typedef struct {
     sim_world_t w;
     bool        stale_link;   // slave stopped hearing the master (M3)
-    uint8_t     flash_frames; // fx flash countdown, in RENDER frames (M4)
+    uint8_t     flash_frames; // remaining normalized 50 ms presentation quanta
     uint8_t     flash_kind;   // FX_* being flashed
     uint8_t     flash_spell_kind; // cached resolved spell style (M7.5, presentation-only)
     // M7 scry-overlay content — presentation-only, filled by the glue and never

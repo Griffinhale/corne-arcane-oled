@@ -4,6 +4,11 @@ M11 is implemented, built, and flashed on both physical halves as a release
 candidate. It is not finally accepted until the remaining gallery, stress,
 timing, suspend, and rollback checks below pass.
 
+M11.1 subsequently hardens this candidate without changing protocols or
+mechanics. Its measured release record and separate pending physical gate are
+in `docs/m11.1-acceptance.md`; the measurements below remain the reproduced M11
+baseline rather than being overwritten by M11.1.
+
 ## Deterministic artifacts
 
 - Canonical framebuffer hashes: `firmware/sim_test/golden/visual.hashes`.

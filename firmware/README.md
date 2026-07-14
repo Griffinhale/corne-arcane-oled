@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M11 flashed release candidate; final physical acceptance pending (2026-07-13)
+## Status: M11.1 desktop-verified release candidate; physical acceptance pending (2026-07-14)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -32,6 +32,16 @@ Both halves have now been flashed from the same release candidate. Normal
 typing and notifications remain operational, persistent notification state
 recovers across USB disconnect/reconnect, and both OLEDs have completed the
 five-minute synchronized power-off transition on the physical keyboard.
+
+M11.1 removes unused WPM support while retaining the accepted RGB Matrix
+controls, writes the renderer's page-major framebuffer directly through QMK's
+OLED buffer, removes the redundant 512-byte shadow framebuffer, and makes host,
+split, snapshot, and render work change-driven. Matrix scanning queues only
+key-down edges; held and released state remains level-sampled. Outcome flashes
+are now bounded by 600/400 ms presentation deadlines, independent of active or
+dim OLED cadence. The release builds at 49,848 flash bytes, 3,576 bytes
+`.data`, and 9,644 bytes `.bss`; see `../docs/m11.1-acceptance.md` for hashes,
+desktop evidence, and the still-pending physical gate.
 
 **M7.5 — Combat presentation and composition polish (hardware-verified).**
 Mechanics remain unchanged except
@@ -138,8 +148,9 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
 - `keymap.c` — QMK glue only:
   - `oled_init_user()` — portrait rotation (`OLED_ROTATION_270` both halves).
   - `matrix_scan_user` / `matrix_slave_scan_user` — XOR matrix rows against
-    the previous pass, push compact edge events (kind/side/row/col) to the
-    queue. The master's matrix already contains the slave's rows (merged in
+    the previous pass and push compact key-down events (kind/side/row/col) to
+    the queue; holds and releases remain available through the level sample.
+    The master's matrix already contains the slave's rows (merged in
     `matrix_post_scan` before the hook fires), so the master captures both
     sides; the slave captures its own. **No render/alloc/split work in the
     key path.**
@@ -152,8 +163,9 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
     accumulator, wrap-safe, catch-up capped at 5 then resync for USB
     suspend). Drains the queue, samples key levels, runs `sim_tick`, then
     copies the world to the render snapshot.
-  - `oled_task_user()` — draws ONLY from the snapshot into a `duel_fb_t`,
-    blits to the OLED. Render cadence cannot reach the sim.
+  - `oled_task_user()` — draws ONLY from the snapshot into a page-major
+    `duel_fb_t`, then hands it to QMK with one `oled_write_raw()` call. QMK's
+    own buffer owns dirty comparison. Render cadence cannot reach the sim.
 - `sim_test/` — host-only test rig (invisible to `qmk compile`):
   `./run_tests.sh` builds and runs everything (<1 s) — replay goldens,
   cadence-invariance, snapshot purity, queue overflow, uint32 tick-wrap, and
@@ -166,13 +178,13 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
 ## Design invariants
 
 - Keyboard output never waits on display logic; key-path hooks only record
-  compact events.
+  compact key-down events while held/release state is level-sampled.
 - One authoritative fixed-tick simulation; master will own shared state (M3).
   `SIMF_AUTHORITATIVE` is set on the master only, so the slave structurally
   cannot resolve combat (lands in M4).
 - Deterministic: identical init + identical per-tick (inputs, events) streams
-  produce bit-identical worlds. Cosmetic effects key off the render frame
-  counter, never the sim tick.
+  produce bit-identical worlds. Outcome duration uses a presentation-only wall
+  clock, never the sim tick or the number of OLED callbacks.
 
 ## Build & flash (NixOS, user-scope, no sudo)
 

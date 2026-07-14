@@ -16,18 +16,19 @@ void duel_fb_clear(duel_fb_t *fb) {
 
 void duel_fb_px(duel_fb_t *fb, int x, int y, bool on) {
     if (x < 0 || x >= DUEL_CANVAS_W || y < 0 || y >= DUEL_CANVAS_H) return;
-    int idx = y * DUEL_CANVAS_W + x;
+    int     idx  = x + (y >> 3) * DUEL_CANVAS_W;
+    uint8_t mask = (uint8_t)(1u << (y & 7));
     if (on) {
-        fb->bits[idx >> 3] |= (uint8_t)(1u << (idx & 7));
+        fb->bits[idx] |= mask;
     } else {
-        fb->bits[idx >> 3] &= (uint8_t)~(1u << (idx & 7));
+        fb->bits[idx] &= (uint8_t)~mask;
     }
 }
 
 bool duel_fb_get(const duel_fb_t *fb, int x, int y) {
     if (x < 0 || x >= DUEL_CANVAS_W || y < 0 || y >= DUEL_CANVAS_H) return false;
-    int idx = y * DUEL_CANVAS_W + x;
-    return (fb->bits[idx >> 3] >> (idx & 7)) & 1u;
+    int idx = x + (y >> 3) * DUEL_CANVAS_W;
+    return (fb->bits[idx] >> (y & 7)) & 1u;
 }
 
 static void wiz_hspan(duel_fb_t *fb, int x0, int x1, int y) {

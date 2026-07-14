@@ -5,6 +5,8 @@ firmware/sim_test/visual_runner
 firmware/sim_test/.noalloc.o
 firmware/sim_test/gallery/
 artifacts/m11-gallery/
+artifacts/m11.1-baseline/
+artifacts/m11.1-candidate/
 *.o
 
 # Firmware build outputs

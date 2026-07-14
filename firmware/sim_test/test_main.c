@@ -105,6 +105,29 @@ static void t0_fb_roundtrip(void) {
     CHECK(ok, "t0_fb_roundtrip");
 }
 
+static void t0_fb_qmk_page_layout(void) {
+    duel_fb_t fb;
+    duel_fb_clear(&fb);
+    uint8_t expected[sizeof fb.bits] = {0};
+    bool ok = sizeof fb.bits == 512;
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            bool on = ((x * 5 + y * 3) % 17) < 4;
+            if (!on) continue;
+            duel_fb_px(&fb, x, y, true);
+            expected[x + (y >> 3) * DUEL_CANVAS_W] |= (uint8_t)(1u << (y & 7));
+        }
+    }
+    ok &= memcmp(fb.bits, expected, sizeof expected) == 0;
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            bool on = ((x * 5 + y * 3) % 17) < 4;
+            ok &= duel_fb_get(&fb, x, y) == on;
+        }
+    }
+    CHECK(ok, "t0_fb_qmk_page_layout");
+}
+
 static void t0_draw_deterministic(void) {
     duel_fb_t a, b;
     duel_fb_clear(&a);
@@ -183,6 +206,34 @@ static void t11_display_wire_compatibility(void) {
     ok &= decoded.wiz[SIM_SIDE_R].hp == SIM_MAX_HP;
     ok &= decoded.flags == 0; // a decoded slave view remains non-authoritative
     CHECK(ok, "t11_display_wire_compatibility");
+}
+
+static void t11_presentation_clock(void) {
+    uint32_t start = 1000;
+    bool ok = duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                          start) == 12;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 50) == 11;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 250) == 7;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 500) == 2;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 599) == 1;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 600) == 0;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_OTHER_MS,
+                                      start + 399) == 1;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_OTHER_MS,
+                                      start + 400) == 0;
+
+    // Unsigned age keeps the same deadline across the uint32 wrap boundary.
+    uint32_t wrapped_start = UINT32_MAX - 99;
+    ok &= duel_presentation_remaining(wrapped_start, DUEL_PRESENTATION_OTHER_MS,
+                                      wrapped_start + 250) == 3;
+    ok &= duel_presentation_remaining(wrapped_start, DUEL_PRESENTATION_OTHER_MS,
+                                      wrapped_start + 400) == 0;
+    CHECK(ok, "t11_presentation_clock");
 }
 
 /* ---------------- M2: deterministic world loop ---------------- */
@@ -303,6 +354,49 @@ static void t2_snapshot_pure(void) {
     sim_world_t s1 = r.w, s2 = r.w;
     bool ok = memcmp(&s1, &s2, sizeof s1) == 0 && world_hash(&r.w) == before;
     CHECK(ok, "t2_snapshot_pure");
+}
+
+// Firmware queues key-down detail only. Releases and rising edges remain
+// level-sampled, so omitting ignored key-up detail must preserve held poses,
+// release-to-idle, recipes, and rapid alternating input exactly.
+static void t2_keydown_only_equivalence(void) {
+    sim_world_t with_keyups, keydowns_only;
+    sim_init(&with_keyups, SIMF_AUTHORITATIVE, 0);
+    sim_init(&keydowns_only, SIMF_AUTHORITATIVE, 0);
+    uint8_t previous = 0;
+    bool saw_recipe = false;
+    bool ok = true;
+
+    for (int tick = 0; tick < 64; tick++) {
+        uint8_t levels;
+        if (tick < 6) levels = 1;            // one held key
+        else if (tick < 20) levels = 0;      // release without detail
+        else if (tick & 1) levels = 0;       // rapid press/release cadence
+        else levels = (tick & 2) ? 1 : 2;    // alternate hands
+
+        sim_event_t full[2], down[2];
+        uint8_t n_full = 0, n_down = 0;
+        for (uint8_t side = 0; side < 2; side++) {
+            bool was = (previous >> side) & 1;
+            bool now = (levels >> side) & 1;
+            if (was == now) continue;
+            sim_event_t ev = {now ? SIM_EV_KEYDOWN : SIM_EV_KEYUP, side,
+                              (uint8_t)((tick / 2) & 3), (uint8_t)(tick % 6)};
+            full[n_full++] = ev;
+            if (now) down[n_down++] = ev;
+        }
+        sim_inputs_t inputs = {.down_mask = levels};
+        sim_tick(&with_keyups, inputs, full, n_full);
+        sim_tick(&keydowns_only, inputs, down, n_down);
+        ok &= world_hash(&with_keyups) == world_hash(&keydowns_only);
+        saw_recipe |= keydowns_only.wiz[0].recipe_n >= 2 ||
+                      keydowns_only.wiz[1].recipe_n >= 2;
+        if (tick == 5) ok &= keydowns_only.wiz[0].pose == POSE_CAST;
+        if (tick == 20) ok &= keydowns_only.wiz[0].pose == POSE_IDLE;
+        previous = levels;
+    }
+    ok &= saw_recipe;
+    CHECK(ok, "t2_keydown_only_equivalence");
 }
 
 // Overflow is explicit and harmless: pushes fail loudly, drops are counted,
@@ -2324,12 +2418,14 @@ int main(int argc, char **argv) {
     g_golden_dir = argv[argi + 1];
 
     t0_fb_roundtrip();
+    t0_fb_qmk_page_layout();
     t0_draw_deterministic();
     t0_trace_parse();
 
     t2_replay_golden();
     t2_cadence_invariance();
     t2_snapshot_pure();
+    t2_keydown_only_equivalence();
     t2_queue_overflow();
     t2_tick_wrap();
 
@@ -2408,6 +2504,7 @@ int main(int argc, char **argv) {
 
     t11_display_policy();
     t11_display_wire_compatibility();
+    t11_presentation_clock();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

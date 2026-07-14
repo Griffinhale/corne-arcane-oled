@@ -4,7 +4,14 @@ VIAL_ENABLE = no
 RAW_ENABLE = yes
 LTO_ENABLE = yes
 OLED_ENABLE = yes
-WPM_ENABLE = yes
+# The compiled layer-3 layout intentionally exposes RM_* controls. Keep that
+# one accepted lighting engine, and make the unused inherited features absent.
+WPM_ENABLE = no
+RGBLIGHT_ENABLE = no
+RGB_MATRIX_ENABLE = yes
+
+# Preserve a release linker map beside the ELF for every acceptance build.
+LDFLAGS += -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref
 
 OPT_DEFS += -DARCANE_HOST_ENABLE
 

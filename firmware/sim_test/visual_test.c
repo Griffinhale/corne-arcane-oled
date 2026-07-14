@@ -17,10 +17,19 @@ static int failures;
 } while (0)
 
 static uint64_t hash_fb(const duel_fb_t *fb) {
+    // Hash canonical logical rows, not duel_fb_t storage. Packing each logical
+    // group of eight x pixels reproduces the historical golden byte stream,
+    // so a storage-layout refactor is not mistaken for an artwork change.
     uint64_t h = UINT64_C(0xcbf29ce484222325);
-    for (size_t i = 0; i < sizeof fb->bits; i++) {
-        h ^= fb->bits[i];
-        h *= UINT64_C(0x100000001b3);
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x0 = 0; x0 < DUEL_CANVAS_W; x0 += 8) {
+            uint8_t logical = 0;
+            for (int bit = 0; bit < 8; bit++) {
+                if (duel_fb_get(fb, x0 + bit, y)) logical |= (uint8_t)(1u << bit);
+            }
+            h ^= logical;
+            h *= UINT64_C(0x100000001b3);
+        }
     }
     return h;
 }

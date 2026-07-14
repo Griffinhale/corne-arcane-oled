@@ -50,3 +50,12 @@ uint16_t duel_display_redraw_ms(const duel_display_policy_t *policy) {
     return policy->phase == DUEL_DISPLAY_DIM ? DUEL_DISPLAY_DIM_REDRAW_MS
                                               : DUEL_DISPLAY_ACTIVE_REDRAW_MS;
 }
+
+uint8_t duel_presentation_remaining(uint32_t started_ms, uint16_t duration_ms,
+                                    uint32_t now_ms) {
+    uint32_t elapsed = now_ms - started_ms; // wrap-safe unsigned age
+    if (elapsed >= duration_ms) return 0;
+    uint32_t remaining = duration_ms - elapsed;
+    return (uint8_t)((remaining + DUEL_PRESENTATION_QUANTUM_MS - 1u) /
+                     DUEL_PRESENTATION_QUANTUM_MS);
+}
