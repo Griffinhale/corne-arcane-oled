@@ -48,3 +48,13 @@ resident-proud           03a5376960f7d9f4 e46acd9830b4eea1
 resident-distracted      4e2788cba340e3af 6843d86073e5f807
 workshop-idle            e36f392f9c9960f1 07a2e6a2e523af38
 workshop-cast            29540bc48ed86b79 07a2e6a2e523af38
+event-scroll             ea711fbd2de2e11b 4adb1df8c5244713
+event-gear               e36f392f9c9960f1 a65a83fd08fd8a67
+event-break              7c37e10fb3b2dc45 f6b04d49063ced86
+event-complaint          bc2f83eb32990d36 7782416c2c0ca6a0
+event-courier            c39a220637e7c551 bceaf83bdb20dceb
+event-sky                9a97e124e27d6e68 127d6a87a2b9246e
+event-armed              23020ba169a77bcb 452f0940864c2d07
+event-cooldown           bc81c1da8c50c0d1 81b65607fd539794
+event-quiet              9fb21f4189d3d8f5 452f0940864c2d07
+event-suppressed         03a5376960f7d9f4 ec1157e50b388653

@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "duel_event.h" // Wave 7 rare events: m12_event_derive / m12_event_revision
 #include "duel_host.h"
 #include "duel_resident.h"
 #include "duel_sim.h"
@@ -63,6 +64,19 @@ static const duel_scenario_t scenarios[] = {
     SCENE("resident-distracted", "residents", "distracted resident", 0, false),
     SCENE("workshop-idle", "workshop", "forge and assembly residents at work", 0, false),
     SCENE("workshop-cast", "workshop", "combat over the workshop floor", 3, false),
+    // --- Wave 7 rare events ---
+    // All six families across representative phases, a QUIET-calmed case, and a
+    // safety-gate-suppressed case that draws nothing extra (floor only).
+    SCENE("event-scroll", "rare_events", "runaway scroll unrolling (left city)", 0, false),
+    SCENE("event-gear", "rare_events", "jammed gear grinding (right city)", 0, false),
+    SCENE("event-break", "rare_events", "work-break steaming mug (left city)", 0, false),
+    SCENE("event-complaint", "rare_events", "damage complaint crack resolving (right city)", 0, false),
+    SCENE("event-courier", "rare_events", "diplomatic courier banner across the gap", 0, false),
+    SCENE("event-sky", "rare_events", "civic sky aurora across both cities", 0, false),
+    SCENE("event-armed", "rare_events", "runaway scroll armed (pre-active)", 0, false),
+    SCENE("event-cooldown", "rare_events", "jammed gear cooldown residue", 0, false),
+    SCENE("event-quiet", "rare_events", "QUIET mode calms a work-break event", 0, false),
+    SCENE("event-suppressed", "rare_events", "safety-gated slot draws nothing extra", 0, false),
 #endif
 };
 
@@ -256,6 +270,53 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         w.wiz[SIM_SIDE_L].pose = POSE_CAST;
         w.wiz[SIM_SIDE_L].cast_windup = 3;
         w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    // --- Wave 7 rare events ---
+    // Each event scenario stands the floor up (so a suppressed slot still shows
+    // the room) and drives the rare-event slot through r->revision. Distinct
+    // seeds keep both the floor/resident and the event art unique per scenario.
+    } else if (strcmp(name, "event-scroll") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 41; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-gear") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 42; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-break") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 43; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_WORK_BREAK, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-complaint") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 44; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DAMAGE_COMPLAINT, DUEL_M12_EVENT_PHASE_RESOLVING, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-courier") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 45; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DIPLOMATIC_COURIER, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_SHARED);
+    } else if (strcmp(name, "event-sky") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 46; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_CIVIC_SKY, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_SHARED);
+    } else if (strcmp(name, "event-armed") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 47; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, DUEL_M12_EVENT_PHASE_ARMED, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-cooldown") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 48; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR, DUEL_M12_EVENT_PHASE_COOLDOWN, DUEL_M12_EVENT_TARGET_RIGHT);
+    } else if (strcmp(name, "event-quiet") == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_QUIET, DUEL_M12_INTENSITY_CALM);
+        r->seed = 49; r->civic_phase = 8;
+        r->revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_WORK_BREAK, DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    } else if (strcmp(name, "event-suppressed") == 0) {
+        // Ineligible (a safety gate fired): the deck returns NONE and the slot
+        // draws nothing; only the floor room remains. Derived, not hand-packed,
+        // to exercise the real engine path.
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, DUEL_M12_INTENSITY_CALM);
+        r->seed = 50; r->civic_phase = 20;
+        r->revision = m12_event_revision(m12_event_derive(r->seed, r->civic_phase, false));
 #endif
     } else {
         return false;

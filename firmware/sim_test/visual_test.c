@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "duel_event.h" // Wave 7 rare events
 #include "duel_host.h"
 #include "duel_sim.h"
 #include "scenarios.h"
@@ -225,6 +226,92 @@ static void test_m12_floor_and_resident(void) {
 #endif
 }
 
+// --- Wave 7 rare events ---
+// Structural invariants for the rare-event slot: an active LOCAL event only adds
+// pixels inside the floor band (y61-110); a suppressed (ineligible) event adds
+// nothing; and the deck is deterministic, honours the back-to-back cooldown, and
+// keeps the ~75/25 local/shared weighting.
+static void test_m12_rare_event(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t base = {0};
+    duel_render_from_world(&base, &w);
+    base.seed = 33;
+    base.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                                 DUEL_M12_INTENSITY_CALM);
+    base.civic_phase = 8;
+
+    // Baseline floor with an empty rare-event slot (revision == 0 -> NONE).
+    duel_fb_t noev;
+    render_direct(&noev, &base, true, 0, false);
+
+    // An ACTIVE local event targeted at this (left) city must add pixels, and
+    // every added pixel must lie inside the floor band y61-110.
+    duel_render_t ev = base;
+    ev.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
+                                  DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    duel_fb_t withev;
+    render_direct(&withev, &ev, true, 0, false);
+    bool added = false, in_band = true;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (duel_fb_get(&withev, x, y) != duel_fb_get(&noev, x, y)) {
+                added = true;
+                if (y < 61 || y > 110) in_band = false;
+            }
+    VCHECK(added && in_band, "visual_m12_rare_event_local_within_band");
+
+    // A LOCAL event targeted at the OTHER city draws nothing on this half.
+    duel_render_t other = base;
+    other.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_JAMMED_GEAR,
+                                     DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    duel_fb_t otherfb;
+    render_direct(&otherfb, &other, true, 0, false);
+    bool other_city_quiet = memcmp(otherfb.bits, noev.bits, sizeof noev.bits) == 0;
+
+    // Suppressed (ineligible) slot: the derived state is NONE, so nothing extra.
+    duel_render_t sup = base;
+    m12_event_state_t s = m12_event_derive(base.seed, base.civic_phase, false);
+    sup.revision = m12_event_revision(s);
+    duel_fb_t supfb;
+    render_direct(&supfb, &sup, true, 0, false);
+    bool suppressed_noop = memcmp(supfb.bits, noev.bits, sizeof noev.bits) == 0;
+    VCHECK(other_city_quiet && suppressed_noop, "visual_m12_rare_event_suppressed_noop");
+
+    // Deck determinism + back-to-back cooldown across the whole phase range for a
+    // sweep of seeds; and the family weighting stays ~75/25 local/shared.
+    bool deterministic = true, cooldown = true;
+    long local_hits = 0, shared_hits = 0;
+    for (int seed = 0; seed < 256; seed++) {
+        for (int phase = 0; phase < 256; phase++) {
+            m12_event_state_t a = m12_event_derive((uint8_t)seed, (uint8_t)phase, true);
+            m12_event_state_t b = m12_event_derive((uint8_t)seed, (uint8_t)phase, true);
+            if (a.id_target != b.id_target || a.phase != b.phase) deterministic = false;
+            uint8_t family = DUEL_EVENT_ID(a.id_target);
+            if (family >= DUEL_M12_EVENT_DIPLOMATIC_COURIER) shared_hits++; else local_hits++;
+        }
+    }
+    // Adjacent-cycle inequality (the back-to-back cooldown), checked directly on
+    // the per-cycle family (sampled at the ACTIVE sub-phase of each cycle).
+    for (int seed = 0; seed < 256 && cooldown; seed++) {
+        uint8_t prev = DUEL_M12_EVENT_NONE;
+        for (int cyc = 0; cyc < 32; cyc++) {
+            m12_event_state_t st = m12_event_derive((uint8_t)seed, (uint8_t)(cyc * 8 + 2), true);
+            uint8_t family = DUEL_EVENT_ID(st.id_target);
+            if (cyc > 0 && family == prev) cooldown = false;
+            prev = family;
+        }
+    }
+    long total = local_hits + shared_hits;
+    double shared_frac = total ? (double)shared_hits / (double)total : 0.0;
+    bool weighting = shared_frac > 0.15 && shared_frac < 0.35;
+    VCHECK(deterministic, "visual_m12_rare_event_deterministic");
+    VCHECK(cooldown, "visual_m12_rare_event_family_cooldown");
+    VCHECK(weighting, "visual_m12_rare_event_local_shared_weighting");
+#endif
+}
+
 static void test_precedence_and_alert_grammar(void) {
     duel_fb_t alert_impact_l, alert_impact_r, stack_l, stack_r;
     const duel_scenario_t *impact = duel_scenario_find("alert-impact");
@@ -293,6 +380,7 @@ int main(int argc, char **argv) {
     test_archive_continuity_and_variation();
     test_isolation_and_restoration();
     test_m12_floor_and_resident();
+    test_m12_rare_event(); // Wave 7
     test_precedence_and_alert_grammar();
     VCHECK(exact_hashes(path, write), "visual_exact_framebuffer_hashes");
     if (failures) { printf("%d visual test(s) FAILED\n", failures); return 1; }
