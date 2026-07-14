@@ -3,9 +3,19 @@ from __future__ import annotations
 import unittest
 
 from arcane_host.adapters import DBusAdapterHub, SemanticAdapters
+from arcane_host.focus import FocusArbiter, classify_floor
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import canonical_identifier, resolve_profile
-from arcane_host.protocol import Category, EMPTY_SUMMARY, Priority, Scene
+from arcane_host.protocol import (
+    Category,
+    EMPTY_SUMMARY,
+    Floor,
+    Intensity,
+    Mode,
+    Priority,
+    Scene,
+    Secondary,
+)
 from arcane_host.semantic import SemanticResolver
 
 
@@ -15,14 +25,17 @@ class SemanticTests(unittest.TestCase):
         self.assertFalse(resolver.update(summary=EMPTY_SUMMARY))
         self.assertTrue(resolver.update(focus_scene=Scene.ARCHIVE))
         self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
-        revision = resolver.state.revision
-        self.assertFalse(resolver.update(media_playing=True))
+        # Media keeps the scene at ARCHIVE but now also lights the MEDIA
+        # secondary channel, so the civic bytes (and revision) advance.
+        self.assertTrue(resolver.update(media_playing=True))
         self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
-        self.assertEqual(resolver.state.revision, revision)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        revision = resolver.state.revision
         self.assertFalse(resolver.update(focus_scene=Scene.DUEL))
         self.assertEqual(resolver.state.revision, revision)
         self.assertTrue(resolver.update(media_playing=False))
         self.assertEqual(resolver.state.scene, Scene.DUEL)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.NONE)
         self.assertTrue(resolver.update(pomodoro=True))
         self.assertEqual(resolver.state.scene, Scene.FOCUS)
         revision = resolver.state.revision
@@ -34,6 +47,87 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolve_profile(None, "org.kde.konsole.desktop").identifier, "terminal")
         self.assertEqual(canonical_identifier("org.mozilla.firefox.desktop"), "browser")
         self.assertIsNone(resolve_profile("unknown-app", None))
+
+    def test_floor_classification_per_profile(self) -> None:
+        self.assertEqual(resolve_profile("firefox", None).floor, Floor.RESEARCH)
+        self.assertEqual(resolve_profile("org.kde.konsole", None).floor, Floor.WORKSHOP)
+        self.assertEqual(resolve_profile("slack", None).floor, Floor.COMMONS)
+        self.assertEqual(resolve_profile("spotify", None).floor, Floor.COMMONS)
+        # classify_floor mirrors the arbiter's floor derivation, unknown -> COMMONS.
+        self.assertEqual(classify_floor("firefox", None), Floor.RESEARCH)
+        self.assertEqual(classify_floor("kitty", None), Floor.WORKSHOP)
+        self.assertEqual(classify_floor("unknown-app", None), Floor.COMMONS)
+
+    def test_focus_arbiter_settles_floor_with_scene(self) -> None:
+        arbiter = FocusArbiter(settle_seconds=0)
+        self.assertEqual(arbiter.floor, Floor.COMMONS)
+        arbiter.report("firefox", "firefox.desktop", 0.0)
+        arbiter.poll(0.0)
+        self.assertEqual((arbiter.scene, arbiter.floor), (Scene.ARCHIVE, Floor.RESEARCH))
+        arbiter.report("kitty", "kitty.desktop", 1.0)
+        arbiter.poll(1.0)
+        self.assertEqual((arbiter.scene, arbiter.floor), (Scene.DUEL, Floor.WORKSHOP))
+
+    def test_civic_bytes_for_representative_states(self) -> None:
+        # browser focus -> RESEARCH floor (civic byte 0x01).
+        resolver = SemanticResolver()
+        self.assertTrue(resolver.update(focus_floor=Floor.RESEARCH))
+        self.assertEqual(resolver.state.civic.floor, Floor.RESEARCH)
+        self.assertEqual(resolver.state.civic.civic_byte(), 0x01)
+
+        # terminal focus -> WORKSHOP floor (civic byte 0x02).
+        resolver.update(focus_floor=Floor.WORKSHOP)
+        self.assertEqual(resolver.state.civic.civic_byte(), 0x02)
+
+        # default/unknown focus -> COMMONS floor (civic byte 0x00).
+        resolver.update(focus_floor=Floor.COMMONS)
+        self.assertEqual(resolver.state.civic.civic_byte(), 0x00)
+
+        # DND -> QUIET mode over COMMONS (civic byte 0x04); intensity stays CALM.
+        self.assertTrue(resolver.update(dnd=True))
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        self.assertEqual(resolver.state.civic.civic_byte(), 0x04)
+        resolver.update(dnd=False)
+        # Pomodoro also quiets the floor.
+        resolver.update(pomodoro=True)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        resolver.update(pomodoro=False)
+
+        # MPRIS playing -> MEDIA secondary channel (secondary byte 0x01).
+        self.assertTrue(resolver.update(media_playing=True))
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        self.assertEqual(resolver.state.civic.secondary_byte(), 0x01)
+
+    def test_secondary_channel_precedence(self) -> None:
+        resolver = SemanticResolver()
+        resolver.update(media_playing=True)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        # Transfer outranks media; a system/network alert outranks transfer.
+        resolver.update(transfer_active=True)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.TRANSFER)
+        resolver.update(system_alert=True)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.SYSTEM)
+        resolver.update(system_alert=False, transfer_active=False)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        resolver.update(media_playing=False)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.NONE)
+
+    def test_adapter_secondary_channels(self) -> None:
+        now = [20.0]
+        resolver = SemanticResolver()
+        policy = NotificationPolicy()
+        adapters = SemanticAdapters(resolver, policy, lambda: None, lambda: now[0])
+        adapters.media("Playing", None)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        adapters.network("offline")
+        self.assertEqual(resolver.state.civic.secondary, Secondary.SYSTEM)
+        adapters.network("online")
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+        adapters.repository(2, True)  # operation in flight
+        self.assertEqual(resolver.state.civic.secondary, Secondary.TRANSFER)
+        adapters.repository(3, True)  # completion clears the channel
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
 
     def test_pomodoro_uses_warning_and_completion_deadlines(self) -> None:
         now = [20.0]

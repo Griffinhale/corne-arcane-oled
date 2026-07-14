@@ -7,7 +7,17 @@ import unittest
 from arcane_host.daemon import EventService, HidHeartbeat, KWinBridgeLoader, KWIN_SERVICE
 from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
-from arcane_host.protocol import Category, Message, NotificationSummary, Priority, Scene
+from arcane_host.protocol import (
+    Category,
+    CivicState,
+    Floor,
+    Message,
+    Mode,
+    NotificationSummary,
+    Priority,
+    Scene,
+    Secondary,
+)
 
 
 class FakeDevice:
@@ -108,6 +118,28 @@ class HeartbeatTests(unittest.TestCase):
         self.assertEqual(device.reports[-1][3], Message.HEARTBEAT)
         self.assertFalse(heartbeat.tick(0.11))
         self.assertTrue(heartbeat.tick(0.6))
+
+    def test_civic_provider_packs_payload_six_and_seven(self) -> None:
+        civic = CivicState(Floor.WORKSHOP, Mode.QUIET, secondary=Secondary.TRANSFER)
+        device = FakeDevice()
+        heartbeat = HidHeartbeat(
+            lambda: Scene.DUEL,
+            lambda: device,
+            lambda: 7,
+            civic_provider=lambda: civic,
+        )
+        heartbeat.tick(0.0)  # HELLO
+        heartbeat.tick(0.1)  # HEARTBEAT
+        for report in device.reports:
+            self.assertEqual(report[10], 8)  # payload_len advertises M12
+            self.assertEqual(report[17], civic.civic_byte())  # floor|mode|intensity
+            self.assertEqual(report[18], civic.secondary_byte())
+        # Without a civic provider the report stays the bit-identical M11.5 form.
+        legacy_device = FakeDevice()
+        legacy = HidHeartbeat(lambda: Scene.DUEL, lambda: legacy_device, lambda: 7)
+        legacy.tick(0.0)
+        self.assertEqual(legacy_device.reports[0][10], 6)
+        self.assertEqual(legacy_device.reports[0][17], 0)
 
     def test_reconnect_hello_carries_complete_summary(self) -> None:
         summary = NotificationSummary(2, Category.SECURITY, Priority.CRITICAL, 4, True)

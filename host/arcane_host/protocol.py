@@ -43,6 +43,80 @@ class Priority(IntEnum):
     CRITICAL = 3
 
 
+class Floor(IntEnum):
+    """Active tower-floor occupation; civic byte bits 0-1 (see duel_host.h)."""
+
+    COMMONS = 0
+    RESEARCH = 1
+    WORKSHOP = 2
+    SPECIAL = 3
+
+
+class Mode(IntEnum):
+    """Civic mode; civic byte bits 2-3. RESERVED is unused under M12."""
+
+    NORMAL = 0
+    QUIET = 1
+    URGENT = 2
+    RESERVED = 3
+
+
+class Intensity(IntEnum):
+    """Secondary host-activity intensity; civic byte bits 4-5."""
+
+    CALM = 0
+    ACTIVE = 1
+    BUSY = 2
+    SATURATED = 3
+
+
+class Secondary(IntEnum):
+    """Secondary activity channel; secondary byte bits 0-2."""
+
+    NONE = 0
+    MEDIA = 1
+    TRANSFER = 2
+    SYSTEM = 3
+    CALENDAR = 4
+
+
+@dataclass(frozen=True, slots=True)
+class CivicState:
+    """M12 Twin Cities civic bytes: pure enum tuple, never any string.
+
+    Packs exactly as ``duel_host.h``: civic byte bits0-1 floor, bits2-3 mode,
+    bits4-5 host intensity (bits6-7 reserved); secondary byte bits0-2 activity.
+    """
+
+    floor: Floor = Floor.COMMONS
+    mode: Mode = Mode.NORMAL
+    intensity: Intensity = Intensity.CALM
+    secondary: Secondary = Secondary.NONE
+
+    def __post_init__(self) -> None:
+        if not 0 <= int(self.floor) <= 3:
+            raise ValueError("floor must be in 0..3")
+        if not 0 <= int(self.mode) <= 3:
+            raise ValueError("mode must be in 0..3")
+        if not 0 <= int(self.intensity) <= 3:
+            raise ValueError("intensity must be in 0..3")
+        if not 0 <= int(self.secondary) <= 7:
+            raise ValueError("secondary activity must be in 0..7")
+
+    def civic_byte(self) -> int:
+        """DUEL_CIVIC_PACK(floor, mode, intensity)."""
+        return (int(self.floor) & 3) | ((int(self.mode) & 3) << 2) | (
+            (int(self.intensity) & 3) << 4
+        )
+
+    def secondary_byte(self) -> int:
+        """DUEL_SECONDARY_PACK(activity)."""
+        return int(self.secondary) & 7
+
+
+DEFAULT_CIVIC = CivicState()
+
+
 @dataclass(frozen=True)
 class NotificationSummary:
     count: int = 0
@@ -92,11 +166,17 @@ def build_packet(
     notification_count: int | None = None,
     *,
     summary: NotificationSummary | None = None,
+    civic: CivicState | None = None,
 ) -> bytes:
     """Build a canonical v2 report.
 
     ``notification_count`` remains as the M9 call-site compatibility form and
     maps nonzero counts to an ``other/normal`` diagnostic summary.
+
+    When ``civic`` is provided the report carries the M12 Twin Cities civic
+    bytes at ``payload[6]``/``payload[7]`` and advertises ``payload_len == 8``.
+    Omitting it keeps the bit-identical M11.5 six-byte payload, so firmware that
+    predates M12 (or ignores the extra bytes) is unaffected.
     """
     if not 0 <= session <= 0xFFFFFFFF:
         raise ValueError("session must fit uint32")
@@ -114,6 +194,7 @@ def build_packet(
             else NotificationSummary(count, Category.OTHER, Priority.NORMAL)
         )
 
+    payload_len = 6 if civic is None else 8
     report = bytearray(REPORT_SIZE)
     struct.pack_into(
         "<BBBBIHB",
@@ -125,7 +206,7 @@ def build_packet(
         int(message),
         session,
         sequence,
-        6,
+        payload_len,
     )
     report[11:17] = bytes(
         (
@@ -137,6 +218,10 @@ def build_packet(
             int(summary.persistent),
         )
     )
+    if civic is not None:
+        # payload[6] -> report[17], payload[7] -> report[18].
+        report[17] = civic.civic_byte()
+        report[18] = civic.secondary_byte()
     report[-1] = crc8(report[:-1])
     return bytes(report)
 

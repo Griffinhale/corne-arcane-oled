@@ -19,6 +19,7 @@ from .hidraw import Device, choose_device
 from .policy import NotificationPolicy
 from .protocol import (
     Category,
+    CivicState,
     EMPTY_SUMMARY,
     Message,
     NotificationSummary,
@@ -83,6 +84,7 @@ class HidHeartbeat:
         session_factory: Callable[[], int],
         *,
         summary_provider: Callable[[], NotificationSummary] | None = None,
+        civic_provider: Callable[[], CivicState] | None = None,
         notification_count: int = 0,
         interval: float = 0.5,
         retry_interval: float = 2.0,
@@ -96,6 +98,9 @@ class HidHeartbeat:
             if notification_count == 0
             else NotificationSummary(notification_count, Category.OTHER, Priority.NORMAL)
         )
+        # Absent a civic provider the daemon emits the bit-identical M11.5
+        # six-byte payload; supplying one advertises payload_len 8 (M12).
+        self.civic_provider = civic_provider
         self.interval = interval
         self.retry_interval = retry_interval
         self.verbose = verbose
@@ -139,6 +144,7 @@ class HidHeartbeat:
                     0,
                     self.scene_provider(),
                     summary=self.summary_provider(),
+                    civic=self.civic_provider() if self.civic_provider else None,
                 )
             )
         except (OSError, RuntimeError) as error:
@@ -175,6 +181,7 @@ class HidHeartbeat:
                     self.sequence,
                     self.scene_provider(),
                     summary=summary,
+                    civic=self.civic_provider() if self.civic_provider else None,
                 )
             )
         except OSError as error:
@@ -518,11 +525,15 @@ def run(args: argparse.Namespace) -> int:
     def summary_provider() -> NotificationSummary:
         return resolver.state.summary
 
+    def civic_provider() -> CivicState:
+        return resolver.state.civic
+
     heartbeat = HidHeartbeat(
         scene_provider,
         device_factory,
         session_factory,
         summary_provider=summary_provider,
+        civic_provider=civic_provider,
         interval=args.interval,
         retry_interval=args.retry_interval,
         verbose=args.verbose,
@@ -572,7 +583,9 @@ def run(args: argparse.Namespace) -> int:
         if override is None:
             arbiter.poll(now)
         summary = legacy_summary if args.notify else policy.summary(now)
-        resolver.update(summary=summary, focus_scene=arbiter.scene)
+        resolver.update(
+            summary=summary, focus_scene=arbiter.scene, focus_floor=arbiter.floor
+        )
         if resolver.state.revision != last_revision:
             last_revision = resolver.state.revision
             heartbeat.request_notify()
