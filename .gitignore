@@ -25,3 +25,6 @@ artifacts/m11.1-candidate/
 # Editor / OS noise
 *~
 .DS_Store
+
+# Agent worktrees (auto-managed)
+.claude/worktrees/
