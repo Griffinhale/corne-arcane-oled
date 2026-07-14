@@ -221,3 +221,69 @@ a smaller but real reserve (≥8KiB) for SPECIAL/M13.
 **Phase 1a only**, behind `ARCANE_M12`: `DUEL_ROOF_BASE_Y`, lift the cluster ~20px, regenerate combat
 goldens, add the raised-cluster invariant. No floor, protocol, or residents. Report changes, resource
 deltas, tests, rollback. Stop for physical re-acceptance of the raised rooftop before Phase 1b.
+
+---
+
+## 12. Parallelization strategy
+
+Goal: cover as much ground concurrently as possible without big-bang integration risk. The approach is
+"serialize the few genuinely-coupled steps, engineer around the rest, then fan out into isolated tracks."
+
+### 12.1 The three hard serialization constraints
+1. **Phase 1a must land + be re-accepted alone.** It rewrites the combat Y-constants every rendering phase
+   builds on and regenerates the *combat* visual goldens; concurrent pixel work would collide on both.
+2. **`duel_draw.c` is a monolith.** `wiz_draw_scene` (`duel_draw.c:585-786`) is where floors/residents/
+   couriers all want to add draw calls — concurrent edits conflict.
+3. **`golden/visual.hashes` is one shared file.** Two pixel-affecting phases both regenerate it → merge
+   conflict and no way to attribute which change moved which hash.
+
+Everything else is only *logically* coupled through the civic-byte wire contract, which is an interface,
+not a file. Proto/host firmware (`duel_proto.c`, `duel_host.c`) and the Python daemon (`host/arcane_host/`)
+touch entirely different files from the renderer.
+
+### 12.2 The two enabling moves (do these before fan-out)
+- **A. Interface-first commit** (small, serial, immediately after 1a): land `ARCANE_M12`; the civic/
+  secondary/shared-presentation wire byte layout + pack/unpack macros (D5); the floor/mode/personality/
+  action/courier/event **enums**; the `m12_*_state_t` structs; and empty stub `draw_floor`/`draw_resident`/
+  `draw_courier` hooks wired into `wiz_draw_scene` **once**. After this, `wiz_draw_scene` needs no further
+  structural edits — tracks fill stubs.
+- **B. New translation units, not a fatter monolith.** Author M12 rendering in `duel_floor.c`,
+  `duel_resident.c`, `duel_courier.c`, `duel_civic.c` — each owns its draw helper. Different files → no edit
+  contention; keeps the per-file no-alloc symbol gate (`Makefile:49-55`) clean.
+- **Golden namespacing:** each track owns its own scenario group **and** its own golden file
+  (`golden/visual_floors.hashes`, `..._residents.hashes`, `..._couriers.hashes`) so regen never collides.
+
+### 12.3 Wave / track structure
+```
+Wave 0 (serial):   Phase 0 baseline ─► Phase 1a rooftop relocation (re-accept alone)
+Wave 1 (serial):   Interface commit (flag + wire contract + enums + structs + stub hooks)   ← the barrier
+        ┌───────────────────┬────────────────────────────┬───────────────────────────┐
+Wave 2  │ TRACK R (render)   │ TRACK P (proto/host fw)     │ TRACK H (Python daemon)    │
+(parallel) 1b floor geometry │ D5 wire bytes: duel_proto   │ floor/mode on Application  │
+        │ 2 floor defs ×3     │  + duel_host payload[6/7]   │  Profile; Git→WORKSHOP;    │
+        │ 3 resident engine   │  own files, own tests       │  transfer/system secondary │
+        │ (duel_floor.c,      │                             │  own tree, own pytest      │
+        │  duel_resident.c)   │                             │                            │
+        └───────────────────┴────────────────────────────┴───────────────────────────┘
+Wave 3 (serial):   4 activity coupling ─► 5 host-semantics integration (contract converges here)
+Wave 4 (parallel): 6 notification ecology (needs R+P+H) ║ 7 rare-event deck
+Wave 5 (serial):   8 arbitration (§13.1) + full acceptance gallery + resource report
+```
+Within Track R, 1b→2→3 serialize on `duel_floor.c`/goldens, but **Phase 2's three floor archetypes are
+mutually independent** — Commons/Research/Workshop motif tables can be authored concurrently into three
+functions and fast-merged.
+
+### 12.4 Strictly serial (don't fight these)
+1a relocation · the interface commit · Phase 5 wire integration (the end-to-end contract agreement point) ·
+Phase 8 (whole-system arbitration + actual-size acceptance).
+
+### 12.5 Agent/worktree execution model
+Tracks R/P/H run as concurrent sub-agents in **isolated git worktrees** off the post-interface commit, each
+owning disjoint files + golden files. Merge order: P and H (no pixel goldens) merge first and cheaply; R
+merges via its namespaced golden files. Rebase each track on the interface commit only — never on each other.
+
+### 12.6 The safety net that makes this safe
+**World goldens stay byte-identical through every M12 commit** (mechanical isolation, §18.3). That single
+tripwire fails `test_main.c` in isolation the instant any track perturbs mechanics — before merge. With
+per-track visual-golden namespacing and the per-file no-alloc gate, every track is independently verifiable,
+turning parallel merge into a low-risk operation rather than a big-bang integration.
