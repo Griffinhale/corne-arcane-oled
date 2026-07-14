@@ -455,7 +455,9 @@ bool oled_task_user(void) {
     static uint32_t  frame;
     static uint32_t  last_render_ms;
     static uint8_t   applied_phase = 0xFF;
-    static uint8_t   seen_fx_seq, flash_frames, flash_kind;
+    static uint8_t   seen_fx_seq, flash_kind;
+    static uint32_t  flash_started_ms;
+    static uint16_t  flash_duration_ms;
     static uint8_t   last_spell_kind[2], flash_spell_kind;
 #ifdef ARCANE_DIAGNOSTICS
     const bool hud = true;
@@ -493,19 +495,21 @@ bool oled_task_user(void) {
         if (duel_render.w.spell[s].active) last_spell_kind[s] = duel_render.w.spell[s].kind;
     }
 
-    // One-shot fx: arm a short flash each time the world reports a new
-    // outcome. Pure presentation — counts render frames, not sim ticks.
+    // One-shot fx: arm a presentation deadline for each new world outcome.
+    // The renderer still receives its historical 50 ms phases, but dim OLED
+    // cadence merely samples them instead of stretching their duration.
     if (duel_render.w.fx_seq != seen_fx_seq) {
         seen_fx_seq  = duel_render.w.fx_seq;
         flash_kind   = duel_render.w.fx_kind;
         bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L || flash_kind == FX_FIZZLE_L;
         flash_spell_kind = last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
         // Impacts linger longer than deflects/fizzles so a hit really lands.
-        bool imp     = flash_kind == FX_IMPACT_L || flash_kind == FX_IMPACT_R;
-        flash_frames = imp ? 12 : 8;
-    } else if (flash_frames) {
-        flash_frames--;
+        bool imp = flash_kind == FX_IMPACT_L || flash_kind == FX_IMPACT_R;
+        flash_started_ms  = now;
+        flash_duration_ms = imp ? DUEL_PRESENTATION_IMPACT_MS : DUEL_PRESENTATION_OTHER_MS;
     }
+    uint8_t flash_frames = duel_presentation_remaining(flash_started_ms,
+                                                       flash_duration_ms, now);
     duel_render.flash_frames = flash_frames;
     duel_render.flash_kind   = flash_kind;
     duel_render.flash_spell_kind = flash_spell_kind;

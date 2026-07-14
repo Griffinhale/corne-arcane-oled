@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include "duel_draw.h"
+#include "duel_display.h"
 #include "duel_host.h"
 #include "duel_sim.h"
 #include "runner.h"
@@ -138,11 +139,15 @@ typedef struct {
     uint8_t flash_kind;
     uint8_t flash_spell_kind;
     uint8_t last_spell_kind[2];
+    uint32_t now_ms;
+    uint32_t flash_started_ms;
+    uint16_t flash_duration_ms;
 } preview_fx_t;
 
 // Mirror keymap.c's render-only outcome latch so trace playback shows the same
-// revised effects as hardware. One trace tick is presented as one render frame.
-static void show_presented_world(preview_fx_t *p, const sim_world_t *w) {
+// revised effects as hardware. Trace ticks advance the presentation clock by
+// their real 40 ms duration rather than decrementing an OLED-frame counter.
+static void preview_fx_step(preview_fx_t *p, const sim_world_t *w) {
     for (int s = 0; s < 2; s++) {
         if (w->spell[s].active) p->last_spell_kind[s] = w->spell[s].kind;
     }
@@ -153,10 +158,16 @@ static void show_presented_world(preview_fx_t *p, const sim_world_t *w) {
                              p->flash_kind == FX_FIZZLE_L;
         p->flash_spell_kind = p->last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
         bool impact = p->flash_kind == FX_IMPACT_L || p->flash_kind == FX_IMPACT_R;
-        p->flash_frames = impact ? 12 : 8;
-    } else if (p->flash_frames) {
-        p->flash_frames--;
+        p->flash_started_ms  = p->now_ms;
+        p->flash_duration_ms = impact ? DUEL_PRESENTATION_IMPACT_MS : DUEL_PRESENTATION_OTHER_MS;
     }
+    p->flash_frames = duel_presentation_remaining(p->flash_started_ms,
+                                                  p->flash_duration_ms, p->now_ms);
+    p->now_ms += SIM_TICK_MS;
+}
+
+static void show_presented_world(preview_fx_t *p, const sim_world_t *w) {
+    preview_fx_step(p, w);
     duel_render_t r = {
         .w = *w,
         .flash_frames = p->flash_frames,
@@ -216,19 +227,7 @@ int main(int argc, char **argv) {
                 runner_step(&r);
                 // Advance the render-only latch at the same nominal cadence;
                 // only the target frame is emitted below.
-                for (int s = 0; s < 2; s++) {
-                    if (r.w.spell[s].active) present.last_spell_kind[s] = r.w.spell[s].kind;
-                }
-                if (r.w.fx_seq != present.seen_fx_seq) {
-                    present.seen_fx_seq = r.w.fx_seq;
-                    present.flash_kind = r.w.fx_kind;
-                    bool dl = present.flash_kind == FX_IMPACT_L || present.flash_kind == FX_DEFLECT_L ||
-                              present.flash_kind == FX_FIZZLE_L;
-                    present.flash_spell_kind = present.last_spell_kind[dl ? SIM_SIDE_R : SIM_SIDE_L];
-                    present.flash_frames = (present.flash_kind == FX_IMPACT_L || present.flash_kind == FX_IMPACT_R) ? 12 : 8;
-                } else if (present.flash_frames) {
-                    present.flash_frames--;
-                }
+                preview_fx_step(&present, &r.w);
             }
             printf("tick %u\n", r.ticks_run);
             show_render(&(duel_render_t){.w = r.w, .flash_frames = present.flash_frames,

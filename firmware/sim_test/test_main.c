@@ -208,6 +208,34 @@ static void t11_display_wire_compatibility(void) {
     CHECK(ok, "t11_display_wire_compatibility");
 }
 
+static void t11_presentation_clock(void) {
+    uint32_t start = 1000;
+    bool ok = duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                          start) == 12;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 50) == 11;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 250) == 7;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 500) == 2;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 599) == 1;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_IMPACT_MS,
+                                      start + 600) == 0;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_OTHER_MS,
+                                      start + 399) == 1;
+    ok &= duel_presentation_remaining(start, DUEL_PRESENTATION_OTHER_MS,
+                                      start + 400) == 0;
+
+    // Unsigned age keeps the same deadline across the uint32 wrap boundary.
+    uint32_t wrapped_start = UINT32_MAX - 99;
+    ok &= duel_presentation_remaining(wrapped_start, DUEL_PRESENTATION_OTHER_MS,
+                                      wrapped_start + 250) == 3;
+    ok &= duel_presentation_remaining(wrapped_start, DUEL_PRESENTATION_OTHER_MS,
+                                      wrapped_start + 400) == 0;
+    CHECK(ok, "t11_presentation_clock");
+}
+
 /* ---------------- M2: deterministic world loop ---------------- */
 
 // Golden hash stream: identical replays across code changes are the
@@ -2476,6 +2504,7 @@ int main(int argc, char **argv) {
 
     t11_display_policy();
     t11_display_wire_compatibility();
+    t11_presentation_clock();
 
     if (g_failures) {
         printf("%d test(s) FAILED\n", g_failures);

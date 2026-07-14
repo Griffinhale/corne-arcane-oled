@@ -68,7 +68,7 @@ void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
 typedef struct {
     sim_world_t w;
     bool        stale_link;   // slave stopped hearing the master (M3)
-    uint8_t     flash_frames; // fx flash countdown, in RENDER frames (M4)
+    uint8_t     flash_frames; // remaining normalized 50 ms presentation quanta
     uint8_t     flash_kind;   // FX_* being flashed
     uint8_t     flash_spell_kind; // cached resolved spell style (M7.5, presentation-only)
     // M7 scry-overlay content — presentation-only, filled by the glue and never

@@ -19,6 +19,12 @@
 #define DUEL_DISPLAY_ACTIVE_REDRAW_MS   50u
 #define DUEL_DISPLAY_DIM_REDRAW_MS     250u
 
+// Cosmetic outcomes retain their active-cadence grammar, but elapsed wall
+// time—not the number of OLED callbacks—owns their duration.
+#define DUEL_PRESENTATION_QUANTUM_MS  50u
+#define DUEL_PRESENTATION_IMPACT_MS  600u
+#define DUEL_PRESENTATION_OTHER_MS   400u
+
 typedef enum {
     DUEL_DISPLAY_ACTIVE = 0,
     DUEL_DISPLAY_DIM    = 1,
@@ -39,3 +45,5 @@ void duel_display_follow(duel_display_policy_t *policy, duel_display_phase_t pha
                          uint32_t now_ms);
 uint8_t duel_display_brightness(const duel_display_policy_t *policy, uint32_t now_ms);
 uint16_t duel_display_redraw_ms(const duel_display_policy_t *policy);
+uint8_t duel_presentation_remaining(uint32_t started_ms, uint16_t duration_ms,
+                                    uint32_t now_ms);
