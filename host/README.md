@@ -77,6 +77,20 @@ For one diagnostic run use:
 corne-arcane-host --no-desktop-notifications --verbose
 ```
 
+An `ARCANE_DIAGNOSTICS=yes` firmware pair also exposes its bounded timing and
+split counters through a separate two-page Raw HID query. Release firmware does
+not recognize or emit these reports. Read the current cumulative snapshot with:
+
+```bash
+corne-arcane-diagnostics
+corne-arcane-diagnostics --json
+```
+
+The readout identifies adaptive versus fixed-80 ms cadence and reports master
+queue/catch-up/error counters, housekeeping/render/split peaks, successful and
+failed transfers, plus the slave's accepted sequence, snapshot age, peaks, and
+stale/resync counters. Reflashing or power-cycling resets the cumulative values.
+
 If session-bus `BecomeMonitor` is denied, only the desktop adapter disables
 itself; focus, terminal completion, synthetic events, Raw HID, and offline Duel
 fallback continue.
@@ -128,10 +142,12 @@ Run all host checks with `./run_tests.sh`. Do not run the daemon against
 service (Duel fallback returns within 1.5 seconds) and use commit `26c49a2` plus
 its M9 daemon/firmware pair.
 
-**M11.5 status (2026-07-14): desktop verified; physical acceptance pending.**
-The 43-test host suite covers protocol vectors, deadline scheduling, alias
+**M11.5 status (2026-07-14): behavioral hardware checks pass; numeric cadence
+A/B and final release/rollback flashes remain.**
+The 50-test host suite covers protocol and diagnostic vectors, deadline scheduling, alias
 canonicalization, privacy retention, all five semantic mappings, multi-player
 media aggregation, systemd timer deadlines, and NetworkManager/VPN composition.
-The previously flashed v7 pair still supplies the inherited recovery smoke
-evidence; the v8 pair and real-application, stress, suspend, and rollback gates
-remain in `../docs/m11.5-acceptance.md`.
+The previously flashed v8 diagnostic pair passed the real-application, stress,
+sleep/wake, reconnect, daemon-loss, and suspend/resume checks. The new readout
+pair, fixed-cadence comparison, release flash, and rollback gate remain in
+`../docs/m11.5-acceptance.md`.

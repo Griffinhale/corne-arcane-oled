@@ -157,6 +157,7 @@ void matrix_slave_scan_user(void) {
  * ordering, expiry, and split propagation happen later in housekeeping. The
  * daemon sends absolute context on every report, so latest-wins is safe. */
 #ifdef ARCANE_HOST_ENABLE
+#    include "raw_hid.h"
 #    define DUEL_HOST_TIMEOUT_MS 1500
 
 static volatile uint8_t duel_host_rx_ver;
@@ -164,9 +165,25 @@ static duel_host_packet_t duel_host_rx_staging;
 static uint8_t duel_host_rx_seen_ver;
 static duel_host_state_t duel_host_state;
 static uint32_t duel_host_expire_ms;
+#ifdef ARCANE_DIAGNOSTICS
+static volatile uint8_t duel_diag_usb_rx_ver;
+static duel_host_diag_packet_t duel_diag_usb_rx_staging;
+static uint8_t duel_diag_usb_rx_seen_ver;
+#endif
 
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     if (length != sizeof(duel_host_packet_t)) return;
+#ifdef ARCANE_DIAGNOSTICS
+    if (data[0] == DUEL_HOST_MAGIC0 && data[1] == DUEL_HOST_MAGIC1 &&
+        data[2] == DUEL_HOST_DIAG_VERSION && data[3] == DUEL_HOST_MSG_DIAG_REQUEST) {
+        duel_diag_usb_rx_ver++;
+        __asm__ volatile("" ::: "memory");
+        memcpy(&duel_diag_usb_rx_staging, data, sizeof duel_diag_usb_rx_staging);
+        __asm__ volatile("" ::: "memory");
+        duel_diag_usb_rx_ver++;
+        return;
+    }
+#endif
     duel_host_rx_ver++;
     __asm__ volatile("" ::: "memory");
     memcpy(&duel_host_rx_staging, data, sizeof duel_host_rx_staging);
@@ -205,6 +222,79 @@ static bool duel_host_housekeeping(uint32_t now) {
     }
     return visible_changed;
 }
+
+#ifdef ARCANE_DIAGNOSTICS
+static void duel_diag_put_u16(uint8_t *out, uint16_t value) {
+    out[0] = (uint8_t)value;
+    out[1] = (uint8_t)(value >> 8);
+}
+
+static void duel_diag_put_u32(uint8_t *out, uint32_t value) {
+    out[0] = (uint8_t)value;
+    out[1] = (uint8_t)(value >> 8);
+    out[2] = (uint8_t)(value >> 16);
+    out[3] = (uint8_t)(value >> 24);
+}
+
+static bool duel_diag_usb_request_consume(duel_host_diag_packet_t *request) {
+    uint8_t v1 = duel_diag_usb_rx_ver;
+    if (v1 == duel_diag_usb_rx_seen_ver || (v1 & 1u)) return false;
+    __asm__ volatile("" ::: "memory");
+    memcpy(request, &duel_diag_usb_rx_staging, sizeof *request);
+    __asm__ volatile("" ::: "memory");
+    uint8_t v2 = duel_diag_usb_rx_ver;
+    if (v1 != v2) return false;
+    duel_diag_usb_rx_seen_ver = v1;
+    return request->magic0 == DUEL_HOST_MAGIC0 &&
+           request->magic1 == DUEL_HOST_MAGIC1 &&
+           request->version == DUEL_HOST_DIAG_VERSION &&
+           request->type == DUEL_HOST_MSG_DIAG_REQUEST &&
+           request->page < DUEL_HOST_DIAG_PAGES &&
+           request->page_count == 0 &&
+           request->crc == duel_crc8(request, offsetof(duel_host_diag_packet_t, crc));
+}
+
+static void duel_diag_usb_respond(const duel_host_diag_packet_t *request) {
+    duel_host_diag_packet_t response = {0};
+    response.magic0 = DUEL_HOST_MAGIC0;
+    response.magic1 = DUEL_HOST_MAGIC1;
+    response.version = DUEL_HOST_DIAG_VERSION;
+    response.type = DUEL_HOST_MSG_DIAG_RESPONSE;
+    response.page = request->page;
+    response.page_count = DUEL_HOST_DIAG_PAGES;
+    response.nonce = request->nonce;
+
+    if (request->page == 0) {
+        duel_diag_put_u16(&response.payload[0], duel_diag.queue_overflow);
+        duel_diag_put_u16(&response.payload[2], duel_diag.catchup_ticks);
+        duel_diag_put_u16(&response.payload[4], duel_diag.missed_tick_resyncs);
+        duel_diag_put_u16(&response.payload[6], duel_diag.stale_split_events);
+        duel_diag_put_u16(&response.payload[8], duel_diag.split_protocol_errors);
+        duel_diag_put_u16(&response.payload[10], duel_diag.host_malformed_errors);
+        duel_diag_put_u16(&response.payload[12], duel_diag.host_stale_errors);
+        duel_diag_put_u32(&response.payload[14], duel_diag.peak_housekeeping_us);
+        duel_diag_put_u32(&response.payload[18], duel_diag.peak_render_blit_us);
+#ifdef ARCANE_FIXED_SPLIT_CADENCE
+        response.payload[22] = DUEL_HOST_DIAG_FLAG_FIXED_SPLIT_CADENCE;
+#endif
+    } else {
+        duel_split_diag_reply_t peer = duel_peer_diag;
+        duel_diag_put_u32(&response.payload[0], duel_diag.peak_split_tx_us);
+        duel_diag_put_u16(&response.payload[4], duel_diag.split_tx_success);
+        duel_diag_put_u16(&response.payload[6], duel_diag.split_tx_failure);
+        response.payload[8] = peer.magic == DUEL_MAGIC && peer.version == 1;
+        duel_diag_put_u16(&response.payload[9], peer.accepted_seq);
+        duel_diag_put_u16(&response.payload[11], peer.snapshot_age_ms);
+        duel_diag_put_u16(&response.payload[13], peer.peak_housekeeping_us);
+        duel_diag_put_u16(&response.payload[15], peer.peak_render_us);
+        duel_diag_put_u16(&response.payload[17], peer.queue_overflow);
+        duel_diag_put_u16(&response.payload[19], peer.missed_tick_resyncs);
+        duel_diag_put_u16(&response.payload[21], peer.stale_events);
+    }
+    response.crc = duel_crc8(&response, offsetof(duel_host_diag_packet_t, crc));
+    raw_hid_send((uint8_t *)&response, sizeof response);
+}
+#endif
 #endif
 
 static volatile uint8_t duel_rx_ver;
@@ -526,6 +616,12 @@ void housekeeping_task_user(void) {
         __asm__ volatile("" ::: "memory");
         duel_diag_response_ver++;
     }
+#    ifdef ARCANE_HOST_ENABLE
+    if (is_keyboard_master()) {
+        duel_host_diag_packet_t request;
+        if (duel_diag_usb_request_consume(&request)) duel_diag_usb_respond(&request);
+    }
+#    endif
 #endif
 }
 

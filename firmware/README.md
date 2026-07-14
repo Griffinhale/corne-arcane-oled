@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M11.5 desktop-verified candidate; physical acceptance pending (2026-07-14)
+## Status: M11.5 behavioral hardware checks pass; numeric A/B pending (2026-07-14)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -52,8 +52,9 @@ default to 250 ms; `ARCANE_FIXED_SPLIT_CADENCE=yes` restores an 80 ms repair
 heartbeat for the physical A/B gate. The release build is 49,904 flash bytes,
 3,576 bytes `.data`, and 9,604 bytes `.bss`. `sim_world_t` remains 56 bytes,
 all deterministic world and exact visual hashes remain unchanged, and Raw HID
-remains v2/32 bytes. See `../docs/m11.5-acceptance.md`; neither half has been
-flashed with v8 yet.
+remains v2/32 bytes. A prior v8 diagnostic pair passed the behavioral hardware
+checks; the diagnostics readout pair must now be flashed to capture numeric
+adaptive-versus-fixed evidence. See `../docs/m11.5-acceptance.md`.
 
 **M7.5 — Combat presentation and composition polish (hardware-verified).**
 Mechanics remain unchanged except

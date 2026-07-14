@@ -44,6 +44,9 @@ stdenvNoCC.mkDerivation {
     makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-event" \
       --add-flags "-m arcane_host.event" \
       --set PYTHONPATH "$out/lib/corne-arcane-host"
+    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-diagnostics" \
+      --add-flags "-m arcane_host.diagnostics" \
+      --set PYTHONPATH "$out/lib/corne-arcane-host"
     runHook postInstall
   '';
 

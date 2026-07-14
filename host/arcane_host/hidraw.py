@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import select
 
 from .protocol import REPORT_SIZE, hidraw_frame
 
@@ -60,3 +61,19 @@ class Device:
         written = os.write(self.fd, frame)
         if written != len(frame):
             raise OSError(f"short hidraw write: {written}/{len(frame)} bytes")
+
+    def receive(self, timeout: float) -> bytes:
+        if timeout < 0:
+            raise ValueError("timeout must be nonnegative")
+        readable, _, _ = select.select((self.fd,), (), (), timeout)
+        if not readable:
+            raise TimeoutError("timed out waiting for Raw HID input report")
+        frame = os.read(self.fd, REPORT_SIZE + 1)
+        # Linux hidraw includes a leading report ID only when the descriptor
+        # defines report IDs. QMK Raw HID does not, but accept an explicit zero
+        # prefix to keep test transports and unusual kernels unambiguous.
+        if len(frame) == REPORT_SIZE + 1 and frame[0] == 0:
+            frame = frame[1:]
+        if len(frame) != REPORT_SIZE:
+            raise OSError(f"short hidraw read: {len(frame)}/{REPORT_SIZE} bytes")
+        return frame
