@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import hashlib
 from typing import Any, Callable
 
-from .focus import normalize_identifier
 from .policy import NotificationPolicy
+from .profiles import canonical_identifier, resolve_profile
 from .protocol import Category, Priority
 
 
@@ -82,6 +82,15 @@ class DesktopNotificationAdapter:
         self._next_key = 1
         self.monitor_enabled = False
         self.monitor_error: str | None = None
+        self.counters = {
+            "matched_replies": 0,
+            "unmatched_replies": 0,
+            "replacements": 0,
+            "closes": 0,
+            "parse_failures": 0,
+            "pending_high_water": 0,
+            "evictions": 0,
+        }
 
     def digest_text(self, summary: str, body: str) -> bytes:
         digest = hashlib.blake2s(key=self._salt, digest_size=16)
@@ -92,7 +101,7 @@ class DesktopNotificationAdapter:
         return digest.digest()
 
     def digest_identifier(self, identifier: str | None) -> bytes:
-        normalized = normalize_identifier(identifier)
+        normalized = canonical_identifier(identifier)
         return hashlib.blake2s(
             normalized.encode("utf-8", "surrogatepass"), key=self._salt, digest_size=16
         ).digest()
@@ -121,9 +130,19 @@ class DesktopNotificationAdapter:
         transient = bool(_hint_value(hints, "transient", False))
         persistent = priority == Priority.CRITICAL and not transient
         desktop_entry = _hint_value(hints, "desktop-entry", "") or app_name
-        app_digest = self.digest_identifier(str(desktop_entry))
+        profile = resolve_profile(str(desktop_entry), app_name)
+        if (
+            category == Category.OTHER
+            and profile is not None
+            and profile.category_override is not None
+        ):
+            category = profile.category_override
+        app_digest = self.digest_identifier(
+            profile.identifier if profile is not None else str(desktop_entry)
+        )
         content_digest = self.digest_text(summary, body)
-        if priority != Priority.CRITICAL and self._focused_match(app_digest):
+        suppress_focused = profile is None or profile.suppress_when_focused
+        if priority != Priority.CRITICAL and suppress_focused and self._focused_match(app_digest):
             return False
         if len(self._pending) >= self.max_pending:
             candidates = [
@@ -132,6 +151,7 @@ class DesktopNotificationAdapter:
             pool = candidates or list(self._pending)
             oldest_key = min(pool, key=lambda key: self._pending[key].created)
             del self._pending[oldest_key]
+            self.counters["evictions"] += 1
         request_key = (self._digest_peer(sender), int(serial))
         self._pending[request_key] = _Pending(
             now,
@@ -140,6 +160,9 @@ class DesktopNotificationAdapter:
             priority,
             persistent,
             int(replaces_id),
+        )
+        self.counters["pending_high_water"] = max(
+            self.counters["pending_high_water"], len(self._pending)
         )
         return True
 
@@ -154,8 +177,11 @@ class DesktopNotificationAdapter:
             (self._digest_peer(destination), int(reply_serial)), None
         )
         if pending is None:
+            self.counters["unmatched_replies"] += 1
             return False
+        self.counters["matched_replies"] += 1
         old = self._tracked.pop(pending.replaces_id, None) if pending.replaces_id else None
+        policy_key: tuple[str, int]
         if old is not None:
             policy_key = old.policy_key
             if not any(item.digest == old.digest for item in self._tracked.values()):
@@ -163,11 +189,15 @@ class DesktopNotificationAdapter:
             if old.persistent and not pending.persistent:
                 self.policy.close(policy_key)
         else:
-            policy_key = self._digest_keys.get(pending.digest)
-            if policy_key is None:
+            existing_key = self._digest_keys.get(pending.digest)
+            if existing_key is None:
                 policy_key = ("desktop", self._next_key)
                 self._next_key += 1
+            else:
+                policy_key = existing_key
         duplicate = old is not None or pending.digest in self._digest_keys
+        if old is not None:
+            self.counters["replacements"] += 1
         changed = self.policy.inject(
             pending.category,
             pending.priority,
@@ -187,6 +217,7 @@ class DesktopNotificationAdapter:
         tracked = self._tracked.pop(int(notification_id), None)
         if tracked is None:
             return False
+        self.counters["closes"] += 1
         still_referenced = any(item.policy_key == tracked.policy_key for item in self._tracked.values())
         if not still_referenced:
             self._digest_keys.pop(tracked.digest, None)
@@ -227,12 +258,14 @@ class DesktopMonitor:
         "type='signal',interface='org.freedesktop.Notifications',member='NotificationClosed'",
     )
 
-    def __init__(self, Gio, GLib, adapter: DesktopNotificationAdapter, clock, verbose=False) -> None:
+    def __init__(self, Gio, GLib, adapter: DesktopNotificationAdapter, clock,
+                 verbose=False, changed=lambda: None) -> None:
         self.Gio = Gio
         self.GLib = GLib
         self.adapter = adapter
         self.clock = clock
         self.verbose = verbose
+        self.changed = changed
         self.connection = None
 
     def start(self) -> bool:
@@ -242,10 +275,11 @@ class DesktopMonitor:
                 self.Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
                 | self.Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
             )
-            self.connection = self.Gio.DBusConnection.new_for_address_sync(
+            connection = self.Gio.DBusConnection.new_for_address_sync(
                 address, flags, None, None
             )
-            self.connection.call_sync(
+            self.connection = connection
+            connection.call_sync(
                 "org.freedesktop.DBus",
                 "/org/freedesktop/DBus",
                 "org.freedesktop.DBus.Monitoring",
@@ -256,7 +290,7 @@ class DesktopMonitor:
                 2000,
                 None,
             )
-            self.connection.add_filter(self._filter, None)
+            connection.add_filter(self._filter, None)
             self.adapter.monitor_enabled = True
             return True
         except Exception as error:
@@ -279,7 +313,17 @@ class DesktopMonitor:
                     message.get_interface() == "org.freedesktop.Notifications"
                     and message.get_member() == "Notify"
                 ):
-                    app, replaces, _icon, summary, body, _actions, hints, _timeout = message.get_body().unpack()
+                    body_variant = message.get_body()
+                    app = body_variant.get_child_value(0).unpack()
+                    replaces = body_variant.get_child_value(1).unpack()
+                    summary = body_variant.get_child_value(3).unpack()
+                    body = body_variant.get_child_value(4).unpack()
+                    hint_values = body_variant.get_child_value(6)
+                    hints = {}
+                    for key in ("category", "urgency", "transient", "desktop-entry"):
+                        value = hint_values.lookup_value(key, None)
+                        if value is not None:
+                            hints[key] = value.unpack()
                     self.adapter.handle_notify(
                         message.get_serial(), app, replaces, summary, body, hints,
                         self.clock(), message.get_sender() or ""
@@ -288,18 +332,20 @@ class DesktopMonitor:
                 body = message.get_body()
                 values = body.unpack() if body is not None else ()
                 if len(values) == 1 and isinstance(values[0], int):
-                    self.adapter.handle_reply(
+                    if self.adapter.handle_reply(
                         message.get_reply_serial(), values[0], self.clock(),
                         message.get_destination() or ""
-                    )
+                    ):
+                        self.changed()
             elif message_type == self.Gio.DBusMessageType.SIGNAL:
                 if (
                     message.get_interface() == "org.freedesktop.Notifications"
                     and message.get_member() == "NotificationClosed"
                 ):
                     notification_id, _reason = message.get_body().unpack()
-                    self.adapter.handle_closed(notification_id)
+                    if self.adapter.handle_closed(notification_id):
+                        self.changed()
         except Exception:
             # Monitoring is enrichment; malformed or unfamiliar traffic is ignored.
-            pass
+            self.adapter.counters["parse_failures"] += 1
         return message

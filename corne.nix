@@ -20,6 +20,11 @@ in
       default = true;
       description = "Mirror privacy-redacted Freedesktop notification metadata.";
     };
+    pomodoroUnit = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Optional systemd user timer unit used for Focus/Pomodoro semantics.";
+    };
   };
 
   config = {
@@ -47,7 +52,7 @@ in
       serviceConfig = {
         Type = "dbus";
         BusName = "io.github.Griffinhale.CorneArcane";
-        ExecStart = "${lib.getExe corneArcaneHost}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}";
+        ExecStart = "${lib.getExe corneArcaneHost}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}${lib.optionalString (cfg.pomodoroUnit != null) " --pomodoro-unit ${lib.escapeShellArg cfg.pomodoroUnit}"}";
         Restart = "always";
         RestartSec = 2;
       };

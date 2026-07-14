@@ -53,7 +53,7 @@ class FocusTests(unittest.TestCase):
         focus.report("org.kde.konsole", "org.kde.konsole.desktop", 1)
         focus.poll(1)
         self.assertTrue(focus.terminal_focused)
-        self.assertEqual(focus.focused_digests, frozenset({b"org.kde.konsole"}))
+        self.assertEqual(focus.focused_digests, frozenset({b"terminal"}))
 
 
 if __name__ == "__main__":

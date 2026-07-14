@@ -13,3 +13,10 @@ SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
     OPT_DEFS += -DARCANE_DIAGNOSTICS
 endif
+
+# A/B control for the M11.5 cadence gate. The candidate defaults to a 250 ms
+# static repair heartbeat; this switch restores the fixed 80 ms cadence while
+# retaining the identical v8 absolute packet and acceptance rules.
+ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
+    OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
+endif

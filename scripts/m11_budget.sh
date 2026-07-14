@@ -19,7 +19,7 @@ if ! command -v arm-none-eabi-size >/dev/null 2>&1; then
 fi
 if [ ! -f "$elf" ]; then
     echo "FAIL budget: firmware ELF not found: $elf" >&2
-    echo "Set FIRMWARE_ELF to the M11.1 release ELF." >&2
+    echo "Set FIRMWARE_ELF to the M11.5 candidate ELF." >&2
     exit 1
 fi
 
@@ -94,7 +94,7 @@ fi
 echo "wire/resource compile assertions:"
 ASAN_OPTIONS=detect_leaks=0 "$root/firmware/sim_test/test_runner" \
     "$root/firmware/sim_test/traces" "$root/firmware/sim_test/golden" >/dev/null
-echo "PASS Raw HID=32 bytes, split snapshot=31 bytes, sim_world_t=56 bytes"
+echo "PASS Raw HID=32 bytes, split snapshot=27 bytes, canonical view=18 bytes, event queue=18 bytes, sim_world_t=56 bytes"
 
 echo "timing reference (desktop; RP2040 diagnostic peaks remain a physical acceptance gate):"
 ASAN_OPTIONS=detect_leaks=0 "$root/firmware/sim_test/visual_runner" --benchmark

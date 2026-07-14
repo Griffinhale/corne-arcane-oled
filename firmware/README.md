@@ -11,7 +11,7 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M11.1 desktop-verified release candidate; physical acceptance pending (2026-07-14)
+## Status: M11.5 desktop-verified candidate; physical acceptance pending (2026-07-14)
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),
@@ -42,6 +42,18 @@ are now bounded by 600/400 ms presentation deadlines, independent of active or
 dim OLED cadence. The release builds at 49,848 flash bytes, 3,576 bytes
 `.data`, and 9,644 bytes `.bss`; see `../docs/m11.1-acceptance.md` for hashes,
 desktop evidence, and the still-pending physical gate.
+
+M11.5 adds the exact 18-byte `duel_view_t` shared by world projection,
+transport, and rendering; an absolute CRC-protected v8 split packet of 27 bytes;
+an 18-byte packed edge queue; cached-row/one-drain catch-up processing; packed
+host context; semantic render suppression; and diagnostic-only reverse split
+telemetry. Active changes transmit within 80 ms and static repair snapshots
+default to 250 ms; `ARCANE_FIXED_SPLIT_CADENCE=yes` restores an 80 ms repair
+heartbeat for the physical A/B gate. The release build is 49,904 flash bytes,
+3,576 bytes `.data`, and 9,604 bytes `.bss`. `sim_world_t` remains 56 bytes,
+all deterministic world and exact visual hashes remain unchanged, and Raw HID
+remains v2/32 bytes. See `../docs/m11.5-acceptance.md`; neither half has been
+flashed with v8 yet.
 
 **M7.5 — Combat presentation and composition polish (hardware-verified).**
 Mechanics remain unchanged except
@@ -99,8 +111,9 @@ snapshot. Determinism is machine-verified by the host test rig in
 iterates without flashing).
 
 **M3 — Split snapshot proof.** The master's world is authoritative and
-streams CRC'd snapshots (`sim/duel_proto.{h,c}`, now 31 bytes at M10) to
-the slave over a user split RPC every 2nd tick (12.5 Hz). Sequence + session
+streams CRC'd snapshots (`sim/duel_proto.{h,c}`, now v8/27 bytes) to the slave
+over a user split RPC within 80 ms of active changes and every 250 ms while
+static. Sequence + session
 acceptance means
 a stale or duplicated packet can never roll the slave's view backward; a
 rebooted master is adopted immediately. If snapshots stop for 500 ms the
@@ -128,7 +141,8 @@ copy. Loss/duplication/reordering/corruption behavior is host-verified
     FIRST_HELD → PENDING → ACTIVE → SELECT / CANCELLED), a pure level-logic
     state machine on the sampled `scry_mask`, authoritative-only like combat.
     M7.5 adds capped recipe presentation tiers and a 10-tick cast wind-up.
-  - `duel_proto.{h,c}` — split snapshot wire format (v7, 31 bytes, CRC-8)
+  - `duel_proto.{h,c}` — split snapshot wire format (v8, 27 bytes, CRC-8)
+    embedding the canonical 18-byte render view with five RPC bytes unallocated
     and the slave-side sequence/session acceptance rules. The M7 `scry` byte
     carries overlay state; M7.5's two packed charge bytes carry absolute
     wind-up/tier state so both screens draw the same anticipation; M8's final

@@ -1,4 +1,4 @@
-# M10 notification policy and adapters
+# M11.5 semantic host pipeline and adapters
 
 The Linux daemon sends only normalized semantic fields to `griffin_hostoled`:
 scene, saturated count, category, priority, age bucket, and critical
@@ -6,6 +6,35 @@ persistence. No framebuffer or notification text crosses Raw HID. The v2 wire
 report remains 32 bytes; `HELLO`, `HEARTBEAT`, and `NOTIFY` are complete
 absolute summaries, and only HELLO/HEARTBEAT refresh the 1.5-second firmware
 liveness deadline.
+
+Every input now converges through one immutable `SemanticState` containing the
+resolved scene, absolute notification summary, and a revision. The daemon wakes
+for focus settlement, policy expiry/age boundaries, adapter deadlines, HID
+heartbeat/reconnect deadlines, and direct D-Bus changes. A one-second safety
+deadline remains, but the former 25 ms polling loop is gone. Source changes
+hidden by scene precedence do not increment the externally visible revision.
+
+Scene precedence is explicit: command-line override, then DND/Pomodoro Focus,
+then playing media Archive, then the settled application-focus scene.
+
+## Privacy-bounded semantic adapters
+
+- MPRIS aggregates all players. Playing selects Archive; a track change emits
+  only a session-salted opaque event token—never title, artist, URL, or artwork.
+- Freedesktop notification inhibition maps to deliberate Focus/DND state.
+- An optional systemd user timer supplies active, one-minute warning,
+  completion, and failure semantics using monotonic deadlines.
+- NetworkManager maps offline, limited, online, and VPN state to bounded system
+  or security summaries; interface names, SSIDs, addresses, and endpoints are
+  never retained or transmitted.
+- The Zsh/Git hook sends only `clean`, `dirty`, `operation`, or `completion`
+  enums plus a completion-success bit. It never sends commands or paths.
+
+Adapters read current state once at startup and then subscribe to D-Bus
+property changes. A missing/denied service increments a bounded error counter
+and disables only that source. Application package aliases resolve through one
+profile registry before the session-salted focus hash, so KWin and notification
+identities share focused-suppression and category policy.
 
 Normal alerts aggregate for a fixed six seconds without repeat extension. A
 ten-second start-to-start budget suppresses cooldown-only events instead of
@@ -36,7 +65,13 @@ remove its `corne-arcane-host` profile entry before adding `./result` again.
 
 On NixOS, import `../corne.nix`. Set
 `services.corne-arcane-host.desktopNotifications = false` to disable desktop
-monitoring durably. For one diagnostic run use:
+monitoring durably. Set a timer unit when desired:
+
+```nix
+services.corne-arcane-host.pomodoroUnit = "pomodoro.timer";
+```
+
+For one diagnostic run use:
 
 ```bash
 corne-arcane-host --no-desktop-notifications --verbose
@@ -54,6 +89,8 @@ client:
 ```bash
 corne-arcane-event notify --category terminal --priority normal
 corne-arcane-event notify --category security --priority critical --persistent
+corne-arcane-event git dirty
+corne-arcane-event git completion --failed
 corne-arcane-event clear
 ```
 
@@ -71,8 +108,8 @@ source /path/to/profile/share/corne-arcane/zsh/corne-arcane.zsh
 
 The hook reads Linux uptime for monotonic elapsed time and reports only commands
 lasting at least ten seconds. Its D-Bus client is detached with output
-suppressed. It never sends or reads command text, working directory,
-environment, or terminal content. Successful commands become `terminal/low`;
+suppressed. It never transmits command text, paths, environment, or terminal
+content. Successful commands become `terminal/low`;
 nonzero exits become `terminal/normal`. Both are suppressed while a recognized
 terminal (Konsole first) is focused. Other shells are deferred.
 
@@ -91,8 +128,10 @@ Run all host checks with `./run_tests.sh`. Do not run the daemon against
 service (Duel fallback returns within 1.5 seconds) and use commit `26c49a2` plus
 its M9 daemon/firmware pair.
 
-**M10/M11 status (2026-07-13): physical recovery smoke-test passed.** Both
-split-v7 halves boot/type, the packaged daemon's event path reaches the physical
-OLEDs, and persistent notification state recovers after USB disconnect and
-reconnect. Full desktop-adapter, terminal-hook, stress, suspend, and rollback
-acceptance remains.
+**M11.5 status (2026-07-14): desktop verified; physical acceptance pending.**
+The 43-test host suite covers protocol vectors, deadline scheduling, alias
+canonicalization, privacy retention, all five semantic mappings, multi-player
+media aggregation, systemd timer deadlines, and NetworkManager/VPN composition.
+The previously flashed v7 pair still supplies the inherited recovery smoke
+evidence; the v8 pair and real-application, stress, suspend, and rollback gates
+remain in `../docs/m11.5-acceptance.md`.

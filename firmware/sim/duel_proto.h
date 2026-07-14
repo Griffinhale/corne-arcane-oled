@@ -23,8 +23,8 @@
 #define DUEL_VER   8
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase.
-// The reserved v7 bits carry presentation policy without changing the packet
-// size, version, simulation world, or compatibility with older v7 receivers.
+// Display phase remains explicit while the unused bits stay reserved for a
+// reviewed future allocation; v8 receivers reject every other version.
 #define DUEL_FLAGS_WORLD_VALID 0x01u
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))

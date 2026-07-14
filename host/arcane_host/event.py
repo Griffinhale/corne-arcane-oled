@@ -22,6 +22,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     terminal = commands.add_parser("terminal", help=argparse.SUPPRESS)
     terminal.add_argument("duration_ms", type=int)
     terminal.add_argument("exit_status", type=int)
+    repository = commands.add_parser("git", help="report a redacted repository state")
+    repository.add_argument("state", choices=("clean", "dirty", "operation", "completion"))
+    repository.add_argument("--failed", action="store_true")
     commands.add_parser("clear", help="clear transient and persistent alerts")
     return parser.parse_args(argv)
 
@@ -52,6 +55,10 @@ def run(args: argparse.Namespace) -> int:
             return 2
         method = "ReportTerminalCompletion"
         parameters = GLib.Variant("(ui)", (args.duration_ms, args.exit_status))
+    elif args.command == "git":
+        method = "ReportRepositoryState"
+        state = {"clean": 0, "dirty": 1, "operation": 2, "completion": 3}[args.state]
+        parameters = GLib.Variant("(yb)", (state, not args.failed))
     else:
         method = "ClearNotifications"
         parameters = None

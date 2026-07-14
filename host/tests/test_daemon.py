@@ -145,6 +145,15 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(service.report_terminal_completion(11000, 3))
         self.assertEqual(policy.summary(20).priority, Priority.NORMAL)
 
+    def test_repository_state_is_enum_only(self) -> None:
+        policy = NotificationPolicy()
+        focus = FocusArbiter(settle_seconds=0)
+        service = self.make_service(focus, policy)
+        service.adapters = None
+        self.assertTrue(service.report_repository_state(1, True))
+        self.assertEqual(policy.summary(20).category, Category.TRANSFER)
+        self.assertFalse(service.report_repository_state(9, False))
+
 
 class FakeVariant:
     def __init__(self, values) -> None:

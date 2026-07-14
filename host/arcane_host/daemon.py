@@ -11,6 +11,8 @@ import sys
 import time
 from typing import Callable
 
+from .adapters import DBusAdapterHub, SemanticAdapters
+
 from .desktop import DesktopMonitor, DesktopNotificationAdapter
 from .focus import FocusArbiter
 from .hidraw import Device, choose_device
@@ -24,6 +26,7 @@ from .protocol import (
     Scene,
     build_packet,
 )
+from .semantic import SemanticResolver
 
 SCENES = {scene.name.lower(): scene for scene in Scene}
 BUS_NAME = "io.github.Griffinhale.CorneArcane"
@@ -50,6 +53,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--interval", type=float, default=0.5, metavar="SECONDS")
     parser.add_argument("--retry-interval", type=float, default=2.0, metavar="SECONDS")
+    parser.add_argument(
+        "--pomodoro-unit",
+        default=os.environ.get("CORNE_ARCANE_POMODORO_UNIT"),
+        help="optional systemd user timer unit to treat as a Pomodoro source",
+    )
     parser.add_argument("--once", action="store_true", help="send one heartbeat after HELLO and exit")
     parser.add_argument("--dry-run", action="store_true", help="print reports instead of opening hidraw")
     parser.add_argument("--verbose", action="store_true")
@@ -199,6 +207,13 @@ class HidHeartbeat:
         if self.device is not None:
             self.notify_pending = True
 
+    def next_deadline(self, now: float) -> float:
+        if self.device is None:
+            return max(now, self.next_connect)
+        if self.notify_pending:
+            return now
+        return self.next_heartbeat
+
     def close(self) -> None:
         self._disconnect(time.monotonic())
 
@@ -216,11 +231,13 @@ INTROSPECTION_XML = f"""
 
 
 class FocusService:
-    def __init__(self, Gio, connection, arbiter: FocusArbiter, clock=time.monotonic) -> None:
+    def __init__(self, Gio, connection, arbiter: FocusArbiter, clock=time.monotonic,
+                 changed: Callable[[], None] = lambda: None) -> None:
         self.Gio = Gio
         self.connection = connection
         self.arbiter = arbiter
         self.clock = clock
+        self.changed = changed
         info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
         self.registration_id = connection.register_object(
             OBJECT_PATH, info.interfaces[0], self._method_call, None, None
@@ -231,6 +248,7 @@ class FocusService:
         if method == "ReportActiveWindow":
             resource_class, desktop_file_name = parameters.unpack()
             self.arbiter.report(resource_class, desktop_file_name, self.clock())
+            self.changed()
             invocation.return_value(None)
             return
         invocation.return_dbus_error(f"{FOCUS_INTERFACE}.UnknownMethod", method)
@@ -242,6 +260,10 @@ EVENTS_XML = f"""
     <method name='ReportTerminalCompletion'>
       <arg type='u' name='durationMilliseconds' direction='in'/>
       <arg type='i' name='exitStatus' direction='in'/>
+    </method>
+    <method name='ReportRepositoryState'>
+      <arg type='y' name='state' direction='in'/>
+      <arg type='b' name='success' direction='in'/>
     </method>
     <method name='InjectSynthetic'>
       <arg type='y' name='category' direction='in'/>
@@ -264,11 +286,13 @@ class EventService:
         policy: NotificationPolicy,
         focus: FocusArbiter,
         changed: Callable[[], None],
+        adapters: SemanticAdapters | None = None,
         clock=time.monotonic,
     ) -> None:
         self.policy = policy
         self.focus = focus
         self.changed = changed
+        self.adapters = adapters
         self.clock = clock
         info = Gio.DBusNodeInfo.new_for_xml(EVENTS_XML)
         self.registration_id = connection.register_object(
@@ -300,6 +324,26 @@ class EventService:
             self.changed()
         return changed
 
+    def report_repository_state(self, state: int, success: bool) -> bool:
+        if self.adapters is not None:
+            return self.adapters.repository(int(state), bool(success))
+        if state not in range(4):
+            return False
+        priority = Priority.CRITICAL if state == 3 and not success else (
+            Priority.LOW if state == 0 else Priority.NORMAL
+        )
+        changed = self.policy.inject(
+            Category.TRANSFER,
+            priority,
+            False,
+            self.clock(),
+            key="repository-state",
+            replacement=True,
+        )
+        if changed:
+            self.changed()
+        return changed
+
     def clear(self) -> None:
         self.policy.clear()
         self.changed()
@@ -309,6 +353,16 @@ class EventService:
         if method == "ReportTerminalCompletion":
             self.report_terminal_completion(*parameters.unpack())
             invocation.return_value(None)
+            return
+        if method == "ReportRepositoryState":
+            state, success = parameters.unpack()
+            if state not in range(4):
+                invocation.return_dbus_error(
+                    f"{EVENTS_INTERFACE}.InvalidArguments", "invalid repository state"
+                )
+            else:
+                self.report_repository_state(state, success)
+                invocation.return_value(None)
             return
         if method == "InjectSynthetic":
             category, priority, persistent = parameters.unpack()
@@ -431,9 +485,10 @@ def run(args: argparse.Namespace) -> int:
     arbiter = FocusArbiter(identifier_digest=identifier_digest)
     policy = NotificationPolicy()
     override = SCENES[args.scene] if args.scene is not None else None
+    resolver = SemanticResolver(override)
 
     def scene_provider() -> Scene:
-        return override if override is not None else arbiter.scene
+        return resolver.state.scene
 
     if args.dry_run:
         class PrintDevice:
@@ -445,7 +500,8 @@ def run(args: argparse.Namespace) -> int:
 
         device_factory: Callable[[], object] = PrintDevice
     else:
-        device_factory = lambda: Device(choose_device(args.device))
+        def device_factory() -> object:
+            return Device(choose_device(args.device))
 
     fixed_session = args.session
     session_factory = (
@@ -457,8 +513,10 @@ def run(args: argparse.Namespace) -> int:
         else NotificationSummary(args.notify, Category.OTHER, Priority.NORMAL)
     )
 
+    resolver.update(summary=legacy_summary if args.notify else policy.summary(time.monotonic()))
+
     def summary_provider() -> NotificationSummary:
-        return legacy_summary if args.notify else policy.summary(time.monotonic())
+        return resolver.state.summary
 
     heartbeat = HidHeartbeat(
         scene_provider,
@@ -489,22 +547,83 @@ def run(args: argparse.Namespace) -> int:
         return 2
 
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    try:
+        system_connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    except Exception:
+        system_connection = None
     owner_id = 0
     focus_service = None
     event_service = None
     desktop_monitor = None
+    adapter_hub = None
     owned_objects = {}
-    if override is None:
-        focus_service = FocusService(Gio, connection, arbiter)
+    loop = GLib.MainLoop()
+    source_id = 0
+    last_revision = resolver.state.revision
+    in_tick = False
+    wake_pending = False
 
-    event_service = EventService(Gio, connection, policy, arbiter, heartbeat.request_notify)
+    def service_tick() -> bool:
+        nonlocal source_id, last_revision, in_tick, wake_pending
+        source_id = 0
+        in_tick = True
+        now = time.monotonic()
+        adapters.poll(now)
+        if override is None:
+            arbiter.poll(now)
+        summary = legacy_summary if args.notify else policy.summary(now)
+        resolver.update(summary=summary, focus_scene=arbiter.scene)
+        if resolver.state.revision != last_revision:
+            last_revision = resolver.state.revision
+            heartbeat.request_notify()
+        sent = heartbeat.tick(now)
+        if sent and args.once:
+            in_tick = False
+            loop.quit()
+            return False
+        deadlines = [heartbeat.next_deadline(now), now + 1.0]
+        focus_deadline = arbiter.next_deadline() if override is None else None
+        policy_deadline = None if args.notify else policy.next_deadline(now)
+        if focus_deadline is not None:
+            deadlines.append(focus_deadline)
+        if policy_deadline is not None:
+            deadlines.append(policy_deadline)
+        adapter_deadline = adapters.next_deadline(now)
+        if adapter_deadline is not None:
+            deadlines.append(adapter_deadline)
+        delay_ms = (
+            1 if wake_pending else
+            max(1, min(1000, int(max(0.0, min(deadlines) - now) * 1000)))
+        )
+        wake_pending = False
+        source_id = GLib.timeout_add(delay_ms, service_tick)
+        in_tick = False
+        return False
+
+    def wake() -> None:
+        nonlocal source_id, wake_pending
+        if in_tick:
+            wake_pending = True
+            return
+        if source_id:
+            try:
+                GLib.source_remove(source_id)
+            except Exception:
+                pass
+        source_id = GLib.idle_add(service_tick)
+
+    adapters = SemanticAdapters(resolver, policy, wake)
+    if override is None:
+        focus_service = FocusService(Gio, connection, arbiter, changed=wake)
+
+    event_service = EventService(Gio, connection, policy, arbiter, wake, adapters)
 
     if not args.no_desktop_notifications:
         desktop_adapter = DesktopNotificationAdapter(
             policy, salt, arbiter.matches_focused
         )
         desktop_monitor = DesktopMonitor(
-            Gio, GLib, desktop_adapter, time.monotonic, args.verbose
+            Gio, GLib, desktop_adapter, time.monotonic, args.verbose, wake
         )
         if not desktop_monitor.start() and args.verbose:
             print(
@@ -512,6 +631,10 @@ def run(args: argparse.Namespace) -> int:
                 file=sys.stderr,
                 flush=True,
             )
+
+    adapter_hub = DBusAdapterHub(
+        Gio, connection, system_connection, adapters, args.pomodoro_unit
+    )
 
     def name_acquired(bus_connection, name) -> None:
         del name
@@ -528,32 +651,15 @@ def run(args: argparse.Namespace) -> int:
         connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE, name_acquired, None
     )
 
-    loop = GLib.MainLoop()
-
-    def service_tick() -> bool:
-        now = time.monotonic()
-        if override is None:
-            prior_scene = arbiter.scene
-            if arbiter.poll(now) != prior_scene:
-                heartbeat.request_heartbeat(now)
-        current_summary = summary_provider()
-        prior_summary = owned_objects.get("last_summary")
-        if prior_summary != current_summary:
-            owned_objects["last_summary"] = current_summary
-            heartbeat.request_notify()
-        sent = heartbeat.tick(now)
-        if sent and args.once:
-            loop.quit()
-            return False
-        return True
-
-    GLib.timeout_add(25, service_tick)
+    wake()
     try:
         loop.run()
     except KeyboardInterrupt:
         if args.verbose:
             print("arcane-host: stopped; firmware context expires within 1.5 s")
     finally:
+        if adapter_hub is not None:
+            adapter_hub.close()
         del focus_service, event_service, desktop_monitor
         owned_objects.clear()
         if owner_id:

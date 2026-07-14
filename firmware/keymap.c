@@ -48,8 +48,7 @@ _Static_assert(DUEL_CANVAS_W == OLED_DISPLAY_HEIGHT && DUEL_CANVAS_H == OLED_DIS
 #define DUEL_ROWS_PER_HAND (MATRIX_ROWS / 2)
 
 static duel_display_policy_t duel_display;
-static uint32_t duel_local_wake_ms;
-static bool duel_local_wake_armed;
+static uint32_t duel_local_wake_until_ms;
 static bool duel_render_invalid = true;
 
 #ifdef ARCANE_DIAGNOSTICS
@@ -87,8 +86,7 @@ static uint16_t duel_diag_u16(uint32_t value) {
 static void duel_note_physical_key(void) {
     uint32_t now = timer_read32();
     duel_display_note_key(&duel_display, now);
-    duel_local_wake_ms = now;
-    duel_local_wake_armed = true;
+    duel_local_wake_until_ms = now + 120u;
     duel_render_invalid = true;
 }
 
@@ -165,8 +163,7 @@ static volatile uint8_t duel_host_rx_ver;
 static duel_host_packet_t duel_host_rx_staging;
 static uint8_t duel_host_rx_seen_ver;
 static duel_host_state_t duel_host_state;
-static uint32_t duel_host_last_heartbeat_ms;
-static bool duel_host_heartbeat_armed;
+static uint32_t duel_host_expire_ms;
 
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     if (length != sizeof(duel_host_packet_t)) return;
@@ -190,8 +187,7 @@ static bool duel_host_rx_consume(uint32_t now) {
     uint8_t before_alert   = duel_host_alert(&duel_host_state);
     duel_host_result_t result = duel_host_accept(&duel_host_state, &packet);
     if (result == DUEL_HOST_APPLIED_HEARTBEAT) {
-        duel_host_last_heartbeat_ms = now;
-        duel_host_heartbeat_armed   = true;
+        duel_host_expire_ms = now + DUEL_HOST_TIMEOUT_MS;
     }
     return before_context != duel_host_context(&duel_host_state) ||
            before_alert != duel_host_alert(&duel_host_state);
@@ -199,12 +195,11 @@ static bool duel_host_rx_consume(uint32_t now) {
 
 static bool duel_host_housekeeping(uint32_t now) {
     bool visible_changed = duel_host_rx_consume(now);
-    if (duel_host_heartbeat_armed &&
-        timer_elapsed32(duel_host_last_heartbeat_ms) > DUEL_HOST_TIMEOUT_MS) {
+    if (duel_host_expire_ms && timer_expired32(now, duel_host_expire_ms)) {
         uint8_t before_context = duel_host_context(&duel_host_state);
         uint8_t before_alert   = duel_host_alert(&duel_host_state);
         duel_host_expire(&duel_host_state);
-        duel_host_heartbeat_armed = false;
+        duel_host_expire_ms = 0;
         visible_changed |= before_context != duel_host_context(&duel_host_state) ||
                            before_alert != duel_host_alert(&duel_host_state);
     }
@@ -304,7 +299,11 @@ static duel_snapshot_t duel_last_tx;
 static bool duel_have_tx;
 
 #define DUEL_ACTIVE_TX_MS 80u
-#define DUEL_REPAIR_TX_MS 250u
+#ifdef ARCANE_FIXED_SPLIT_CADENCE
+#    define DUEL_REPAIR_TX_MS DUEL_ACTIVE_TX_MS
+#else
+#    define DUEL_REPAIR_TX_MS 250u
+#endif
 
 static void duel_master_tx(bool urgent) {
     bool fx_changed = duel_world.fx_seq != duel_fx_sent;
@@ -412,12 +411,20 @@ void housekeeping_task_user(void) {
     bool display_changed = duel_display.phase != prior_display;
     bool    ticked = false;
     uint8_t guard  = 0;
+    sim_inputs_t inputs = {0};
+    uint8_t queued = 0;
+    uint8_t dropped = 0;
+    if (timer_expired32(now, duel_next_tick_ms)) {
+        inputs = duel_sample_inputs();
+        queued = duel_evq.n;
+        dropped = duel_evq.dropped;
+    }
     while (timer_expired32(now, duel_next_tick_ms)) {
-        uint8_t n = duel_evq.n;
-        uint8_t dropped = duel_evq.dropped;
-        sim_tick(&duel_world, duel_sample_inputs(), duel_evq.ev, n, dropped);
+        sim_tick(&duel_world, inputs, duel_evq.ev, queued, dropped);
         duel_evq.n = 0;
         duel_evq.dropped = 0;
+        queued = 0;
+        dropped = 0;
         ticked = true;
         duel_next_tick_ms += SIM_TICK_MS;
         if (++guard >= 5) { // long stall (USB suspend): resync instead of replaying
@@ -471,8 +478,9 @@ void housekeeping_task_user(void) {
             if (accepted || !using_remote) {
                 duel_display_phase_t before_follow = duel_display.phase;
                 uint8_t remote_phase = DUEL_FLAGS_DISPLAY(duel_rx.last.flags);
-                bool local_wake_grace = duel_local_wake_armed &&
-                                        timer_elapsed32(duel_local_wake_ms) <= 120;
+                bool local_wake_grace = duel_local_wake_until_ms &&
+                                        !timer_expired32(now, duel_local_wake_until_ms);
+                if (!local_wake_grace) duel_local_wake_until_ms = 0;
                 if (!local_wake_grace && remote_phase <= DUEL_DISPLAY_SLEEP)
                     duel_display_follow(&duel_display, (duel_display_phase_t)remote_phase, now);
                 display_changed |= duel_display.phase != before_follow;

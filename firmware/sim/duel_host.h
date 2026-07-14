@@ -128,7 +128,7 @@ void duel_host_expire(duel_host_state_t *state);
 #define DUEL_HOST_CONTEXT_NOTIF(value)  ((uint8_t)(((value) >> 3) & 15u))
 #define DUEL_HOST_CONTEXT_PERSISTENT(value) ((uint8_t)(((value) >> 7) & 1u))
 
-// Split v7 alert byte: bits0-2 category, bits3-4 priority, bits5-7 age.
+// Canonical split alert byte: bits0-2 category, bits3-4 priority, bits5-7 age.
 #define DUEL_HOST_ALERT_PACK(category, priority, age) \
     ((uint8_t)(((category) & 7u) | (((priority) & 3u) << 3) | (((age) & 7u) << 5)))
 #define DUEL_HOST_ALERT_CATEGORY(value) ((uint8_t)((value) & 7u))

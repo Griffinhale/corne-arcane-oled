@@ -1,4 +1,4 @@
-# M10 host branch: complete offline duel plus isolated custom Raw HID.
+# M11.5 host branch: complete offline duel plus isolated custom Raw HID.
 VIA_ENABLE = no
 VIAL_ENABLE = no
 RAW_ENABLE = yes
@@ -19,4 +19,8 @@ SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_
 
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
     OPT_DEFS += -DARCANE_DIAGNOSTICS
+endif
+
+ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
+    OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
 endif

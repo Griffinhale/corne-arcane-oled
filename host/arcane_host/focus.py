@@ -3,62 +3,15 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import PurePath
 import secrets
 from typing import Callable
 
 from .protocol import Scene
+from .profiles import PROFILES, canonical_identifier, normalize_identifier, resolve_profile
 
 
-BROWSER_ALIASES = frozenset(
-    {
-        "firefox",
-        "firefox-esr",
-        "org.mozilla.firefox",
-        "google-chrome",
-        "google-chrome-stable",
-        "chromium",
-        "chromium-browser",
-        "org.chromium.chromium",
-        "brave",
-        "brave-browser",
-        "com.brave.browser",
-        "vivaldi",
-        "vivaldi-stable",
-        "com.vivaldi.vivaldi",
-        "zen",
-        "zen-browser",
-        "app.zen-browser.zen",
-    }
-)
-
-TERMINAL_ALIASES = frozenset(
-    {
-        "konsole",
-        "org.kde.konsole",
-        "gnome-terminal",
-        "org.gnome.terminal",
-        "alacritty",
-        "org.alacritty",
-        "kitty",
-        "foot",
-        "wezterm",
-        "org.wezfurlong.wezterm",
-        "xterm",
-    }
-)
-
-
-def normalize_identifier(value: str | None) -> str:
-    """Normalize only an application identifier; titles are never accepted."""
-    if not value:
-        return ""
-    normalized = value.strip().lower().replace("_", "-")
-    if "/" in normalized:
-        normalized = PurePath(normalized).name
-    if normalized.endswith(".desktop"):
-        normalized = normalized[:-8]
-    return normalized
+BROWSER_ALIASES = next(profile.aliases for profile in PROFILES if profile.identifier == "browser")
+TERMINAL_ALIASES = next(profile.aliases for profile in PROFILES if profile.identifier == "terminal")
 
 
 def is_browser(resource_class: str | None, desktop_file_name: str | None) -> bool:
@@ -76,7 +29,8 @@ def is_terminal(resource_class: str | None, desktop_file_name: str | None) -> bo
 
 
 def classify_window(resource_class: str | None, desktop_file_name: str | None) -> Scene:
-    return Scene.ARCHIVE if is_browser(resource_class, desktop_file_name) else Scene.DUEL
+    profile = resolve_profile(resource_class, desktop_file_name)
+    return profile.scene if profile is not None else Scene.DUEL
 
 
 class FocusArbiter:
@@ -91,9 +45,11 @@ class FocusArbiter:
         self.scene = Scene.DUEL
         if identifier_digest is None:
             salt = secrets.token_bytes(16)
-            identifier_digest = lambda value: hashlib.blake2s(
-                value.encode("utf-8", "surrogatepass"), key=salt, digest_size=16
-            ).digest()
+            def digest_identifier(value: str) -> bytes:
+                return hashlib.blake2s(
+                    value.encode("utf-8", "surrogatepass"), key=salt, digest_size=16
+                ).digest()
+            identifier_digest = digest_identifier
         self._identifier_digest = identifier_digest
         self.terminal_focused = False
         self.focused_digests: frozenset[bytes] = frozenset()
@@ -104,9 +60,9 @@ class FocusArbiter:
         target = classify_window(resource_class, desktop_file_name)
         terminal = is_terminal(resource_class, desktop_file_name)
         normalized = {
-            normalize_identifier(identifier)
+            canonical_identifier(identifier)
             for identifier in (resource_class, desktop_file_name)
-            if normalize_identifier(identifier)
+            if canonical_identifier(identifier)
         }
         digests = frozenset(self._identifier_digest(identifier) for identifier in normalized)
         self._pending = (target, terminal, digests)
@@ -120,3 +76,6 @@ class FocusArbiter:
 
     def matches_focused(self, identifier_digest: bytes) -> bool:
         return identifier_digest in self.focused_digests
+
+    def next_deadline(self) -> float | None:
+        return self._deadline if self._pending is not None else None
