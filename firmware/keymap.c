@@ -395,6 +395,13 @@ static bool duel_have_tx;
 #    define DUEL_REPAIR_TX_MS 250u
 #endif
 
+#ifdef ARCANE_M12
+// Wall-clock period of one civic tick: the bounded cadence at which the resident
+// and floor advance (duel_render.civic_phase). ~300 ms keeps each 16-tick action
+// (~4.8 s) inside the spec's 3-10 s window while staying far below combat cadence.
+#define DUEL_CIVIC_TICK_MS 300u
+#endif
+
 static void duel_master_tx(bool urgent) {
     bool fx_changed = duel_world.fx_seq != duel_fx_sent;
     if (!duel_session_set) {
@@ -414,10 +421,28 @@ static void duel_master_tx(bool urgent) {
 #endif
     duel_encode_external_alert_display(&duel_world, duel_session, ++duel_tx_seq,
                                        external, alert, duel_display.phase, &pkt);
+#ifdef ARCANE_M12
+    // Relay the host's civic semantics to the slave. shared_pres/revision are
+    // reserved for the visitor and rare-event waves, so they stay 0 for now.
+    // set_civic writes the four bytes and recomputes the CRC over the 31-byte
+    // snapshot; release builds omit these bytes entirely.
+#  ifdef ARCANE_HOST_ENABLE
+    duel_snapshot_set_civic(&pkt, duel_host_civic(&duel_host_state),
+                            duel_host_secondary(&duel_host_state), 0, 0);
+#  else
+    duel_snapshot_set_civic(&pkt, 0, 0, 0, 0);
+#  endif
+#endif
     bool semantic_changed = !duel_have_tx ||
                             memcmp(&pkt.view, &duel_last_tx.view, sizeof pkt.view) != 0 ||
                             pkt.external != duel_last_tx.external ||
                             pkt.alert != duel_last_tx.alert ||
+#ifdef ARCANE_M12
+                            pkt.civic != duel_last_tx.civic ||
+                            pkt.secondary != duel_last_tx.secondary ||
+                            pkt.shared_pres != duel_last_tx.shared_pres ||
+                            pkt.revision != duel_last_tx.revision ||
+#endif
                             pkt.flags != duel_last_tx.flags;
     // Measure cadence start-to-start. Recording completion would add the
     // blocking split transaction itself (~3 ms on RP2040) to the threshold;
@@ -488,6 +513,16 @@ static void duel_render_set_external(uint8_t external, uint8_t alert) {
     duel_render.external = external;
     duel_render.alert = alert;
 }
+
+#ifdef ARCANE_M12
+static void duel_render_set_civic(uint8_t civic, uint8_t secondary,
+                                  uint8_t shared_pres, uint8_t revision) {
+    duel_render.civic = civic;
+    duel_render.secondary = secondary;
+    duel_render.shared_pres = shared_pres;
+    duel_render.revision = revision;
+}
+#endif
 
 void housekeeping_task_user(void) {
 #ifdef ARCANE_DIAGNOSTICS
@@ -563,8 +598,15 @@ void housekeeping_task_user(void) {
 #ifdef ARCANE_HOST_ENABLE
             duel_render_set_external(duel_host_context(&duel_host_state),
                                      duel_host_alert(&duel_host_state));
+#  ifdef ARCANE_M12
+            duel_render_set_civic(duel_host_civic(&duel_host_state),
+                                  duel_host_secondary(&duel_host_state), 0, 0);
+#  endif
 #else
             duel_render_set_external(0, 0);
+#  ifdef ARCANE_M12
+            duel_render_set_civic(0, 0, 0, 0);
+#  endif
 #endif
         }
     } else {
@@ -592,6 +634,10 @@ void housekeeping_task_user(void) {
             if (accepted || !using_remote || stale_edge || display_changed || render_invalid) {
                 duel_render.view = duel_rx.last.view;
                 duel_render_set_external(duel_rx.last.external, duel_rx.last.alert);
+#ifdef ARCANE_M12
+                duel_render_set_civic(duel_rx.last.civic, duel_rx.last.secondary,
+                                      duel_rx.last.shared_pres, duel_rx.last.revision);
+#endif
                 duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
             }
             using_remote = true;
@@ -603,6 +649,9 @@ void housekeeping_task_user(void) {
             if (ticked || using_remote || stale_edge || display_changed || render_invalid) {
                 duel_render_from_world(&duel_render, &duel_world);
                 duel_render_set_external(0, 0);
+#ifdef ARCANE_M12
+                duel_render_set_civic(0, 0, 0, 0);
+#endif
                 if (stale) duel_render.flags |= DUEL_RENDER_STALE;
                 else duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
             }
@@ -705,6 +754,16 @@ bool oled_task_user(void) {
     // The layer is the emitted QMK layer — fine to READ for display; the chord
     // that opens the overlay is detected from physical positions, not this.
     duel_render.layer = get_highest_layer(layer_state);
+
+#ifdef ARCANE_M12
+    // Presentation seed (the shared 1-byte session) plus the bounded civic clock
+    // that paces resident/floor motion. A SLEEP phase already returned above, so
+    // advancing civic_phase here can trigger a redraw while awake but never
+    // re-lights or wakes the panel (plan §2 D3/D4). civic_phase is LOCAL — each
+    // half derives its own resident — so it is deliberately not on the wire.
+    duel_render.seed = is_keyboard_master() ? duel_session : duel_rx.last.session;
+    duel_render.civic_phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);
+#endif
 
     bool semantic_changed = !have_composed ||
                             memcmp(&duel_render, &composed, sizeof duel_render) != 0;
