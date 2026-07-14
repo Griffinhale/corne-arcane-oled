@@ -153,8 +153,13 @@ class SemanticAdapters:
             )
         self._network_status = status
         self._vpn = bool(vpn)
-        if event_changed:
-            self._changed(True)
+        # Degraded connectivity lights the bounded SYSTEM secondary channel; enum
+        # only, no hostname/SSID ever crosses into the civic state.
+        secondary_changed = self.resolver.update(
+            system_alert=status in {"offline", "limited"}
+        )
+        if event_changed or secondary_changed:
+            self._changed(event_changed)
 
     def repository(self, state: int, success: bool) -> bool:
         priorities = {
@@ -174,8 +179,12 @@ class SemanticAdapters:
             key="repository-state",
             replacement=True,
         )
-        if changed:
-            self._changed(True)
+        # An in-flight Git/repository operation (state 2) drives the TRANSFER
+        # secondary channel; every other state clears it. Only the enum state
+        # code reaches the resolver, never a repo name or path.
+        secondary_changed = self.resolver.update(transfer_active=state == 2)
+        if changed or secondary_changed:
+            self._changed(changed)
         return changed
 
 

@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from typing import Callable
 
-from .protocol import Scene
+from .protocol import Floor, Scene
 from .profiles import PROFILES, canonical_identifier, normalize_identifier, resolve_profile
 
 
@@ -33,6 +33,12 @@ def classify_window(resource_class: str | None, desktop_file_name: str | None) -
     return profile.scene if profile is not None else Scene.DUEL
 
 
+def classify_floor(resource_class: str | None, desktop_file_name: str | None) -> Floor:
+    """Twin Cities floor for the focused window; unknown apps live in COMMONS."""
+    profile = resolve_profile(resource_class, desktop_file_name)
+    return profile.floor if profile is not None else Floor.COMMONS
+
+
 class FocusArbiter:
     """Settle focus reports while retaining only salted identifier digests."""
 
@@ -43,6 +49,7 @@ class FocusArbiter:
     ) -> None:
         self.settle_seconds = settle_seconds
         self.scene = Scene.DUEL
+        self.floor = Floor.COMMONS
         if identifier_digest is None:
             salt = secrets.token_bytes(16)
             def digest_identifier(value: str) -> bytes:
@@ -53,11 +60,12 @@ class FocusArbiter:
         self._identifier_digest = identifier_digest
         self.terminal_focused = False
         self.focused_digests: frozenset[bytes] = frozenset()
-        self._pending: tuple[Scene, bool, frozenset[bytes]] | None = None
+        self._pending: tuple[Scene, Floor, bool, frozenset[bytes]] | None = None
         self._deadline = 0.0
 
     def report(self, resource_class: str | None, desktop_file_name: str | None, now: float) -> None:
         target = classify_window(resource_class, desktop_file_name)
+        floor = classify_floor(resource_class, desktop_file_name)
         terminal = is_terminal(resource_class, desktop_file_name)
         normalized = {
             canonical_identifier(identifier)
@@ -65,12 +73,12 @@ class FocusArbiter:
             if canonical_identifier(identifier)
         }
         digests = frozenset(self._identifier_digest(identifier) for identifier in normalized)
-        self._pending = (target, terminal, digests)
+        self._pending = (target, floor, terminal, digests)
         self._deadline = now + self.settle_seconds
 
     def poll(self, now: float) -> Scene:
         if self._pending is not None and now >= self._deadline:
-            self.scene, self.terminal_focused, self.focused_digests = self._pending
+            self.scene, self.floor, self.terminal_focused, self.focused_digests = self._pending
             self._pending = None
         return self.scene
 
