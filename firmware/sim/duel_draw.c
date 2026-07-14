@@ -10,6 +10,8 @@
 #include "duel_draw.h"
 #include "duel_host.h"
 #include "duel_resident.h"
+#include "duel_courier.h"
+#include "duel_event.h"
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world) {
     duel_view_from_world(world, &render->view);
@@ -779,9 +781,12 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
 #ifdef ARCANE_M12
     // M12 retires the M9 upper archive underlay: the raised rooftop now owns that
-    // band, and the archival occupation moves into the tower floor below.
+    // band, and the archival occupation moves into the tower floor below. The
+    // courier (Wave 6) and rare event (Wave 7) layer into the same floor.
     (void)archive;
     draw_floor(fb, r, is_left);
+    draw_courier(fb, r, is_left);
+    draw_rare_event(fb, r, is_left);
 #else
     if (archive) draw_archive(fb, wz, is_left, frame);
 #endif

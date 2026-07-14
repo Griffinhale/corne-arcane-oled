@@ -130,6 +130,46 @@ typedef struct { uint8_t kind_phase; uint8_t progress_flags; } m12_prop_state_t;
 typedef struct { uint8_t kind_target; uint8_t lifecycle_phase; uint8_t progress_flags; } m12_visitor_state_t;
 typedef struct { uint8_t id_target; uint8_t phase; uint8_t progress; } m12_event_state_t;
 
+/* Shared presentation coordination carried master->slave in the snapshot's
+ * shared_pres and revision bytes (Waves 6/7). The master derives them; both
+ * halves render from them. Contract owned here so the notification-ecology and
+ * rare-event tracks never collide on the bit layout. */
+
+// Global visitor/courier lifecycle (one slot). NONE is COURIER_NONE via the kind.
+enum {
+    DUEL_M12_VISIT_ARRIVING = 0,
+    DUEL_M12_VISIT_WAITING,
+    DUEL_M12_VISIT_AGING,
+    DUEL_M12_VISIT_RESOLVING,
+};
+// shared_pres byte: bits0-2 courier kind (DUEL_M12_COURIER_*), bit3 city
+// (0 left / 1 right), bits4-5 lifecycle (DUEL_M12_VISIT_*), bits6-7 reserved.
+#define DUEL_VISITOR_PACK(kind, city, life) \
+    ((uint8_t)(((kind) & 7u) | (((city) & 1u) << 3) | (((life) & 3u) << 4)))
+#define DUEL_VISITOR_KIND(v)      ((uint8_t)((v) & 7u))
+#define DUEL_VISITOR_CITY(v)      ((uint8_t)(((v) >> 3) & 1u))
+#define DUEL_VISITOR_LIFECYCLE(v) ((uint8_t)(((v) >> 4) & 3u))
+
+// Rare-event phase and target.
+enum {
+    DUEL_M12_EVENT_PHASE_ARMED = 0,
+    DUEL_M12_EVENT_PHASE_ACTIVE,
+    DUEL_M12_EVENT_PHASE_RESOLVING,
+    DUEL_M12_EVENT_PHASE_COOLDOWN,
+};
+enum {
+    DUEL_M12_EVENT_TARGET_LEFT = 0,
+    DUEL_M12_EVENT_TARGET_RIGHT,
+    DUEL_M12_EVENT_TARGET_SHARED,
+};
+// revision byte: bits0-2 event id (DUEL_M12_EVENT_*), bits3-4 phase
+// (DUEL_M12_EVENT_PHASE_*), bits5-6 target (DUEL_M12_EVENT_TARGET_*), bit7 reserved.
+#define DUEL_EVENT_PACK(id, phase, target) \
+    ((uint8_t)(((id) & 7u) | (((phase) & 3u) << 3) | (((target) & 3u) << 5)))
+#define DUEL_EVENT_ID(v)     ((uint8_t)((v) & 7u))
+#define DUEL_EVENT_PHASE(v)  ((uint8_t)(((v) >> 3) & 3u))
+#define DUEL_EVENT_TARGET(v) ((uint8_t)(((v) >> 5) & 3u))
+
 // Everything the renderer needs for one frame: a stable world snapshot plus
 // presentation-only state the glue layer maintains (never fed back to the sim).
 typedef struct {

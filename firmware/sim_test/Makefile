@@ -12,7 +12,7 @@ CC       ?= cc
 CFLAGS   ?= -std=c11 -g -O1 -Wall -Wextra -Werror -fsanitize=address,undefined
 CFLAGS   += -I../sim
 
-SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_view.c ../sim/duel_proto.c ../sim/duel_host.c ../sim/duel_display.c ../sim/duel_resident.c
+SIM_SRC  := ../sim/duel_draw.c ../sim/duel_sim.c ../sim/duel_view.c ../sim/duel_proto.c ../sim/duel_host.c ../sim/duel_display.c ../sim/duel_resident.c ../sim/duel_courier.c ../sim/duel_event.c
 SCENARIO_SRC := scenarios.c
 
 test: test_runner
@@ -23,7 +23,7 @@ test: test_runner
 golden: test_runner
 	./test_runner --write-golden traces golden
 
-HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h ../sim/duel_view.h ../sim/duel_proto.h ../sim/duel_host.h ../sim/duel_display.h ../sim/duel_resident.h
+HDRS := trace.h runner.h ../sim/duel_draw.h ../sim/duel_sim.h ../sim/duel_view.h ../sim/duel_proto.h ../sim/duel_host.h ../sim/duel_display.h ../sim/duel_resident.h ../sim/duel_courier.h ../sim/duel_event.h
 
 test_runner: test_main.c trace.c $(SIM_SRC) $(HDRS)
 	$(CC) $(CFLAGS) -o $@ test_main.c trace.c $(SIM_SRC)
