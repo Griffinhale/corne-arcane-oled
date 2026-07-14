@@ -252,7 +252,11 @@ static void t11_presentation_clock(void) {
 static void t115_canonical_view_and_event_bounds(void) {
     bool ok = sizeof(duel_view_t) == 18 && sizeof(duel_snapshot_t) == 27 &&
               sizeof(sim_event_t) == 1 && sizeof(sim_evq_t) == 18 &&
+#ifdef ARCANE_M12
+              sizeof(duel_render_t) <= 36;
+#else
               sizeof(duel_render_t) <= 32;
+#endif
     for (uint8_t side = 0; side < 2; side++) {
         for (uint8_t row = 0; row < 4; row++) {
             for (uint8_t col = 0; col < 6; col++) {

@@ -168,5 +168,63 @@ void duel_host_expire(duel_host_state_t *state);
 #define DUEL_HOST_ALERT_PRIORITY(value) ((uint8_t)(((value) >> 3) & 3u))
 #define DUEL_HOST_ALERT_AGE(value)      ((uint8_t)(((value) >> 5) & 7u))
 
+/* ------- M12 Twin Cities civic semantics (shared cross-track contract) -------
+ * The stable interface between the host daemon (produces civic bytes), the split
+ * protocol (relays them), and the renderer (derives floors/residents). Pure
+ * declarations with zero release footprint. Track P wires the encode/decode;
+ * Track H produces them; Track R consumes them. Do not renumber these values. */
+
+// Active tower-floor occupation (civic byte bits 0-1). WORKSHOP arrives with the
+// M12.1 terminal/build semantics; SPECIAL stays reserved for a later world.
+enum {
+    DUEL_M12_FLOOR_COMMONS  = 0,
+    DUEL_M12_FLOOR_RESEARCH = 1,
+    DUEL_M12_FLOOR_WORKSHOP = 2,
+    DUEL_M12_FLOOR_SPECIAL  = 3,
+};
+// Civic mode (civic byte bits 2-3): quiets or emphasises the current floor
+// without changing which floor is shown.
+enum {
+    DUEL_M12_MODE_NORMAL   = 0,
+    DUEL_M12_MODE_QUIET    = 1,
+    DUEL_M12_MODE_URGENT   = 2,
+    DUEL_M12_MODE_RESERVED = 3,
+};
+// Secondary host-activity intensity (civic byte bits 4-5): background host
+// workload; local typing intensity stays firmware-derived.
+enum {
+    DUEL_M12_INTENSITY_CALM      = 0,
+    DUEL_M12_INTENSITY_ACTIVE    = 1,
+    DUEL_M12_INTENSITY_BUSY      = 2,
+    DUEL_M12_INTENSITY_SATURATED = 3,
+};
+// Secondary activity channel (secondary byte bits 0-2): activates one bounded
+// supporting object or ambience. TRANSFER/SYSTEM arrive with M12.1.
+enum {
+    DUEL_M12_SECONDARY_NONE     = 0,
+    DUEL_M12_SECONDARY_MEDIA    = 1,
+    DUEL_M12_SECONDARY_TRANSFER = 2,
+    DUEL_M12_SECONDARY_SYSTEM   = 3,
+    DUEL_M12_SECONDARY_CALENDAR = 4,
+};
+
+// Civic byte: bits0-1 floor, bits2-3 mode, bits4-5 host intensity, 6-7 reserved.
+#define DUEL_CIVIC_PACK(floor, mode, intensity) \
+    ((uint8_t)(((floor) & 3u) | (((mode) & 3u) << 2) | (((intensity) & 3u) << 4)))
+#define DUEL_CIVIC_FLOOR(value)     ((uint8_t)((value) & 3u))
+#define DUEL_CIVIC_MODE(value)      ((uint8_t)(((value) >> 2) & 3u))
+#define DUEL_CIVIC_INTENSITY(value) ((uint8_t)(((value) >> 4) & 3u))
+
+// Secondary byte: bits0-2 secondary activity, bits3-7 reserved for later civic
+// semantics (visitor/rare-event spill under M12.1/M12.2).
+#define DUEL_SECONDARY_PACK(activity)  ((uint8_t)((activity) & 7u))
+#define DUEL_SECONDARY_ACTIVITY(value) ((uint8_t)((value) & 7u))
+
+// Raw HID v2 payload positions for the civic bytes. payload_len becomes 8 under
+// M12; Track P owns the encode/validate wiring and the split-packet relay.
+#define DUEL_HOST_PAYLOAD_CIVIC     6
+#define DUEL_HOST_PAYLOAD_SECONDARY 7
+#define DUEL_HOST_PAYLOAD_LEN_M12   8
+
 uint8_t duel_host_context(const duel_host_state_t *state);
 uint8_t duel_host_alert(const duel_host_state_t *state);

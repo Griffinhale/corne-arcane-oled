@@ -75,6 +75,61 @@ bool duel_fb_get(const duel_fb_t *fb, int x, int y);
 // hat/robe markings so a replacement wizard is visibly a new combatant.
 void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
 
+/* ------- M12 Twin Cities presentation contract (shared cross-track) ---------
+ * Enums and fixed-slot state the renderer derives locally on each half. Pure
+ * declarations with zero release footprint. Track R owns the drawing that
+ * consumes them; the civic wire bytes that drive them are in duel_host.h. */
+
+// One session-persistent resident per city. Personality changes action weights,
+// rooftop attitude, and notification attitude; never mechanics or identity.
+enum {
+    DUEL_M12_PERSONALITY_DILIGENT = 0,
+    DUEL_M12_PERSONALITY_CURIOUS,
+    DUEL_M12_PERSONALITY_NERVOUS,
+    DUEL_M12_PERSONALITY_PROUD,
+    DUEL_M12_PERSONALITY_DISTRACTED,
+    DUEL_M12_PERSONALITY_COUNT,
+};
+// Resident action vocabulary (~3-10 s each, deterministic session-seeded select).
+enum {
+    DUEL_M12_ACTION_WORK = 0,
+    DUEL_M12_ACTION_WALK,
+    DUEL_M12_ACTION_INSPECT,
+    DUEL_M12_ACTION_REST,
+    DUEL_M12_ACTION_WATCH_ROOF,
+    DUEL_M12_ACTION_HANDLE_DELIVERY,
+    DUEL_M12_ACTION_REACT,
+    DUEL_M12_ACTION_COUNT,
+};
+// Global visitor/courier form (one slot, assigned to one city at a time).
+enum {
+    DUEL_M12_COURIER_NONE = 0,
+    DUEL_M12_COURIER_MESSENGER,   // communication / calendar bird
+    DUEL_M12_COURIER_PARCEL,      // transfer / download cart
+    DUEL_M12_COURIER_BEACON,      // system / network conduit
+    DUEL_M12_COURIER_SENTINEL,    // persistent critical alarm
+    DUEL_M12_COURIER_COUNT,
+};
+// Rare-event deck families (one shared slot). Waves 6/7 allocate shared_pres/
+// revision bits; this enum only fixes the family identifiers.
+enum {
+    DUEL_M12_EVENT_NONE = 0,
+    DUEL_M12_EVENT_RUNAWAY_SCROLL,
+    DUEL_M12_EVENT_JAMMED_GEAR,
+    DUEL_M12_EVENT_WORK_BREAK,
+    DUEL_M12_EVENT_DAMAGE_COMPLAINT,
+    DUEL_M12_EVENT_DIPLOMATIC_COURIER, // shared / cross-gap
+    DUEL_M12_EVENT_CIVIC_SKY,          // shared sky event
+    DUEL_M12_EVENT_COUNT,
+};
+
+// Fixed-slot local runtime records (spec §16.1). No coordinates: station and
+// progress derive them. Field packing is implementation-tunable per track.
+typedef struct { uint8_t identity_personality; uint8_t action_phase; uint8_t progress; } m12_resident_state_t;
+typedef struct { uint8_t kind_phase; uint8_t progress_flags; } m12_prop_state_t;
+typedef struct { uint8_t kind_target; uint8_t lifecycle_phase; uint8_t progress_flags; } m12_visitor_state_t;
+typedef struct { uint8_t id_target; uint8_t phase; uint8_t progress; } m12_event_state_t;
+
 // Everything the renderer needs for one frame: a stable world snapshot plus
 // presentation-only state the glue layer maintains (never fed back to the sim).
 typedef struct {
@@ -88,10 +143,22 @@ typedef struct {
     uint8_t     flash_spell_kind; // cached resolved spell style (M7.5, presentation-only)
     uint16_t    diag_overflow;
     uint8_t     diag_tick;
+#ifdef ARCANE_M12
+    // Relayed civic semantics + master-computed shared presentation coordination
+    // (Track P deposits them from the received snapshot; see duel_host.h macros).
+    uint8_t     civic;        // DUEL_CIVIC_* : floor, mode, host intensity
+    uint8_t     secondary;    // DUEL_SECONDARY_* : one supporting activity channel
+    uint8_t     shared_pres;  // shared rare-event id/phase + visitor assignment
+    uint8_t     revision;     // monotonic shared-presentation coherence counter
+#endif
 } duel_render_t;
 
 #define DUEL_RENDER_STALE 0x01u
+#ifdef ARCANE_M12
+_Static_assert(sizeof(duel_render_t) <= 36, "M12 render state stays within one compact block");
+#else
 _Static_assert(sizeof(duel_render_t) <= 32, "render state must remain compact");
+#endif
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 
