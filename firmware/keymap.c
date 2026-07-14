@@ -50,6 +50,7 @@ _Static_assert(DUEL_CANVAS_W == OLED_DISPLAY_HEIGHT && DUEL_CANVAS_H == OLED_DIS
 static duel_display_policy_t duel_display;
 static uint32_t duel_local_wake_ms;
 static bool duel_local_wake_armed;
+static bool duel_render_invalid = true;
 
 #ifdef ARCANE_DIAGNOSTICS
 typedef struct {
@@ -78,6 +79,7 @@ static void duel_note_physical_key(void) {
     duel_display_note_key(&duel_display, now);
     duel_local_wake_ms = now;
     duel_local_wake_armed = true;
+    duel_render_invalid = true;
 }
 
 // Treat both OLEDs as VERTICAL (portrait). On this build both panels are mounted
@@ -91,8 +93,9 @@ oled_rotation_t oled_init_user(oled_rotation_t rotation) {
 
 /* ---- event capture (scan hooks) -----------------------------------------
  * The key path never waits: the hooks below only XOR the current matrix rows
- * against the previous pass and append compact edge events to a bounded
- * queue. No rendering, no allocation, no split work. The master's matrix
+ * against the previous pass and append compact key-down events to a bounded
+ * queue. Releases remain level-sampled. No rendering, allocation, or split
+ * work occurs here. The master's matrix
  * already contains the slave's rows (merged in matrix_post_scan before
  * matrix_scan_kb fires — quantum/matrix_common.c), so the master captures
  * both halves; the slave captures only its own. */
@@ -107,9 +110,10 @@ static void duel_scan_rows(uint8_t row_first, uint8_t row_last, uint8_t side) {
         if (!diff) continue;
         for (uint8_t c = 0; c < MATRIX_COLS; c++) {
             if (!(diff & ((matrix_row_t)1 << c))) continue;
-            uint8_t kind = (cur & ((matrix_row_t)1 << c)) ? SIM_EV_KEYDOWN : SIM_EV_KEYUP;
-            sim_evq_push(&duel_evq, (sim_event_t){kind, side, (uint8_t)(r % DUEL_ROWS_PER_HAND), c});
-            if (kind == SIM_EV_KEYDOWN) duel_note_physical_key();
+            if (!(cur & ((matrix_row_t)1 << c))) continue;
+            sim_evq_push(&duel_evq, (sim_event_t){SIM_EV_KEYDOWN, side,
+                                                  (uint8_t)(r % DUEL_ROWS_PER_HAND), c});
+            duel_note_physical_key();
         }
     }
 }
@@ -163,25 +167,38 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     duel_host_rx_ver++;
 }
 
-static void duel_host_housekeeping(uint32_t now) {
+static bool duel_host_rx_consume(uint32_t now) {
     uint8_t v1 = duel_host_rx_ver;
+    if (v1 == duel_host_rx_seen_ver || (v1 & 1)) return false;
     __asm__ volatile("" ::: "memory");
     duel_host_packet_t packet = duel_host_rx_staging;
     __asm__ volatile("" ::: "memory");
     uint8_t v2 = duel_host_rx_ver;
-    if (v1 == v2 && !(v1 & 1) && v1 != duel_host_rx_seen_ver) {
-        duel_host_rx_seen_ver = v1;
-        duel_host_result_t result = duel_host_accept(&duel_host_state, &packet);
-        if (result == DUEL_HOST_APPLIED_HEARTBEAT) {
-            duel_host_last_heartbeat_ms = now;
-            duel_host_heartbeat_armed   = true;
-        }
+    if (v1 != v2) return false;
+    duel_host_rx_seen_ver = v1;
+    uint8_t before_context = duel_host_context(&duel_host_state);
+    uint8_t before_alert   = duel_host_alert(&duel_host_state);
+    duel_host_result_t result = duel_host_accept(&duel_host_state, &packet);
+    if (result == DUEL_HOST_APPLIED_HEARTBEAT) {
+        duel_host_last_heartbeat_ms = now;
+        duel_host_heartbeat_armed   = true;
     }
+    return before_context != duel_host_context(&duel_host_state) ||
+           before_alert != duel_host_alert(&duel_host_state);
+}
+
+static bool duel_host_housekeeping(uint32_t now) {
+    bool visible_changed = duel_host_rx_consume(now);
     if (duel_host_heartbeat_armed &&
         timer_elapsed32(duel_host_last_heartbeat_ms) > DUEL_HOST_TIMEOUT_MS) {
+        uint8_t before_context = duel_host_context(&duel_host_state);
+        uint8_t before_alert   = duel_host_alert(&duel_host_state);
         duel_host_expire(&duel_host_state);
         duel_host_heartbeat_armed = false;
+        visible_changed |= before_context != duel_host_context(&duel_host_state) ||
+                           before_alert != duel_host_alert(&duel_host_state);
     }
+    return visible_changed;
 }
 #endif
 
@@ -290,25 +307,38 @@ static duel_rx_state_t duel_rx;
 static uint8_t         duel_rx_seen_ver;
 static uint32_t        duel_last_pkt_ms;
 
-static void duel_slave_rx_consume(void) {
-    duel_snapshot_t pkt;
-    uint8_t         v1 = duel_rx_ver;
+static bool duel_slave_rx_consume(void) {
+    uint8_t v1 = duel_rx_ver;
+    if (v1 == duel_rx_seen_ver || (v1 & 1)) return false;
     __asm__ volatile("" ::: "memory");
+    duel_snapshot_t pkt;
     memcpy(&pkt, &duel_rx_staging, sizeof pkt);
     __asm__ volatile("" ::: "memory");
     uint8_t v2 = duel_rx_ver;
-    if (v1 != v2 || (v1 & 1) || v1 == duel_rx_seen_ver) return; // torn or nothing new
+    if (v1 != v2) return false; // torn; retry the stable version next pass
     duel_rx_seen_ver = v1;
     if (!duel_decode_valid(&pkt)) {
 #ifdef ARCANE_DIAGNOSTICS
         if (duel_diag.split_protocol_errors < UINT16_MAX) duel_diag.split_protocol_errors++;
 #endif
-        return;
+        return false;
     }
     bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
     if (duel_rx_accept(&duel_rx, &pkt, stale)) {
         duel_last_pkt_ms = timer_read32();
+        return true;
     }
+    return false;
+}
+
+static void duel_render_set_external(uint8_t external, uint8_t alert) {
+    duel_render.overlay_host       = DUEL_HOST_CONTEXT_ONLINE(external);
+    duel_render.overlay_scene      = DUEL_HOST_CONTEXT_SCENE(external);
+    duel_render.overlay_notif      = DUEL_HOST_CONTEXT_NOTIF(external);
+    duel_render.overlay_category   = DUEL_HOST_ALERT_CATEGORY(alert);
+    duel_render.overlay_priority   = DUEL_HOST_ALERT_PRIORITY(alert);
+    duel_render.overlay_age        = DUEL_HOST_ALERT_AGE(alert);
+    duel_render.overlay_persistent = DUEL_HOST_CONTEXT_PERSISTENT(external);
 }
 
 void housekeeping_task_user(void) {
@@ -316,8 +346,9 @@ void housekeeping_task_user(void) {
     uint32_t diag_start_us = time_us_32();
 #endif
     uint32_t now = timer_read32();
+    bool host_changed = false;
 #ifdef ARCANE_HOST_ENABLE
-    if (is_keyboard_master()) duel_host_housekeeping(now);
+    if (is_keyboard_master()) host_changed = duel_host_housekeeping(now);
 #endif
     if (!duel_tick_armed) {
         sim_init(&duel_world, is_keyboard_master() ? SIMF_AUTHORITATIVE : 0, 0);
@@ -357,32 +388,26 @@ void housekeeping_task_user(void) {
 #    endif
 #endif
 
+    bool render_invalid = duel_render_invalid;
+    duel_render_invalid = false;
     if (is_keyboard_master()) {
-        if (ticked || display_changed) duel_master_tx(display_changed);
-        duel_render.w          = duel_world;
-        duel_render.stale_link = false;
+        if (ticked || display_changed || host_changed)
+            duel_master_tx(display_changed || host_changed);
+        if (ticked || display_changed || host_changed || render_invalid) {
+            duel_render.w          = duel_world;
+            duel_render.stale_link = false;
 #ifdef ARCANE_HOST_ENABLE
-        uint8_t external         = duel_host_context(&duel_host_state);
-        uint8_t alert            = duel_host_alert(&duel_host_state);
-        duel_render.overlay_host = DUEL_HOST_CONTEXT_ONLINE(external);
-        duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(external);
-        duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(external);
-        duel_render.overlay_category = DUEL_HOST_ALERT_CATEGORY(alert);
-        duel_render.overlay_priority = DUEL_HOST_ALERT_PRIORITY(alert);
-        duel_render.overlay_age = DUEL_HOST_ALERT_AGE(alert);
-        duel_render.overlay_persistent = DUEL_HOST_CONTEXT_PERSISTENT(external);
+            duel_render_set_external(duel_host_context(&duel_host_state),
+                                     duel_host_alert(&duel_host_state));
 #else
-        duel_render.overlay_host  = 0;
-        duel_render.overlay_scene = 0;
-        duel_render.overlay_notif = 0;
-        duel_render.overlay_category = 0;
-        duel_render.overlay_priority = 0;
-        duel_render.overlay_age = 0;
-        duel_render.overlay_persistent = 0;
+            duel_render_set_external(0, 0);
 #endif
+        }
     } else {
-        duel_slave_rx_consume();
+        bool accepted = duel_slave_rx_consume();
         bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
+        bool stale_edge = stale != duel_render.stale_link;
+        static bool using_remote;
 #ifdef ARCANE_DIAGNOSTICS
         static bool diag_was_stale;
         if (stale && !diag_was_stale && duel_diag.stale_split_events < UINT16_MAX)
@@ -390,32 +415,33 @@ void housekeeping_task_user(void) {
         diag_was_stale = stale;
 #endif
         if (!stale && duel_rx.have_any) {
-            duel_decode_world(&duel_rx.last, &duel_render.w);
-            uint8_t remote_phase = DUEL_FLAGS_DISPLAY(duel_rx.last.flags);
-            bool local_wake_grace = duel_local_wake_armed &&
-                                    timer_elapsed32(duel_local_wake_ms) <= 120;
-            if (!local_wake_grace && remote_phase <= DUEL_DISPLAY_SLEEP)
-                duel_display_follow(&duel_display, (duel_display_phase_t)remote_phase, now);
-            duel_render.overlay_host  = DUEL_HOST_CONTEXT_ONLINE(duel_rx.last.external);
-            duel_render.overlay_scene = DUEL_HOST_CONTEXT_SCENE(duel_rx.last.external);
-            duel_render.overlay_notif = DUEL_HOST_CONTEXT_NOTIF(duel_rx.last.external);
-            duel_render.overlay_category = DUEL_HOST_ALERT_CATEGORY(duel_rx.last.alert);
-            duel_render.overlay_priority = DUEL_HOST_ALERT_PRIORITY(duel_rx.last.alert);
-            duel_render.overlay_age = DUEL_HOST_ALERT_AGE(duel_rx.last.alert);
-            duel_render.overlay_persistent = DUEL_HOST_CONTEXT_PERSISTENT(duel_rx.last.external);
+            if (accepted || !using_remote) {
+                duel_display_phase_t before_follow = duel_display.phase;
+                uint8_t remote_phase = DUEL_FLAGS_DISPLAY(duel_rx.last.flags);
+                bool local_wake_grace = duel_local_wake_armed &&
+                                        timer_elapsed32(duel_local_wake_ms) <= 120;
+                if (!local_wake_grace && remote_phase <= DUEL_DISPLAY_SLEEP)
+                    duel_display_follow(&duel_display, (duel_display_phase_t)remote_phase, now);
+                display_changed |= duel_display.phase != before_follow;
+            }
+            if (accepted || !using_remote || stale_edge || display_changed || render_invalid) {
+                duel_decode_world(&duel_rx.last, &duel_render.w);
+                duel_render_set_external(duel_rx.last.external, duel_rx.last.alert);
+                duel_render.stale_link = false;
+            }
+            using_remote = true;
         } else {
             // Local pose-only fallback: never authoritative, never combat.
-            duel_render.w = duel_world;
+            duel_display_phase_t before_update = duel_display.phase;
             duel_display_update(&duel_display, now);
-            duel_render.overlay_host  = 0;
-            duel_render.overlay_scene = 0;
-            duel_render.overlay_notif = 0;
-            duel_render.overlay_category = 0;
-            duel_render.overlay_priority = 0;
-            duel_render.overlay_age = 0;
-            duel_render.overlay_persistent = 0;
+            display_changed |= duel_display.phase != before_update;
+            if (ticked || using_remote || stale_edge || display_changed || render_invalid) {
+                duel_render.w = duel_world;
+                duel_render_set_external(0, 0);
+                duel_render.stale_link = stale;
+            }
+            using_remote = false;
         }
-        duel_render.stale_link = stale;
     }
 #ifdef ARCANE_DIAGNOSTICS
     duel_diag_peak(&duel_diag.peak_housekeeping_us, time_us_32() - diag_start_us);

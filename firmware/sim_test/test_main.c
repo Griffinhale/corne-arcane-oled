@@ -328,6 +328,49 @@ static void t2_snapshot_pure(void) {
     CHECK(ok, "t2_snapshot_pure");
 }
 
+// Firmware queues key-down detail only. Releases and rising edges remain
+// level-sampled, so omitting ignored key-up detail must preserve held poses,
+// release-to-idle, recipes, and rapid alternating input exactly.
+static void t2_keydown_only_equivalence(void) {
+    sim_world_t with_keyups, keydowns_only;
+    sim_init(&with_keyups, SIMF_AUTHORITATIVE, 0);
+    sim_init(&keydowns_only, SIMF_AUTHORITATIVE, 0);
+    uint8_t previous = 0;
+    bool saw_recipe = false;
+    bool ok = true;
+
+    for (int tick = 0; tick < 64; tick++) {
+        uint8_t levels;
+        if (tick < 6) levels = 1;            // one held key
+        else if (tick < 20) levels = 0;      // release without detail
+        else if (tick & 1) levels = 0;       // rapid press/release cadence
+        else levels = (tick & 2) ? 1 : 2;    // alternate hands
+
+        sim_event_t full[2], down[2];
+        uint8_t n_full = 0, n_down = 0;
+        for (uint8_t side = 0; side < 2; side++) {
+            bool was = (previous >> side) & 1;
+            bool now = (levels >> side) & 1;
+            if (was == now) continue;
+            sim_event_t ev = {now ? SIM_EV_KEYDOWN : SIM_EV_KEYUP, side,
+                              (uint8_t)((tick / 2) & 3), (uint8_t)(tick % 6)};
+            full[n_full++] = ev;
+            if (now) down[n_down++] = ev;
+        }
+        sim_inputs_t inputs = {.down_mask = levels};
+        sim_tick(&with_keyups, inputs, full, n_full);
+        sim_tick(&keydowns_only, inputs, down, n_down);
+        ok &= world_hash(&with_keyups) == world_hash(&keydowns_only);
+        saw_recipe |= keydowns_only.wiz[0].recipe_n >= 2 ||
+                      keydowns_only.wiz[1].recipe_n >= 2;
+        if (tick == 5) ok &= keydowns_only.wiz[0].pose == POSE_CAST;
+        if (tick == 20) ok &= keydowns_only.wiz[0].pose == POSE_IDLE;
+        previous = levels;
+    }
+    ok &= saw_recipe;
+    CHECK(ok, "t2_keydown_only_equivalence");
+}
+
 // Overflow is explicit and harmless: pushes fail loudly, drops are counted,
 // and the sim keeps running deterministically.
 static void t2_queue_overflow(void) {
@@ -2354,6 +2397,7 @@ int main(int argc, char **argv) {
     t2_replay_golden();
     t2_cadence_invariance();
     t2_snapshot_pure();
+    t2_keydown_only_equivalence();
     t2_queue_overflow();
     t2_tick_wrap();
 
