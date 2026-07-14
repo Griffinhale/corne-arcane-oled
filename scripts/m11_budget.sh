@@ -34,8 +34,16 @@ bss_delta=$((bss - m11_bss))
 static_delta=$((static_ram - m11_static))
 
 printf 'firmware: %s\n' "$elf"
-printf 'build kind: %s (ARCANE_DIAGNOSTICS must be absent from release)\n' "$build_kind"
-printf 'release flash: %d bytes (M11 %d, delta %+d; soft target %d)\n' \
+case "$build_kind" in
+    release|diagnostic) ;;
+    *)
+        echo "FAIL budget: FIRMWARE_BUILD_KIND must be release or diagnostic" >&2
+        exit 1
+        ;;
+esac
+
+printf 'build kind: %s\n' "$build_kind"
+printf 'flash: %d bytes (M11 release %d, delta %+d; release soft target %d)\n' \
     "$flash" "$m11_flash" "$flash_delta" "$soft_flash"
 printf '.data: %d bytes (M11 %d, delta %+d)\n' "$data" "$m11_data" "$data_delta"
 printf '.bss: %d bytes (M11 %d, delta %+d; M10 %d)\n' \
@@ -55,20 +63,29 @@ arm-none-eabi-nm --print-size --size-sort --radix=d "$elf" | \
     awk '$3 ~ /^[BbCDdGgSs]$/ {print}' | tail -12
 
 failed=0
-if [ "$flash" -gt "$m11_flash" ]; then
+if [ "$build_kind" = release ] && [ "$flash" -gt "$m11_flash" ]; then
     echo "FAIL budget: release firmware exceeds the 50,120-byte M11 baseline"
     failed=1
-else
+elif [ "$build_kind" = release ]; then
     echo "PASS release firmware does not exceed M11"
-fi
-if [ "$flash" -le "$soft_flash" ]; then
-    echo "PASS release firmware meets the 49,152-byte soft target"
 else
+    echo "NOTE diagnostic size is recorded separately from the release budget"
+fi
+if [ "$build_kind" = release ] && [ "$flash" -le "$soft_flash" ]; then
+    echo "PASS release firmware meets the 49,152-byte soft target"
+elif [ "$build_kind" = release ]; then
     echo "NOTE release firmware remains above the 49,152-byte soft target"
 fi
-if [ "$build_kind" = release ] && \
-   arm-none-eabi-nm "$elf" | awk '$3=="duel_diag" {found=1} END {exit !found}'; then
+if arm-none-eabi-nm "$elf" | awk '$3=="duel_diag" {found=1} END {exit !found}'; then
+    has_diagnostics=yes
+else
+    has_diagnostics=no
+fi
+if [ "$build_kind" = release ] && [ "$has_diagnostics" = yes ]; then
     echo "FAIL budget: release ELF contains ARCANE_DIAGNOSTICS state"
+    failed=1
+elif [ "$build_kind" = diagnostic ] && [ "$has_diagnostics" = no ]; then
+    echo "FAIL budget: diagnostic ELF omits ARCANE_DIAGNOSTICS state"
     failed=1
 else
     echo "PASS release/diagnostic distinction"
