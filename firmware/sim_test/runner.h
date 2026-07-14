@@ -31,14 +31,16 @@ static inline bool runner_done(const runner_t *r) {
 
 static inline void runner_step(runner_t *r) {
     sim_evq_t   q = {0};
-    sim_event_t evs[SIM_EVQ_CAP + 1];
+    sim_event_t evs[SIM_EVQ_CAP];
 
     while (r->ev_idx < r->t->n_ev && r->t->ev[r->ev_idx].tick == r->w.tick) {
         const trace_ev_t *te = &r->t->ev[r->ev_idx++];
-        sim_evq_push(&q, (sim_event_t){te->kind, te->side, te->row, te->col});
+        sim_evq_push(&q, SIM_EV_PACK(te->kind == TRACE_EV_PRESS ? SIM_EV_KEYDOWN : SIM_EV_KEYUP,
+                                    te->side, te->row, te->col));
         r->down[te->side][te->row][te->col] = (te->kind == TRACE_EV_PRESS);
     }
-    uint8_t n = sim_evq_drain(&q, evs);
+    uint8_t dropped;
+    uint8_t n = sim_evq_drain(&q, evs, &dropped);
 
     sim_inputs_t in = {0};
     for (int s = 0; s < 2; s++) {
@@ -66,6 +68,6 @@ static inline void runner_step(runner_t *r) {
             }
         }
     }
-    sim_tick(&r->w, in, evs, n);
+    sim_tick(&r->w, in, evs, n, dropped);
     r->ticks_run++;
 }

@@ -74,21 +74,20 @@ _Static_assert(sizeof(duel_host_packet_t) == DUEL_HOST_REPORT_SIZE,
                "host report must match QMK RAW_EPSIZE");
 
 typedef struct {
-    bool     have_session;
-    bool     have_previous;
-    bool     online;
     uint32_t session;
     uint32_t previous_session;
     uint16_t last_seq;
-    uint8_t  scene;
-    uint8_t  notification_count;
-    uint8_t  notification_category;
-    uint8_t  notification_priority;
-    uint8_t  notification_age;
-    bool     notification_persistent;
+    uint8_t  state_flags;
+    uint8_t  external;
+    uint8_t  alert;
+#ifdef ARCANE_DIAGNOSTICS
     uint16_t malformed_packets;
     uint16_t stale_packets;
+#endif
 } duel_host_state_t;
+
+#define DUEL_HOST_STATE_HAVE_SESSION  0x01u
+#define DUEL_HOST_STATE_HAVE_PREVIOUS 0x02u
 
 typedef enum {
     DUEL_HOST_DROP_MALFORMED = 0,

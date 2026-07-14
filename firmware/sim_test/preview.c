@@ -168,12 +168,11 @@ static void preview_fx_step(preview_fx_t *p, const sim_world_t *w) {
 
 static void show_presented_world(preview_fx_t *p, const sim_world_t *w) {
     preview_fx_step(p, w);
-    duel_render_t r = {
-        .w = *w,
-        .flash_frames = p->flash_frames,
-        .flash_kind = p->flash_kind,
-        .flash_spell_kind = p->flash_spell_kind,
-    };
+    duel_render_t r = {0};
+    duel_render_from_world(&r, w);
+    r.flash_frames = p->flash_frames;
+    r.flash_kind = p->flash_kind;
+    r.flash_spell_kind = p->flash_spell_kind;
     show_render(&r);
 }
 
@@ -230,9 +229,12 @@ int main(int argc, char **argv) {
                 preview_fx_step(&present, &r.w);
             }
             printf("tick %u\n", r.ticks_run);
-            show_render(&(duel_render_t){.w = r.w, .flash_frames = present.flash_frames,
-                                         .flash_kind = present.flash_kind,
-                                         .flash_spell_kind = present.flash_spell_kind});
+            duel_render_t render = {0};
+            duel_render_from_world(&render, &r.w);
+            render.flash_frames = present.flash_frames;
+            render.flash_kind = present.flash_kind;
+            render.flash_spell_kind = present.flash_spell_kind;
+            show_render(&render);
             return 0;
         }
         return usage(argv[0]);
@@ -370,10 +372,12 @@ int main(int argc, char **argv) {
         w.scry.scene           = (uint8_t)scry_scene;
         w.wiz[SIM_SIDE_L].pose  = POSE_CAST;
         w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-        duel_render_t r = {.w = w, .overlay_layer = 3,
-                           .overlay_host = host_scene >= 0,
-                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0,
-                           .overlay_notif = 0};
+        duel_render_t r = {0};
+        duel_render_from_world(&r, &w);
+        r.layer = 3;
+        r.external = DUEL_HOST_CONTEXT_PACK(host_scene >= 0,
+                                            host_scene >= 0 ? (uint8_t)host_scene : 0,
+                                            0, false);
         show_render(&r);
         return 0;
     }
@@ -383,8 +387,11 @@ int main(int argc, char **argv) {
         sim_init(&w, SIMF_AUTHORITATIVE, 0);
         w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 40, .dir = +4, .kind = (uint8_t)spell_kind};
         w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 210, .dir = -4, .kind = (uint8_t)spell_kind};
-        duel_render_t r = {.w = w, .overlay_host = host_scene >= 0,
-                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0};
+        duel_render_t r = {0};
+        duel_render_from_world(&r, &w);
+        r.external = DUEL_HOST_CONTEXT_PACK(host_scene >= 0,
+                                            host_scene >= 0 ? (uint8_t)host_scene : 0,
+                                            0, false);
         show_render(&r);
         return 0;
     }
@@ -402,8 +409,11 @@ int main(int argc, char **argv) {
         w.wiz[SIM_SIDE_R].hp         = 0;
         // The sim bumps the variant on entering REPLACE; mimic that here.
         if (life == LIFE_REPLACE) w.wiz[SIM_SIDE_R].variant = 1;
-        duel_render_t r = {.w = w, .overlay_host = host_scene >= 0,
-                           .overlay_scene = host_scene >= 0 ? (uint8_t)host_scene : 0};
+        duel_render_t r = {0};
+        duel_render_from_world(&r, &w);
+        r.external = DUEL_HOST_CONTEXT_PACK(host_scene >= 0,
+                                            host_scene >= 0 ? (uint8_t)host_scene : 0,
+                                            0, false);
         show_render(&r);
         return 0;
     }
@@ -415,7 +425,9 @@ int main(int argc, char **argv) {
         w.wiz[SIM_SIDE_R].pose = cast_r ? POSE_CAST : POSE_IDLE;
         w.wiz[SIM_SIDE_L].variant = (uint8_t)variant;
         w.wiz[SIM_SIDE_R].variant = (uint8_t)variant;
-        duel_render_t r = {.w = w, .overlay_host = 1, .overlay_scene = (uint8_t)host_scene};
+        duel_render_t r = {0};
+        duel_render_from_world(&r, &w);
+        r.external = DUEL_HOST_CONTEXT_PACK(1, (uint8_t)host_scene, 0, false);
         show_render(&r);
         return 0;
     }

@@ -65,89 +65,85 @@ static uint8_t spell_kind(uint8_t element, uint8_t modifier, uint8_t tier) {
     return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(element, modifier, PAY_IMPACT), tier);
 }
 
-static void set_life(duel_render_t *r, uint8_t life, uint8_t ticks) {
-    r->w.wiz[SIM_SIDE_R].life = life;
-    r->w.wiz[SIM_SIDE_R].life_ticks = ticks;
-    r->w.wiz[SIM_SIDE_R].hp = 0;
-    if (life == LIFE_REPLACE) r->w.wiz[SIM_SIDE_R].variant = 1;
+static void set_life(sim_world_t *world, uint8_t life, uint8_t ticks) {
+    world->wiz[SIM_SIDE_R].life = life;
+    world->wiz[SIM_SIDE_R].life_ticks = ticks;
+    world->wiz[SIM_SIDE_R].hp = 0;
+    if (life == LIFE_REPLACE) world->wiz[SIM_SIDE_R].variant = 1;
 }
 
 static void set_alert(duel_render_t *r, uint8_t count, uint8_t category,
                       uint8_t priority, uint8_t age, bool persistent) {
-    r->overlay_host = 1;
-    r->overlay_notif = count;
-    r->overlay_category = category;
-    r->overlay_priority = priority;
-    r->overlay_age = age;
-    r->overlay_persistent = persistent;
+    uint8_t scene = DUEL_HOST_CONTEXT_SCENE(r->external);
+    r->external = DUEL_HOST_CONTEXT_PACK(1, scene, count, persistent);
+    r->alert = DUEL_HOST_ALERT_PACK(category, priority, age);
 }
 
 bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     if (!scenario || !r) return false;
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
-    *r = (duel_render_t){.w = w};
+    *r = (duel_render_t){0};
     const char *name = scenario->name;
     uint8_t force = spell_kind(ELEM_FORCE, MOD_NONE, SPELL_TIER_MEDIUM);
 
     if (strncmp(name, "archive-", 8) == 0) {
-        r->overlay_host = 1;
-        r->overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+        r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE, 0, false);
     }
 
     if (strcmp(name, "duel-idle") == 0 || strcmp(name, "archive-idle") == 0) {
     } else if (strcmp(name, "pose-cast") == 0) {
-        r->w.wiz[SIM_SIDE_L].pose = POSE_CAST;
-        r->w.wiz[SIM_SIDE_L].cast_windup = 5;
-        r->w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_MEDIUM;
-        r->w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+        w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        w.wiz[SIM_SIDE_L].cast_windup = 5;
+        w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_MEDIUM;
+        w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
     } else if (strcmp(name, "pose-recover") == 0) {
-        r->w.wiz[SIM_SIDE_L].pose = POSE_RECOVER;
-        r->w.wiz[SIM_SIDE_L].pose_ticks = 2;
-        r->w.wiz[SIM_SIDE_L].variant = 1;
-        r->w.wiz[SIM_SIDE_R].variant = 3;
+        w.wiz[SIM_SIDE_L].pose = POSE_RECOVER;
+        w.wiz[SIM_SIDE_L].pose_ticks = 2;
+        w.wiz[SIM_SIDE_L].variant = 1;
+        w.wiz[SIM_SIDE_R].variant = 3;
     } else if (strncmp(name, "recipe-", 7) == 0) {
         uint8_t kind = strcmp(name, "recipe-force-short") == 0 ? spell_kind(ELEM_FORCE, MOD_NONE, SPELL_TIER_SHORT)
                      : strcmp(name, "recipe-ember-medium") == 0 ? spell_kind(ELEM_EMBER, MOD_NONE, SPELL_TIER_MEDIUM)
                      : strcmp(name, "recipe-frost-long") == 0 ? spell_kind(ELEM_FROST, MOD_SWIFT, SPELL_TIER_LONG)
                                                                : spell_kind(ELEM_VOID, MOD_HEAVY, SPELL_TIER_SATURATED);
-        r->w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 55, .dir = 4, .kind = kind};
-        r->w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 200, .dir = -4, .kind = kind};
+        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 55, .dir = 4, .kind = kind};
+        w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 200, .dir = -4, .kind = kind};
     } else if (strcmp(name, "short-cast") == 0 || strcmp(name, "long-cast") == 0) {
-        r->w.wiz[SIM_SIDE_L].pose = POSE_CAST;
-        r->w.wiz[SIM_SIDE_L].cast_windup = 2;
-        r->w.wiz[SIM_SIDE_L].cast_tier = strcmp(name, "short-cast") == 0 ? SPELL_TIER_SHORT : SPELL_TIER_LONG;
+        w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        w.wiz[SIM_SIDE_L].cast_windup = 2;
+        w.wiz[SIM_SIDE_L].cast_tier = strcmp(name, "short-cast") == 0 ? SPELL_TIER_SHORT : SPELL_TIER_LONG;
     } else if (strcmp(name, "impact") == 0 || strcmp(name, "archive-impact") == 0 || strcmp(name, "alert-impact") == 0) {
-        r->w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
+        w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
         r->flash_frames = 10; r->flash_kind = FX_IMPACT_R; r->flash_spell_kind = force;
         if (strcmp(name, "alert-impact") == 0)
             set_alert(r, 2, DUEL_HOST_CATEGORY_SYSTEM, DUEL_HOST_PRIORITY_CRITICAL, 0, false);
     } else if (strcmp(name, "deflect") == 0) {
-        r->w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+        w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
         r->flash_frames = 7; r->flash_kind = FX_DEFLECT_R; r->flash_spell_kind = force;
     } else if (strcmp(name, "fizzle") == 0) {
-        set_life(r, LIFE_DOWNED, SIM_DOWNED_TICKS / 2);
+        set_life(&w, LIFE_DOWNED, SIM_DOWNED_TICKS / 2);
         r->flash_frames = 7; r->flash_kind = FX_FIZZLE_R; r->flash_spell_kind = force;
     } else if (strcmp(name, "void-pierce") == 0) {
-        r->w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-        r->w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 236, .dir = 4,
+        w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 236, .dir = 4,
             .kind = spell_kind(ELEM_VOID, MOD_NONE, SPELL_TIER_LONG)};
     } else if (strcmp(name, "life-collapse") == 0) {
-        set_life(r, LIFE_COLLAPSE, SIM_COLLAPSE_TICKS / 2);
+        set_life(&w, LIFE_COLLAPSE, SIM_COLLAPSE_TICKS / 2);
     } else if (strcmp(name, "life-downed") == 0) {
-        set_life(r, LIFE_DOWNED, SIM_DOWNED_TICKS / 2);
+        set_life(&w, LIFE_DOWNED, SIM_DOWNED_TICKS / 2);
     } else if (strcmp(name, "life-medic") == 0 || strcmp(name, "archive-ko") == 0) {
-        set_life(r, LIFE_MEDIC, SIM_MEDIC_TICKS / 2);
+        set_life(&w, LIFE_MEDIC, SIM_MEDIC_TICKS / 2);
     } else if (strcmp(name, "life-replace") == 0) {
-        set_life(r, LIFE_REPLACE, SIM_REPLACE_TICKS / 2);
+        set_life(&w, LIFE_REPLACE, SIM_REPLACE_TICKS / 2);
     } else if (strcmp(name, "archive-pulse") == 0) {
-        r->w.wiz[0].shield_ticks = r->w.wiz[1].shield_ticks = SIM_SHIELD_TICKS / 2;
+        w.wiz[0].shield_ticks = w.wiz[1].shield_ticks = SIM_SHIELD_TICKS / 2;
     } else if (strcmp(name, "archive-cast") == 0) {
-        r->w.wiz[0].pose = POSE_CAST; r->w.wiz[0].cast_windup = 3;
-        r->w.wiz[0].cast_tier = SPELL_TIER_LONG;
+        w.wiz[0].pose = POSE_CAST; w.wiz[0].cast_windup = 3;
+        w.wiz[0].cast_tier = SPELL_TIER_LONG;
     } else if (strcmp(name, "archive-scry") == 0) {
-        r->w.scry.state = SCRY_ACTIVE; r->w.scry.scene = DUEL_HOST_SCENE_ARCHIVE;
-        r->overlay_layer = 3;
+        w.scry.state = SCRY_ACTIVE; w.scry.scene = DUEL_HOST_SCENE_ARCHIVE;
+        r->layer = 3;
     } else if (strcmp(name, "terminal-completion") == 0) {
         set_alert(r, 1, DUEL_HOST_CATEGORY_TERMINAL, DUEL_HOST_PRIORITY_LOW, 0, false);
     } else if (strcmp(name, "aggregated-normal") == 0) {
@@ -163,27 +159,31 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     } else if (strcmp(name, "alert-other") == 0) {
         set_alert(r, 1, DUEL_HOST_CATEGORY_OTHER, DUEL_HOST_PRIORITY_NORMAL, 0, false);
     } else if (strcmp(name, "scry") == 0 || strcmp(name, "alert-under-scry") == 0 || strcmp(name, "scry-stale-diagnostics") == 0) {
-        r->w.scry.state = SCRY_ACTIVE; r->w.scry.scene = DUEL_HOST_SCENE_FOCUS;
-        r->overlay_layer = 3;
-        r->overlay_host = 1;
-        r->overlay_scene = DUEL_HOST_SCENE_FOCUS;
+        w.scry.state = SCRY_ACTIVE; w.scry.scene = DUEL_HOST_SCENE_FOCUS;
+        r->layer = 3;
+        r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_FOCUS, 0, false);
         if (strcmp(name, "scry") != 0)
             set_alert(r, 3, DUEL_HOST_CATEGORY_CALENDAR, DUEL_HOST_PRIORITY_CRITICAL, 1, true);
         if (strcmp(name, "scry-stale-diagnostics") == 0) {
-            r->stale_link = true; r->w.overflow_count = 3; r->w.tick = 17;
+            r->flags |= DUEL_RENDER_STALE; w.overflow_count = 3; w.tick = 17;
         }
     } else if (strcmp(name, "stale-link") == 0) {
-        r->stale_link = true;
+        r->flags |= DUEL_RENDER_STALE;
     } else if (strcmp(name, "diagnostics") == 0) {
-        r->w.overflow_count = 3; r->w.tick = 17;
+        w.overflow_count = 3; w.tick = 17;
     } else if (strcmp(name, "archive-alert") == 0) {
-        r->overlay_host = 1; r->overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
-        r->w.wiz[0].shield_ticks = SIM_SHIELD_TICKS / 2;
+        r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE, 0, false);
+        w.wiz[0].shield_ticks = SIM_SHIELD_TICKS / 2;
         set_alert(r, 2, DUEL_HOST_CATEGORY_SECURITY, DUEL_HOST_PRIORITY_CRITICAL, 0, true);
-        r->overlay_scene = DUEL_HOST_SCENE_ARCHIVE;
+        r->external = DUEL_HOST_CONTEXT_PACK(1, DUEL_HOST_SCENE_ARCHIVE,
+                                             DUEL_HOST_CONTEXT_NOTIF(r->external),
+                                             DUEL_HOST_CONTEXT_PERSISTENT(r->external));
     } else {
         return false;
     }
+    duel_render_from_world(r, &w);
+    r->diag_tick = (uint8_t)(w.tick % 25u);
+    r->diag_overflow = w.overflow_count;
     return true;
 }
 

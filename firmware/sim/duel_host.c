@@ -3,9 +3,11 @@
 #include "duel_host.h"
 #include "duel_proto.h"
 
+#ifdef ARCANE_DIAGNOSTICS
 static void sat_inc(uint16_t *value) {
     if (*value != UINT16_MAX) (*value)++;
 }
+#endif
 
 static bool type_valid(uint8_t type) {
     return type == DUEL_HOST_MSG_HELLO || type == DUEL_HOST_MSG_HEARTBEAT ||
@@ -77,30 +79,33 @@ bool duel_host_packet_valid(const duel_host_packet_t *packet) {
 }
 
 static duel_host_result_t stale(duel_host_state_t *state) {
+#ifdef ARCANE_DIAGNOSTICS
     sat_inc(&state->stale_packets);
+#else
+    (void)state;
+#endif
     return DUEL_HOST_DROP_STALE;
 }
 
-static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet) {
-    state->scene              = packet->payload[0];
-    state->notification_count = packet->payload[1];
+static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet,
+                          bool online) {
+    bool persistent = packet->version == DUEL_HOST_VERSION && packet->payload[5] != 0;
+    state->external = DUEL_HOST_CONTEXT_PACK(online, packet->payload[0],
+                                             packet->payload[1], persistent);
     if (packet->version == DUEL_HOST_VERSION) {
-        state->notification_category   = packet->payload[2];
-        state->notification_priority   = packet->payload[3];
-        state->notification_age        = packet->payload[4];
-        state->notification_persistent = packet->payload[5] != 0;
+        state->alert = DUEL_HOST_ALERT_PACK(packet->payload[2], packet->payload[3],
+                                           packet->payload[4]);
     } else {
-        state->notification_category   = DUEL_HOST_CATEGORY_NONE;
-        state->notification_priority   = DUEL_HOST_PRIORITY_NONE;
-        state->notification_age        = 0;
-        state->notification_persistent = false;
+        state->alert = 0;
     }
 }
 
 duel_host_result_t duel_host_accept(duel_host_state_t *state,
                                     const duel_host_packet_t *packet) {
     if (!duel_host_packet_valid(packet)) {
+#ifdef ARCANE_DIAGNOSTICS
         sat_inc(&state->malformed_packets);
+#endif
         return DUEL_HOST_DROP_MALFORMED;
     }
 
@@ -109,56 +114,45 @@ duel_host_result_t duel_host_accept(duel_host_state_t *state,
         // greeting. Remembering the prior ID prevents a delayed old greeting
         // from rolling a freshly restarted daemon backward.
         if (packet->seq != 0 ||
-            (state->have_session && packet->session == state->session) ||
-            (state->have_previous && packet->session == state->previous_session)) {
+            ((state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) && packet->session == state->session) ||
+            ((state->state_flags & DUEL_HOST_STATE_HAVE_PREVIOUS) && packet->session == state->previous_session)) {
             return stale(state);
         }
-        if (state->have_session) {
-            state->have_previous   = true;
+        if (state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) {
+            state->state_flags |= DUEL_HOST_STATE_HAVE_PREVIOUS;
             state->previous_session = state->session;
         }
-        state->have_session = true;
+        state->state_flags |= DUEL_HOST_STATE_HAVE_SESSION;
         state->session      = packet->session;
         state->last_seq     = 0;
-        apply_context(state, packet);
-        state->online = true;
+        apply_context(state, packet, true);
         return DUEL_HOST_APPLIED_HEARTBEAT;
     }
 
-    if (!state->have_session || packet->session != state->session ||
+    if (!(state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) || packet->session != state->session ||
         (int16_t)(packet->seq - state->last_seq) <= 0) {
         return stale(state);
     }
 
     state->last_seq = packet->seq;
-    apply_context(state, packet);
+    bool online = packet->type == DUEL_HOST_MSG_HEARTBEAT ||
+                  DUEL_HOST_CONTEXT_ONLINE(state->external);
+    apply_context(state, packet, online);
     if (packet->type == DUEL_HOST_MSG_HEARTBEAT) {
-        state->online = true;
         return DUEL_HOST_APPLIED_HEARTBEAT;
     }
     return DUEL_HOST_APPLIED;
 }
 
 void duel_host_expire(duel_host_state_t *state) {
-    state->online             = false;
-    state->scene              = DUEL_HOST_SCENE_DUEL;
-    state->notification_count = 0;
-    state->notification_category = DUEL_HOST_CATEGORY_NONE;
-    state->notification_priority = DUEL_HOST_PRIORITY_NONE;
-    state->notification_age = 0;
-    state->notification_persistent = false;
+    state->external = 0;
+    state->alert = 0;
 }
 
 uint8_t duel_host_context(const duel_host_state_t *state) {
-    if (!state->online) return 0;
-    return DUEL_HOST_CONTEXT_PACK(state->online, state->scene,
-                                  state->notification_count,
-                                  state->notification_persistent);
+    return DUEL_HOST_CONTEXT_ONLINE(state->external) ? state->external : 0;
 }
 
 uint8_t duel_host_alert(const duel_host_state_t *state) {
-    if (!state->online) return 0;
-    return DUEL_HOST_ALERT_PACK(state->notification_category,
-                                state->notification_priority,
-                                state->notification_age);
+    return DUEL_HOST_CONTEXT_ONLINE(state->external) ? state->alert : 0;
 }
