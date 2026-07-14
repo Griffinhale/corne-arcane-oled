@@ -433,7 +433,11 @@ static void duel_master_tx(bool urgent) {
     duel_diag_peak(&duel_diag.peak_split_tx_us, time_us_32() - tx_start_us);
     if (sent) {
         if (duel_diag.split_tx_success < UINT16_MAX) duel_diag.split_tx_success++;
-        duel_peer_diag = peer;
+        // The slave deliberately returns an all-zero reply if housekeeping is
+        // updating its seqlock-protected metrics at this exact instant. Keep
+        // the last coherent sample instead of making a diagnostic query
+        // intermittently report an invalid/empty peer.
+        if (peer.magic == DUEL_MAGIC && peer.version == 1) duel_peer_diag = peer;
     } else if (duel_diag.split_tx_failure < UINT16_MAX) {
         duel_diag.split_tx_failure++;
     }
