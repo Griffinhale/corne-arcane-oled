@@ -48,3 +48,12 @@ resident-proud           03a5376960f7d9f4 e46acd9830b4eea1
 resident-distracted      4e2788cba340e3af 6843d86073e5f807
 workshop-idle            e36f392f9c9960f1 07a2e6a2e523af38
 workshop-cast            29540bc48ed86b79 07a2e6a2e523af38
+courier-messenger        68ebece958ebf4eb 7bf26b357111e221
+courier-parcel           5394e7f7ddfd2dca 8327e4eaa3e43d81
+courier-beacon           5394e7f7ddfd2dca 9bfd92c9b8d778e1
+courier-sentinel         d94dae30df4afa99 7bf26b357111e221
+courier-arriving         6b47aa71f733eb0d 7bf26b357111e221
+courier-aging            5394e7f7ddfd2dca f84cf8fb35b10189
+courier-resolving        ff471e8fdff10e53 7bf26b357111e221
+courier-count-few        5394e7f7ddfd2dca 75de7e9dc92692e1
+courier-count-many       5394e7f7ddfd2dca 5b4c8ae997e66064

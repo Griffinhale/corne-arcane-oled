@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "duel_courier.h"
 #include "duel_host.h"
 #include "duel_resident.h"
 #include "duel_sim.h"
@@ -63,6 +64,16 @@ static const duel_scenario_t scenarios[] = {
     SCENE("resident-distracted", "residents", "distracted resident", 0, false),
     SCENE("workshop-idle", "workshop", "forge and assembly residents at work", 0, false),
     SCENE("workshop-cast", "workshop", "combat over the workshop floor", 3, false),
+    // --- Wave 6 couriers ---
+    SCENE("courier-messenger", "couriers", "communication messenger bird (left)", 0, false),
+    SCENE("courier-parcel", "couriers", "transfer parcel cart (right)", 0, false),
+    SCENE("courier-beacon", "couriers", "system signal beacon (right)", 0, false),
+    SCENE("courier-sentinel", "couriers", "persistent security sentinel (left)", 0, false),
+    SCENE("courier-arriving", "couriers", "messenger arriving by the gap lift", 0, false),
+    SCENE("courier-aging", "couriers", "parcel aged and gathering dust", 0, false),
+    SCENE("courier-resolving", "couriers", "messenger departing, resolved", 0, false),
+    SCENE("courier-count-few", "couriers", "beacon, 2-4 count bucket", 0, false),
+    SCENE("courier-count-many", "couriers", "beacon, 5+ count bucket", 0, false),
 #endif
 };
 
@@ -105,6 +116,15 @@ static uint8_t seed_for_personality(uint8_t want) {
     for (int s = 0; s < 256; s++)
         if (m12_resident_personality((uint8_t)s, true) == want) return (uint8_t)s;
     return 0;
+}
+
+// --- Wave 6 couriers ---
+// Drive the courier scenarios through the real derivation engine, then pack the
+// result into shared_pres exactly as the master would relay it (D1/§11.3).
+static void set_courier(duel_render_t *r, uint8_t category, uint8_t count,
+                        uint8_t age, bool persistent) {
+    r->shared_pres = m12_visitor_shared_pres(
+        m12_visitor_derive(r->seed, r->civic_phase, category, count, age, persistent));
 }
 #endif
 
@@ -256,6 +276,42 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         w.wiz[SIM_SIDE_L].pose = POSE_CAST;
         w.wiz[SIM_SIDE_L].cast_windup = 3;
         w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+    // --- Wave 6 couriers --- (all on a shared COMMONS/seed/phase base so the
+    // courier itself is the only difference between the pairs).
+    } else if (strncmp(name, "courier-", 8) == 0) {
+        r->civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                                   DUEL_M12_INTENSITY_CALM);
+        r->seed = 42; r->civic_phase = 48;
+        if (strcmp(name, "courier-messenger") == 0) {
+            // communication, 1, pending -> messenger / left / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 1, false);
+        } else if (strcmp(name, "courier-parcel") == 0) {
+            // transfer, 1, pending -> parcel / right / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, false);
+        } else if (strcmp(name, "courier-beacon") == 0) {
+            // system, 1, pending -> beacon / right / WAITING / single
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 1, 1, false);
+        } else if (strcmp(name, "courier-sentinel") == 0) {
+            // persistent security, 2, old -> sentinel / left / AGING / few
+            set_courier(r, DUEL_HOST_CATEGORY_SECURITY, 2, 4, true);
+        } else if (strcmp(name, "courier-arriving") == 0) {
+            // communication, 1, new -> messenger / left / ARRIVING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 0, false);
+        } else if (strcmp(name, "courier-aging") == 0) {
+            // transfer, 3, old -> parcel / right / AGING / few
+            set_courier(r, DUEL_HOST_CATEGORY_TRANSFER, 3, 5, false);
+        } else if (strcmp(name, "courier-resolving") == 0) {
+            // communication, 1, dismissed -> messenger / left / RESOLVING / single
+            set_courier(r, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 7, false);
+        } else if (strcmp(name, "courier-count-few") == 0) {
+            // system, 4 -> beacon / right / WAITING / few
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 4, 1, false);
+        } else if (strcmp(name, "courier-count-many") == 0) {
+            // system, 15 -> beacon / right / WAITING / many
+            set_courier(r, DUEL_HOST_CATEGORY_SYSTEM, 15, 1, false);
+        } else {
+            return false;
+        }
 #endif
     } else {
         return false;

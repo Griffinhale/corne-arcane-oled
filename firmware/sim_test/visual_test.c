@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "duel_courier.h"
 #include "duel_host.h"
 #include "duel_sim.h"
 #include "scenarios.h"
@@ -225,6 +226,84 @@ static void test_m12_floor_and_resident(void) {
 #endif
 }
 
+// --- Wave 6 couriers ---
+static void test_m12_courier_band_and_city(void) {
+#ifdef ARCANE_M12
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
+    r.seed = 42;
+    r.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL,
+                              DUEL_M12_INTENSITY_CALM);
+    r.civic_phase = 48;
+
+    // Baseline: no courier assigned (COURIER_NONE), both halves are floor-only.
+    r.shared_pres = 0;
+    duel_fb_t base_l, base_r;
+    render_direct(&base_l, &r, true, 0, false);
+    render_direct(&base_r, &r, false, 0, false);
+
+    // A courier assigned to one city must appear ONLY on that half and ONLY
+    // inside the floor band (y61-110); the other half stays byte-identical to
+    // the floor-only baseline. Sweep every lifecycle and each courier form.
+    static const uint8_t right_kind[4] = {
+        DUEL_M12_COURIER_PARCEL, DUEL_M12_COURIER_BEACON,
+        DUEL_M12_COURIER_SENTINEL, DUEL_M12_COURIER_PARCEL };
+    bool city_isolated = true, in_band = true, drawn = true;
+    for (uint8_t life = 0; life < 4; life++) {
+        duel_fb_t cl, cr;
+
+        // Left city: the messenger draws on the left only.
+        r.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0u, life);
+        render_direct(&cl, &r, true, 0, false);
+        render_direct(&cr, &r, false, 0, false);
+        city_isolated &= memcmp(cr.bits, base_r.bits, sizeof cr.bits) == 0;
+        bool diff = false;
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cl, x, y) != duel_fb_get(&base_l, x, y)) {
+                    diff = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        drawn &= diff;
+
+        // Right city: parcel / beacon / sentinel draw on the right only.
+        r.shared_pres = DUEL_VISITOR_PACK(right_kind[life], 1u, life);
+        render_direct(&cl, &r, true, 0, false);
+        render_direct(&cr, &r, false, 0, false);
+        city_isolated &= memcmp(cl.bits, base_l.bits, sizeof cl.bits) == 0;
+        diff = false;
+        for (int y = 0; y < DUEL_CANVAS_H; y++)
+            for (int x = 0; x < DUEL_CANVAS_W; x++)
+                if (duel_fb_get(&cr, x, y) != duel_fb_get(&base_r, x, y)) {
+                    diff = true;
+                    if (y < 61 || y > 110) in_band = false;
+                }
+        drawn &= diff;
+    }
+    VCHECK(city_isolated, "visual_m12_courier_assigned_city_only");
+    VCHECK(in_band && drawn, "visual_m12_courier_within_floor_band");
+
+    // Routing sanity: derivation lands each category on the intended form/city
+    // (§11.3), with persistent/security overriding to a stationed sentinel.
+    m12_visitor_state_t comm = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_COMMUNICATION, 1, 1, false);
+    m12_visitor_state_t xfer = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, false);
+    m12_visitor_state_t sys  = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_SYSTEM, 1, 1, false);
+    m12_visitor_state_t sec  = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_SECURITY, 1, 1, false);
+    m12_visitor_state_t pers = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_TRANSFER, 1, 1, true);
+    m12_visitor_state_t none = m12_visitor_derive(42, 48, DUEL_HOST_CATEGORY_COMMUNICATION, 0, 1, false);
+    bool routing =
+        DUEL_VISITOR_STATE_KIND(comm) == DUEL_M12_COURIER_MESSENGER && DUEL_VISITOR_STATE_CITY(comm) == 0u &&
+        DUEL_VISITOR_STATE_KIND(xfer) == DUEL_M12_COURIER_PARCEL    && DUEL_VISITOR_STATE_CITY(xfer) == 1u &&
+        DUEL_VISITOR_STATE_KIND(sys)  == DUEL_M12_COURIER_BEACON    && DUEL_VISITOR_STATE_CITY(sys)  == 1u &&
+        DUEL_VISITOR_STATE_KIND(sec)  == DUEL_M12_COURIER_SENTINEL  && DUEL_VISITOR_STATE_CITY(sec)  == 0u &&
+        DUEL_VISITOR_STATE_KIND(pers) == DUEL_M12_COURIER_SENTINEL  && DUEL_VISITOR_STATE_CITY(pers) == 1u &&
+        DUEL_VISITOR_STATE_KIND(none) == DUEL_M12_COURIER_NONE;
+    VCHECK(routing, "visual_m12_courier_category_routing");
+#endif
+}
+
 static void test_precedence_and_alert_grammar(void) {
     duel_fb_t alert_impact_l, alert_impact_r, stack_l, stack_r;
     const duel_scenario_t *impact = duel_scenario_find("alert-impact");
@@ -293,6 +372,7 @@ int main(int argc, char **argv) {
     test_archive_continuity_and_variation();
     test_isolation_and_restoration();
     test_m12_floor_and_resident();
+    test_m12_courier_band_and_city();
     test_precedence_and_alert_grammar();
     VCHECK(exact_hashes(path, write), "visual_exact_framebuffer_hashes");
     if (failures) { printf("%d visual test(s) FAILED\n", failures); return 1; }
