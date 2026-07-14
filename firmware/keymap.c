@@ -426,8 +426,6 @@ void housekeeping_task_user(void) {
 // drawing the default layer/keylog + logo).
 bool oled_task_user(void) {
     static duel_fb_t fb;
-    static duel_fb_t last_fb;
-    static bool      last_fb_valid;
     static uint32_t  frame;
     static uint32_t  last_render_ms;
     static uint8_t   applied_phase = 0xFF;
@@ -442,7 +440,6 @@ bool oled_task_user(void) {
     bool phase_changed = applied_phase != (uint8_t)duel_display.phase;
     if (phase_changed) {
         applied_phase = (uint8_t)duel_display.phase;
-        last_fb_valid = false;
         if (duel_display.phase == DUEL_DISPLAY_SLEEP) {
             // Stop animation first, then explicitly commit a black framebuffer
             // before removing panel power. The ordinary OLED task sees no new
@@ -494,20 +491,10 @@ bool oled_task_user(void) {
 
     duel_fb_clear(&fb);
     wiz_draw_scene(&fb, &duel_render, is_keyboard_left(), frame++, hud);
-    if (last_fb_valid && memcmp(&fb, &last_fb, sizeof fb) == 0) {
-#ifdef ARCANE_DIAGNOSTICS
-        duel_diag_peak(&duel_diag.peak_render_blit_us, time_us_32() - diag_render_start_us);
-#endif
-        return false;
-    }
-    oled_clear();
-    for (int y = 0; y < DUEL_CANVAS_H; y++) {
-        for (int x = 0; x < DUEL_CANVAS_W; x++) {
-            if (duel_fb_get(&fb, x, y)) oled_write_pixel((uint8_t)x, (uint8_t)y, true);
-        }
-    }
-    last_fb = fb;
-    last_fb_valid = true;
+    // duel_fb_t is already in QMK's page-major layout. The OLED driver compares
+    // these bytes with its own buffer and dirties only changed transfer blocks.
+    oled_set_cursor(0, 0);
+    oled_write_raw((const char *)fb.bits, sizeof fb.bits);
 #ifdef ARCANE_DIAGNOSTICS
     duel_diag_peak(&duel_diag.peak_render_blit_us, time_us_32() - diag_render_start_us);
 #endif

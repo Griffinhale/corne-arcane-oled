@@ -47,7 +47,8 @@ typedef enum {
     DUEL_LAYER_DIAGNOSTICS,
 } duel_render_layer_t;
 
-// 1bpp framebuffer, bit index = y * DUEL_CANVAS_W + x. 512 bytes.
+// 1bpp framebuffer in QMK's native page-major OLED layout. Each byte is one
+// vertical 8-pixel column: index = x + (y >> 3) * width, bit = y & 7.
 typedef struct {
     uint8_t bits[DUEL_CANVAS_W * DUEL_CANVAS_H / 8];
 } duel_fb_t;

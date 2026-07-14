@@ -105,6 +105,29 @@ static void t0_fb_roundtrip(void) {
     CHECK(ok, "t0_fb_roundtrip");
 }
 
+static void t0_fb_qmk_page_layout(void) {
+    duel_fb_t fb;
+    duel_fb_clear(&fb);
+    uint8_t expected[sizeof fb.bits] = {0};
+    bool ok = sizeof fb.bits == 512;
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            bool on = ((x * 5 + y * 3) % 17) < 4;
+            if (!on) continue;
+            duel_fb_px(&fb, x, y, true);
+            expected[x + (y >> 3) * DUEL_CANVAS_W] |= (uint8_t)(1u << (y & 7));
+        }
+    }
+    ok &= memcmp(fb.bits, expected, sizeof expected) == 0;
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            bool on = ((x * 5 + y * 3) % 17) < 4;
+            ok &= duel_fb_get(&fb, x, y) == on;
+        }
+    }
+    CHECK(ok, "t0_fb_qmk_page_layout");
+}
+
 static void t0_draw_deterministic(void) {
     duel_fb_t a, b;
     duel_fb_clear(&a);
@@ -2324,6 +2347,7 @@ int main(int argc, char **argv) {
     g_golden_dir = argv[argi + 1];
 
     t0_fb_roundtrip();
+    t0_fb_qmk_page_layout();
     t0_draw_deterministic();
     t0_trace_parse();
 
