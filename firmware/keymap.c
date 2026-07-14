@@ -419,7 +419,11 @@ static void duel_master_tx(bool urgent) {
                             pkt.external != duel_last_tx.external ||
                             pkt.alert != duel_last_tx.alert ||
                             pkt.flags != duel_last_tx.flags;
-    uint32_t since_tx = timer_elapsed32(duel_last_tx_ms);
+    // Measure cadence start-to-start. Recording completion would add the
+    // blocking split transaction itself (~3 ms on RP2040) to the threshold;
+    // with a 40 ms sim tick that pushed an intended 80 ms send to 120 ms.
+    uint32_t tx_started_ms = timer_read32();
+    uint32_t since_tx = tx_started_ms - duel_last_tx_ms;
     if (!urgent && !fx_changed) {
         if (semantic_changed && duel_have_tx && since_tx < DUEL_ACTIVE_TX_MS) return;
         if (!semantic_changed && duel_have_tx && since_tx < DUEL_REPAIR_TX_MS) return;
@@ -446,7 +450,7 @@ static void duel_master_tx(bool urgent) {
 #endif
     if (sent) {
         duel_fx_sent = duel_world.fx_seq;
-        duel_last_tx_ms = timer_read32();
+        duel_last_tx_ms = tx_started_ms;
         duel_last_tx = pkt;
         duel_have_tx = true;
     }
@@ -545,7 +549,13 @@ void housekeeping_task_user(void) {
     bool render_invalid = duel_render_invalid;
     duel_render_invalid = false;
     if (is_keyboard_master()) {
-        if (ticked || display_changed || host_changed)
+        // The 250 ms repair deadline is not an integer multiple of the 40 ms
+        // sim tick. Check it directly so an idle link repairs at 250 ms rather
+        // than waiting for the 280 ms tick; this remains a cheap time read and
+        // avoids encoding/render work until the deadline is actually due.
+        bool repair_due = duel_have_tx &&
+                          timer_elapsed32(duel_last_tx_ms) >= DUEL_REPAIR_TX_MS;
+        if (ticked || display_changed || host_changed || repair_due)
             duel_master_tx(display_changed || host_changed);
         if (ticked || display_changed || host_changed || render_invalid) {
             duel_render_from_world(&duel_render, &duel_world);

@@ -47,9 +47,10 @@ M11.5 adds the exact 18-byte `duel_view_t` shared by world projection,
 transport, and rendering; an absolute CRC-protected v8 split packet of 27 bytes;
 an 18-byte packed edge queue; cached-row/one-drain catch-up processing; packed
 host context; semantic render suppression; and diagnostic-only reverse split
-telemetry. Active changes transmit within 80 ms and static repair snapshots
-default to 250 ms; `ARCANE_FIXED_SPLIT_CADENCE=yes` restores an 80 ms repair
-heartbeat for the physical A/B gate. The release build is 49,904 flash bytes,
+telemetry. Active changes transmit within 80 ms start-to-start and static repair
+checks use an exact 250 ms deadline independent of the 40 ms sim tick;
+`ARCANE_FIXED_SPLIT_CADENCE=yes` restores an 80 ms repair heartbeat for the
+physical A/B gate. The release build is 49,944 flash bytes,
 3,576 bytes `.data`, and 9,604 bytes `.bss`. `sim_world_t` remains 56 bytes,
 all deterministic world and exact visual hashes remain unchanged, and Raw HID
 remains v2/32 bytes. A prior v8 diagnostic pair passed the behavioral hardware
