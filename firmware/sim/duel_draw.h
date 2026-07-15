@@ -170,6 +170,21 @@ enum {
 #define DUEL_EVENT_PHASE(v)  ((uint8_t)(((v) >> 3) & 3u))
 #define DUEL_EVENT_TARGET(v) ((uint8_t)(((v) >> 5) & 3u))
 
+#ifdef ARCANE_M13
+/* While an authoritative aftermath is active, M13 temporarily owns the two
+ * existing M12 coordination bytes. bit7 of revision is the discriminator;
+ * ordinary courier/rare-event semantics resume automatically when it clears. */
+#    define M13_AFTERMATH_WIRE       0x80u
+#    define M13_AFTER_KIND(v, side)  ((uint8_t)(((v) >> ((side) * 3u)) & 7u))
+#    define M13_AFTER_WORLD(v)       ((uint8_t)(((v) >> 6) & 3u))
+#    define M13_AFTER_PHASE(v, side) ((uint8_t)(((v) >> ((side) * 2u)) & 3u))
+#    define M13_FLOOR_TRANSITION_PACK(source, phase, active) \
+        ((uint8_t)(((source) & 3u) | (((phase) & 3u) << 2) | ((active) ? 0x10u : 0u)))
+#    define M13_FLOOR_TRANSITION_SOURCE(v) ((uint8_t)((v) & 3u))
+#    define M13_FLOOR_TRANSITION_PHASE(v)  ((uint8_t)(((v) >> 2) & 3u))
+#    define M13_FLOOR_TRANSITION_ACTIVE(v) (((v) & 0x10u) != 0u)
+#endif
+
 // Everything the renderer needs for one frame: a stable world snapshot plus
 // presentation-only state the glue layer maintains (never fed back to the sim).
 typedef struct {
@@ -196,12 +211,15 @@ typedef struct {
     // memcmp gate therefore only advances when civic_phase advances (plan §2 D3).
     uint8_t     seed;         // session-persistent presentation seed
     uint8_t     civic_phase;  // coarse civic-tick counter (NOT w.tick, NOT frame)
+#ifdef ARCANE_M13
+    uint8_t     floor_transition; // source[2], phase[2], active[1]; target is civic
+#endif
 #endif
 } duel_render_t;
 
 #define DUEL_RENDER_STALE 0x01u
 #ifdef ARCANE_M12
-_Static_assert(sizeof(duel_render_t) <= 36, "M12 render state stays within one compact block");
+_Static_assert(sizeof(duel_render_t) <= 38, "civic render state stays within one compact block");
 #else
 _Static_assert(sizeof(duel_render_t) <= 32, "render state must remain compact");
 #endif
@@ -214,6 +232,13 @@ void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 // physical desk gap (~25 % of the flight is deliberately invisible).
 // Returns false when u is not on this canvas.
 bool duel_battlefield_to_x(uint8_t u, bool is_left, int *x);
+
+#ifdef ARCANE_M13
+/* Pure carrier grammar used by the full scene and bilateral temporal tests. */
+void m13_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
+                    uint8_t caster_side, uint8_t variant, bool is_left,
+                    uint32_t frame);
+#endif
 
 // Renders one half's full scene from a render snapshot. Presentation-only
 // cosmetics key off `frame` (the render frame counter), never off w.tick,

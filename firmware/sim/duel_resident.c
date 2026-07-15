@@ -75,6 +75,9 @@ m12_resident_t m12_resident_derive(uint8_t seed, bool is_left, uint8_t floor,
     if (mode == DUEL_M12_MODE_QUIET) res.action = quiet_remap(res.action);
     res.station  = res.action; // one fixed station per action kind
     res.progress = (uint8_t)(phase % DUEL_M12_ACTION_SLOT);
+#ifdef ARCANE_M13
+    res.task = RESIDENT_NORMAL;
+#endif
     return res;
 }
 
@@ -212,6 +215,54 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
         default:
             break;
     }
+
+#ifdef ARCANE_M13
+    /* Aftermath task hats are deliberately bolder than personality marks: the
+     * same resident visibly changes jobs rather than being replaced by a
+     * generic reaction glyph. */
+    switch (res->task) {
+        case RESIDENT_CHEER:
+            duel_fb_px(fb, cx - 1, head_y - 2, true);
+            duel_fb_px(fb, cx, head_y - 4, true);
+            duel_fb_px(fb, cx + 1, head_y - 3, true);
+            break;
+        case RESIDENT_COMPLAIN:
+            duel_fb_px(fb, cx - 2, head_y - 2, true);
+            duel_fb_px(fb, cx - 1, head_y - 2, true);
+            duel_fb_px(fb, cx, head_y - 2, true);
+            duel_fb_px(fb, cx + 3 * gapward, head_y - 3, true);
+            break;
+        case RESIDENT_PANIC:
+            duel_fb_px(fb, cx, head_y - 3, true);
+            duel_fb_px(fb, cx, head_y - 5, true);
+            break;
+        case RESIDENT_FIGHT_FIRE:
+            for (int dx = -2; dx <= 2; dx++) duel_fb_px(fb, cx + dx, head_y - 2, true);
+            duel_fb_px(fb, cx - 1, head_y - 3, true);
+            duel_fb_px(fb, cx, head_y - 4, true);
+            duel_fb_px(fb, cx + 1, head_y - 3, true);
+            break;
+        case RESIDENT_INSPECT:
+            duel_fb_px(fb, cx - 1, head_y - 2, true);
+            duel_fb_px(fb, cx, head_y - 3, true);
+            duel_fb_px(fb, cx + 1, head_y - 2, true);
+            duel_fb_px(fb, cx + 2 * gapward, head_y, true);
+            break;
+        case RESIDENT_REPAIR:
+            for (int dx = -2; dx <= 2; dx++) duel_fb_px(fb, cx + dx, head_y - 2, true);
+            duel_fb_px(fb, cx - 1, head_y - 3, true);
+            duel_fb_px(fb, cx, head_y - 3, true);
+            duel_fb_px(fb, cx + 1, head_y - 3, true);
+            break;
+        case RESIDENT_WATCH_CAST:
+            duel_fb_px(fb, cx, head_y - 3, true);
+            duel_fb_px(fb, cx - 2, head_y - 5, true);
+            duel_fb_px(fb, cx + 2, head_y - 5, true);
+            break;
+        default:
+            break;
+    }
+#endif
 
     (void)mode; // QUIET already collapsed the action set in m12_resident_derive.
 #undef RZX

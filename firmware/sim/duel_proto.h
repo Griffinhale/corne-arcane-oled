@@ -6,10 +6,10 @@
  * state backward. Hardware-agnostic (no QMK includes) so the host harness
  * replays loss/duplication/reordering with exactly the firmware's code.
  *
- * Wire format notes: 27 bytes packed, under QMK's 32-byte
- * RPC_M2S_BUFFER_SIZE. Both halves (and the test hosts we care about) are
- * little-endian, so the struct ships as raw bytes. The serial protocol only
- * checksums its own framing, hence our CRC over the payload.
+ * Wire format notes: v8 is 27 bytes; M12 extends it to 31 bytes; M13 v10 uses
+ * the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves (and the test hosts we
+ * care about) are little-endian, so the struct ships as raw bytes. The serial
+ * protocol only checksums its own framing, hence our CRC over the payload.
  */
 #pragma once
 
@@ -20,11 +20,15 @@
 #include "duel_view.h"
 
 #define DUEL_MAGIC 0xA7
-#define DUEL_VER   8
+#ifdef ARCANE_M13
+#    define DUEL_VER 10
+#else
+#    define DUEL_VER 8
+#endif
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase.
 // Display phase remains explicit while the unused bits stay reserved for a
-// reviewed future allocation; v8 receivers reject every other version.
+// reviewed future allocation; each receiver rejects every other version.
 #define DUEL_FLAGS_WORLD_VALID 0x01u
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
@@ -39,11 +43,13 @@ typedef struct __attribute__((packed)) {
     uint8_t  external;     /* M8: absolute disposable host context; see duel_host.h */
     uint8_t  alert;        /* M10: packed category, priority, and age */
 #ifdef ARCANE_M12
-    /* M12 Twin Cities: absolute civic presentation relayed master->slave. All
+    /* M12 Twin Cities: absolute civic presentation relayed master->slave. M13
+     * temporarily reuses shared_pres/revision for bounded authoritative
+     * aftermath while its marker bit is set. All
      * four bytes are CRC-covered (the checksum spans offsetof(crc)), so a
      * corrupted civic byte is caught exactly like the combat view. See
      * duel_host.h for the DUEL_CIVIC / DUEL_SECONDARY bit layouts; the master
-     * writes them via duel_snapshot_set_civic. Release stays 27 bytes. */
+     * writes them via duel_snapshot_set_civic. */
     uint8_t  civic;        /* DUEL_CIVIC_* : floor, mode, host intensity */
     uint8_t  secondary;    /* DUEL_SECONDARY_* : one supporting activity channel */
     uint8_t  shared_pres;  /* shared rare-event id/phase + visitor assignment */
@@ -52,7 +58,10 @@ typedef struct __attribute__((packed)) {
     uint8_t  crc;          /* duel_crc8 over the preceding bytes (offsetof(crc)) */
 } duel_snapshot_t;
 
-#ifdef ARCANE_M12
+#ifdef ARCANE_M13
+_Static_assert(sizeof(duel_snapshot_t) == 32,
+               "M13 v10 snapshot must consume exactly one 32-byte RPC packet");
+#elif defined(ARCANE_M12)
 _Static_assert(sizeof(duel_snapshot_t) == 31,
                "M12 snapshot adds four civic bytes, one RPC byte reserved");
 #else

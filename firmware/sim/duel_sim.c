@@ -30,6 +30,7 @@ void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick) {
     w->wiz[1].regen_ticks = SIM_REGEN_TICKS;
 }
 
+#ifndef ARCANE_M13
 static void wiz_step(sim_wizard_t *wz, bool down, bool was_down) {
     bool rising = down && !was_down;
     switch (wz->pose) {
@@ -352,3 +353,4 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
     w->prev_down_mask = in.down_mask;
     w->tick++;
 }
+#endif /* !ARCANE_M13 */

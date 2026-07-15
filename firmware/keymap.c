@@ -69,6 +69,9 @@ typedef struct {
     uint32_t peak_split_tx_us;
     uint16_t split_tx_success;
     uint16_t split_tx_failure;
+#ifdef ARCANE_M13
+    uint16_t stack_min_free_bytes;
+#endif
 } duel_diag_t;
 
 // Intentionally non-static: a debugger or map-file budget pass can inspect it
@@ -85,6 +88,26 @@ static void duel_diag_peak(volatile uint32_t *peak, uint32_t elapsed) {
 static uint16_t duel_diag_u16(uint32_t value) {
     return value > UINT16_MAX ? UINT16_MAX : (uint16_t)value;
 }
+
+/* ChibiOS diagnostic builds fill each working area with 0x55. Sampling the
+ * untouched prefix of the current main-thread stack records a true high-water
+ * minimum without adding any release work or relying on a large stack local.
+ * The non-static field is debugger/map-visible; Raw HID v2 remains unchanged. */
+#ifdef ARCANE_M13
+static void duel_diag_stack_sample(void) {
+    thread_t *thread = chThdGetSelfX();
+    uint8_t *scan = (uint8_t *)chThdGetWorkingAreaX(thread) + sizeof(thread_t);
+    uint8_t marker;
+    uint8_t *limit = &marker;
+    uint16_t free_bytes = 0;
+    while (scan < limit && *scan == CH_DBG_STACK_FILL_VALUE && free_bytes < UINT16_MAX) {
+        scan++;
+        free_bytes++;
+    }
+    if (!duel_diag.stack_min_free_bytes || free_bytes < duel_diag.stack_min_free_bytes)
+        duel_diag.stack_min_free_bytes = free_bytes;
+}
+#endif
 #endif
 
 static void duel_note_physical_key(void) {
@@ -380,6 +403,25 @@ static sim_inputs_t duel_sample_inputs(void) {
         if (duel_rows[r]) { in.down_mask |= 1 << SIM_SIDE_R; break; }
     }
     in.scry_mask = duel_sample_scry();
+#ifdef ARCANE_M13
+    bool layer_l = (duel_rows[SCRY_KEY_L_ROW] & ((matrix_row_t)1u << SCRY_KEY_L_COL)) != 0;
+    bool layer_r = (duel_rows[SCRY_KEY_R_ROW] & ((matrix_row_t)1u << SCRY_KEY_R_COL)) != 0;
+    for (uint8_t side = 0; side < 2; side++) {
+        uint8_t row0 = side == SIM_SIDE_L ? 0u : DUEL_ROWS_PER_HAND;
+        for (uint8_t row = 0; row < DUEL_ROWS_PER_HAND; row++) {
+            matrix_row_t held = duel_rows[row0 + row];
+            for (uint8_t col = 0; col < 6u; col++)
+                if (held & ((matrix_row_t)1u << col))
+                    in.held_pos[side] |= (uint32_t)1u << (row * 6u + col);
+        }
+        /* Spell layers are physical per-half ingredients, not the global QMK
+         * layer selected for host output. A lone thumb therefore influences
+         * only its wizard; the deliberate two-thumb chord is layer 3 for both. */
+        in.layer[side] = layer_l && layer_r ? 3u :
+                         side == SIM_SIDE_L && layer_l ? 1u :
+                         side == SIM_SIDE_R && layer_r ? 2u : 0u;
+    }
+#endif
     return in;
 }
 
@@ -412,6 +454,36 @@ static bool duel_have_tx;
 // revision bytes so both halves render the same courier and event.
 static uint8_t duel_m12_shared_pres;
 static uint8_t duel_m12_revision;
+#ifdef ARCANE_M13
+#    define DUEL_FLOOR_TRANSITION_MS 600u
+#    define DUEL_FLOOR_PHASE_MS      150u
+static uint8_t duel_floor_target;
+static uint8_t duel_floor_source;
+static uint32_t duel_floor_started_ms;
+static bool duel_floor_initialized;
+static bool duel_floor_active;
+
+static void duel_floor_note_target(uint8_t civic, uint32_t now) {
+    uint8_t target = DUEL_CIVIC_FLOOR(civic);
+    if (target == DUEL_M12_FLOOR_SPECIAL) return; /* reserved */
+    if (!duel_floor_initialized) {
+        duel_floor_target = duel_floor_source = target;
+        duel_floor_initialized = true;
+        return;
+    }
+    if (target == duel_floor_target) return;
+    /* A rapid change always departs from the latest authoritative target; no
+     * transition is queued behind an animation already in flight. */
+    duel_floor_source = duel_floor_target;
+    duel_floor_target = target;
+    if (duel_display.phase == DUEL_DISPLAY_SLEEP) {
+        duel_floor_active = false; /* sleeping panels snap on their next wake */
+    } else {
+        duel_floor_started_ms = now;
+        duel_floor_active = true;
+    }
+}
+#endif
 
 static void duel_m12_update_shared(uint32_t now) {
 #ifdef ARCANE_HOST_ENABLE
@@ -435,6 +507,16 @@ static void duel_m12_update_shared(uint32_t now) {
                     duel_world.wiz[SIM_SIDE_L].life == LIFE_ACTIVE &&
                     duel_world.wiz[SIM_SIDE_R].life == LIFE_ACTIVE;
     duel_m12_revision = m12_event_revision(m12_event_derive(duel_session, phase, eligible));
+#ifdef ARCANE_M13
+    /* Lasting spell aftermath temporarily takes precedence over disposable
+     * courier/rare-event coordination. The marker bit lets the renderer select
+     * the M13 interpretation; ordinary M12 presentation resumes at expiry. */
+    uint8_t aftermath_revision = m13_aftermath_revision(&duel_world);
+    if (aftermath_revision & M13_AFTERMATH_WIRE) {
+        duel_m12_shared_pres = m13_aftermath_shared(&duel_world);
+        duel_m12_revision = aftermath_revision;
+    }
+#endif
 }
 #endif
 
@@ -554,6 +636,9 @@ static void duel_render_set_external(uint8_t external, uint8_t alert) {
 #ifdef ARCANE_M12
 static void duel_render_set_civic(uint8_t civic, uint8_t secondary,
                                   uint8_t shared_pres, uint8_t revision) {
+#ifdef ARCANE_M13
+    duel_floor_note_target(civic, timer_read32());
+#endif
     duel_render.civic = civic;
     duel_render.secondary = secondary;
     duel_render.shared_pres = shared_pres;
@@ -702,6 +787,9 @@ void housekeeping_task_user(void) {
         }
     }
 #ifdef ARCANE_DIAGNOSTICS
+#ifdef ARCANE_M13
+    duel_diag_stack_sample();
+#endif
     duel_render.diag_tick = (uint8_t)(duel_world.tick % 25u);
     duel_render.diag_overflow = duel_world.overflow_count;
     duel_diag_peak(&duel_diag.peak_housekeeping_us, time_us_32() - diag_start_us);
@@ -779,8 +867,18 @@ bool oled_task_user(void) {
     // cadence merely samples them instead of stretching their duration.
     if (duel_render.view.fx_seq != seen_fx_seq) {
         seen_fx_seq  = duel_render.view.fx_seq;
+#ifdef ARCANE_M13
+        flash_kind   = duel_render.view.outcome_overlay & 0x0fu;
+#else
         flash_kind   = duel_render.view.fx_kind;
+#endif
+#ifdef ARCANE_M13
+        bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L ||
+                             flash_kind == FX_FIZZLE_L || flash_kind == FX_HEAL_L ||
+                             flash_kind == FX_WARD_SHATTER_L;
+#else
         bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L || flash_kind == FX_FIZZLE_L;
+#endif
         flash_spell_kind = last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
         // Impacts linger longer than deflects/fizzles so a hit really lands.
         bool imp = flash_kind == FX_IMPACT_L || flash_kind == FX_IMPACT_R;
@@ -806,6 +904,15 @@ bool oled_task_user(void) {
     // half derives its own resident — so it is deliberately not on the wire.
     duel_render.seed = is_keyboard_master() ? duel_session : duel_rx.last.session;
     duel_render.civic_phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);
+#ifdef ARCANE_M13
+    if (duel_floor_active &&
+        timer_elapsed32(duel_floor_started_ms) >= DUEL_FLOOR_TRANSITION_MS)
+        duel_floor_active = false;
+    uint8_t floor_phase = duel_floor_active ?
+        (uint8_t)(timer_elapsed32(duel_floor_started_ms) / DUEL_FLOOR_PHASE_MS) : 0u;
+    duel_render.floor_transition = M13_FLOOR_TRANSITION_PACK(
+        duel_floor_source, floor_phase, duel_floor_active);
+#endif
 #endif
 
     bool semantic_changed = !have_composed ||

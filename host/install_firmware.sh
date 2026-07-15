@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Materialize the M11.5 firmware candidate as the isolated host keymap.
+# Materialize the current M13 source as the isolated Vial-free host keymap.
 set -eu
 root="$(cd "$(dirname "$0")/.." && pwd)"
 src="$root/firmware"
@@ -16,4 +16,4 @@ rsync -a --delete \
     --exclude '*.o' --exclude '*.uf2' \
     "$src/" "$dst/"
 cp "$root/host/firmware/rules.mk" "$dst/rules.mk"
-echo "installed M11.5 release candidate firmware -> $dst"
+echo "installed M13 current-source firmware -> $dst"

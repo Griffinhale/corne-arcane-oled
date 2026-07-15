@@ -15,6 +15,10 @@
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world) {
     duel_view_from_world(world, &render->view);
+#ifdef ARCANE_M13
+    render->shared_pres = m13_aftermath_shared(world);
+    render->revision = m13_aftermath_revision(world);
+#endif
 }
 
 static uint8_t render_host(const duel_render_t *render) {
@@ -191,6 +195,7 @@ static void floor_dome(duel_fb_t *fb, int lo, int hi, int top_y) {
 // room" from across the desk and fills the otherwise-dead upper-outer void.
 // Astral arches its crown and carries a lone centre mullion (curves); mechanical
 // squares it with a full cross of mullions (four panes).
+#ifndef ARCANE_M13
 static void floor_window(duel_fb_t *fb, int x0, int x1, int y0, int y1, bool is_left) {
     int cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     archive_rect(fb, x0, y0, x1, y1);
@@ -267,6 +272,162 @@ static void draw_floor_anchors(duel_fb_t *fb, uint8_t floor, bool is_left) {
     }
 #undef FLR_X
 }
+#endif
+
+#ifdef ARCANE_M13
+/* Occupation-first M13 furniture. Each floor owns two large silhouettes and
+ * uses the same work/inspect/rest anchors as the resident engine: x~6 for the
+ * dominant work object, x~21 for its supporting station, and x~4 for rest. */
+static void draw_floor_occupation(duel_fb_t *fb, uint8_t floor, bool is_left) {
+#define OX(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
+#define ORECT(x0, y0, x1, y1) do { \
+    int a_ = OX(x0), b_ = OX(x1); \
+    archive_rect(fb, a_ < b_ ? a_ : b_, (y0), a_ < b_ ? b_ : a_, (y1)); \
+} while (0)
+    if (floor == DUEL_M12_FLOOR_COMMONS) {
+        /* Communal table / dispatch desk: the broadest horizontal mass. */
+        wiz_hspan(fb, OX(3) < OX(19) ? OX(3) : OX(19),
+                  OX(3) < OX(19) ? OX(19) : OX(3), 96);
+        wiz_hspan(fb, OX(3) < OX(19) ? OX(3) : OX(19),
+                  OX(3) < OX(19) ? OX(19) : OX(3), 97);
+        for (int y = 98; y <= 105; y++) {
+            duel_fb_px(fb, OX(5), y, true); duel_fb_px(fb, OX(17), y, true);
+        }
+        /* Notice/mail board, deliberately tall and gap-side. */
+        ORECT(21, 69, 29, 91);
+        if (is_left) {
+            floor_dome(fb, OX(21), OX(29), 66); /* arched notice board */
+            for (int y = 75; y <= 87; y += 6) {
+                wiz_hspan(fb, OX(23), OX(27), y);
+                duel_fb_px(fb, OX(22), y - 2, true);
+            }
+            floor_dome(fb, OX(8), OX(14), 88); /* tea-orb stand */
+            for (int y = 91; y <= 95; y++) duel_fb_px(fb, OX(11), y, true);
+            duel_fb_px(fb, OX(9), 94, true); duel_fb_px(fb, OX(13), 93, true);
+        } else {
+            /* Dispatch cubbies and clock. */
+            for (int y = 75; y <= 87; y += 6) wiz_hspan(fb, OX(22), OX(28), y);
+            for (int x = 24; x <= 27; x += 3)
+                for (int y = 70; y <= 90; y++) duel_fb_px(fb, OX(x), y, true);
+            floor_gear(fb, OX(11), 90, 3);
+            duel_fb_px(fb, OX(11), 87, true); duel_fb_px(fb, OX(13), 90, true);
+            for (int x = 7; x <= 15; x += 4)
+                for (int y = 99; y <= 103; y++) duel_fb_px(fb, OX(x), y, true);
+        }
+    } else if (floor == DUEL_M12_FLOOR_RESEARCH) {
+        /* Dominant telescope/analyzer, an unmistakable rising diagonal. */
+        wiz_line(fb, OX(4), 98, OX(17), 76);
+        wiz_line(fb, OX(5), 100, OX(18), 78);
+        ORECT(13, 73, 20, 81);
+        for (int y = 99; y <= 105; y++) duel_fb_px(fb, OX(7), y, true);
+        wiz_line(fb, OX(7), 99, OX(3), 105);
+        wiz_line(fb, OX(7), 99, OX(12), 105);
+        /* Specimen cabinet/cylinder supporting the instrument. */
+        ORECT(21, 76, 29, 104);
+        wiz_hspan(fb, OX(21) < OX(29) ? OX(21) : OX(29),
+                  OX(21) < OX(29) ? OX(29) : OX(21), 90);
+        if (is_left) {
+            /* Orrery and star chart. */
+            floor_dome(fb, OX(2), OX(12), 65);
+            duel_fb_px(fb, OX(7), 68, true);
+            for (int x = 3; x <= 11; x += 2)
+                duel_fb_px(fb, OX(x), 70 + ((x * 3) & 7), true);
+            floor_dome(fb, OX(22), OX(28), 72);
+            duel_fb_px(fb, OX(25), 83, true);
+            duel_fb_px(fb, OX(23), 96, true); duel_fb_px(fb, OX(27), 98, true);
+        } else {
+            /* Probe, scope display, and specimen cylinder. */
+            ORECT(2, 65, 12, 78);
+            wiz_line(fb, OX(4), 75, OX(7), 69);
+            wiz_line(fb, OX(7), 69, OX(10), 74);
+            floor_gear(fb, OX(16), 84, 2);
+            for (int y = 79; y <= 101; y++) {
+                duel_fb_px(fb, OX(24), y, true); duel_fb_px(fb, OX(28), y, true);
+            }
+            wiz_hspan(fb, OX(24) < OX(28) ? OX(24) : OX(28),
+                      OX(24) < OX(28) ? OX(28) : OX(24), 99);
+            duel_fb_px(fb, OX(26), 94, true); duel_fb_px(fb, OX(25), 96, true);
+        }
+    } else if (floor == DUEL_M12_FLOOR_WORKSHOP) {
+        /* SPECIAL remains reserved and intentionally has no occupation art. */
+        /* Dominant forge: cauldron on astral, anvil/gear press on mechanical. */
+        if (is_left) {
+            floor_dome(fb, OX(3), OX(17), 90);
+            wiz_hspan(fb, OX(4), OX(16), 96);
+            for (int y = 97; y <= 103; y++) {
+                duel_fb_px(fb, OX(5), y, true); duel_fb_px(fb, OX(15), y, true);
+            }
+            for (int x = 7; x <= 13; x += 2)
+                duel_fb_px(fb, OX(x), 87 - ((x + 1) & 3), true);
+        } else {
+            wiz_hspan(fb, OX(3) < OX(18) ? OX(3) : OX(18),
+                      OX(3) < OX(18) ? OX(18) : OX(3), 94);
+            wiz_hspan(fb, OX(6) < OX(15) ? OX(6) : OX(15),
+                      OX(6) < OX(15) ? OX(15) : OX(6), 95);
+            wiz_line(fb, OX(9), 96, OX(7), 105);
+            wiz_line(fb, OX(13), 96, OX(15), 105);
+            floor_gear(fb, OX(11), 83, 4);
+            for (int y = 68; y <= 79; y++) duel_fb_px(fb, OX(11), y, true);
+            ORECT(7, 65, 15, 69); /* gear press crosshead */
+        }
+        /* Tool/reagent station and hoist/rack occupy the gap-side column. */
+        ORECT(21, 78, 29, 104);
+        for (int y = 84; y <= 100; y += 8)
+            wiz_hspan(fb, OX(22) < OX(28) ? OX(22) : OX(28),
+                      OX(22) < OX(28) ? OX(28) : OX(22), y);
+        if (is_left) {
+            floor_dome(fb, OX(21), OX(29), 74);
+            for (int x = 23; x <= 27; x += 2) {
+                duel_fb_px(fb, OX(x), 81, true); duel_fb_px(fb, OX(x), 82, true);
+            }
+        } else {
+            for (int y = 62; y <= 75; y++) duel_fb_px(fb, OX(25), y, true);
+            ORECT(23, 74, 27, 79);
+            duel_fb_px(fb, OX(25), 80, true); duel_fb_px(fb, OX(24), 81, true);
+            floor_gear(fb, OX(25), 94, 2);
+        }
+    }
+#undef ORECT
+#undef OX
+}
+
+static void draw_floor_transition(duel_fb_t *fb, const duel_render_t *r,
+                                  bool is_left) {
+    if (!M13_FLOOR_TRANSITION_ACTIVE(r->floor_transition)) return;
+    uint8_t phase = M13_FLOOR_TRANSITION_PHASE(r->floor_transition);
+    int inner = is_left ? 31 : 0;
+    if (phase == 0u) { /* source-room shutter */
+        for (int x = 1; x < 32; x += 4) {
+            int height = 12 + ((x + r->civic_phase) & 7);
+            for (int y = 62; y < 62 + height; y++) duel_fb_px(fb, x, y, true);
+            duel_fb_px(fb, x + 1, 62 + height, true);
+        }
+    } else if (phase == 1u) { /* full brick/elevator wipe */
+        for (int y = 62; y <= 110; y++)
+            for (int x = 0; x < 32; x++) duel_fb_px(fb, x, y, false);
+        for (int y = 62; y <= 110; y += 5) {
+            wiz_hspan(fb, 0, 31, y);
+            int offset = ((y / 5) & 1) ? 3 : 0;
+            for (int x = offset; x < 32; x += 7)
+                for (int dy = 1; dy < 5 && y + dy <= 110; dy++)
+                    duel_fb_px(fb, x, y + dy, true);
+        }
+        for (int y = 62; y <= 110; y++) duel_fb_px(fb, inner, y, true);
+    } else if (phase == 2u) { /* target-room reveal */
+        for (int y = 62; y <= 82; y++)
+            for (int x = 0; x < 32; x++) duel_fb_px(fb, x, y, false);
+        for (int y = 62; y <= 82; y += 5) wiz_hspan(fb, 0, 31, y);
+        for (int x = 2; x < 32; x += 6) duel_fb_px(fb, x, 84, true);
+    } else { /* settling dust / sparks */
+        for (int i = 0; i < 8; i++) {
+            int x = (i * 7 + r->seed) & 31;
+            int y = 68 + ((i * 11 + r->civic_phase) % 38);
+            duel_fb_px(fb, x, y, true);
+            if ((i & 2) == 0) duel_fb_px(fb, x + (is_left ? -1 : 1), y + 1, true);
+        }
+    }
+}
+#endif
 
 // M12 tower floor beneath the raised rooftop. A schematic cutaway room whose
 // OCCUPATION is chosen by the civic byte (DUEL_CIVIC_FLOOR): Commons/post,
@@ -280,18 +441,39 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 #define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
     uint8_t mode  = DUEL_CIVIC_MODE(r->civic);
+#ifdef ARCANE_M13
+    if (M13_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
+        M13_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
+        floor = M13_FLOOR_TRANSITION_SOURCE(r->floor_transition);
+#endif
     // The civic byte is authoritative for the occupation. Until the glue layer
     // (keymap) translates scene->civic in a later wave, bridge the legacy
     // scene channel: an online Archive scene with a default (Commons) civic byte
     // shows the Research floor, honouring the scene-driven world-test contract.
+#ifndef ARCANE_M13
     if (floor == DUEL_M12_FLOOR_COMMONS && render_host(r) &&
         render_scene(r) == DUEL_HOST_SCENE_ARCHIVE)
         floor = DUEL_M12_FLOOR_RESEARCH;
+#endif
 
     // Solid ceiling beam splitting the rooftop from the floor (both cities).
     // City character lives in the details below the beam, not the beam itself.
     for (int x = 0; x < DUEL_CANVAS_W; x++)
         duel_fb_px(fb, x, 61, true);
+#ifdef ARCANE_M13
+    if (r->revision & M13_AFTERMATH_WIRE) {
+        uint8_t world = M13_AFTER_WORLD(r->shared_pres);
+        if (world == WORLD_WONDER) {
+            for (int x = 2; x < DUEL_CANVAS_W; x += 5)
+                duel_fb_px(fb, x, 64 + (int)((x + r->civic_phase) & 3u), true);
+        } else if (world == WORLD_CRISIS) {
+            wiz_line(fb, FLR_X(12), 61, FLR_X(15), 66);
+            wiz_line(fb, FLR_X(15), 66, FLR_X(17), 63);
+        } else if (world == WORLD_RECOVERY) {
+            for (int x = 4; x < DUEL_CANVAS_W; x += 8) duel_fb_px(fb, x, 63, true);
+        }
+    }
+#endif
     if (is_left) {
         // A hanging astral arc under the beam near the gap.
         duel_fb_px(fb, FLR_X(28), 62, true);
@@ -325,6 +507,7 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     // Both are large, bold shapes chosen to read at desk distance (hardware
     // feedback: the old furniture was too thin/low to register). Authored in
     // desk space and mirrored per canvas.
+#ifndef ARCANE_M13
     int wa = FLR_X(2), wb = FLR_X(10);
     int wlo = wa < wb ? wa : wb, whi = wa < wb ? wb : wa;
     floor_window(fb, wlo, whi, 66, 84, is_left);
@@ -332,14 +515,103 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     // so a hanging fixture never swallows a courier's density tell, and clear of
     // the gap-side cabinet so the two don't stack up.
     floor_hanging(fb, FLR_X(15), is_left);
+#endif
 
     // Ground line of the room.
     wiz_hspan(fb, 0, DUEL_CANVAS_W - 1, 110);
 
     // Occupation furniture, then the session-seeded resident living among it.
+#ifdef ARCANE_M13
+    draw_floor_occupation(fb, floor, is_left);
+#else
     draw_floor_anchors(fb, floor, is_left);
+#endif
     m12_resident_t res = m12_resident_derive(r->seed, is_left, floor, mode, r->civic_phase);
+#ifdef ARCANE_M13
+    uint8_t after_kind = AFTER_NONE, after_phase = 0;
+    if (r->revision & M13_AFTERMATH_WIRE) {
+        uint8_t side = is_left ? SIM_SIDE_L : SIM_SIDE_R;
+        after_kind = M13_AFTER_KIND(r->shared_pres, side);
+        after_phase = M13_AFTER_PHASE(r->revision, side);
+        res.progress = (uint8_t)(after_phase * 4u + (r->civic_phase & 3u));
+        switch (after_kind) {
+            case AFTER_CHEER:
+                res.task = RESIDENT_CHEER; res.action = res.station = DUEL_M12_ACTION_REACT; break;
+            case AFTER_COMPLAINT:
+                res.task = RESIDENT_COMPLAIN; res.action = res.station = DUEL_M12_ACTION_REACT; break;
+            case AFTER_PANIC:
+                res.task = RESIDENT_PANIC; res.action = res.station =
+                    (after_phase & 1u) ? DUEL_M12_ACTION_WALK : DUEL_M12_ACTION_REACT; break;
+            case AFTER_FIRE:
+                if (after_phase == 0u) {
+                    res.task = RESIDENT_PANIC; res.action = res.station = DUEL_M12_ACTION_REACT;
+                } else if (after_phase < 3u) {
+                    res.task = RESIDENT_FIGHT_FIRE; res.action = res.station = DUEL_M12_ACTION_WORK;
+                } else {
+                    res.task = RESIDENT_REPAIR; res.action = res.station = DUEL_M12_ACTION_WORK;
+                }
+                break;
+            case AFTER_INSPECT:
+                res.task = RESIDENT_INSPECT; res.action = res.station = DUEL_M12_ACTION_INSPECT; break;
+            case AFTER_REPAIR:
+                res.task = RESIDENT_REPAIR; res.action = res.station = DUEL_M12_ACTION_WORK; break;
+            case AFTER_MAX_CAST:
+                res.task = after_phase < 2u ? RESIDENT_WATCH_CAST : RESIDENT_CHEER;
+                res.action = res.station = after_phase < 2u ? DUEL_M12_ACTION_WATCH_ROOF : DUEL_M12_ACTION_REACT;
+                break;
+            default:
+                break;
+        }
+    }
+#endif
     m12_resident_draw(fb, &res, is_left, mode, 0);
+
+#ifdef ARCANE_M13
+    /* Lasting room/object consequences. They share the authoritative aftermath
+     * phase with the resident task, so reconnecting halves resume mid-arc. */
+    if (after_kind == AFTER_FIRE) {
+        int fx = FLR_X(8), fy = 98;
+        if (after_phase < 3u) {
+            for (int i = 0; i < 4 - after_phase; i++) {
+                duel_fb_px(fb, fx + i * 2, fy - (int)((r->civic_phase + i) & 3u), true);
+                duel_fb_px(fb, fx + i * 2 + 1, fy + 1, true);
+            }
+        }
+        if (after_phase >= 1u && after_phase < 3u)
+            wiz_line(fb, FLR_X(7), 101, FLR_X(15), 96); /* hose / spell stream */
+        if (after_phase == 3u) {
+            wiz_line(fb, FLR_X(5), 100, FLR_X(11), 96);
+            wiz_line(fb, FLR_X(5), 96, FLR_X(11), 100);
+        }
+    } else if (after_kind == AFTER_INSPECT) {
+        int rx = FLR_X(19), ry = 101;
+        for (int i = 0; i < 5 - after_phase; i++)
+            duel_fb_px(fb, rx + (i & 1 ? i : -i), ry - (i * 2), true);
+        if (after_phase >= 2u) {
+            duel_fb_px(fb, FLR_X(17), 99, true); duel_fb_px(fb, FLR_X(18), 98, true);
+        }
+    } else if (after_kind == AFTER_REPAIR || after_kind == AFTER_PANIC) {
+        int dx = FLR_X(24);
+        if (after_phase < 3u) {
+            wiz_line(fb, dx - 3, 91, dx + 3, 99);
+            wiz_line(fb, dx + 3, 91, dx - 2, 98);
+        } else {
+            wiz_line(fb, dx - 3, 99, dx + 3, 99);
+            duel_fb_px(fb, dx, 96, true);
+        }
+    } else if (after_kind == AFTER_MAX_CAST) {
+        int motes = 6 - after_phase;
+        for (int i = 0; i < motes; i++)
+            duel_fb_px(fb, FLR_X(4 + i * 5), 68 + (int)((r->civic_phase + i * 3u) % 30u), true);
+        if (after_phase == 2u) wiz_line(fb, FLR_X(3), 108, FLR_X(28), 108);
+    } else if (after_kind == AFTER_COMPLAINT) {
+        duel_fb_px(fb, FLR_X(19), 95, true);
+        wiz_line(fb, FLR_X(20), 94, FLR_X(24), 94);
+    } else if (after_kind == AFTER_CHEER) {
+        duel_fb_px(fb, FLR_X(11), 91 - after_phase, true);
+        duel_fb_px(fb, FLR_X(13), 89 + after_phase, true);
+    }
+#endif
 
     // Paving course in the band freed by relocating HP up to the rooftop
     // (y112-115). A 1-byte session seed staggers the pattern so each boot lays a
@@ -371,6 +643,9 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         for (int x = 0; x < DUEL_CANVAS_W; x += 4)                 // dense brick joints, offset course
             for (int y = 119; y <= 122; y++) duel_fb_px(fb, x + ((y >> 1) & 1) * 2, y, true);
     }
+#ifdef ARCANE_M13
+    draw_floor_transition(fb, r, is_left);
+#endif
 #undef FLR_X
 }
 #endif
@@ -571,6 +846,347 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
     }
 }
 
+#ifdef ARCANE_M13
+static int m13_trajectory_y(uint32_t desc, uint8_t flight) {
+    switch (SPELL_DESC_TRAJECTORY(desc)) {
+        case TRAJ_GROUND: return SPELL_Y_BASE + 11;
+        case TRAJ_LOW: return SPELL_Y_BASE + 5;
+        case TRAJ_HIGH: return SPELL_Y_BASE - 7;
+        case TRAJ_ROOF: {
+            uint8_t half = flight < 128u ? flight : (uint8_t)(255u - flight);
+            return SPELL_Y_BASE - 8 - half / 12;
+        }
+        case TRAJ_RETURNING: return SPELL_Y_BASE - 2 - flight / 24;
+        case TRAJ_HOMING: return SPELL_Y_BASE - 7 + flight / 24;
+        case TRAJ_AREA: return SPELL_Y_BASE;
+        default: return SPELL_Y_BASE;
+    }
+}
+
+static void draw_orbiting_motes(duel_fb_t *fb, uint8_t count, int cx, int cy,
+                                uint32_t frame, uint8_t spread, int facing) {
+    for (uint8_t i = 0; i < count; i++) {
+        int sx = (int)(i % 3u) - 1;
+        int sy = (int)(i / 3u) * 2 - 1;
+        int wobble = (int)((frame + i) & 1u);
+        duel_fb_px(fb, cx + sx * spread * facing, cy + sy * 2 + wobble, true);
+    }
+}
+
+static uint8_t draw_tempo_interval(uint32_t desc, uint8_t deliberate,
+                                   uint8_t flowing, uint8_t rapid, uint8_t frantic) {
+    switch (SPELL_DESC_TEMPO(desc)) {
+        case TEMPO_DELIBERATE: return deliberate;
+        case TEMPO_RAPID: return rapid;
+        case TEMPO_FRANTIC: return frantic;
+        default: return flowing;
+    }
+}
+
+static uint8_t draw_trend_flight(uint32_t desc, uint8_t linear) {
+    uint16_t v = linear;
+    if (SPELL_DESC_TREND(desc) == TREND_ACCELERATING)
+        v = (uint16_t)linear * linear / 240u;
+    else if (SPELL_DESC_TREND(desc) == TREND_DECELERATING) {
+        uint16_t remain = (uint16_t)(240u - linear);
+        v = 240u - remain * remain / 240u;
+    } else if (SPELL_DESC_TREND(desc) == TREND_IRREGULAR && linear > 8u)
+        v = (uint16_t)(linear + ((linear / 16u) & 1u ? 7u : 0u));
+    return v > 240u ? 240u : (uint8_t)v;
+}
+
+static bool m13_in_gap(uint8_t u) { return u >= 96u && u <= 159u; }
+
+static void m13_draw_inner_flare(duel_fb_t *fb, uint32_t desc, bool is_left,
+                                 int y, uint8_t phase, uint8_t reach) {
+    int edge = is_left ? 31 : 0;
+    int inward = is_left ? -1 : 1;
+    for (uint8_t i = 0; i < reach; i++)
+        duel_fb_px(fb, edge + inward * i, y + ((i + phase) & 1u), true);
+    if (SPELL_DESC_ELEMENT(desc) == ELEM_FROST) {
+        duel_fb_px(fb, edge + inward, y - 2, true);
+        duel_fb_px(fb, edge + inward, y + 2, true);
+    } else if (SPELL_DESC_ELEMENT(desc) == ELEM_EMBER) {
+        duel_fb_px(fb, edge + inward * (reach + 1u), y - 1 - (phase & 1u), true);
+    } else if (SPELL_DESC_ELEMENT(desc) == ELEM_VOID) {
+        duel_fb_px(fb, edge + inward * 2, y, false);
+    }
+}
+
+/* The physical battlefield remains blank for u=96..159. These edge-local
+ * handoffs communicate deterministic travel without changing carrier state,
+ * collision time, or the desk-gap duration. */
+static bool m13_draw_gap_cue(duel_fb_t *fb, uint32_t desc, uint8_t form,
+                             uint8_t progress, uint8_t flight, uint8_t u,
+                             uint8_t caster_side, bool is_left, int y) {
+    bool reflected_singularity = form == SPELL_SINGULARITY &&
+                                 progress >= 160u && progress <= 207u;
+    if (!m13_in_gap(u) && !reflected_singularity) return false;
+    uint8_t phase = (uint8_t)((progress + SPELL_DESC_VARIANCE(desc)) & 3u);
+    bool caster_local = is_left == (caster_side == SIM_SIDE_L);
+    bool portal = SPELL_DESC_INTERACTION(desc) == INTERACT_PHASE ||
+                  SPELL_DESC_ELEMENT(desc) == ELEM_VOID ||
+                  SPELL_DESC_TRAJECTORY(desc) == TRAJ_RETURNING ||
+                  form == SPELL_CONJURE || reflected_singularity;
+    bool trail = form == SPELL_SWARM ||
+                 SPELL_DESC_TRAJECTORY(desc) == TRAJ_HOMING ||
+                 SPELL_DESC_TRAJECTORY(desc) == TRAJ_AREA;
+    int edge = is_left ? 31 : 0;
+    int inward = is_left ? -1 : 1;
+    if (portal) {
+        /* Paired rune mouths persist at both inner edges. */
+        for (int d = -3; d <= 3; d++) {
+            duel_fb_px(fb, edge + inward * (1 + (d == 0)), y + d, true);
+            if ((d + phase) % 3 == 0)
+                duel_fb_px(fb, edge + inward * 3, y + d, true);
+        }
+        duel_fb_px(fb, edge, y - 2 + (phase & 1u), true);
+        duel_fb_px(fb, edge, y + 2 - (phase & 1u), true);
+        duel_fb_px(fb, edge + inward * 4, y + (caster_local ? -2 : 2), true);
+    } else if (trail) {
+        /* Broad/homing carriers leave synchronized traces on both edges. */
+        for (int i = 0; i < 4; i++)
+            duel_fb_px(fb, edge + inward * i, y + ((i + phase) % 3) - 1, true);
+        duel_fb_px(fb, edge + inward * 2, y - 3, true);
+        duel_fb_px(fb, edge + inward * 2, y + 3, true);
+        duel_fb_px(fb, edge + inward * 4, y + (caster_local ? -2 : 2), true);
+    } else {
+        /* Ordinary departure shrinks over the first half; destination motes
+         * grow over the second. Only the relevant city edge participates. */
+        bool departure = flight < 128u;
+        if ((departure && !caster_local) || (!departure && caster_local)) return true;
+        uint8_t local = departure ? (uint8_t)(flight - 96u) :
+                                    (uint8_t)(flight - 128u);
+        uint8_t reach = departure ? (uint8_t)(3u - local / 11u) :
+                                    (uint8_t)(1u + local / 11u);
+        if (reach < 1u) reach = 1u;
+        if (reach > 3u) reach = 3u;
+        m13_draw_inner_flare(fb, desc, is_left, y, phase, reach);
+        duel_fb_px(fb, edge + inward * 4, y + (departure ? -2 : 2), true);
+    }
+    return true;
+}
+
+void m13_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
+                    uint8_t caster_side, uint8_t variant, bool is_left,
+                    uint32_t frame) {
+    uint8_t form = SPELL_DESC_FORM(spell->descriptor);
+    uint8_t progress = spell->progress;
+    uint8_t flight = progress;
+    uint8_t phase = progress & 31u;
+    bool caster_local = is_left == (caster_side == SIM_SIDE_L);
+    int facing = is_left ? 1 : -1;
+    int local_cx = is_left ? 16 : 15;
+    int travel_dir = caster_side == SIM_SIDE_L ? 1 : -1;
+    if (form == SPELL_SWARM) {
+        uint8_t interval = draw_tempo_interval(spell->descriptor, 10u, 8u, 6u, 4u);
+        flight = phase < 12u ? 8u : draw_trend_flight(spell->descriptor,
+                 (uint8_t)((uint16_t)(phase - 12u) * 240u / (interval - 1u)));
+    }
+    if (form == SPELL_CONJURE) {
+        bool trap = SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_GROUND ||
+                    SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_AREA;
+        uint8_t interval = draw_tempo_interval(spell->descriptor, 15u, 12u, 9u, 6u);
+        flight = trap ? (uint8_t)(phase < 16u ? phase * 5u : 80u) :
+                 phase < 10u ? 8u : draw_trend_flight(spell->descriptor,
+                 (uint8_t)((uint16_t)(phase - 10u) * 240u / (interval - 1u)));
+    }
+    if (SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_RETURNING &&
+        form != SPELL_CONJURE) {
+        flight = flight < 128u ? flight : (uint8_t)(255u - flight);
+        if (progress >= 128u) travel_dir = -travel_dir;
+    }
+    if (form == SPELL_SINGULARITY && progress < 192u) flight = 48u;
+    uint8_t u = caster_side == SIM_SIDE_L ? flight : (uint8_t)(255u - flight);
+    int x = 0;
+    int bob = SPELL_DESC_TREND(spell->descriptor) == TREND_IRREGULAR ?
+              (int)((frame + SPELL_DESC_VARIANCE(spell->descriptor)) & 1u) : 0;
+    int y = m13_trajectory_y(spell->descriptor, flight) + bob;
+
+    if (form == SPELL_BEAM) {
+        int yb = m13_trajectory_y(spell->descriptor, 192u);
+        bool full = progress >= 64u && progress < 224u;
+        bool fizzle = progress >= 224u;
+        int x0 = is_left ? 21 : 0;
+        int x1 = is_left ? 31 : 10;
+        if (fizzle) {
+            for (int px = x0; px <= x1; px += 2) duel_fb_px(fb, px, yb + (px & 1), true);
+        } else {
+            wiz_line(fb, x0, yb, x1, yb);
+        }
+        if (full) wiz_line(fb, x0, yb + 1, x1, yb + 1);
+        if (full && SPELL_DESC_MAGNITUDE(spell->descriptor) >= 3u)
+            wiz_line(fb, x0, yb - 1, x1, yb - 1);
+        if (variant == 2u) {
+            for (int px = 3; px < DUEL_CANVAS_W; px += 6) duel_fb_px(fb, px, yb - 2, true);
+        }
+        if (caster_local) {
+            int origin = is_left ? 21 : 10;
+            duel_fb_px(fb, origin, yb - 2, true);
+            duel_fb_px(fb, origin - facing, yb + 2, true);
+        }
+        if (progress >= 96u && progress <= 159u)
+            m13_draw_inner_flare(fb, spell->descriptor, is_left, yb,
+                                 (uint8_t)(progress & 3u),
+                                 (uint8_t)(2u + (progress - 96u) / 21u));
+        return;
+    }
+
+    if (form == SPELL_CHAIN) {
+        int x0 = is_left ? (caster_local ? 21 : 31) : (caster_local ? 10 : 0);
+        int x1 = is_left ? (caster_local ? 31 : 21) : (caster_local ? 0 : 10);
+        int dir = x1 > x0 ? 1 : -1;
+        int reach = 3 + (int)(progress / 32u);
+        if (reach > 10) reach = 10;
+        int px = x0, py = y;
+        for (int i = 1; i <= reach; i++) {
+            int nx = x0 + dir * i;
+            int ny = y + ((i + SPELL_DESC_VARIANCE(spell->descriptor)) & 1 ? -2 : 2);
+            wiz_line(fb, px, py, nx, ny); px = nx; py = ny;
+        }
+        duel_fb_px(fb, x1, y, true);
+        if (progress >= 96u && progress <= 159u)
+            m13_draw_inner_flare(fb, spell->descriptor, is_left, y,
+                                 (uint8_t)(progress & 3u),
+                                 (uint8_t)(2u + (progress - 96u) / 21u));
+        return;
+    }
+
+    if (m13_draw_gap_cue(fb, spell->descriptor, form, progress, flight, u,
+                         caster_side, is_left, y))
+        return;
+
+    if (form == SPELL_SWARM) {
+        uint8_t count = progress >> 5;
+        if (caster_local) {
+            uint8_t orbit_count = phase < 12u ? count : count ? (uint8_t)(count - 1u) : 0u;
+            draw_orbiting_motes(fb, orbit_count, local_cx + facing * 2,
+                                SPELL_Y_BASE - 6, frame, 3u, facing);
+        }
+        if (phase < 12u || !count) return;
+        if (!duel_battlefield_to_x(u, is_left, &x)) return;
+        spell_glyph(fb, x, y, spell->kind, travel_dir);
+        return;
+    }
+
+    if (form == SPELL_CONJURE) {
+        bool trap = SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_GROUND ||
+                    SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_AREA;
+        uint8_t charges = progress >> 5;
+        if (trap) {
+            if (!duel_battlefield_to_x(u, is_left, &x)) return;
+            y = SPELL_Y_BASE + 11;
+            wiz_line(fb, x - 3, y, x + 3, y);
+            duel_fb_px(fb, x - 2, y - 1, true); duel_fb_px(fb, x + 2, y - 1, true);
+            if ((frame & 3u) == 0u) duel_fb_px(fb, x, y - 3, true);
+        } else {
+            if (caster_local)
+                draw_orbiting_motes(fb, 1u + (charges > 2u), local_cx - facing * 5,
+                                    SPELL_Y_BASE - 8, frame, 2u, facing);
+            if (phase < 10u || !charges) return;
+            if (!duel_battlefield_to_x(u, is_left, &x)) return;
+            duel_fb_px(fb, x, y, true); duel_fb_px(fb, x - travel_dir, y - 1, true);
+        }
+        return;
+    }
+    if (!duel_battlefield_to_x(u, is_left, &x)) return;
+
+    if (form == SPELL_FIREBALL) {
+        spell_glyph(fb, x, y, spell->kind, travel_dir);
+        duel_fb_px(fb, x - travel_dir, y + 2, true);
+        duel_fb_px(fb, x - 2 * travel_dir, y + 3, true);
+    } else if (form == SPELL_SINGULARITY) {
+        int radius = progress < 128u ? 2 : progress < 192u ? 3 : 2;
+        for (int d = -radius; d <= radius; d++) {
+            duel_fb_px(fb, x + d, y - radius, true);
+            duel_fb_px(fb, x + d, y + radius, true);
+            duel_fb_px(fb, x - radius, y + d, true);
+            duel_fb_px(fb, x + radius, y + d, true);
+        }
+        duel_fb_px(fb, x, y, false);
+        if (progress >= 128u && progress < 192u) {
+            duel_fb_px(fb, x - 1, y, true); duel_fb_px(fb, x + 1, y, true);
+        }
+    } else if (form == SPELL_GROUND_WAVE) {
+        int dir = caster_side == SIM_SIDE_L ? 1 : -1;
+        for (int i = 0; i < 7; i++)
+            duel_fb_px(fb, x - dir * i, y - (i & 1), true);
+    } else {
+        spell_glyph(fb, x, y, spell->kind, travel_dir);
+    }
+
+    uint8_t trail = SPELL_DESC_TEMPO(spell->descriptor);
+    int back = caster_side == SIM_SIDE_L ? -1 : 1;
+    for (uint8_t i = 0; i < trail; i++)
+        duel_fb_px(fb, x + back * (3 + i * 2), y + (i & 1u), true);
+    if (SPELL_DESC_PAYLOAD(spell->descriptor) == PAY_HEAL) {
+        duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y - 2, true);
+        duel_fb_px(fb, x, y + 2, true);
+        if (SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_RETURNING)
+            duel_fb_px(fb, x - travel_dir * 4, y + 1, true);
+    } else if (SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_AREA) {
+        duel_fb_px(fb, x - 3, y, true); duel_fb_px(fb, x + 3, y, true);
+        duel_fb_px(fb, x, y - 3, true); duel_fb_px(fb, x, y + 3, true);
+    }
+
+    /* Roster voice accents are recipe-cosmetic only. */
+    if (variant == 1u) duel_fb_px(fb, x - 3 * travel_dir, y + 1, true);
+    else if (variant == 2u) { duel_fb_px(fb, x - 2, y - 3, true); duel_fb_px(fb, x + 2, y - 3, true); }
+    else if (variant == 3u) duel_fb_px(fb, x, y, false);
+}
+
+static void draw_m13_status(duel_fb_t *fb, const duel_view_wizard_t *wz,
+                            int facing, uint32_t frame) {
+    if (!wz->status || !wz->status_intensity) return;
+    int cx = 16 - facing * 5;
+    int cy = 55 + DUEL_ROOF_DY;
+    int phase = (int)(frame & 3u);
+    if (wz->status == STATUS_BURNING) {
+        for (int i = 0; i < wz->status_intensity; i++) duel_fb_px(fb, cx + i - 1, cy - phase - i, true);
+    } else if (wz->status == STATUS_FROZEN) {
+        duel_fb_px(fb, cx - 2, cy, true); duel_fb_px(fb, cx + 2, cy, true);
+        duel_fb_px(fb, cx, cy - 2, true); duel_fb_px(fb, cx, cy + 2, true);
+    } else if (wz->status == STATUS_DISRUPTED) {
+        duel_fb_px(fb, cx - 2, cy - 1, true); duel_fb_px(fb, cx, cy, true);
+        duel_fb_px(fb, cx + 2, cy + 1, true);
+    } else {
+        duel_fb_px(fb, cx, cy, true);
+        duel_fb_px(fb, cx - 1, cy - 1, true); duel_fb_px(fb, cx + 1, cy - 1, true);
+    }
+}
+
+static void draw_m13_reaction(duel_fb_t *fb, uint8_t outcome, bool is_left,
+                              uint8_t frames) {
+    if (!frames || outcome < FX_HEAL_L || outcome > FX_COLLAPSE) return;
+    int x = is_left ? 5 : DUEL_CANVAS_W - 1 - 5;
+    int y = 101;
+    if (outcome == FX_HEAL_L || outcome == FX_HEAL_R) { /* civic cheer/confetti */
+        duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y - 2, true);
+        wiz_line(fb, x - 1, y, x + 1, y);
+    } else if (outcome == FX_COMPLAINT) {
+        wiz_line(fb, x - 2, y, x + 1, y);
+        duel_fb_px(fb, x + 2, y - 1, true);
+    } else if (outcome == FX_DETONATE) { /* roof explosion */
+        x = is_left ? 27 : 4; y = SPELL_Y_BASE + 14;
+        for (int d = 1; d <= 5; d++) {
+            duel_fb_px(fb, x - d, y - d, true); duel_fb_px(fb, x + d, y - d, true);
+            duel_fb_px(fb, x - d, y + (d & 1), true); duel_fb_px(fb, x + d, y + (d & 1), true);
+        }
+        wiz_line(fb, x - 6, y, x + 6, y);
+    } else if (outcome == FX_RESIDUE) {
+        duel_fb_px(fb, x - 2, y, true); duel_fb_px(fb, x + 2, y, true);
+        duel_fb_px(fb, x, y - 2, true); duel_fb_px(fb, x, y + 2, true);
+    } else if (outcome == FX_COMBINE) {
+        wiz_line(fb, x - 2, y - 2, x + 2, y - 2);
+        duel_fb_px(fb, x - 2, y - 1, true); duel_fb_px(fb, x + 2, y - 1, true);
+        duel_fb_px(fb, x, y, true);
+    } else { /* singularity collapse */
+        duel_fb_px(fb, x, y, true);
+        duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y + 2, true);
+    }
+}
+#endif
+
 // Progressive upper-canvas anticipation. Growth comes from authoritative
 // wind-up/tier state; only the tiny orbiting accents key off the render frame.
 static void draw_charge(duel_fb_t *fb, const duel_view_wizard_t *wz, int facing, uint32_t frame) {
@@ -613,20 +1229,42 @@ static void draw_charge(duel_fb_t *fb, const duel_view_wizard_t *wz, int facing,
     }
 }
 
-static void draw_ward(duel_fb_t *fb, int facing, int thickness, bool punctured, int puncture_y) {
+static void draw_ward(duel_fb_t *fb, int facing, int strength, int focus,
+                      bool punctured, int puncture_y) {
     int ax = 16 + facing * 9;
-    for (int t = 0; t < thickness; t++) {
+#ifdef ARCANE_M13
+    int focus_y = focus == 0 ? SPELL_Y_BASE + 10 : focus == 1 ? SPELL_Y_BASE + 5 :
+                  focus == 3 ? SPELL_Y_BASE - 7 : SPELL_Y_BASE;
+    int reach = 3 + strength * 3;
+    int y0 = focus_y - reach, y1 = focus_y + reach;
+    if (strength >= 4) { y0 = SPELL_Y_BASE - 18; y1 = SPELL_Y_BASE + 12; }
+#else
+    (void)focus;
+    int y0 = 58 + DUEL_ROOF_DY, y1 = 72 + DUEL_ROOF_DY;
+#endif
+    for (int t = 0; t < strength; t++) {
         int x = ax + facing * t;
-        for (int y = 58 + DUEL_ROOF_DY; y <= 72 + DUEL_ROOF_DY; y++) {
+#ifdef ARCANE_M13
+        for (int y = y0 + t; y <= y1 - t; y++) {
+#else
+        for (int y = y0; y <= y1; y++) {
+#endif
             int d = y - puncture_y;
             if (d < 0) d = -d;
             if (punctured && d <= 2) continue;
             duel_fb_px(fb, x, y, true);
         }
-        duel_fb_px(fb, x - facing, 56 + DUEL_ROOF_DY, true);
-        duel_fb_px(fb, x - facing, 57 + DUEL_ROOF_DY, true);
-        duel_fb_px(fb, x - facing, 73 + DUEL_ROOF_DY, true);
-        duel_fb_px(fb, x - facing, 74 + DUEL_ROOF_DY, true);
+#ifdef ARCANE_M13
+        duel_fb_px(fb, x - facing, y0 - 2 + t, true);
+        duel_fb_px(fb, x - facing, y0 - 1 + t, true);
+        duel_fb_px(fb, x - facing, y1 + 1 - t, true);
+        duel_fb_px(fb, x - facing, y1 + 2 - t, true);
+#else
+        duel_fb_px(fb, x - facing, y0 - 2, true);
+        duel_fb_px(fb, x - facing, y0 - 1, true);
+        duel_fb_px(fb, x - facing, y1 + 1, true);
+        duel_fb_px(fb, x - facing, y1 + 2, true);
+#endif
     }
     if (punctured) {
         // Split lips and inward cracks make the VOID interaction read as an
@@ -797,7 +1435,11 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r) {
 
     // Scene selector: host context owns the readout while online; heartbeat
     // expiry immediately returns it to the firmware-local scry selection.
+#ifdef ARCANE_M13
+    uint8_t scene = render_host(r) ? render_scene(r) : (uint8_t)((r->view.outcome_overlay >> 5) & 3u);
+#else
     uint8_t scene = render_host(r) ? render_scene(r) : DUEL_SCRY_SCENE(r->view.scry);
+#endif
     for (int i = 0; i < SCRY_SCENES; i++) {
         int sx = 6 + i * 7;
         ov_rect(fb, sx, 35, sx + 3, 38, i == (scene % SCRY_SCENES));
@@ -809,8 +1451,19 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     duel_view_wizard_t wizard = duel_view_wizard(&r->view, (uint8_t)side);
     const duel_view_wizard_t *wz = &wizard;
     int                 facing = is_left ? +1 : -1; // toward the gap (see header)
+#ifdef ARCANE_M13
+    bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L ||
+                         r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_HEAL_L ||
+                         r->flash_kind == FX_WARD_SHATTER_L;
+    bool side_outcome = r->flash_kind <= FX_FIZZLE_R ||
+                        r->flash_kind == FX_HEAL_L || r->flash_kind == FX_HEAL_R ||
+                        r->flash_kind == FX_WARD_SHATTER_L ||
+                        r->flash_kind == FX_WARD_SHATTER_R;
+    bool local_fx = r->flash_frames && side_outcome && defender_left == is_left;
+#else
     bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L || r->flash_kind == FX_FIZZLE_L;
-    bool local_fx       = r->flash_frames && defender_left == is_left;
+    bool local_fx = r->flash_frames && defender_left == is_left;
+#endif
     bool local_impact   = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
     duel_view_spell_t piercer;
     bool have_piercer = incoming_void_at_ward(&r->view, side, &piercer);
@@ -825,8 +1478,15 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     // courier (Wave 6) and rare event (Wave 7) layer into the same floor.
     (void)archive;
     draw_floor(fb, r, is_left);
+#ifdef ARCANE_M13
+    if (!(r->revision & M13_AFTERMATH_WIRE)) {
+        draw_courier(fb, r, is_left);
+        draw_rare_event(fb, r, is_left);
+    }
+#else
     draw_courier(fb, r, is_left);
     draw_rare_event(fb, r, is_left);
+#endif
 #else
     if (archive) draw_archive(fb, wz, is_left, frame);
 #endif
@@ -851,9 +1511,32 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
             // Shield: a vertical ward arc on the gap side of this half's wizard.
             if (wz->shield_ticks) {
-                draw_ward(fb, facing, 1, ward_punctured, ward_lane);
+                draw_ward(fb, facing,
+#ifdef ARCANE_M13
+                          wz->ward_strength,
+                          wz->ward_focus,
+#else
+                          1,
+                          2,
+#endif
+                          ward_punctured, ward_lane);
             }
             draw_charge(fb, wz, facing, frame);
+#ifdef ARCANE_M13
+            if (wz->inc_state == INC_COLLECTING) {
+                int runes = 1 + r->view.phase[side] / 64;
+                for (int i = 0; i < runes; i++) {
+                    int rx = 12 + i * 3;
+                    duel_fb_px(fb, rx, 48 + DUEL_ROOF_DY, true);
+                    duel_fb_px(fb, rx + 1, 47 + DUEL_ROOF_DY, true);
+                }
+            } else if (wz->prepared) {
+                int px = 16 + facing * 2, py = 43 + DUEL_ROOF_DY;
+                duel_fb_px(fb, px, py - 2, true); duel_fb_px(fb, px, py + 2, true);
+                duel_fb_px(fb, px - 2, py, true); duel_fb_px(fb, px + 2, py, true);
+            }
+            draw_m13_status(fb, wz, facing, frame);
+#endif
             break;
 
         case LIFE_COLLAPSE: {
@@ -900,14 +1583,36 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     for (int s = 0; s < 2; s++) {
         duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s);
         if (!spell.active) continue;
+#ifdef ARCANE_M13
+        duel_view_wizard_t caster = duel_view_wizard(&r->view, (uint8_t)s);
+        m13_draw_spell(fb, &spell, (uint8_t)s, caster.variant, is_left, frame);
+#else
         int x;
         if (!duel_battlefield_to_x(spell.pos, is_left, &x)) continue;
         int y = spell_lane_y(spell.kind) + ((frame >> 1) & 1); // 1 px cosmetic bob
         spell_glyph(fb, x, y, spell.kind, spell.dir);
+#endif
     }
 
+#ifdef ARCANE_M13
+    draw_m13_reaction(fb, r->flash_kind, is_left, r->flash_frames);
+#endif
+
     // HP pips for THIS half's wizard.
-#ifdef ARCANE_M12
+#ifdef ARCANE_M13
+    // M13: a 24-pixel segmented bar for twelve HP in the protected health region.
+    {
+        const int robe_bot = 75 + DUEL_ROOF_DY;
+        const int hx = is_left ? 7 : DUEL_CANVAS_W - 1 - 8;
+        for (int i = 0; i < SIM_MAX_HP; i++) {
+            int py = robe_bot - 1 - 2 * i;
+            if (i < wz->hp) {
+                duel_fb_px(fb, hx + (i & 1), py, true);
+                duel_fb_px(fb, hx + (i & 1), py - 1, true);
+            }
+        }
+    }
+#elif defined(ARCANE_M12)
     // M12: a vertical pip column standing on the rooftop just outside the robe
     // on the away-from-gap side, so health reads as the champion's own and the
     // whole bottom band (y111+) frees up for ground texture. Depletes top-down.
@@ -1001,12 +1706,31 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
                     duel_fb_px(fb, fx + 1, fy, true);
                 }
             }
+#ifdef ARCANE_M13
+        } else if (r->flash_kind == FX_HEAL_L || r->flash_kind == FX_HEAL_R) {
+            int hx = 16 - facing * 5;
+            int radius = 2 + (r->flash_frames > 4u);
+            duel_fb_px(fb, hx - radius, fy, true); duel_fb_px(fb, hx + radius, fy, true);
+            duel_fb_px(fb, hx, fy - radius, true); duel_fb_px(fb, hx, fy + radius, true);
+            wiz_line(fb, hx - 1, fy, hx + 1, fy);
+            wiz_line(fb, hx, fy - 1, hx, fy + 1);
+        } else if (r->flash_kind == FX_WARD_SHATTER_L ||
+                   r->flash_kind == FX_WARD_SHATTER_R) {
+            int ax = 16 + facing * 9;
+            for (int i = 0; i < 4; i++) {
+                int scatter = 2 + i * 2 + (8 - r->flash_frames) / 2;
+                duel_fb_px(fb, ax + facing * scatter, fy - 6 + i * 4, true);
+                duel_fb_px(fb, ax - facing * (scatter / 2), fy - 4 + i * 3, true);
+            }
+            wiz_line(fb, ax, fy - 7, ax - facing * 2, fy - 2);
+            wiz_line(fb, ax - facing * 2, fy - 2, ax + facing, fy + 6);
+#endif
         } else {
             // Redirection: the ward is the dominant thick shape while the
             // carrier breaks into two streaks thrown back toward the gap.
             int ax   = 16 + facing * 9;
             int dist = 2 + (8 - r->flash_frames) / 2;
-            draw_ward(fb, facing, 2, false, fy);
+            draw_ward(fb, facing, 2, 2, false, fy);
             wiz_line(fb, ax + facing, fy, ax + facing * (dist + 2), fy - dist - tier);
             wiz_line(fb, ax + facing, fy, ax + facing * (dist + 1), fy + dist + tier);
             duel_fb_px(fb, ax - facing, fy - 5, true);

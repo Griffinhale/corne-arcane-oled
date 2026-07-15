@@ -43,6 +43,10 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
     duel_view_from_world(w, &out->view);
     out->external = external;
     out->alert    = alert;
+#ifdef ARCANE_M13
+    out->shared_pres = m13_aftermath_shared(w);
+    out->revision = m13_aftermath_revision(w);
+#endif
     out->crc     = duel_crc8(out, offsetof(duel_snapshot_t, crc));
 }
 

@@ -11,7 +11,21 @@ The live `griffin_anim` and Vial-free
 a fresh build ID, so its first boot resets dynamic-keymap EEPROM to this
 compiled default. The host branch enables custom Raw HID and disables Vial/VIA.
 
-## Status: M11.5 behavioral hardware checks pass; numeric A/B pending (2026-07-14)
+## Status: M13 desktop-complete; physical two-half acceptance pending (2026-07-15)
+
+M13 is opt-in with `ARCANE_M13=yes` and automatically includes M12. It adds the
+privacy-preserving physical-position incantation compiler, v10/exact-32-byte
+split snapshot, 12 HP, prepared casts, expanding wards, statuses/healing,
+eight active forms, spatial reactions, summons/traps, roster voices, and
+authoritative resident/room/object/world aftermath arcs. The budgeted Vial
+release is 80,972 flash bytes with only +188 bytes of static RAM over the
+same-toolchain M12 rollback; the Vial-free host release is 66,720 bytes. See
+`../docs/m13-acceptance.md` for exact artifacts,
+hashes, test gates, and `../docs/m13-physical-checklist.md` for the two-half
+hardware run. M13 v10 is not split-compatible with M12 v8; flash both halves
+from the same artifact.
+
+The previous M11.5/M12 acceptance record remains below.
 
 M0–M7 are flashed and confirmed on the physical keyboard: cross-screen bolts,
 wards/health, the KO arc (collapse → downed → medic drag-off → replacement),

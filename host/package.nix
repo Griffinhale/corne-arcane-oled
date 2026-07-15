@@ -5,7 +5,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "corne-arcane-host";
-  version = "0.11.5";
+  version = "0.13.0";
   src = lib.cleanSource ./.;
 
   nativeBuildInputs = [ makeWrapper ];

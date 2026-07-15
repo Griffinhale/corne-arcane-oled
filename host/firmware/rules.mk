@@ -19,6 +19,9 @@ SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_
 
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
     OPT_DEFS += -DARCANE_DIAGNOSTICS
+    ifeq ($(strip $(ARCANE_M13)),yes)
+        OPT_DEFS += -DCH_DBG_FILL_THREADS=TRUE -DCH_DBG_ENABLE_STACK_CHECK=TRUE
+    endif
 endif
 
 ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
@@ -26,6 +29,9 @@ ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
 endif
 
 # M12 Twin Cities (see firmware/rules.mk). Off by default; release stays M11.5.
-ifeq ($(strip $(ARCANE_M12)),yes)
+ifeq ($(strip $(ARCANE_M13)),yes)
+    OPT_DEFS += -DARCANE_M13 -DARCANE_M12
+    SRC += sim/duel_m13.c
+else ifeq ($(strip $(ARCANE_M12)),yes)
     OPT_DEFS += -DARCANE_M12
 endif

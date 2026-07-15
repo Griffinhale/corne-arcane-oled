@@ -29,6 +29,9 @@ typedef struct {
     uint8_t action;      // DUEL_M12_ACTION_*
     uint8_t station;     // action-derived fixed station index
     uint8_t progress;    // 0..DUEL_M12_ACTION_SLOT-1 within the current action
+#ifdef ARCANE_M13
+    uint8_t task;        // authoritative RESIDENT_* aftermath assignment
+#endif
 } m12_resident_t;
 
 // Session-seeded personality for one city. Stable for a whole session.

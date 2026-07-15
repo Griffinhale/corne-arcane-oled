@@ -1,1 +1,1 @@
-"""Corne Arcane M10 privacy-redacted semantic host."""
+"""Corne Arcane 0.13 privacy-redacted semantic host."""

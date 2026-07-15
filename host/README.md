@@ -1,4 +1,4 @@
-# M11.5 semantic host pipeline and adapters
+# M13 / host package 0.13.0 semantic pipeline and adapters
 
 The Linux daemon sends only normalized semantic fields to `griffin_hostoled`:
 scene, saturated count, category, priority, age bucket, and critical

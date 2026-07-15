@@ -12,6 +12,9 @@ SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_
 # diagnostic overlay entirely: `qmk compile ... -e ARCANE_DIAGNOSTICS=yes`.
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
     OPT_DEFS += -DARCANE_DIAGNOSTICS
+    ifeq ($(strip $(ARCANE_M13)),yes)
+        OPT_DEFS += -DCH_DBG_FILL_THREADS=TRUE -DCH_DBG_ENABLE_STACK_CHECK=TRUE
+    endif
 endif
 
 # A/B control for the M11.5 cadence gate. The candidate defaults to a 250 ms
@@ -24,6 +27,12 @@ endif
 # M12 Twin Cities. Opt-in so the accepted M11.5 release stays bit-identical:
 # `qmk compile ... -e ARCANE_M12=yes`. Every M12 addition is compiled out when
 # this is absent, and DUEL_ROOF_DY constant-folds to 0.
-ifeq ($(strip $(ARCANE_M12)),yes)
+ifeq ($(strip $(ARCANE_M13)),yes)
+    OPT_DEFS += -DARCANE_M13 -DARCANE_M12
+    # Keep the M13 compiler out of every non-M13 object graph. Besides making
+    # the feature boundary explicit, this preserves the accepted M11.5/M12
+    # link inputs for binary/hash regression checks.
+    SRC += sim/duel_m13.c
+else ifeq ($(strip $(ARCANE_M12)),yes)
     OPT_DEFS += -DARCANE_M12
 endif
