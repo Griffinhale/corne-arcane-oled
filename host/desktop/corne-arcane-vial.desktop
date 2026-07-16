@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Corne Arcane Vial
+Comment=Remap Corne Arcane while safely pausing host enrichment
+Exec=corne-arcane-vial
+Icon=input-keyboard
+Terminal=false
+Categories=Settings;HardwareSettings;

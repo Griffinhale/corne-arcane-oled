@@ -28,7 +28,7 @@ class SemanticState:
 class SemanticResolver:
     """Resolve adapter inputs with one explicit scene-precedence policy.
 
-    Alongside the M11.5 ``scene``/``summary`` the resolver now derives the M12
+    Alongside the earlier ``scene``/``summary`` the resolver now derives the Twin Cities
     Twin Cities civic bytes. Only integer enums ever leave this object: no window
     title, URL, path, repo, or notification text influences anything but which
     enum is selected, so the ``CivicState`` handed to ``build_packet`` is a pure

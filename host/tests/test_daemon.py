@@ -21,15 +21,23 @@ from arcane_host.protocol import (
 
 
 class FakeDevice:
-    def __init__(self, fail_after: int | None = None) -> None:
+    def __init__(self, fail_after: int | None = None, *, reply: bytes | None = None,
+                 timeout: bool = False) -> None:
         self.reports: list[bytes] = []
         self.fail_after = fail_after
+        self.reply = reply
+        self.timeout = timeout
         self.closed = False
 
     def send(self, report: bytes) -> None:
         if self.fail_after is not None and len(self.reports) >= self.fail_after:
             raise OSError("unplugged")
         self.reports.append(report)
+
+    def receive(self, _timeout: float) -> bytes:
+        if self.timeout:
+            raise TimeoutError("missing echo")
+        return self.reply if self.reply is not None else self.reports[-1]
 
     def close(self) -> None:
         self.closed = True
@@ -119,7 +127,7 @@ class HeartbeatTests(unittest.TestCase):
         self.assertFalse(heartbeat.tick(0.11))
         self.assertTrue(heartbeat.tick(0.6))
 
-    def test_civic_provider_packs_payload_six_and_seven(self) -> None:
+    def test_every_report_carries_complete_eight_byte_semantics(self) -> None:
         civic = CivicState(Floor.WORKSHOP, Mode.QUIET, secondary=Secondary.TRANSFER)
         device = FakeDevice()
         heartbeat = HidHeartbeat(
@@ -131,15 +139,40 @@ class HeartbeatTests(unittest.TestCase):
         heartbeat.tick(0.0)  # HELLO
         heartbeat.tick(0.1)  # HEARTBEAT
         for report in device.reports:
-            self.assertEqual(report[10], 8)  # payload_len advertises M12
+            self.assertEqual(report[10], 8)
             self.assertEqual(report[17], civic.civic_byte())  # floor|mode|intensity
             self.assertEqual(report[18], civic.secondary_byte())
-        # Without a civic provider the report stays the bit-identical M11.5 form.
-        legacy_device = FakeDevice()
-        legacy = HidHeartbeat(lambda: Scene.DUEL, lambda: legacy_device, lambda: 7)
-        legacy.tick(0.0)
-        self.assertEqual(legacy_device.reports[0][10], 6)
-        self.assertEqual(legacy_device.reports[0][17], 0)
+        default_device = FakeDevice()
+        default = HidHeartbeat(lambda: Scene.DUEL, lambda: default_device, lambda: 7)
+        default.tick(0.0)
+        self.assertEqual(default_device.reports[0][10], 8)
+        self.assertEqual(default_device.reports[0][17:19], b"\0\0")
+
+    def test_missing_hello_echo_retries_with_new_device_and_session(self) -> None:
+        first = FakeDevice(timeout=True)
+        second = FakeDevice()
+        devices = iter((first, second))
+        sessions = iter((10, 20))
+        heartbeat = HidHeartbeat(lambda: Scene.DUEL, lambda: next(devices), lambda: next(sessions))
+        heartbeat.tick(0.0)
+        self.assertTrue(first.closed)
+        self.assertIsNone(heartbeat.device)
+        heartbeat.tick(2.0)
+        self.assertEqual(int.from_bytes(second.reports[0][4:8], "little"), 20)
+
+    def test_mismatched_heartbeat_echo_disconnects_and_resets_session(self) -> None:
+        first = FakeDevice()
+        second = FakeDevice()
+        devices = iter((first, second))
+        sessions = iter((10, 20))
+        heartbeat = HidHeartbeat(lambda: Scene.DUEL, lambda: next(devices), lambda: next(sessions))
+        heartbeat.tick(0.0)
+        first.reply = bytes(32)
+        heartbeat.tick(0.1)
+        self.assertTrue(first.closed)
+        self.assertIsNone(heartbeat.device)
+        heartbeat.tick(2.1)
+        self.assertEqual(int.from_bytes(second.reports[0][4:8], "little"), 20)
 
     def test_reconnect_hello_carries_complete_summary(self) -> None:
         summary = NotificationSummary(2, Category.SECURITY, Priority.CRITICAL, 4, True)

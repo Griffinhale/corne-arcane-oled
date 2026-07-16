@@ -1,13 +1,13 @@
 /*
- * duel_proto.h — split-link snapshot protocol (M3).
+ * duel_proto.h — split-link snapshot protocol.
  *
  * The master encodes its authoritative world into a compact packet every few
  * ticks; the slave renders from the last accepted packet and can never roll
  * state backward. Hardware-agnostic (no QMK includes) so the host harness
  * replays loss/duplication/reordering with exactly the firmware's code.
  *
- * Wire format notes: v8 is 27 bytes; M12 extends it to 31 bytes; M13 v10 uses
- * the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves (and the test hosts we
+ * Wire format: v10 uses the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves
+ * (and the test hosts we
  * care about) are little-endian, so the struct ships as raw bytes. The serial
  * protocol only checksums its own framing, hence our CRC over the payload.
  */
@@ -20,11 +20,7 @@
 #include "duel_view.h"
 
 #define DUEL_MAGIC 0xA7
-#ifdef ARCANE_M13
-#    define DUEL_VER 10
-#else
-#    define DUEL_VER 8
-#endif
+#define DUEL_VER 10
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase.
 // Display phase remains explicit while the unused bits stay reserved for a
@@ -40,10 +36,9 @@ typedef struct __attribute__((packed)) {
     uint8_t  flags;        /* bit0: world valid; rest reserved */
     uint16_t seq;          /* per-session, wraps */
     duel_view_t view;      /* canonical transport/render projection */
-    uint8_t  external;     /* M8: absolute disposable host context; see duel_host.h */
-    uint8_t  alert;        /* M10: packed category, priority, and age */
-#ifdef ARCANE_M12
-    /* M12 Twin Cities: absolute civic presentation relayed master->slave. M13
+    uint8_t  external;     /* host: absolute disposable host context; see duel_host.h */
+    uint8_t  alert;        /* packed category, priority, and age */
+    /* Absolute civic presentation relayed master->slave. The current engine
      * temporarily reuses shared_pres/revision for bounded authoritative
      * aftermath while its marker bit is set. All
      * four bytes are CRC-covered (the checksum spans offsetof(crc)), so a
@@ -54,19 +49,11 @@ typedef struct __attribute__((packed)) {
     uint8_t  secondary;    /* DUEL_SECONDARY_* : one supporting activity channel */
     uint8_t  shared_pres;  /* shared rare-event id/phase + visitor assignment */
     uint8_t  revision;     /* monotonic shared-presentation coherence counter */
-#endif
     uint8_t  crc;          /* duel_crc8 over the preceding bytes (offsetof(crc)) */
 } duel_snapshot_t;
 
-#ifdef ARCANE_M13
 _Static_assert(sizeof(duel_snapshot_t) == 32,
-               "M13 v10 snapshot must consume exactly one 32-byte RPC packet");
-#elif defined(ARCANE_M12)
-_Static_assert(sizeof(duel_snapshot_t) == 31,
-               "M12 snapshot adds four civic bytes, one RPC byte reserved");
-#else
-_Static_assert(sizeof(duel_snapshot_t) == 27, "v8 snapshot must leave five RPC bytes free");
-#endif
+               "current v10 snapshot must consume exactly one 32-byte RPC packet");
 
 typedef struct __attribute__((packed)) {
     uint8_t  magic;
@@ -88,9 +75,8 @@ uint8_t duel_crc8(const void *data, size_t len);
 // Encode the world into a wire packet (computes the CRC).
 void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snapshot_t *out);
 
-// M8 host branch variant: `external` is a packed, disposable presentation
-// summary. The ordinary encoder above always writes zero and remains the
-// firmware-only/Vial path.
+// `external` is a packed, disposable presentation summary. The ordinary
+// encoder writes zero for offline simulation and tests.
 void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
                           uint8_t external, duel_snapshot_t *out);
 void duel_encode_external_alert(const sim_world_t *w, uint8_t session, uint16_t seq,
@@ -101,14 +87,12 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
                                         uint8_t alert, uint8_t display_phase,
                                         duel_snapshot_t *out);
 
-#ifdef ARCANE_M12
-// M12 Phase-5 convergence setter: overwrite the four civic bytes on an already
+// Convergence setter: overwrite the four civic bytes on an already
 // encoded snapshot and recompute the CRC. The encoders above always zero these
 // bytes, so a packet is well-formed with or without this call; the master glue
 // (keymap.c) invokes it after encoding to relay the current civic state.
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision);
-#endif
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.

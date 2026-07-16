@@ -14,7 +14,6 @@ from arcane_host.protocol import (
     Scene,
     Secondary,
     build_packet,
-    build_legacy_packet,
     crc8,
     hidraw_frame,
 )
@@ -24,9 +23,7 @@ class ProtocolTests(unittest.TestCase):
     def test_known_vector(self) -> None:
         report = build_packet(Message.HELLO, 0x11223344, 0, Scene.ARCHIVE, 2)
         self.assertEqual(len(report), 32)
-        self.assertEqual(report.hex(), "ca8e02014433221100000601020702000000000000000000000000000000001e")
-        legacy = build_legacy_packet(Message.HELLO, 0x11223344, 0, Scene.ARCHIVE, 2)
-        self.assertEqual(legacy.hex(), "ca8e0101443322110000020102000000000000000000000000000000000000bc")
+        self.assertEqual(report.hex(), "ca8e0201443322110000080102070200000000000000000000000000000000ba")
 
     def test_crc_covers_every_payload_byte(self) -> None:
         report = bytearray(build_packet(Message.HEARTBEAT, 9, 17, Scene.FOCUS, 3))
@@ -56,7 +53,7 @@ class ProtocolTests(unittest.TestCase):
     def test_complete_absolute_summary(self) -> None:
         summary = NotificationSummary(15, Category.SECURITY, Priority.CRITICAL, 7, True)
         report = build_packet(Message.NOTIFY, 4, 9, Scene.FOCUS, summary=summary)
-        self.assertEqual(report[10:17], bytes((6, Scene.FOCUS, 15, Category.SECURITY,
+        self.assertEqual(report[10:17], bytes((8, Scene.FOCUS, 15, Category.SECURITY,
                                               Priority.CRITICAL, 7, 1)))
 
     def test_civic_pack_matches_duel_host_macros(self) -> None:
@@ -74,21 +71,20 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(civic.secondary_byte(), 0x03)
         self.assertEqual(CivicState(secondary=Secondary.MEDIA).secondary_byte(), 0x01)
 
-    def test_civic_known_vector_and_backward_compatibility(self) -> None:
+    def test_civic_known_vector_and_required_payload(self) -> None:
         civic = CivicState(Floor.WORKSHOP, Mode.URGENT, Intensity.BUSY, Secondary.SYSTEM)
         report = build_packet(Message.HEARTBEAT, 0x11223344, 0, Scene.ARCHIVE, 2, civic=civic)
         # payload_len advertises 8 and the civic bytes land at payload[6]/[7].
         self.assertEqual(report[10], 8)
         self.assertEqual(report[17], 0x2A)
         self.assertEqual(report[18], 0x03)
-        # The v2 summary in payload[0..5] is byte-identical to the M11.5 form.
+        # The semantic summary remains in payload[0..5].
         self.assertEqual(report[11:17], bytes((Scene.ARCHIVE, 2, Category.OTHER,
                                               Priority.NORMAL, 0, 0)))
         self.assertEqual(report[-1], crc8(report[:-1]))
-        # Omitting civic keeps the bit-identical six-byte payload (len 6, no bytes).
-        legacy = build_packet(Message.HEARTBEAT, 0x11223344, 0, Scene.ARCHIVE, 2)
-        self.assertEqual(legacy[10], 6)
-        self.assertEqual((legacy[17], legacy[18]), (0, 0))
+        default = build_packet(Message.HEARTBEAT, 0x11223344, 0, Scene.ARCHIVE, 2)
+        self.assertEqual(default[10], 8)
+        self.assertEqual((default[17], default[18]), (0, 0))
 
     def test_civic_bounds(self) -> None:
         with self.assertRaises(ValueError):

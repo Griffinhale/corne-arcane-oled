@@ -41,7 +41,7 @@ typedef uint8_t sim_event_t;
  * Poses and cast edges key off sampled key levels, so a dropped event can
  * never wedge the state machine. bit0 = left any-key-down, bit1 = right.
  *
- * scry_mask (M7) is the same level-sampled idea for the layer-key chord: the
+ * scry_mask (scry) is the same level-sampled idea for the layer-key chord: the
  * glue samples the two physical layer-key positions and whether any OTHER key
  * is held, so the chord machine can never be wedged by a dropped edge either.
  * SCRY_M_* below name the bits. */
@@ -51,12 +51,10 @@ typedef uint8_t sim_event_t;
 typedef struct {
     uint8_t down_mask;
     uint8_t scry_mask;
-#ifdef ARCANE_M13
     /* Physical, privacy-preserving projection. Bits are row * 6 + column;
        no keycodes or emitted characters enter the simulation. */
     uint32_t held_pos[2];
     uint8_t  layer[2];
-#endif
 } sim_inputs_t;
 
 /* ---- bounded event queue ------------------------------------------------
@@ -81,11 +79,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS   12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#ifdef ARCANE_M13
 #    define SIM_MAX_HP 12
-#else
-#    define SIM_MAX_HP 5
-#endif
 
 /* ---- combat (M4) ---------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
@@ -96,7 +90,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
  * runs only when SIMF_AUTHORITATIVE is set (the master), so the slave
  * structurally cannot decide outcomes. */
 #define SIM_SPELL_SPEED       4  /* full flight 8 -> 248 in 60 ticks (2.4 s) */
-#define SIM_CAST_WINDUP_TICKS 10 /* 400 ms: shortest M7.5 hardware candidate */
+#define SIM_CAST_WINDUP_TICKS 10 /* 400 ms: shortest scry.5 hardware candidate */
 #define SIM_CAST_COOLDOWN     25 /* ~1 s between casts per wizard */
 #define SIM_SHIELD_TICKS      10 /* any keydown shields that side ~400 ms */
 #define SIM_SPAWN_L           8
@@ -107,7 +101,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 #define SIM_IMPACT_L          7
 
 // M6 recipe vocabulary. A cast compiles the recent keydown burst into a kind
-// byte. M7.5 uses the two previously spare high bits for a capped presentation
+// byte. scry.5 uses the two previously spare high bits for a capped presentation
 // tier; it never changes damage or any other combat rule.
 enum { ELEM_FORCE = 0, ELEM_EMBER = 1, ELEM_FROST = 2, ELEM_VOID = 3 };
 enum { MOD_NONE = 0, MOD_SWIFT = 1, MOD_HEAVY = 2 };
@@ -140,11 +134,7 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
 #define SIM_MEDIC_TICKS    25  /* ~1 s medic drags the body off */
 #define SIM_REPLACE_TICKS  20  /* ~0.8 s replacement walks in */
 /* total downtime 82 ticks = 3.28 s at 25 Hz — no dead ends: no input needed to progress */
-#ifdef ARCANE_M13
 #    define SIM_REGEN_TICKS 750 /* exactly 30 s per regained pip below max */
-#else
-#    define SIM_REGEN_TICKS 375 /* ~15 s per regained pip below max */
-#endif
 #define SIM_ROSTER_N    4      /* cosmetic roster variants cycled per replacement */
 
 // fx kinds; the side names the DEFENDER (whose screen takes the hit/flash).
@@ -153,8 +143,7 @@ enum { FX_NONE = 0, FX_IMPACT_L = 1, FX_IMPACT_R = 2,
        FX_DEFLECT_L = 3, FX_DEFLECT_R = 4, FX_FIZZLE_L = 5,
        FX_FIZZLE_R = 6 };
 
-#ifdef ARCANE_M13
-/* M13 24-bit compiled descriptor. The high byte must always remain zero. */
+/* current 24-bit compiled descriptor. The high byte must always remain zero. */
 enum { SPELL_PROJECTILE = 0, SPELL_SINGULARITY = 1, SPELL_FIREBALL = 2,
        SPELL_BEAM = 3, SPELL_SWARM = 4, SPELL_GROUND_WAVE = 5,
        SPELL_CHAIN = 6, SPELL_CONJURE = 7 };
@@ -170,7 +159,7 @@ enum { TEMPO_DELIBERATE = 0, TEMPO_FLOWING = 1, TEMPO_RAPID = 2,
 enum { TREND_DECELERATING = 0, TREND_STEADY = 1, TREND_ACCELERATING = 2,
        TREND_IRREGULAR = 3 };
 
-/* M13 one-shot outcomes retain the legacy 0..6 values above. Values 7..15
+/* current one-shot outcomes retain the legacy 0..6 values above. Values 7..15
  * are deliberately side-neutral aftermaths except for the two ward-shatter
  * outcomes, whose side must be explicit for the local fracture animation. */
 enum { FX_HEAL_L = 7, FX_HEAL_R = 8, FX_COMPLAINT = 9,
@@ -223,10 +212,10 @@ typedef struct {
 
 enum { INC_IDLE = 0, INC_COLLECTING = 1, INC_WINDUP = 2,
        INC_PREPARED = 3, INC_REARM = 4 };
-#define M13_IDLE_COMMIT_TICKS 13
-#define M13_FORCE_COMMIT_TICKS 250
-#define M13_WINDUP_MIN_TICKS 8
-#define M13_WINDUP_MAX_TICKS 50
+#define INCANTATION_IDLE_COMMIT_TICKS 13
+#define INCANTATION_FORCE_COMMIT_TICKS 250
+#define INCANTATION_WINDUP_MIN_TICKS 8
+#define INCANTATION_WINDUP_MAX_TICKS 50
 
 typedef struct {
     uint32_t hash;
@@ -258,9 +247,8 @@ typedef struct {
     uint8_t last_gap_bucket;
 } sim_incantation_t;
 
-uint8_t m13_complexity(const sim_incantation_t *inc);
-uint32_t m13_compile(const sim_incantation_t *inc, uint8_t variant);
-#endif
+uint8_t incantation_complexity(const sim_incantation_t *inc);
+uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant);
 
 typedef struct {
     uint8_t pose;          /* POSE_* */
@@ -275,11 +263,10 @@ typedef struct {
     uint8_t  recipe_hist;   /* last-4 row classes, 2 bits each, newest in bits0-1; the
                                modifier reads its repetition/alternation pattern */
     uint8_t  recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
-    uint8_t  cast_tier;     /* M7.5 capped presentation tier while charging */
+    uint8_t  cast_tier;     /* scry.5 capped presentation tier while charging */
     uint8_t  recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
     uint8_t  _pad;          /* explicit padding: keeps world hashing deterministic */
     uint16_t regen_ticks;   /* countdown to next regen pip; local, never in snapshots */
-#ifdef ARCANE_M13
     sim_incantation_t inc;
     uint32_t pending_desc;
     uint32_t prepared_desc;
@@ -295,7 +282,6 @@ typedef struct {
     uint8_t  status_intensity;
     uint8_t  status_ticks;
     uint8_t  status_burned;
-#endif
 } sim_wizard_t;
 
 typedef struct {
@@ -303,16 +289,14 @@ typedef struct {
     uint8_t pos;    /* battlefield u: 0 = left wizard, 255 = right wizard */
     int8_t  dir;    /* units per tick, + toward the right */
     uint8_t kind;   /* DUEL_KIND_PACK element/modifier/payload */
-#ifdef ARCANE_M13
     uint32_t descriptor;
     uint8_t progress;
     uint8_t age;
     uint8_t aux;
     uint8_t resolved;
-#endif
 } sim_spell_t;
 
-/* ---- layer-key scrying overlay (M7) --------------------------------------
+/* ---- layer-key scrying overlay (scry) --------------------------------------
  * An explicit chord state machine, driven purely by the level-sampled
  * scry_mask, opens a temporary in-world overlay above the still-running duel.
  * It is authoritative-only (the master owns both layer-key positions via its
@@ -354,18 +338,14 @@ typedef struct {
     uint8_t      fx_kind;        /* FX_*: none/impact/deflect/fizzle, L/R per defender */
     uint16_t     overflow_count; /* lifetime dropped events, saturating */
     uint16_t     _pad;           /* explicit padding: keeps world hashing deterministic */
-    sim_scry_t   scry;           /* M7 layer-key overlay chord machine (authoritative-only) */
-#ifdef ARCANE_M13
+    sim_scry_t   scry;           /* scry layer-key overlay chord machine (authoritative-only) */
     sim_aftermath_t aftermath[2];
     uint8_t         world_state;
-    uint8_t         _m13_pad;
-#endif
+    uint8_t         _incantation_pad;
 } sim_world_t;
 
-#ifdef ARCANE_M13
-uint8_t m13_aftermath_shared(const sim_world_t *world);
-uint8_t m13_aftermath_revision(const sim_world_t *world);
-#endif
+uint8_t incantation_aftermath_shared(const sim_world_t *world);
+uint8_t incantation_aftermath_revision(const sim_world_t *world);
 
 // True while the scrying overlay should be drawn (ACTIVE or SELECT). Slave
 // worlds decoded from the wire land in exactly these states, so both halves

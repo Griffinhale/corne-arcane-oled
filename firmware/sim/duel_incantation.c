@@ -1,17 +1,15 @@
-/* M13 deterministic incantation compiler and combat engine.
+/* Deterministic incantation compiler and combat engine.
  *
- * This translation unit is empty unless ARCANE_M13 is selected. It consumes
- * only physical positions, level masks, normalized layers, and fixed ticks;
+ * This current-only translation unit consumes physical positions, level
+ * masks, normalized layers, and fixed ticks;
  * keycodes and text never cross this boundary. */
 #include "duel_sim.h"
-
-#ifdef ARCANE_M13
 
 #include <string.h>
 
 #define FNV1A_OFFSET 2166136261u
 #define FNV1A_PRIME  16777619u
-#define M13_STATUS_BASE_TICKS 100u
+#define INCANTATION_STATUS_BASE_TICKS 100u
 
 static uint8_t sat_inc(uint8_t v) { return v == 0xffu ? v : (uint8_t)(v + 1u); }
 static uint8_t min_u8(uint8_t a, uint8_t b) { return a < b ? a : b; }
@@ -47,7 +45,7 @@ static void inc_reset(sim_incantation_t *inc) {
     inc->last_pos = 0xffu;
 }
 
-uint8_t m13_complexity(const sim_incantation_t *inc) {
+uint8_t incantation_complexity(const sim_incantation_t *inc) {
     uint16_t score = (uint16_t)min_u8(inc->key_count, 64u) * 2u;
     score += (uint16_t)min_u8(popcount24(inc->seen_pos), 16u) * 3u;
     score += (uint16_t)min_u8(inc->turns, 16u) * 2u;
@@ -102,8 +100,8 @@ static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint32_t hash) {
     return SPELL_PROJECTILE;
 }
 
-uint32_t m13_compile(const sim_incantation_t *inc, uint8_t variant) {
-    uint8_t complexity = m13_complexity(inc);
+uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant) {
+    uint8_t complexity = incantation_complexity(inc);
     uint8_t magnitude = complexity < 48u ? 1u : complexity < 112u ? 2u :
                         complexity < 192u ? 3u : 4u;
     uint8_t row = dominant_row(inc);
@@ -156,7 +154,7 @@ uint32_t m13_compile(const sim_incantation_t *inc, uint8_t variant) {
                            interaction, tempo, trend, (inc->hash >> 22) & 3u);
 }
 
-static uint8_t desc_legacy_kind(uint32_t desc) {
+static uint8_t desc_display_kind(uint32_t desc) {
     uint8_t tier = (uint8_t)(SPELL_DESC_MAGNITUDE(desc) - 1u);
     return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(SPELL_DESC_ELEMENT(desc), MOD_NONE,
                                                PAY_IMPACT), tier);
@@ -254,14 +252,14 @@ static void aftermath_step(sim_world_t *w) {
                      any ? WORLD_RECOVERY : WORLD_CALM;
 }
 
-uint8_t m13_aftermath_shared(const sim_world_t *w) {
+uint8_t incantation_aftermath_shared(const sim_world_t *w) {
     if (!w->aftermath[0].kind && !w->aftermath[1].kind) return 0;
     return (uint8_t)((w->aftermath[0].kind & 7u) |
                      ((w->aftermath[1].kind & 7u) << 3) |
                      ((w->world_state & 3u) << 6));
 }
 
-uint8_t m13_aftermath_revision(const sim_world_t *w) {
+uint8_t incantation_aftermath_revision(const sim_world_t *w) {
     if (!w->aftermath[0].kind && !w->aftermath[1].kind) return 0;
     return (uint8_t)(0x80u | aftermath_phase(&w->aftermath[0]) |
                      (aftermath_phase(&w->aftermath[1]) << 2));
@@ -300,7 +298,7 @@ static void apply_status(sim_wizard_t *wz, uint8_t status, uint8_t intensity) {
     if (intensity < wz->status_intensity) return;
     wz->status = status;
     wz->status_intensity = intensity;
-    wz->status_ticks = (uint8_t)(M13_STATUS_BASE_TICKS + (uint8_t)(intensity - 1u) * 25u);
+    wz->status_ticks = (uint8_t)(INCANTATION_STATUS_BASE_TICKS + (uint8_t)(intensity - 1u) * 25u);
     wz->status_burned = 0;
 }
 
@@ -409,7 +407,7 @@ static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
     sp->pos = side == SIM_SIDE_L ? SIM_SPAWN_L : SIM_SPAWN_R;
     sp->dir = side == SIM_SIDE_L ? 1 : -1;
     sp->descriptor = desc;
-    sp->kind = desc_legacy_kind(desc);
+    sp->kind = desc_display_kind(desc);
     if (SPELL_DESC_FORM(desc) == SPELL_SWARM) {
         sp->aux = (uint8_t)(2u + SPELL_DESC_MAGNITUDE(desc));
         sp->progress = (uint8_t)(sp->aux << 5);
@@ -484,20 +482,20 @@ static void inc_keydown(sim_wizard_t *wz, uint8_t pos, uint8_t layer) {
     inc->key_count = sat_inc(inc->key_count);
     inc->idle = 0;
     inc->quiet = 0;
-    ward_grow_to(wz, ward_capacity_for(m13_complexity(inc)));
+    ward_grow_to(wz, ward_capacity_for(incantation_complexity(inc)));
     wz->ward_focus = trajectory_lane(row == 0u ? TRAJ_HIGH : row == 1u ? TRAJ_MID :
                                      row == 2u ? TRAJ_LOW : TRAJ_MID);
 }
 
 static void inc_commit(sim_world_t *w, uint8_t side, bool forced) {
     sim_wizard_t *wz = &w->wiz[side];
-    uint8_t complexity = m13_complexity(&wz->inc);
-    wz->pending_desc = m13_compile(&wz->inc, wz->variant);
+    uint8_t complexity = incantation_complexity(&wz->inc);
+    wz->pending_desc = incantation_compile(&wz->inc, wz->variant);
     ward_grow_to(wz, ward_capacity_for(complexity));
-    uint16_t windup = (uint16_t)M13_WINDUP_MIN_TICKS +
+    uint16_t windup = (uint16_t)INCANTATION_WINDUP_MIN_TICKS +
                       ((uint16_t)complexity * 42u + 254u) / 255u;
     if (wz->status == STATUS_FROZEN) windup += (uint16_t)wz->status_intensity * 3u;
-    if (windup > M13_WINDUP_MAX_TICKS) windup = M13_WINDUP_MAX_TICKS;
+    if (windup > INCANTATION_WINDUP_MAX_TICKS) windup = INCANTATION_WINDUP_MAX_TICKS;
     wz->cast_windup = (uint8_t)windup;
     wz->windup_total = (uint8_t)windup;
     wz->inc_state = INC_WINDUP;
@@ -942,8 +940,8 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
                 wz->inc.held_ticks = (uint16_t)(wz->inc.held_ticks + popcount24(held));
                 uint8_t overlap = popcount24(held);
                 if (overlap > wz->inc.overlap_peak) wz->inc.overlap_peak = overlap;
-                if (wz->inc.elapsed >= M13_FORCE_COMMIT_TICKS) inc_commit(w, side, true);
-                else if (wz->inc.quiet >= M13_IDLE_COMMIT_TICKS) inc_commit(w, side, false);
+                if (wz->inc.elapsed >= INCANTATION_FORCE_COMMIT_TICKS) inc_commit(w, side, true);
+                else if (wz->inc.quiet >= INCANTATION_IDLE_COMMIT_TICKS) inc_commit(w, side, false);
             }
             if (wz->rearm_lock && !held) {
                 wz->rearm_lock = 0;
@@ -990,5 +988,3 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
     w->prev_down_mask = in.down_mask;
     w->tick++;
 }
-
-#endif /* ARCANE_M13 */

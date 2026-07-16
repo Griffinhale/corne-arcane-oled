@@ -1,4 +1,4 @@
-# Corne Arcane M11.5 command-completion and repository-state hook for Zsh.
+# Corne Arcane earlier command-completion and repository-state hook for Zsh.
 # Only monotonic duration and integer exit status leave the shell. Command
 # text, paths, environment, and terminal content are never transmitted.
 

@@ -20,6 +20,7 @@ from .policy import NotificationPolicy
 from .protocol import (
     Category,
     CivicState,
+    DEFAULT_CIVIC,
     EMPTY_SUMMARY,
     Message,
     NotificationSummary,
@@ -98,9 +99,7 @@ class HidHeartbeat:
             if notification_count == 0
             else NotificationSummary(notification_count, Category.OTHER, Priority.NORMAL)
         )
-        # Absent a civic provider the daemon emits the bit-identical M11.5
-        # six-byte payload; supplying one advertises payload_len 8 (M12).
-        self.civic_provider = civic_provider
+        self.civic_provider = civic_provider or (lambda: DEFAULT_CIVIC)
         self.interval = interval
         self.retry_interval = retry_interval
         self.verbose = verbose
@@ -112,6 +111,12 @@ class HidHeartbeat:
         self.heartbeats = 0
         self.notifications = 0
         self.notify_pending = False
+
+    def _exchange(self, device: object, report: bytes) -> None:
+        device.send(report)  # type: ignore[attr-defined]
+        reply = device.receive(0.25)  # type: ignore[attr-defined]
+        if reply != report:
+            raise RuntimeError("Raw HID acknowledgement did not exactly echo request")
 
     def _log(self, message: str) -> None:
         if self.verbose:
@@ -129,6 +134,7 @@ class HidHeartbeat:
             self._log(f"HID disconnected ({error}); retrying in {self.retry_interval:g}s")
 
     def _connect(self, now: float) -> None:
+        device = None
         try:
             device = self.device_factory()
             session = self.session_factory() & 0xFFFFFFFF
@@ -137,20 +143,22 @@ class HidHeartbeat:
                 candidate = ((candidate + 1) & 0xFFFFFFFF) or 1
             self.session = candidate
             self.sequence = 0
-            device.send(  # type: ignore[attr-defined]
+            self._exchange(
+                device,
                 build_packet(
                     Message.HELLO,
                     self.session,
                     0,
                     self.scene_provider(),
                     summary=self.summary_provider(),
-                    civic=self.civic_provider() if self.civic_provider else None,
+                    civic=self.civic_provider(),
                 )
             )
-        except (OSError, RuntimeError) as error:
+        except (OSError, RuntimeError, TimeoutError) as error:
             try:
-                device.close()  # type: ignore[possibly-undefined, attr-defined]
-            except (NameError, OSError):
+                if device is not None:
+                    device.close()  # type: ignore[attr-defined]
+            except OSError:
                 pass
             self.device = None
             self.next_connect = now + self.retry_interval
@@ -174,17 +182,18 @@ class HidHeartbeat:
         message = Message.HEARTBEAT if heartbeat_due else Message.NOTIFY
         summary = self.summary_provider()
         try:
-            self.device.send(  # type: ignore[attr-defined]
+            self._exchange(
+                self.device,
                 build_packet(
                     message,
                     self.session,
                     self.sequence,
                     self.scene_provider(),
                     summary=summary,
-                    civic=self.civic_provider() if self.civic_provider else None,
+                    civic=self.civic_provider(),
                 )
             )
-        except OSError as error:
+        except (OSError, RuntimeError, TimeoutError) as error:
             self._disconnect(now, error)
             return False
         if message == Message.NOTIFY:
@@ -514,13 +523,13 @@ def run(args: argparse.Namespace) -> int:
     session_factory = (
         (lambda: fixed_session) if fixed_session is not None else (lambda: secrets.randbits(32) or 1)
     )
-    legacy_summary = (
+    fixed_summary = (
         EMPTY_SUMMARY
         if args.notify == 0
         else NotificationSummary(args.notify, Category.OTHER, Priority.NORMAL)
     )
 
-    resolver.update(summary=legacy_summary if args.notify else policy.summary(time.monotonic()))
+    resolver.update(summary=fixed_summary if args.notify else policy.summary(time.monotonic()))
 
     def summary_provider() -> NotificationSummary:
         return resolver.state.summary
@@ -582,7 +591,7 @@ def run(args: argparse.Namespace) -> int:
         adapters.poll(now)
         if override is None:
             arbiter.poll(now)
-        summary = legacy_summary if args.notify else policy.summary(now)
+        summary = fixed_summary if args.notify else policy.summary(now)
         resolver.update(
             summary=summary, focus_scene=arbiter.scene, focus_floor=arbiter.floor
         )

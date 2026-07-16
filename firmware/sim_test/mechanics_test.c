@@ -50,8 +50,8 @@ static void wait_ticks(sim_world_t *w, unsigned ticks) {
 
 static void release_recipe(sim_world_t *w, uint8_t side, uint8_t row) {
     tap(w, side, row, 1, 0);
-    wait_ticks(w, M13_IDLE_COMMIT_TICKS - 1u);
-    for (unsigned guard = 0; guard < M13_WINDUP_MAX_TICKS + 2u && !w->spell[side].active; guard++)
+    wait_ticks(w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
+    for (unsigned guard = 0; guard < INCANTATION_WINDUP_MAX_TICKS + 2u && !w->spell[side].active; guard++)
         step(w, 0, 0, 0, 0, NULL, 0);
 }
 
@@ -73,7 +73,54 @@ static void test_layout_and_protocol(void) {
     bad.ver = 9;
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
     ok &= !duel_decode_valid(&bad);
-    CHECK(ok, "m13_v10_exact_size_crc_and_version_rejection");
+    CHECK(ok, "incantation_v10_exact_size_crc_and_version_rejection");
+}
+
+static void test_host_protocol_current_payload_and_ordering(void) {
+    duel_host_packet_t hello;
+    duel_host_encode(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
+                     DUEL_HOST_SCENE_ARCHIVE, 2,
+                     DUEL_HOST_CATEGORY_COMMUNICATION,
+                     DUEL_HOST_PRIORITY_NORMAL, 3, false,
+                     DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH,
+                                     DUEL_CIVIC_MODE_NORMAL,
+                                     DUEL_CIVIC_INTENSITY_ACTIVE),
+                     DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_MEDIA),
+                     &hello);
+    duel_host_state_t state = {0};
+    bool ok = sizeof hello == DUEL_HOST_REPORT_SIZE &&
+              hello.version == DUEL_HOST_VERSION &&
+              hello.payload_len == DUEL_HOST_PAYLOAD_LEN &&
+              duel_host_packet_valid(&hello) &&
+              duel_host_accept(&state, &hello) == DUEL_HOST_APPLIED_HEARTBEAT &&
+              DUEL_HOST_CONTEXT_SCENE(duel_host_context(&state)) == DUEL_HOST_SCENE_ARCHIVE &&
+              DUEL_CIVIC_FLOOR(duel_host_civic(&state)) == DUEL_CIVIC_FLOOR_RESEARCH;
+
+    duel_host_packet_t heartbeat;
+    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, 0x11223344u, 1,
+                     DUEL_HOST_SCENE_FOCUS, 0,
+                     DUEL_HOST_CATEGORY_NONE, DUEL_HOST_PRIORITY_NONE, 0, false,
+                     DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP,
+                                     DUEL_CIVIC_MODE_QUIET,
+                                     DUEL_CIVIC_INTENSITY_CALM),
+                     DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_NONE),
+                     &heartbeat);
+    ok &= duel_host_accept(&state, &heartbeat) == DUEL_HOST_APPLIED_HEARTBEAT;
+    ok &= duel_host_accept(&state, &heartbeat) == DUEL_HOST_DROP_STALE;
+
+    duel_host_packet_t bad = heartbeat;
+    bad.payload_len = 6;
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    ok &= !duel_host_packet_valid(&bad);
+    bad = heartbeat;
+    bad.version = 1;
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    ok &= !duel_host_packet_valid(&bad);
+    bad = heartbeat;
+    bad.payload[DUEL_HOST_PAYLOAD_SECONDARY] = 0x80u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    ok &= !duel_host_packet_valid(&bad);
+    CHECK(ok, "host_v2_eight_byte_payload_malformed_and_stale_ordering");
 }
 
 static void test_view_validation(void) {
@@ -107,7 +154,7 @@ static void test_view_validation(void) {
     ok &= !duel_view_valid(&bad);
     bad = view; bad.spell[0][1] |= 0x70u; /* reserved status encoding */
     ok &= !duel_view_valid(&bad);
-    CHECK(ok, "m13_view_roundtrip_and_reserved_validation");
+    CHECK(ok, "incantation_view_roundtrip_and_reserved_validation");
 }
 
 static void test_complexity_formula(void) {
@@ -118,7 +165,7 @@ static void test_complexity_formula(void) {
     inc.layer_transitions = 9;
     inc.overlap_peak = 5;
     inc.rhythm_changes = 9;
-    bool ok = m13_complexity(&inc) == 255;
+    bool ok = incantation_complexity(&inc) == 255;
     memset(&inc, 0, sizeof inc);
     inc.key_count = 3;             /* 6 */
     inc.seen_pos = 7;              /* 9 */
@@ -126,8 +173,8 @@ static void test_complexity_formula(void) {
     inc.layer_transitions = 1;     /* 4 */
     inc.overlap_peak = 2;          /* 8 */
     inc.rhythm_changes = 1;        /* 3 = 34 */
-    ok &= m13_complexity(&inc) == 34;
-    CHECK(ok, "m13_complexity_exact_and_clamped");
+    ok &= incantation_complexity(&inc) == 34;
+    CHECK(ok, "incantation_complexity_exact_and_clamped");
 }
 
 static sim_incantation_t incantation_at_complexity(uint8_t target) {
@@ -141,7 +188,7 @@ static sim_incantation_t incantation_at_complexity(uint8_t target) {
                 inc.key_count = keys;
                 inc.seen_pos = unique == 0u ? 0u : (1u << unique) - 1u;
                 inc.turns = turns;
-                if (m13_complexity(&inc) == target) {
+                if (incantation_complexity(&inc) == target) {
                     inc.row_hist[1] = keys ? keys : 1u;
                     inc.row_recent[1] = 1u;
                     return inc;
@@ -159,16 +206,16 @@ static void test_magnitude_thresholds(void) {
     bool ok = true;
     for (size_t i = 0; i < sizeof complexity; i++) {
         sim_incantation_t inc = incantation_at_complexity(complexity[i]);
-        ok &= inc.key_count != 0xffu && m13_complexity(&inc) == complexity[i] &&
-              SPELL_DESC_MAGNITUDE(m13_compile(&inc, 0)) == magnitude[i];
+        ok &= inc.key_count != 0xffu && incantation_complexity(&inc) == complexity[i] &&
+              SPELL_DESC_MAGNITUDE(incantation_compile(&inc, 0)) == magnitude[i];
     }
     sim_incantation_t saturated = {0};
     saturated.hash = 1u; saturated.key_count = 64u; saturated.seen_pos = 0xffffu;
     saturated.turns = 16u; saturated.layer_transitions = 8u;
     saturated.overlap_peak = 5u; saturated.rhythm_changes = 8u;
     saturated.row_hist[1] = 64u;
-    ok &= SPELL_DESC_MAGNITUDE(m13_compile(&saturated, 0)) == 4u;
-    CHECK(ok, "m13_magnitude_thresholds_48_112_192");
+    ok &= SPELL_DESC_MAGNITUDE(incantation_compile(&saturated, 0)) == 4u;
+    CHECK(ok, "incantation_magnitude_thresholds_48_112_192");
 }
 
 static void test_compiler_determinism_and_gates(void) {
@@ -179,7 +226,7 @@ static void test_compiler_determinism_and_gates(void) {
     inc.row_hist[0] = 1;
     inc.row_recent[0] = 1;
     inc.gap_min = 1;
-    uint32_t a = m13_compile(&inc, 0), b = m13_compile(&inc, 0);
+    uint32_t a = incantation_compile(&inc, 0), b = incantation_compile(&inc, 0);
     bool ok = a == b && SPELL_DESC_FORM(a) == SPELL_PROJECTILE &&
               SPELL_DESC_ELEMENT(a) == ELEM_FROST && (a & 0xff000000u) == 0 &&
               SPELL_DESC_VALID(a);
@@ -192,12 +239,12 @@ static void test_compiler_determinism_and_gates(void) {
     bool saw_non_projectile = false;
     for (uint32_t h = 1; h < 500; h++) {
         inc.hash = h * 2654435761u;
-        uint8_t form = SPELL_DESC_FORM(m13_compile(&inc, 1));
+        uint8_t form = SPELL_DESC_FORM(incantation_compile(&inc, 1));
         ok &= form == SPELL_PROJECTILE || form == SPELL_FIREBALL || form == SPELL_SWARM;
         saw_non_projectile |= form != SPELL_PROJECTILE;
     }
     ok &= saw_non_projectile;
-    CHECK(ok, "m13_compiler_determinism_privacy_and_complexity_gate");
+    CHECK(ok, "incantation_compiler_determinism_privacy_and_complexity_gate");
 }
 
 static void test_compiler_reachability(void) {
@@ -223,7 +270,7 @@ static void test_compiler_reachability(void) {
             inc.gap_min = avg; inc.gap_max = (i & 32u) ? (uint8_t)(avg + 4u) : avg;
             inc.first_gap = (uint8_t)(avg + ((i >> 6) & 1u));
             inc.last_gap = (uint8_t)(avg + ((i >> 7) & 1u));
-            uint32_t desc = m13_compile(&inc, (uint8_t)(i & 3u));
+            uint32_t desc = incantation_compile(&inc, (uint8_t)(i & 3u));
             forms |= 1u << SPELL_DESC_FORM(desc);
             elements |= 1u << SPELL_DESC_ELEMENT(desc);
             payloads |= 1u << SPELL_DESC_PAYLOAD(desc);
@@ -239,7 +286,7 @@ static void test_compiler_reachability(void) {
               trajectories == 0xffu && magnitudes == 0x0fu &&
               (statuses & 0x1fu) == 0x1fu && interactions == 0x0fu &&
               tempos == 0x0fu && trends == 0x0fu;
-    CHECK(ok, "m13_initial_descriptor_attribute_reachability");
+    CHECK(ok, "incantation_initial_descriptor_attribute_reachability");
 }
 
 static void test_independent_accumulators_and_commit(void) {
@@ -254,11 +301,11 @@ static void test_independent_accumulators_and_commit(void) {
     bool ok = w.wiz[0].inc.key_count == 1 && w.wiz[1].inc.key_count == 1 &&
               w.wiz[0].inc.seen_pos == (1u << 1) && w.wiz[1].inc.seen_pos == (1u << 16) &&
               w.wiz[0].inc.hash != w.wiz[1].inc.hash;
-    wait_ticks(&w, M13_IDLE_COMMIT_TICKS - 1u);
+    wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
     ok &= w.wiz[0].inc_state == INC_WINDUP && w.wiz[1].inc_state == INC_WINDUP;
     uint32_t left = w.wiz[0].pending_desc, right = w.wiz[1].pending_desc;
     ok &= SPELL_DESC_ELEMENT(left) == ELEM_FROST && SPELL_DESC_ELEMENT(right) == ELEM_EMBER;
-    CHECK(ok, "m13_simultaneous_per_half_idle_commit");
+    CHECK(ok, "incantation_simultaneous_per_half_idle_commit");
 }
 
 static void test_forced_cap_and_rearm(void) {
@@ -267,7 +314,7 @@ static void test_forced_cap_and_rearm(void) {
     sim_event_t event = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 1, 2);
     uint32_t held = 1u << 8;
     step(&w, held, 0, 0, 0, &event, 1);
-    for (unsigned i = 1; i < M13_FORCE_COMMIT_TICKS; i++) step(&w, held, 0, 0, 0, NULL, 0);
+    for (unsigned i = 1; i < INCANTATION_FORCE_COMMIT_TICKS; i++) step(&w, held, 0, 0, 0, NULL, 0);
     bool ok = w.wiz[0].rearm_lock && w.wiz[0].inc_state == INC_WINDUP;
     uint8_t count = w.wiz[0].inc.key_count;
     sim_event_t ignored = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 0, 0);
@@ -275,7 +322,7 @@ static void test_forced_cap_and_rearm(void) {
     ok &= w.wiz[0].inc.key_count == count;
     step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= !w.wiz[0].rearm_lock;
-    CHECK(ok, "m13_ten_second_force_commit_full_release_rearm");
+    CHECK(ok, "incantation_ten_second_force_commit_full_release_rearm");
 }
 
 static void test_release_and_prepared(void) {
@@ -284,20 +331,20 @@ static void test_release_and_prepared(void) {
     release_recipe(&w, 0, 1);
     bool ok = w.spell[0].active && SPELL_DESC_VALID(w.spell[0].descriptor);
     tap(&w, 0, 2, 2, 0);
-    wait_ticks(&w, M13_IDLE_COMMIT_TICKS - 1u);
+    wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
     unsigned guard = 0;
     while (w.wiz[0].inc_state == INC_WINDUP && guard++ < 60) step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= w.wiz[0].inc_state == INC_PREPARED && w.wiz[0].prepared && w.wiz[0].ward_strength;
     while (w.wiz[0].prepared && guard++ < 120) step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= w.spell[0].active && !w.wiz[0].prepared;
-    CHECK(ok, "m13_one_active_one_prepared_auto_release");
+    CHECK(ok, "incantation_one_active_one_prepared_auto_release");
 }
 
 static void test_windup_ignored_input_and_interruption(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     tap(&w, 0, 1, 1, 0);
-    wait_ticks(&w, M13_IDLE_COMMIT_TICKS - 1u);
+    wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
     bool ok = w.wiz[0].inc_state == INC_WINDUP && w.wiz[0].ward_strength == 1;
     uint8_t count = w.wiz[0].inc.key_count;
     sim_event_t ignored = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 2, 5);
@@ -313,7 +360,7 @@ static void test_windup_ignored_input_and_interruption(void) {
     ok &= w.wiz[0].inc_state == INC_IDLE && !w.wiz[0].pending_desc &&
           !w.wiz[0].prepared && !w.wiz[0].ward_strength &&
           !w.wiz[0].ward_capacity;
-    CHECK(ok, "m13_windup_input_ignored_and_unblocked_contact_interrupts");
+    CHECK(ok, "incantation_windup_input_ignored_and_unblocked_contact_interrupts");
 }
 
 static void install_spell(sim_world_t *w, uint8_t side, uint32_t desc, uint8_t progress) {
@@ -378,7 +425,7 @@ static void test_ward_capacity_semantics(void) {
     release_recipe(&w, 0, 1);
     ok &= w.spell[0].active && !w.wiz[0].ward_strength &&
           !w.wiz[0].ward_capacity;
-    CHECK(ok, "m13_ward_capacity_spend_growth_leakage_coverage_and_launch_clear");
+    CHECK(ok, "incantation_ward_capacity_spend_growth_leakage_coverage_and_launch_clear");
 }
 
 static void test_regeneration_boundary_and_hit_reset(void) {
@@ -401,7 +448,7 @@ static void test_regeneration_boundary_and_hit_reset(void) {
     ok &= w.wiz[1].hp == 10u;
     wait_ticks(&w, 1u);
     ok &= w.wiz[1].hp == 11u;
-    CHECK(ok, "m13_regeneration_exact_30_seconds_and_damage_reset");
+    CHECK(ok, "incantation_regeneration_exact_30_seconds_and_damage_reset");
 }
 
 static void test_damage_heal_ward_and_status(void) {
@@ -433,7 +480,7 @@ static void test_damage_heal_ward_and_status(void) {
     while (!w.wiz[1].status_burned) step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= w.wiz[1].hp == (uint8_t)(hp - 1u) &&
           w.wiz[1].regen_ticks == SIM_REGEN_TICKS;
-    CHECK(ok, "m13_damage_residual_heal_clamp_and_delayed_burn");
+    CHECK(ok, "incantation_damage_residual_heal_clamp_and_delayed_burn");
 }
 
 static void test_status_dominance_and_effects(void) {
@@ -481,7 +528,7 @@ static void test_status_dominance_and_effects(void) {
                                     TEMPO_RAPID, TREND_STEADY, 0);
     install_spell(&w, 0, area, 239); step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0;
-    CHECK(ok, "m13_status_strength_frozen_disrupted_and_marked_effects");
+    CHECK(ok, "incantation_status_strength_frozen_disrupted_and_marked_effects");
 }
 
 static void test_form_lifecycles(void) {
@@ -509,7 +556,7 @@ static void test_form_lifecycles(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, swarm, 0); w.spell[0].aux = 6;
     wait_ticks(&w, 36);
     ok &= !w.spell[0].active && w.wiz[1].hp == 6;
-    CHECK(ok, "m13_beam_once_singularity_empty_and_six_orb_lifecycles");
+    CHECK(ok, "incantation_beam_once_singularity_empty_and_six_orb_lifecycles");
 }
 
 static void test_collision_precedence(void) {
@@ -544,7 +591,7 @@ static void test_collision_precedence(void) {
     install_spell(&w, 0, ember, 120); install_spell(&w, 1, frost, 120);
     step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= !w.spell[0].active && !w.spell[1].active;
-    CHECK(ok, "m13_collision_phase_singularity_and_ember_frost_precedence");
+    CHECK(ok, "incantation_collision_phase_singularity_and_ember_frost_precedence");
 }
 
 static uint32_t clash_desc(uint8_t element, uint8_t magnitude, uint8_t tempo,
@@ -611,10 +658,10 @@ static void test_productive_clashes(void) {
     install_spell(&w, 0, maximum, 239u);
     step(&w, 0, 0, 0, 0, NULL, 0);
     ok &= w.wiz[1].hp == SIM_MAX_HP - 4u;
-    CHECK(ok, "m13_productive_clash_cap_tiebreak_pulses_wards_and_damage_cap");
+    CHECK(ok, "incantation_productive_clash_cap_tiebreak_pulses_wards_and_damage_cap");
 }
 
-static void test_m13_link_ordering(void) {
+static void test_incantation_link_ordering(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_snapshot_t a, b, old_session;
@@ -626,7 +673,7 @@ static void test_m13_link_ordering(void) {
               !duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &old_session, false);
     duel_snapshot_t corrupt = b; corrupt.view.phase[0] ^= 0x40u;
     ok &= !duel_decode_valid(&corrupt);
-    CHECK(ok, "m13_sequence_wrap_session_restart_and_corruption");
+    CHECK(ok, "incantation_sequence_wrap_session_restart_and_corruption");
 }
 
 static void test_render_purity(void) {
@@ -642,7 +689,7 @@ static void test_render_purity(void) {
     bool nonempty = false;
     for (size_t i = 0; i < sizeof fb.bits; i++) nonempty |= fb.bits[i] != 0;
     CHECK(nonempty && memcmp(&w, &before, sizeof w) == 0,
-          "m13_render_nonempty_and_authoritative_pure");
+          "incantation_render_nonempty_and_authoritative_pure");
 }
 
 static uint32_t compile_actual_pattern(uint32_t seed, uint8_t extra_gap) {
@@ -653,7 +700,7 @@ static uint32_t compile_actual_pattern(uint32_t seed, uint8_t extra_gap) {
         tap(&w, 0, pos[i] / 6u, pos[i] % 6u, (uint8_t)((seed + i) & 3u));
         if (i != 3u) wait_ticks(&w, extra_gap);
     }
-    wait_ticks(&w, M13_IDLE_COMMIT_TICKS + 1u);
+    wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS + 1u);
     return w.wiz[0].pending_desc;
 }
 
@@ -680,9 +727,9 @@ static void test_real_input_reachability_and_timing_buckets(void) {
             uint8_t layer = (uint8_t)((seed + i * 3u + (i >> 2)) & 3u);
             tap(&w, 0, pos / 6u, pos % 6u, layer);
         }
-        uint8_t complexity = m13_complexity(&w.wiz[0].inc);
+        uint8_t complexity = incantation_complexity(&w.wiz[0].inc);
         if (complexity > max_complexity) max_complexity = complexity;
-        wait_ticks(&w, M13_IDLE_COMMIT_TICKS + 1u);
+        wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS + 1u);
         if (SPELL_DESC_VALID(w.wiz[0].pending_desc))
             forms |= 1u << SPELL_DESC_FORM(w.wiz[0].pending_desc);
     }
@@ -690,7 +737,7 @@ static void test_real_input_reachability_and_timing_buckets(void) {
         printf("DIAG actual forms=%02x complexity=%u bucket_a=%06x bucket_b=%06x\n",
                (unsigned)forms, max_complexity, (unsigned)bucket_a, (unsigned)bucket_b);
     ok &= forms == 0xffu;
-    CHECK(ok, "m13_real_input_all_forms_and_bucket_repeatability");
+    CHECK(ok, "incantation_real_input_all_forms_and_bucket_repeatability");
 }
 
 static uint32_t prose_workload_first_ko(uint8_t profile) {
@@ -738,7 +785,7 @@ static void test_prose_typing_ko_window(void) {
                    (unsigned long)ko);
         ok &= ko >= 1500u && ko <= 4500u;
     }
-    CHECK(ok, "m13_steady_burst_mixed_prose_first_ko_60_to_180_seconds");
+    CHECK(ok, "incantation_steady_burst_mixed_prose_first_ko_60_to_180_seconds");
 }
 
 static void test_max_cast_aftermath_and_wire(void) {
@@ -747,17 +794,17 @@ static void test_max_cast_aftermath_and_wire(void) {
     sim_event_t event = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 1, 2);
     uint32_t held = 1u << 8;
     step(&w, held, 0, 0, 0, &event, 1);
-    for (unsigned i = 1; i < M13_FORCE_COMMIT_TICKS; i++)
+    for (unsigned i = 1; i < INCANTATION_FORCE_COMMIT_TICKS; i++)
         step(&w, held, 0, 0, 0, NULL, 0);
-    uint8_t shared = m13_aftermath_shared(&w);
-    uint8_t revision = m13_aftermath_revision(&w);
+    uint8_t shared = incantation_aftermath_shared(&w);
+    uint8_t revision = incantation_aftermath_revision(&w);
     bool ok = w.aftermath[0].kind == AFTER_MAX_CAST &&
               w.aftermath[1].kind == AFTER_MAX_CAST &&
               w.aftermath[0].resident_state == RESIDENT_WATCH_CAST &&
               w.world_state == WORLD_WONDER &&
-              M13_AFTER_KIND(shared, 0) == AFTER_MAX_CAST &&
-              M13_AFTER_KIND(shared, 1) == AFTER_MAX_CAST &&
-              (revision & M13_AFTERMATH_WIRE);
+              INCANTATION_AFTER_KIND(shared, 0) == AFTER_MAX_CAST &&
+              INCANTATION_AFTER_KIND(shared, 1) == AFTER_MAX_CAST &&
+              (revision & INCANTATION_AFTERMATH_WIRE);
     duel_snapshot_t packet;
     duel_encode(&w, 4, 9, &packet);
     ok &= packet.shared_pres == shared && packet.revision == revision && duel_decode_valid(&packet);
@@ -770,7 +817,7 @@ static void test_max_cast_aftermath_and_wire(void) {
           w.aftermath[0].resident_state == RESIDENT_WATCH_CAST;
     wait_ticks(&w, 45);
     ok &= w.aftermath[0].resident_state == RESIDENT_CHEER;
-    CHECK(ok, "m13_max_cast_coordinated_authoritative_wire_aftermath");
+    CHECK(ok, "incantation_max_cast_coordinated_authoritative_wire_aftermath");
 }
 
 static void test_fireball_room_resident_object_arc(void) {
@@ -796,7 +843,7 @@ static void test_fireball_room_resident_object_arc(void) {
           w.aftermath[1].object_state == OBJECT_DAMAGED;
     wait_ticks(&w, 40);
     ok &= w.aftermath[1].kind == AFTER_NONE && w.world_state == WORLD_CALM;
-    CHECK(ok, "m13_fireball_roof_resident_room_object_recovery_arc");
+    CHECK(ok, "incantation_fireball_roof_resident_room_object_recovery_arc");
 }
 
 static void test_reachable_complaint_and_ward_shatter(void) {
@@ -813,7 +860,7 @@ static void test_reachable_complaint_and_ward_shatter(void) {
     ok &= w.fx_kind == FX_COMPLAINT && w.wiz[1].hp == SIM_MAX_HP - 1u &&
           w.aftermath[1].kind == AFTER_COMPLAINT &&
           w.aftermath[1].resident_state == RESIDENT_COMPLAIN;
-    CHECK(ok, "m13_ward_shatter_and_complaint_reachable");
+    CHECK(ok, "incantation_ward_shatter_and_complaint_reachable");
 }
 
 static void test_ground_chain_summon_and_trap(void) {
@@ -854,7 +901,7 @@ static void test_ground_chain_summon_and_trap(void) {
     install_spell(&w, 0, summon, 0); w.spell[0].aux = 2;
     wait_ticks(&w, 22);
     ok &= !w.spell[0].active && w.wiz[1].hp == 10;
-    CHECK(ok, "m13_ground_chain_summon_and_trap_lifecycles");
+    CHECK(ok, "incantation_ground_chain_summon_and_trap_lifecycles");
 }
 
 static void test_swarm_gather_launch_and_tempo_motion(void) {
@@ -885,7 +932,7 @@ static void test_swarm_gather_launch_and_tempo_motion(void) {
     install_spell(&a, 0, slow, 0); install_spell(&b, 0, fast, 0);
     wait_ticks(&a, 8); wait_ticks(&b, 8);
     ok &= b.spell[0].progress > a.spell[0].progress;
-    CHECK(ok, "m13_swarm_gather_serial_launch_and_tempo_trend_motion");
+    CHECK(ok, "incantation_swarm_gather_serial_launch_and_tempo_trend_motion");
 }
 
 static void test_bilateral_beam_and_aftermath_split_render(void) {
@@ -921,7 +968,7 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     wiz_draw_scene(&sl, &slave, true, 0, false);
     wiz_draw_scene(&sr, &slave, false, 0, false);
     ok &= memcmp(&ml, &sl, sizeof ml) == 0 && memcmp(&mr, &sr, sizeof mr) == 0;
-    CHECK(ok, "m13_bilateral_beam_and_aftermath_split_render_convergence");
+    CHECK(ok, "incantation_bilateral_beam_and_aftermath_split_render_convergence");
 }
 
 static bool exact_mirror(const duel_fb_t *a, const duel_fb_t *b) {
@@ -948,7 +995,7 @@ static void render_floor_scene(uint8_t floor, bool is_left, uint8_t transition,
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_render_t r = {0};
     duel_render_from_world(&r, &w);
-    r.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+    r.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
     r.seed = 0x42u; r.civic_phase = 19u; r.floor_transition = transition;
     duel_fb_clear(fb);
     wiz_draw_scene(fb, &r, is_left, 7u, false);
@@ -972,19 +1019,19 @@ static void test_floor_occupations_and_transitions(void) {
 
     for (uint8_t phase = 0; phase < 4u; phase++) {
         duel_fb_t transitioned;
-        uint8_t byte = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS,
+        uint8_t byte = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS,
                                                   phase, true);
-        render_floor_scene(DUEL_M12_FLOOR_WORKSHOP, true, byte, &transitioned);
+        render_floor_scene(DUEL_CIVIC_FLOOR_WORKSHOP, true, byte, &transitioned);
         const duel_fb_t *reference = phase < 2u ?
-            &floor[0][DUEL_M12_FLOOR_COMMONS] : &floor[0][DUEL_M12_FLOOR_WORKSHOP];
+            &floor[0][DUEL_CIVIC_FLOOR_COMMONS] : &floor[0][DUEL_CIVIC_FLOOR_WORKSHOP];
         ok &= band_difference(&transitioned, reference, 62, 110) > 0u;
         ok &= band_difference(&transitioned, reference, 0, 60) == 0u;
         ok &= band_difference(&transitioned, reference, 111, 127) == 0u;
-        ok &= M13_FLOOR_TRANSITION_SOURCE(byte) == DUEL_M12_FLOOR_COMMONS &&
-              M13_FLOOR_TRANSITION_PHASE(byte) == phase &&
-              M13_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xe0u);
+        ok &= INCANTATION_FLOOR_TRANSITION_SOURCE(byte) == DUEL_CIVIC_FLOOR_COMMONS &&
+              INCANTATION_FLOOR_TRANSITION_PHASE(byte) == phase &&
+              INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xe0u);
     }
-    CHECK(ok, "m13_six_occupation_scenes_40px_and_four_protected_transition_phases");
+    CHECK(ok, "incantation_six_occupation_scenes_40px_and_four_protected_transition_phases");
 }
 
 static unsigned framebuffer_pixels(const duel_fb_t *fb) {
@@ -994,7 +1041,7 @@ static unsigned framebuffer_pixels(const duel_fb_t *fb) {
     return n;
 }
 
-static void m13_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
+static void incantation_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
                        bool diagnostics);
 
 static bool pixels_within(const duel_fb_t *fb, int y0, int y1) {
@@ -1006,26 +1053,26 @@ static bool pixels_within(const duel_fb_t *fb, int y0, int y1) {
 
 static void test_civic_anchor_and_courier_matrix(void) {
     bool ok = true;
-    for (uint8_t action = 0; action < DUEL_M12_ACTION_COUNT; action++) {
-        m13_point_t fallback = m13_occupation_anchor(DUEL_M12_FLOOR_SPECIAL, action);
-        m13_point_t commons = m13_occupation_anchor(DUEL_M12_FLOOR_COMMONS, action);
+    for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++) {
+        incantation_point_t fallback = incantation_occupation_anchor(DUEL_CIVIC_FLOOR_SPECIAL, action);
+        incantation_point_t commons = incantation_occupation_anchor(DUEL_CIVIC_FLOOR_COMMONS, action);
         ok &= fallback.x == commons.x && fallback.y == commons.y;
-        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-            m13_point_t point = m13_occupation_anchor(floor, action);
+        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+            incantation_point_t point = incantation_occupation_anchor(floor, action);
             ok &= point.x >= 0 && point.x < DUEL_CANVAS_W && point.y >= 61 && point.y <= 110;
         }
     }
 
     sim_world_t world; sim_init(&world, SIMF_AUTHORITATIVE, 0);
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
-        for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
-             kind < DUEL_M12_COURIER_COUNT; kind++)
-            for (uint8_t life = DUEL_M12_VISIT_ARRIVING;
-                 life <= DUEL_M12_VISIT_RESOLVING; life++)
-                for (uint8_t density = DUEL_M12_DENSITY_SINGLE;
-                     density <= DUEL_M12_DENSITY_MANY; density++)
-                    for (uint8_t mode = DUEL_M12_MODE_NORMAL;
-                         mode <= DUEL_M12_MODE_QUIET; mode++)
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+        for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER;
+             kind < DUEL_CIVIC_COURIER_COUNT; kind++)
+            for (uint8_t life = DUEL_CIVIC_VISIT_ARRIVING;
+                 life <= DUEL_CIVIC_VISIT_RESOLVING; life++)
+                for (uint8_t density = DUEL_CIVIC_DENSITY_SINGLE;
+                     density <= DUEL_CIVIC_DENSITY_MANY; density++)
+                    for (uint8_t mode = DUEL_CIVIC_MODE_NORMAL;
+                         mode <= DUEL_CIVIC_MODE_QUIET; mode++)
                         for (uint8_t city = 0; city < 2u; city++) {
                             duel_render_t r = {0}; duel_render_from_world(&r, &world);
                             r.civic = DUEL_CIVIC_PACK(floor, mode, 0);
@@ -1045,47 +1092,47 @@ static void test_civic_anchor_and_courier_matrix(void) {
     /* City assignment is a pure mirror, and transition routing uses the visible
      * source room until the target reveal begins. */
     duel_render_t route = {0}; duel_render_from_world(&route, &world);
-    route.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
-    route.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 0,
-                                           DUEL_M12_VISIT_WAITING);
-    route.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    route.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    route.shared_pres = DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_PARCEL, 0,
+                                           DUEL_CIVIC_VISIT_WAITING);
+    route.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     duel_fb_t source, expected, mirror;
     duel_fb_clear(&source); duel_fb_clear(&expected); duel_fb_clear(&mirror);
     draw_courier(&source, &route, true);
     route.floor_transition = 0;
-    route.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, 0);
+    route.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
     draw_courier(&expected, &route, true);
-    route.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 1,
-                                           DUEL_M12_VISIT_WAITING);
+    route.shared_pres = DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_PARCEL, 1,
+                                           DUEL_CIVIC_VISIT_WAITING);
     draw_courier(&mirror, &route, false);
     ok &= memcmp(&source, &expected, sizeof source) == 0 && exact_mirror(&expected, &mirror);
-    for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
-         kind < DUEL_M12_COURIER_COUNT; kind++) {
-        duel_fb_t variant[M13_OCCUPATION_FLOORS];
-        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-            route.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
-            route.shared_pres = DUEL_VISITOR_PACK(kind, 0, DUEL_M12_VISIT_AGING);
+    for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER;
+         kind < DUEL_CIVIC_COURIER_COUNT; kind++) {
+        duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
+        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+            route.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            route.shared_pres = DUEL_VISITOR_PACK(kind, 0, DUEL_CIVIC_VISIT_AGING);
             duel_fb_clear(&variant[floor]); draw_courier(&variant[floor], &route, true);
         }
         ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
               memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
               memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
     }
-    CHECK(ok, "m13_canonical_anchors_and_courier_floor_lifecycle_density_mode_city_matrix");
+    CHECK(ok, "incantation_canonical_anchors_and_courier_floor_lifecycle_density_mode_city_matrix");
 }
 
 static void test_rare_event_floor_phase_mode_target_matrix(void) {
     bool ok = true;
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
-        for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
-             id < DUEL_M12_EVENT_COUNT; id++)
-            for (uint8_t phase = DUEL_M12_EVENT_PHASE_ARMED;
-                 phase <= DUEL_M12_EVENT_PHASE_COOLDOWN; phase++)
-                for (uint8_t mode = DUEL_M12_MODE_NORMAL;
-                     mode <= DUEL_M12_MODE_QUIET; mode++) {
-                    bool shared = id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER;
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+        for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
+             id < DUEL_CIVIC_EVENT_COUNT; id++)
+            for (uint8_t phase = DUEL_CIVIC_EVENT_PHASE_ARMED;
+                 phase <= DUEL_CIVIC_EVENT_PHASE_COOLDOWN; phase++)
+                for (uint8_t mode = DUEL_CIVIC_MODE_NORMAL;
+                     mode <= DUEL_CIVIC_MODE_QUIET; mode++) {
+                    bool shared = id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER;
                     for (uint8_t target_case = 0; target_case < (shared ? 1u : 2u); target_case++) {
-                        uint8_t target = shared ? DUEL_M12_EVENT_TARGET_SHARED : target_case;
+                        uint8_t target = shared ? DUEL_CIVIC_EVENT_TARGET_SHARED : target_case;
                         duel_render_t r = {0};
                         r.civic = DUEL_CIVIC_PACK(floor, mode, 0);
                         r.revision = DUEL_EVENT_PACK(id, phase, target);
@@ -1097,12 +1144,12 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
                         ok &= memcmp(&left, &repeat, sizeof left) == 0;
                         if (shared) {
                             ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) >= 4u;
-                        } else if (target == DUEL_M12_EVENT_TARGET_LEFT) {
+                        } else if (target == DUEL_CIVIC_EVENT_TARGET_LEFT) {
                             ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) == 0u;
                         } else {
                             ok &= framebuffer_pixels(&right) >= 4u && framebuffer_pixels(&left) == 0u;
                         }
-                        if (id == DUEL_M12_EVENT_CIVIC_SKY)
+                        if (id == DUEL_CIVIC_EVENT_CIVIC_SKY)
                             ok &= pixels_within(&left, 16, 26) && pixels_within(&right, 16, 26);
                         else
                             ok &= pixels_within(&left, 61, 110) && pixels_within(&right, 61, 110);
@@ -1110,71 +1157,71 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
                 }
 
     duel_render_t none = {0}; duel_fb_t empty;
-    none.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_NONE, 0, 0);
+    none.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_NONE, 0, 0);
     duel_fb_clear(&empty); draw_rare_event(&empty, &none, true);
     ok &= framebuffer_pixels(&empty) == 0u;
-    for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
-         id < DUEL_M12_EVENT_COUNT; id++) {
-        duel_fb_t variant[M13_OCCUPATION_FLOORS];
-        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-            none.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
-            none.revision = DUEL_EVENT_PACK(id, DUEL_M12_EVENT_PHASE_ACTIVE,
-                id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER ?
-                    DUEL_M12_EVENT_TARGET_SHARED : DUEL_M12_EVENT_TARGET_LEFT);
+    for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
+         id < DUEL_CIVIC_EVENT_COUNT; id++) {
+        duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
+        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+            none.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            none.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE,
+                id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER ?
+                    DUEL_CIVIC_EVENT_TARGET_SHARED : DUEL_CIVIC_EVENT_TARGET_LEFT);
             duel_fb_clear(&variant[floor]); draw_rare_event(&variant[floor], &none, true);
         }
         ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
               memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
               memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
     }
-    none.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
-    none.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
-                                    DUEL_M12_EVENT_PHASE_ACTIVE,
-                                    DUEL_M12_EVENT_TARGET_LEFT);
-    none.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    none.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    none.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL,
+                                    DUEL_CIVIC_EVENT_PHASE_ACTIVE,
+                                    DUEL_CIVIC_EVENT_TARGET_LEFT);
+    none.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     duel_fb_t transition, commons;
     duel_fb_clear(&transition); draw_rare_event(&transition, &none, true);
-    none.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, 0);
+    none.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
     none.floor_transition = 0;
     duel_fb_clear(&commons); draw_rare_event(&commons, &none, true);
     ok &= memcmp(&transition, &commons, sizeof transition) == 0;
-    CHECK(ok, "m13_rare_event_floor_family_phase_mode_target_routing_and_safety_matrix");
+    CHECK(ok, "incantation_rare_event_floor_family_phase_mode_target_routing_and_safety_matrix");
 }
 
 static void test_aftermath_floor_kind_phase_half_matrix(void) {
     bool ok = true;
     sim_world_t world; sim_init(&world, SIMF_AUTHORITATIVE, 0);
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
         for (uint8_t kind = AFTER_CHEER; kind <= AFTER_MAX_CAST; kind++)
             for (uint8_t phase = 0; phase < 4u; phase++)
                 for (uint8_t side = 0; side < 2u; side++) {
                     duel_render_t base = {0}; duel_render_from_world(&base, &world);
                     base.seed = 0x51u; base.civic_phase = 23u;
-                    base.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+                    base.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
                     duel_render_t after = base;
                     after.shared_pres = (uint8_t)((kind << (side * 3u)) |
                                                    (WORLD_RECOVERY << 6));
-                    after.revision = (uint8_t)(M13_AFTERMATH_WIRE |
+                    after.revision = (uint8_t)(INCANTATION_AFTERMATH_WIRE |
                                                (phase << (side * 2u)));
                     duel_fb_t before, first, second;
-                    m13_render(&before, &base, side == 0u, false);
-                    m13_render(&first, &after, side == 0u, false);
-                    m13_render(&second, &after, side == 0u, false);
+                    incantation_render(&before, &base, side == 0u, false);
+                    incantation_render(&first, &after, side == 0u, false);
+                    incantation_render(&second, &after, side == 0u, false);
                     ok &= memcmp(&first, &second, sizeof first) == 0 &&
                           memcmp(&before, &first, sizeof first) != 0 &&
                           band_difference(&before, &first, 0, 60) == 0u &&
                           band_difference(&before, &first, 111, 127) == 0u;
                 }
-    CHECK(ok, "m13_aftermath_floor_kind_phase_half_anchor_priority_and_protected_regions");
+    CHECK(ok, "incantation_aftermath_floor_kind_phase_half_anchor_priority_and_protected_regions");
 }
 
-static void m13_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
+static void incantation_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
                        bool diagnostics) {
     duel_fb_clear(fb);
     wiz_draw_scene(fb, r, is_left, 7u, diagnostics);
 }
 
-static uint64_t m13_bytes_hash(const void *data, size_t size) {
+static uint64_t incantation_bytes_hash(const void *data, size_t size) {
     const uint8_t *p = data;
     uint64_t h = UINT64_C(1469598103934665603);
     while (size--) { h ^= *p++; h *= UINT64_C(1099511628211); }
@@ -1182,74 +1229,74 @@ static uint64_t m13_bytes_hash(const void *data, size_t size) {
 }
 
 static uint8_t quiet_action(uint8_t action) {
-    if (action == DUEL_M12_ACTION_WALK) return DUEL_M12_ACTION_REST;
-    if (action == DUEL_M12_ACTION_REACT) return DUEL_M12_ACTION_INSPECT;
-    if (action == DUEL_M12_ACTION_WATCH_ROOF) return DUEL_M12_ACTION_WORK;
+    if (action == DUEL_CIVIC_ACTION_WALK) return DUEL_CIVIC_ACTION_REST;
+    if (action == DUEL_CIVIC_ACTION_REACT) return DUEL_CIVIC_ACTION_INSPECT;
+    if (action == DUEL_CIVIC_ACTION_WATCH_ROOF) return DUEL_CIVIC_ACTION_WORK;
     return action;
 }
 
 static void test_resident_occupation_derivation(void) {
-    bool seen[2][M13_OCCUPATION_FLOORS][DUEL_M12_ACTION_COUNT] = {{{false}}};
-    bool personalities[2][DUEL_M12_PERSONALITY_COUNT] = {{false}};
+    bool seen[2][INCANTATION_OCCUPATION_FLOORS][DUEL_CIVIC_ACTION_COUNT] = {{{false}}};
+    bool personalities[2][DUEL_CIVIC_PERSONALITY_COUNT] = {{false}};
     bool ok = true;
     for (uint16_t seed = 0; seed < 256u; seed++) {
         for (uint8_t side = 0; side < 2u; side++) {
-            personalities[side][m12_resident_personality((uint8_t)seed, side == 0u)] = true;
+            personalities[side][civic_resident_personality((uint8_t)seed, side == 0u)] = true;
             for (uint8_t slot = 0; slot < 16u; slot++) {
-                uint8_t phase = (uint8_t)(slot * DUEL_M12_ACTION_SLOT);
-                m12_resident_t common = m12_resident_derive((uint8_t)seed, side == 0u,
-                    DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, phase);
-                for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-                    m12_resident_t a = m12_resident_derive((uint8_t)seed, side == 0u,
-                        floor, DUEL_M12_MODE_NORMAL, phase);
-                    m12_resident_t b = m12_resident_derive((uint8_t)seed, side == 0u,
-                        floor, DUEL_M12_MODE_NORMAL, phase);
+                uint8_t phase = (uint8_t)(slot * DUEL_CIVIC_ACTION_SLOT);
+                civic_resident_t common = civic_resident_derive((uint8_t)seed, side == 0u,
+                    DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, phase);
+                for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+                    civic_resident_t a = civic_resident_derive((uint8_t)seed, side == 0u,
+                        floor, DUEL_CIVIC_MODE_NORMAL, phase);
+                    civic_resident_t b = civic_resident_derive((uint8_t)seed, side == 0u,
+                        floor, DUEL_CIVIC_MODE_NORMAL, phase);
                     ok &= memcmp(&a, &b, sizeof a) == 0 && a.action == common.action;
-                    ok &= a.station == M13_OCCUPATION_KEY(floor, a.action);
+                    ok &= a.station == INCANTATION_OCCUPATION_KEY(floor, a.action);
                     seen[side][floor][a.action] = true;
 
-                    m12_resident_t quiet = m12_resident_derive((uint8_t)seed, side == 0u,
-                        floor, DUEL_M12_MODE_QUIET, phase);
+                    civic_resident_t quiet = civic_resident_derive((uint8_t)seed, side == 0u,
+                        floor, DUEL_CIVIC_MODE_QUIET, phase);
                     ok &= quiet.action == quiet_action(common.action) &&
-                          quiet.station == M13_OCCUPATION_KEY(floor, quiet.action);
+                          quiet.station == INCANTATION_OCCUPATION_KEY(floor, quiet.action);
                 }
-                m12_resident_t invalid = m12_resident_derive((uint8_t)seed, side == 0u,
-                    DUEL_M12_FLOOR_SPECIAL, DUEL_M12_MODE_NORMAL, phase);
+                civic_resident_t invalid = civic_resident_derive((uint8_t)seed, side == 0u,
+                    DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_MODE_NORMAL, phase);
                 ok &= invalid.action == common.action &&
-                      invalid.station == M13_OCCUPATION_KEY(DUEL_M12_FLOOR_COMMONS,
+                      invalid.station == INCANTATION_OCCUPATION_KEY(DUEL_CIVIC_FLOOR_COMMONS,
                                                             invalid.action);
             }
         }
     }
     for (uint8_t side = 0; side < 2u; side++) {
-        for (uint8_t p = 0; p < DUEL_M12_PERSONALITY_COUNT; p++) ok &= personalities[side][p];
-        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
-            for (uint8_t action = 0; action < DUEL_M12_ACTION_COUNT; action++)
+        for (uint8_t p = 0; p < DUEL_CIVIC_PERSONALITY_COUNT; p++) ok &= personalities[side][p];
+        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+            for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++)
                 ok &= seen[side][floor][action];
     }
 
     /* Authoritative aftermath suppresses personality, progress, carry, and
      * object-reaction modifiers while retaining the same resident body/task. */
-    m12_resident_t after = {DUEL_M12_PERSONALITY_DILIGENT, DUEL_M12_ACTION_REACT,
-        M13_OCCUPATION_KEY(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_ACTION_REACT), 0,
+    civic_resident_t after = {DUEL_CIVIC_PERSONALITY_DILIGENT, DUEL_CIVIC_ACTION_REACT,
+        INCANTATION_OCCUPATION_KEY(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_ACTION_REACT), 0,
         RESIDENT_CHEER};
     duel_fb_t first, second;
     duel_fb_clear(&first); duel_fb_clear(&second);
-    m12_resident_draw(&first, &after, true, DUEL_M12_MODE_NORMAL, 0);
-    after.personality = DUEL_M12_PERSONALITY_DISTRACTED; after.progress = 15;
-    m12_resident_draw(&second, &after, true, DUEL_M12_MODE_NORMAL, 99);
+    civic_resident_draw(&first, &after, true, DUEL_CIVIC_MODE_NORMAL, 0);
+    after.personality = DUEL_CIVIC_PERSONALITY_DISTRACTED; after.progress = 15;
+    civic_resident_draw(&second, &after, true, DUEL_CIVIC_MODE_NORMAL, 99);
     ok &= memcmp(&first, &second, sizeof first) == 0;
-    CHECK(ok, "m13_resident_42_keys_personalities_quiet_fallback_deterministic_aftermath");
+    CHECK(ok, "incantation_resident_42_keys_personalities_quiet_fallback_deterministic_aftermath");
 }
 
 static void test_resident_geometry_and_object_separation(void) {
     bool ok = true;
     for (uint8_t side = 0; side < 2u; side++) {
-        m12_resident_t core = {DUEL_M12_PERSONALITY_DILIGENT, DUEL_M12_ACTION_WORK,
-            M13_OCCUPATION_KEY(DUEL_M12_FLOOR_COMMONS, DUEL_M12_ACTION_WORK), 0, 0xffu};
+        civic_resident_t core = {DUEL_CIVIC_PERSONALITY_DILIGENT, DUEL_CIVIC_ACTION_WORK,
+            INCANTATION_OCCUPATION_KEY(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_ACTION_WORK), 0, 0xffu};
         duel_fb_t body;
         duel_fb_clear(&body);
-        m12_resident_draw(&body, &core, side == 0u, DUEL_M12_MODE_NORMAL, 0);
+        civic_resident_draw(&body, &core, side == 0u, DUEL_CIVIC_MODE_NORMAL, 0);
         int x0 = 32, x1 = -1, y0 = 128, y1 = -1;
         for (int y = 0; y < DUEL_CANVAS_H; y++)
             for (int x = 0; x < DUEL_CANVAS_W; x++)
@@ -1261,13 +1308,13 @@ static void test_resident_geometry_and_object_separation(void) {
                 }
         ok &= x1 - x0 + 1 == 5 && y1 - y0 + 1 == 14 && y0 >= 61 && y1 <= 110;
 
-        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-            core.station = M13_OCCUPATION_KEY(floor, DUEL_M12_ACTION_WORK);
+        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+            core.station = INCANTATION_OCCUPATION_KEY(floor, DUEL_CIVIC_ACTION_WORK);
             duel_fb_clear(&body);
-            m12_resident_draw(&body, &core, side == 0u, DUEL_M12_MODE_NORMAL, 0);
+            civic_resident_draw(&body, &core, side == 0u, DUEL_CIVIC_MODE_NORMAL, 0);
             duel_fb_t object;
             duel_fb_clear(&object);
-            m13_resident_draw_attunement(&object, side == 0u, floor);
+            incantation_resident_draw_attunement(&object, side == 0u, floor);
             for (int y = 0; y < DUEL_CANVAS_H; y++)
                 for (int x = 0; x < DUEL_CANVAS_W; x++)
                     ok &= !(duel_fb_get(&body, x, y) && duel_fb_get(&object, x, y));
@@ -1277,7 +1324,7 @@ static void test_resident_geometry_and_object_separation(void) {
             ok &= framebuffer_pixels(&room) > framebuffer_pixels(&body) * 2u;
         }
     }
-    CHECK(ok, "m13_resident_5x14_core_bounds_negative_space_and_object_mass");
+    CHECK(ok, "incantation_resident_5x14_core_bounds_negative_space_and_object_mass");
 }
 
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
@@ -1295,7 +1342,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             sim_init(&w, SIMF_AUTHORITATIVE, 0);
             w.wiz[side].hp = hp;
             duel_render_t r = {0}; duel_render_from_world(&r, &w);
-            duel_fb_t fb; m13_render(&fb, &r, side == 0u, false);
+            duel_fb_t fb; incantation_render(&fb, &r, side == 0u, false);
             unsigned lit = 0;
             for (int y = 47; y <= 57; y++) {
                 for (int x = 4; x <= 8; x++) {
@@ -1328,10 +1375,10 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             w.wiz[side].life = life[state]; w.wiz[side].life_ticks = ticks[state];
             w.wiz[side].pose = pose[state]; w.wiz[side].hp = 0;
             duel_render_t empty = {0}; duel_render_from_world(&empty, &w);
-            duel_fb_t zero; m13_render(&zero, &empty, side == 0u, false);
+            duel_fb_t zero; incantation_render(&zero, &empty, side == 0u, false);
             w.wiz[side].hp = SIM_MAX_HP;
             duel_render_t full = {0}; duel_render_from_world(&full, &w);
-            duel_fb_t grid; m13_render(&grid, &full, side == 0u, false);
+            duel_fb_t grid; incantation_render(&grid, &full, side == 0u, false);
             for (int i = 0; i < SIM_MAX_HP; i++) {
                 for (int x = 0; x < DUEL_CANVAS_W; x++)
                     for (int y = 47; y <= 57; y++)
@@ -1344,35 +1391,35 @@ static void test_health_grid_geometry_and_lifecycles(void) {
                             }
             }
         }
-    CHECK(ok, "m13_health_0_12_two_pixels_bottom_up_mirror_5x11_pose_clearance");
+    CHECK(ok, "incantation_health_0_12_two_pixels_bottom_up_mirror_5x11_pose_clearance");
 }
 
 static void test_local_layer_attunement(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
-    uint64_t before = m13_bytes_hash(&w, sizeof w);
+    uint64_t before = incantation_bytes_hash(&w, sizeof w);
     duel_render_t base = {0}; duel_render_from_world(&base, &w);
-    base.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
+    base.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
     base.seed = 7; base.civic_phase = 32;
     base.layer = DUEL_RENDER_LAYER_PACK(0, DUEL_RENDER_LOCAL_NONE);
     duel_fb_t bl, br, ll, lr, rl, rr;
-    m13_render(&bl, &base, true, false); m13_render(&br, &base, false, false);
+    incantation_render(&bl, &base, true, false); incantation_render(&br, &base, false, false);
 
     duel_render_t local = base;
     local.layer = DUEL_RENDER_LAYER_PACK(1, DUEL_RENDER_LOCAL_LEFT);
-    m13_render(&ll, &local, true, false); m13_render(&lr, &local, false, false);
+    incantation_render(&ll, &local, true, false); incantation_render(&lr, &local, false, false);
     bool left_changes = memcmp(&bl, &ll, sizeof bl) != 0;
     bool left_spares_right = memcmp(&br, &lr, sizeof br) == 0;
     bool ok = left_changes && left_spares_right;
     local.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_RIGHT);
-    m13_render(&rl, &local, true, false); m13_render(&rr, &local, false, false);
+    incantation_render(&rl, &local, true, false); incantation_render(&rr, &local, false, false);
     bool right_spares_left = memcmp(&bl, &rl, sizeof bl) == 0;
     bool right_changes = memcmp(&br, &rr, sizeof br) != 0;
     ok &= right_spares_left && right_changes;
 
     /* Release and ordinary global-layer typing reproduce the exact baseline. */
     local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
-    m13_render(&rl, &local, true, false); m13_render(&rr, &local, false, false);
+    incantation_render(&rl, &local, true, false); incantation_render(&rr, &local, false, false);
     bool global_left_same = memcmp(&bl, &rl, sizeof bl) == 0;
     bool global_right_same = memcmp(&br, &rr, sizeof br) == 0;
     ok &= global_left_same && global_right_same;
@@ -1383,12 +1430,12 @@ static void test_local_layer_attunement(void) {
     open_none.view.outcome_overlay |= 0x10u;
     open_none.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
     duel_fb_t ol0, or0, ol1, or1;
-    m13_render(&ol0, &open_none, true, false); m13_render(&or0, &open_none, false, false);
+    incantation_render(&ol0, &open_none, true, false); incantation_render(&or0, &open_none, false, false);
     duel_render_t open_local = open_none;
     open_local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_LEFT);
-    m13_render(&ol1, &open_local, true, false);
+    incantation_render(&ol1, &open_local, true, false);
     open_local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_RIGHT);
-    m13_render(&or1, &open_local, false, false);
+    incantation_render(&or1, &open_local, false, false);
     bool open_left_same = memcmp(&ol0, &ol1, sizeof ol0) == 0;
     bool open_right_same = memcmp(&or0, &or1, sizeof or0) == 0;
     ok &= open_left_same && open_right_same;
@@ -1399,13 +1446,13 @@ static void test_local_layer_attunement(void) {
         sim_tick(&typed, (sim_inputs_t){.scry_mask = SCRY_M_L | SCRY_M_OTHER,
                  .layer = {1, 0}, .held_pos = {1u, 0}}, NULL, 0, 0);
     bool typing_closed = !scry_is_open(&typed) && typed.scry.state == SCRY_FIRST_HELD;
-    bool world_same = m13_bytes_hash(&w, sizeof w) == before;
+    bool world_same = incantation_bytes_hash(&w, sizeof w) == before;
     ok &= typing_closed && world_same;
     if (!ok) printf("DIAG local lc=%u lsr=%u rsl=%u rc=%u gl=%u gr=%u ol=%u or=%u typing=%u world=%u state=%u\n",
                     left_changes, left_spares_right, right_spares_left, right_changes,
                     global_left_same, global_right_same, open_left_same, open_right_same,
                     typing_closed, world_same, typed.scry.state);
-    CHECK(ok, "m13_local_attunement_physical_half_release_typing_pending_and_scry_suppression");
+    CHECK(ok, "incantation_local_attunement_physical_half_release_typing_pending_and_scry_suppression");
 }
 
 static bool framebuffer_subset(const duel_fb_t *small, const duel_fb_t *large) {
@@ -1417,7 +1464,7 @@ static bool framebuffer_subset(const duel_fb_t *small, const duel_fb_t *large) {
 
 static void test_diegetic_scry_instruments(void) {
     bool ok = true;
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
         for (uint8_t scene = 0; scene < SCRY_SCENES; scene++)
             for (uint8_t online = 0; online < 2u; online++)
                 for (uint8_t notif_case = 0; notif_case < 2u; notif_case++)
@@ -1425,7 +1472,7 @@ static void test_diegetic_scry_instruments(void) {
                     sim_world_t w;
                     sim_init(&w, SIMF_AUTHORITATIVE, 0);
                     duel_render_t r = {0}; duel_render_from_world(&r, &w);
-                    r.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+                    r.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
                     r.seed = 9; r.civic_phase = 48;
                     uint8_t notif = notif_case ? 4u : 0u;
                     r.external = DUEL_HOST_CONTEXT_PACK(online, scene, notif, false);
@@ -1433,9 +1480,9 @@ static void test_diegetic_scry_instruments(void) {
                     r.view.outcome_overlay = (uint8_t)((r.view.outcome_overlay & 0x1fu) |
                                                        (scene << 5));
                     duel_fb_t base, open;
-                    m13_render(&base, &r, side == 0u, false);
+                    incantation_render(&base, &r, side == 0u, false);
                     r.view.outcome_overlay |= 0x10u;
-                    m13_render(&open, &r, side == 0u, false);
+                    incantation_render(&open, &r, side == 0u, false);
                     bool subset = framebuffer_subset(&base, &open);
                     bool changed = memcmp(&base, &open, sizeof base) != 0;
                     if (!subset || !changed)
@@ -1457,16 +1504,16 @@ static void test_diegetic_scry_instruments(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_render_t r = {0}; duel_render_from_world(&r, &w);
-    r.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, 0);
+    r.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
     r.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 3, true);
     r.alert = DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_SECURITY,
                                    DUEL_HOST_PRIORITY_CRITICAL, 7);
     r.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
     duel_fb_t lb, rb, lo, ro;
-    m13_render(&lb, &r, true, false); m13_render(&rb, &r, false, false);
+    incantation_render(&lb, &r, true, false); incantation_render(&rb, &r, false, false);
     r.view.outcome_overlay = (uint8_t)((r.view.outcome_overlay & 0x0fu) | 0x10u |
                                        (DUEL_HOST_SCENE_FOCUS << 5));
-    m13_render(&lo, &r, true, false); m13_render(&ro, &r, false, false);
+    incantation_render(&lo, &r, true, false); incantation_render(&ro, &r, false, false);
     for (int y = 0; y < DUEL_CANVAS_H; y++)
         for (int x = 0; x < DUEL_CANVAS_W; x++) {
             bool ld = duel_fb_get(&lo, x, y) != duel_fb_get(&lb, x, y);
@@ -1483,7 +1530,7 @@ static void test_diegetic_scry_instruments(void) {
     empty_alert.alert = 0;
     empty_alert.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 4, false);
     duel_fb_t empty_alert_fb;
-    m13_render(&empty_alert_fb, &empty_alert, true, false);
+    incantation_render(&empty_alert_fb, &empty_alert, true, false);
     for (uint8_t category = 1; category < DUEL_HOST_CATEGORY_COUNT; category++)
         for (uint8_t priority_level = DUEL_HOST_PRIORITY_LOW;
              priority_level <= DUEL_HOST_PRIORITY_CRITICAL; priority_level++)
@@ -1493,15 +1540,15 @@ static void test_diegetic_scry_instruments(void) {
                                                          4, persistent);
                 alert.alert = DUEL_HOST_ALERT_PACK(category, priority_level, 3);
                 duel_fb_t category_fb;
-                m13_render(&category_fb, &alert, true, false);
+                incantation_render(&category_fb, &alert, true, false);
                 ok &= memcmp(&empty_alert_fb, &category_fb, sizeof category_fb) != 0;
             }
     r.flags |= DUEL_RENDER_STALE;
     r.diag_tick = 7;
     duel_fb_t priority;
-    m13_render(&priority, &r, true, true);
+    incantation_render(&priority, &r, true, true);
     ok &= duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 7, 127);
-    CHECK(ok, "m13_diegetic_scry_all_scenes_floors_host_alert_subset_mirror_exclusions_priority");
+    CHECK(ok, "incantation_diegetic_scry_all_scenes_floors_host_alert_subset_mirror_exclusions_priority");
 }
 
 static void test_gap_cue_families_temporal_mirrors(void) {
@@ -1528,10 +1575,10 @@ static void test_gap_cue_families_temporal_mirrors(void) {
             duel_view_spell_t right = left;
             duel_fb_t ll, lr, rl, rr;
             duel_fb_clear(&ll); duel_fb_clear(&lr); duel_fb_clear(&rl); duel_fb_clear(&rr);
-            m13_draw_spell(&ll, &left, 0, 0, true, 9u);
-            m13_draw_spell(&lr, &left, 0, 0, false, 9u);
-            m13_draw_spell(&rl, &right, 1, 0, true, 9u);
-            m13_draw_spell(&rr, &right, 1, 0, false, 9u);
+            incantation_draw_spell(&ll, &left, 0, 0, true, 9u);
+            incantation_draw_spell(&lr, &left, 0, 0, false, 9u);
+            incantation_draw_spell(&rl, &right, 1, 0, true, 9u);
+            incantation_draw_spell(&rr, &right, 1, 0, false, 9u);
             ok &= exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl) &&
                   framebuffer_pixels(&ll) + framebuffer_pixels(&lr) > 0u;
         }
@@ -1547,14 +1594,14 @@ static void test_gap_cue_families_temporal_mirrors(void) {
                                                            MOD_NONE, PAY_IMPACT), 1u)};
             duel_fb_t left, right;
             duel_fb_clear(&left); duel_fb_clear(&right);
-            m13_draw_spell(&left, &sp, 0, 0, true, 9u);
-            m13_draw_spell(&right, &sp, 0, 0, false, 9u);
+            incantation_draw_spell(&left, &sp, 0, 0, true, 9u);
+            incantation_draw_spell(&right, &sp, 0, 0, false, 9u);
             for (int y = 0; y < DUEL_CANVAS_H; y++)
                 ok &= !duel_fb_get(&left, 31, y) && !duel_fb_get(&right, 0, y);
             if (p == 224u) break;
         }
     }
-    CHECK(ok, "m13_gap_cue_departure_midpoint_arrival_mirrors_and_bounds");
+    CHECK(ok, "incantation_gap_cue_departure_midpoint_arrival_mirrors_and_bounds");
 }
 
 static void test_all_forms_bilateral_mirror(void) {
@@ -1583,15 +1630,15 @@ static void test_all_forms_bilateral_mirror(void) {
         duel_view_spell_t ls = duel_view_spell(&lv, 0), rs = duel_view_spell(&rv, 1);
         duel_fb_t ll, lr, rl, rr;
         duel_fb_clear(&ll); duel_fb_clear(&lr); duel_fb_clear(&rl); duel_fb_clear(&rr);
-        m13_draw_spell(&ll, &ls, 0, 0, true, 5);
-        m13_draw_spell(&lr, &ls, 0, 0, false, 5);
-        m13_draw_spell(&rl, &rs, 1, 0, true, 5);
-        m13_draw_spell(&rr, &rs, 1, 0, false, 5);
+        incantation_draw_spell(&ll, &ls, 0, 0, true, 5);
+        incantation_draw_spell(&lr, &ls, 0, 0, false, 5);
+        incantation_draw_spell(&rl, &rs, 1, 0, true, 5);
+        incantation_draw_spell(&rr, &rs, 1, 0, false, 5);
         bool mirrored = exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl);
         if (!mirrored) printf("DIAG bilateral form=%u\n", form);
         ok &= mirrored;
     }
-    CHECK(ok, "m13_all_forms_bilateral_pixel_mirror");
+    CHECK(ok, "incantation_all_forms_bilateral_pixel_mirror");
 }
 
 static void test_aftermath_split_loss_and_reconnect(void) {
@@ -1615,12 +1662,13 @@ static void test_aftermath_split_loss_and_reconnect(void) {
     duel_encode(&w, 4, 1, &restarted);
     ok &= duel_rx_accept(&rx, &restarted, true) &&
           rx.last.session == 4u && rx.last.revision == restarted.revision &&
-          M13_AFTER_KIND(rx.last.shared_pres, 0) == AFTER_FIRE;
-    CHECK(ok, "m13_aftermath_split_loss_corruption_and_reconnect");
+          INCANTATION_AFTER_KIND(rx.last.shared_pres, 0) == AFTER_FIRE;
+    CHECK(ok, "incantation_aftermath_split_loss_corruption_and_reconnect");
 }
 
 int main(void) {
     test_layout_and_protocol();
+    test_host_protocol_current_payload_and_ordering();
     test_view_validation();
     test_complexity_formula();
     test_magnitude_thresholds();
@@ -1637,7 +1685,7 @@ int main(void) {
     test_form_lifecycles();
     test_collision_precedence();
     test_productive_clashes();
-    test_m13_link_ordering();
+    test_incantation_link_ordering();
     test_render_purity();
     test_real_input_reachability_and_timing_buckets();
     test_prose_typing_ko_window();
@@ -1659,7 +1707,7 @@ int main(void) {
     test_gap_cue_families_temporal_mirrors();
     test_all_forms_bilateral_mirror();
     test_aftermath_split_loss_and_reconnect();
-    if (failures) { printf("%d M13 test(s) failed\n", failures); return 1; }
-    printf("all M13 tests passed\n");
+    if (failures) { printf("%d mechanics test(s) failed\n", failures); return 1; }
+    printf("all mechanics tests passed\n");
     return 0;
 }

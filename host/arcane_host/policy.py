@@ -1,4 +1,4 @@
-"""Bounded, monotonic-time notification policy for M10."""
+"""Bounded, monotonic-time notification policy for normalized."""
 
 from __future__ import annotations
 

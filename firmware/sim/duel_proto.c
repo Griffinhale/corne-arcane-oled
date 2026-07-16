@@ -43,14 +43,11 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
     duel_view_from_world(w, &out->view);
     out->external = external;
     out->alert    = alert;
-#ifdef ARCANE_M13
-    out->shared_pres = m13_aftermath_shared(w);
-    out->revision = m13_aftermath_revision(w);
-#endif
+    out->shared_pres = incantation_aftermath_shared(w);
+    out->revision = incantation_aftermath_revision(w);
     out->crc     = duel_crc8(out, offsetof(duel_snapshot_t, crc));
 }
 
-#ifdef ARCANE_M12
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision) {
     p->civic       = civic;
@@ -59,7 +56,6 @@ void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondar
     p->revision    = revision;
     p->crc         = duel_crc8(p, offsetof(duel_snapshot_t, crc));
 }
-#endif
 
 bool duel_decode_valid(const duel_snapshot_t *p) {
     return p->magic == DUEL_MAGIC && p->ver == DUEL_VER &&

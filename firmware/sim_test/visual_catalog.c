@@ -46,8 +46,8 @@ static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame,
 static void add_case(const char *name, sim_world_t *world, uint32_t frame,
                      uint8_t flash_kind) {
     add_case_civic(name, world, frame, flash_kind,
-                   DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS,
-                                   DUEL_M12_MODE_NORMAL, 0), 0u);
+                   DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS,
+                                   DUEL_CIVIC_MODE_NORMAL, 0), 0u);
 }
 
 static void add_occupation_case(const char *name, sim_world_t *world,
@@ -57,9 +57,9 @@ static void add_occupation_case(const char *name, sim_world_t *world,
     bool found = false;
     for (uint16_t seed = 0; seed < 256u && !found; seed++) {
         for (uint8_t slot = 0; slot < 16u; slot++) {
-            uint8_t phase = (uint8_t)(slot * DUEL_M12_ACTION_SLOT + 7u);
-            m12_resident_t resident = m12_resident_derive((uint8_t)seed, is_left,
-                floor, DUEL_M12_MODE_NORMAL, phase);
+            uint8_t phase = (uint8_t)(slot * DUEL_CIVIC_ACTION_SLOT + 7u);
+            civic_resident_t resident = civic_resident_derive((uint8_t)seed, is_left,
+                floor, DUEL_CIVIC_MODE_NORMAL, phase);
             if (resident.action == action) {
                 render.seed = (uint8_t)seed;
                 render.civic_phase = phase;
@@ -69,7 +69,7 @@ static void add_occupation_case(const char *name, sim_world_t *world,
         }
     }
     if (!found) abort();
-    render.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+    render.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
     wiz_draw_scene(is_left ? &left : &right, &render, is_left, 7u, false);
@@ -110,7 +110,7 @@ static void add_bilateral_attunement_case(const char *name, sim_world_t *world) 
     left_render.seed = right_render.seed = 0x5au;
     left_render.civic_phase = right_render.civic_phase = 23u;
     left_render.civic = right_render.civic = DUEL_CIVIC_PACK(
-        DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+        DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
     left_render.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_LEFT);
     right_render.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_RIGHT);
     duel_fb_t left, right;
@@ -143,11 +143,11 @@ static void build_catalog(void) {
     add_case("idle_12hp", &world, 0, 0);
 
     static const char *floor_name[3] = {"commons", "research", "workshop"};
-    static const char *action_name[DUEL_M12_ACTION_COUNT] = {
+    static const char *action_name[DUEL_CIVIC_ACTION_COUNT] = {
         "work", "walk", "inspect", "rest", "watch", "delivery", "react"
     };
     for (uint8_t floor = 0; floor < 3u; floor++) {
-        for (uint8_t action = 0; action < DUEL_M12_ACTION_COUNT; action++) {
+        for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++) {
             char name[48];
             snprintf(name, sizeof name, "occupation_astral_%s_%s",
                      floor_name[floor], action_name[action]);
@@ -160,26 +160,26 @@ static void build_catalog(void) {
 
     static const char *courier_name[] = {"none", "messenger", "parcel", "beacon", "sentinel"};
     static const char *event_name[] = {"none", "scroll", "jam", "break", "complaint", "diplomat", "sky"};
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
-        for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
-             kind < DUEL_M12_COURIER_COUNT; kind++) {
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+        for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER;
+             kind < DUEL_CIVIC_COURIER_COUNT; kind++) {
             duel_render_t civic = {0}; duel_render_from_world(&civic, &world);
             civic.seed = 0x5au; civic.civic_phase = 19u;
-            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
             civic.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(kind, 0,
-                DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_SINGLE));
+                DUEL_CIVIC_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_SINGLE));
             char name[48]; snprintf(name, sizeof name, "courier_%s_%s",
                                     floor_name[floor], courier_name[kind]);
             add_render_case(name, &civic, 7u);
         }
-        for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
-             id < DUEL_M12_EVENT_COUNT; id++) {
+        for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
+             id < DUEL_CIVIC_EVENT_COUNT; id++) {
             duel_render_t civic = {0}; duel_render_from_world(&civic, &world);
             civic.seed = 0x5au; civic.civic_phase = 19u;
-            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
-            uint8_t target = id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER ?
-                DUEL_M12_EVENT_TARGET_SHARED : DUEL_M12_EVENT_TARGET_LEFT;
-            civic.revision = DUEL_EVENT_PACK(id, DUEL_M12_EVENT_PHASE_ACTIVE, target);
+            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            uint8_t target = id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER ?
+                DUEL_CIVIC_EVENT_TARGET_SHARED : DUEL_CIVIC_EVENT_TARGET_LEFT;
+            civic.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE, target);
             char name[48]; snprintf(name, sizeof name, "event_%s_%s",
                                     floor_name[floor], event_name[id]);
             add_render_case(name, &civic, 7u);
@@ -188,60 +188,60 @@ static void build_catalog(void) {
 
     duel_render_t variant = {0}; duel_render_from_world(&variant, &world);
     variant.seed = 0x6bu; variant.civic_phase = 23u;
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
-    for (uint8_t life = DUEL_M12_VISIT_ARRIVING; life <= DUEL_M12_VISIT_RESOLVING; life++) {
-        if (life == DUEL_M12_VISIT_WAITING) continue;
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
+    for (uint8_t life = DUEL_CIVIC_VISIT_ARRIVING; life <= DUEL_CIVIC_VISIT_RESOLVING; life++) {
+        if (life == DUEL_CIVIC_VISIT_WAITING) continue;
         char name[48]; snprintf(name, sizeof name, "courier_lifecycle_%u", life);
-        variant.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0, life);
+        variant.shared_pres = DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, 0, life);
         add_render_case(name, &variant, 7u);
     }
-    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_BEACON, 0,
-        DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_FEW));
+    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_BEACON, 0,
+        DUEL_CIVIC_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_FEW));
     add_render_case("courier_density_few", &variant, 7u);
-    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_BEACON, 0,
-        DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_MANY));
+    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_BEACON, 0,
+        DUEL_CIVIC_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_MANY));
     add_render_case("courier_density_many", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, 0);
-    variant.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0,
-                                             DUEL_M12_VISIT_ARRIVING);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0);
+    variant.shared_pres = DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, 0,
+                                             DUEL_CIVIC_VISIT_ARRIVING);
     add_render_case("courier_quiet_arrival", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
-    variant.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    variant.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     add_render_case("courier_transition", &variant, 7u);
     variant.floor_transition = 0; variant.view.outcome_overlay |= 0x10u;
     add_render_case("courier_full_scry", &variant, 7u);
 
     variant.view.outcome_overlay &= (uint8_t)~0x10u; variant.shared_pres = 0;
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
-    for (uint8_t phase = DUEL_M12_EVENT_PHASE_ARMED;
-         phase <= DUEL_M12_EVENT_PHASE_COOLDOWN; phase++) {
-        if (phase == DUEL_M12_EVENT_PHASE_ACTIVE) continue;
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
+    for (uint8_t phase = DUEL_CIVIC_EVENT_PHASE_ARMED;
+         phase <= DUEL_CIVIC_EVENT_PHASE_COOLDOWN; phase++) {
+        if (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE) continue;
         char name[48]; snprintf(name, sizeof name, "event_lifecycle_%u", phase);
-        variant.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, phase,
-                                            DUEL_M12_EVENT_TARGET_LEFT);
+        variant.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL, phase,
+                                            DUEL_CIVIC_EVENT_TARGET_LEFT);
         add_render_case(name, &variant, 7u);
     }
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, 0);
-    variant.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
-        DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0);
+    variant.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL,
+        DUEL_CIVIC_EVENT_PHASE_ACTIVE, DUEL_CIVIC_EVENT_TARGET_LEFT);
     add_render_case("event_quiet", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
-    variant.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    variant.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     add_render_case("event_transition", &variant, 7u);
     variant.floor_transition = 0; variant.view.outcome_overlay |= 0x10u;
     add_render_case("event_full_scry", &variant, 7u);
 
-    /* Exercise the legacy host catalog under M13: projection must not erase
+    /* Exercise the scenario host catalog under current: projection must not erase
      * the authored courier/event coordination bytes before exact rendering. */
-    const duel_scenario_t *legacy = duel_scenario_find("courier-messenger");
+    const duel_scenario_t *scenario = duel_scenario_find("courier-messenger");
     duel_render_t projected;
-    if (!legacy || !duel_scenario_build(legacy, &projected) ||
-        DUEL_VISITOR_KIND(projected.shared_pres) == DUEL_M12_COURIER_NONE) abort();
-    add_render_case("scenario_m13_courier_projection", &projected, 7u);
-    legacy = duel_scenario_find("event-scroll");
-    if (!legacy || !duel_scenario_build(legacy, &projected) ||
-        DUEL_EVENT_ID(projected.revision) == DUEL_M12_EVENT_NONE) abort();
-    add_render_case("scenario_m13_event_projection", &projected, 7u);
+    if (!scenario || !duel_scenario_build(scenario, &projected) ||
+        DUEL_VISITOR_KIND(projected.shared_pres) == DUEL_CIVIC_COURIER_NONE) abort();
+    add_render_case("scenario_incantation_courier_projection", &projected, 7u);
+    scenario = duel_scenario_find("event-scroll");
+    if (!scenario || !duel_scenario_build(scenario, &projected) ||
+        DUEL_EVENT_ID(projected.revision) == DUEL_CIVIC_EVENT_NONE) abort();
+    add_render_case("scenario_incantation_event_projection", &projected, 7u);
 
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     world.wiz[0].hp = 0;
@@ -252,14 +252,14 @@ static void build_catalog(void) {
     world.spell[0].progress = 72u;
     duel_render_t cross = {0}; duel_render_from_world(&cross, &world);
     cross.seed = 0x39u; cross.civic_phase = 31u;
-    cross.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    cross.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
     cross.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_LEFT);
-    cross.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 0,
-        DUEL_M12_VISIT_AGING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_MANY));
+    cross.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_PARCEL, 0,
+        DUEL_CIVIC_VISIT_AGING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_MANY));
     add_render_case("cross_courier_combat_health_attune", &cross, 13u);
     cross.shared_pres = 0;
-    cross.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DAMAGE_COMPLAINT,
-        DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    cross.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_DAMAGE_COMPLAINT,
+        DUEL_CIVIC_EVENT_PHASE_ACTIVE, DUEL_CIVIC_EVENT_TARGET_RIGHT);
     cross.flags = DUEL_RENDER_STALE; cross.diag_tick = 17u; cross.diag_overflow = 3u;
     add_render_case_diagnostics("cross_event_stale_diagnostics", &cross, 13u);
 
@@ -275,7 +275,7 @@ static void build_catalog(void) {
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     duel_render_t local = {0}; duel_render_from_world(&local, &world);
     local.seed = 0x5au; local.civic_phase = 23u;
-    local.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
+    local.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
     local.layer = DUEL_RENDER_LAYER_PACK(1, DUEL_RENDER_LOCAL_LEFT);
     add_render_case("attunement_left", &local, 7u);
     local.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_RIGHT);
@@ -288,7 +288,7 @@ static void build_catalog(void) {
         world.scry.state = SCRY_ACTIVE; world.scry.scene = scene;
         duel_render_t scry = {0}; duel_render_from_world(&scry, &world);
         scry.seed = 0x5au; scry.civic_phase = 23u;
-        scry.civic = DUEL_CIVIC_PACK(scene, DUEL_M12_MODE_NORMAL, 0);
+        scry.civic = DUEL_CIVIC_PACK(scene, DUEL_CIVIC_MODE_NORMAL, 0);
         scry.external = DUEL_HOST_CONTEXT_PACK(true, scene, scene + 2u, scene == 2u);
         scry.alert = DUEL_HOST_ALERT_PACK((uint8_t)(DUEL_HOST_CATEGORY_TRANSFER + scene),
                                          (uint8_t)(DUEL_HOST_PRIORITY_LOW + scene), scene * 3u);
@@ -299,9 +299,9 @@ static void build_catalog(void) {
     for (uint8_t phase = 0; phase < 4u; phase++) {
         char name[48]; snprintf(name, sizeof name, "floor_transition_phase_%u", phase);
         add_case_civic(name, &world, 7u, 0,
-                       DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP,
-                                       DUEL_M12_MODE_NORMAL, 0),
-                       M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS,
+                       DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP,
+                                       DUEL_CIVIC_MODE_NORMAL, 0),
+                       INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS,
                                                  phase, true));
     }
 
@@ -419,7 +419,7 @@ static void build_catalog(void) {
     static const char *aftermath_name[] = { "after_cheer", "after_complaint", "after_panic",
                                             "after_fire", "after_inspect", "after_repair",
                                             "after_max" };
-    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
         for (size_t i = 0; i < sizeof aftermath_kind; i++) {
             sim_init(&world, SIMF_AUTHORITATIVE, 0);
             world.aftermath[0].kind = aftermath_kind[i];
@@ -429,7 +429,7 @@ static void build_catalog(void) {
             char name[48]; snprintf(name, sizeof name, "after_%s_%s",
                                     floor_name[floor], aftermath_name[i]);
             add_case_civic(name, &world, (uint32_t)(floor * 11u + i), 0,
-                           DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0), 0);
+                           DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0), 0);
         }
 
     static const char *reaction_name[] = { "heal", "complaint", "roof_panic",
@@ -461,7 +461,7 @@ static int verify_golden(const char *path) {
     char trailing[2];
     if (fscanf(file, "%1s", trailing) == 1) ok = false;
     fclose(file);
-    printf("%s visual_m13_exact_framebuffer_hashes (%zu scenes)\n", ok ? "PASS" : "FAIL", ncases);
+    printf("%s visual_incantation_exact_framebuffer_hashes (%zu scenes)\n", ok ? "PASS" : "FAIL", ncases);
     return ok ? 0 : 1;
 }
 
@@ -475,7 +475,7 @@ int main(int argc, char **argv) {
                 unique = false;
             }
         }
-    printf("%s visual_m13_catalog_unique\n", unique ? "PASS" : "FAIL");
+    printf("%s visual_incantation_catalog_unique\n", unique ? "PASS" : "FAIL");
     if (argc == 3 && !strcmp(argv[1], "--write-golden"))
         return unique ? write_golden(argv[2]) : 1;
     if (argc != 2) { fprintf(stderr, "usage: %s [--write-golden] PATH\n", argv[0]); return 2; }

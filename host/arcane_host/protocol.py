@@ -1,4 +1,4 @@
-"""Pure M10 Raw HID packet encoding; no device or timing dependencies."""
+"""Pure Raw HID packet encoding; no device or timing dependencies."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import struct
 REPORT_SIZE = 32
 MAGIC = (0xCA, 0x8E)
 VERSION = 2
-LEGACY_VERSION = 1
 PAYLOAD_SIZE = 20
 
 
@@ -53,7 +52,7 @@ class Floor(IntEnum):
 
 
 class Mode(IntEnum):
-    """Civic mode; civic byte bits 2-3. RESERVED is unused under M12."""
+    """Civic mode; civic byte bits 2-3."""
 
     NORMAL = 0
     QUIET = 1
@@ -82,7 +81,7 @@ class Secondary(IntEnum):
 
 @dataclass(frozen=True, slots=True)
 class CivicState:
-    """M12 Twin Cities civic bytes: pure enum tuple, never any string.
+    """Twin Cities civic bytes: pure enum tuple, never any string.
 
     Packs exactly as ``duel_host.h``: civic byte bits0-1 floor, bits2-3 mode,
     bits4-5 host intensity (bits6-7 reserved); secondary byte bits0-2 activity.
@@ -166,18 +165,9 @@ def build_packet(
     notification_count: int | None = None,
     *,
     summary: NotificationSummary | None = None,
-    civic: CivicState | None = None,
+    civic: CivicState = DEFAULT_CIVIC,
 ) -> bytes:
-    """Build a canonical v2 report.
-
-    ``notification_count`` remains as the M9 call-site compatibility form and
-    maps nonzero counts to an ``other/normal`` diagnostic summary.
-
-    When ``civic`` is provided the report carries the M12 Twin Cities civic
-    bytes at ``payload[6]``/``payload[7]`` and advertises ``payload_len == 8``.
-    Omitting it keeps the bit-identical M11.5 six-byte payload, so firmware that
-    predates M12 (or ignores the extra bytes) is unaffected.
-    """
+    """Build the canonical v2 report with its eight-byte semantic payload."""
     if not 0 <= session <= 0xFFFFFFFF:
         raise ValueError("session must fit uint32")
     if not 0 <= sequence <= 0xFFFF:
@@ -194,7 +184,6 @@ def build_packet(
             else NotificationSummary(count, Category.OTHER, Priority.NORMAL)
         )
 
-    payload_len = 6 if civic is None else 8
     report = bytearray(REPORT_SIZE)
     struct.pack_into(
         "<BBBBIHB",
@@ -206,7 +195,7 @@ def build_packet(
         int(message),
         session,
         sequence,
-        payload_len,
+        8,
     )
     report[11:17] = bytes(
         (
@@ -218,24 +207,8 @@ def build_packet(
             int(summary.persistent),
         )
     )
-    if civic is not None:
-        # payload[6] -> report[17], payload[7] -> report[18].
-        report[17] = civic.civic_byte()
-        report[18] = civic.secondary_byte()
-    report[-1] = crc8(report[:-1])
-    return bytes(report)
-
-
-def build_legacy_packet(
-    message: Message, session: int, sequence: int, scene: Scene, notification_count: int
-) -> bytes:
-    """Build a v1 vector for compatibility tests and rollback diagnostics."""
-    if not 0 <= notification_count <= 15:
-        raise ValueError("notification count must be in 0..15")
-    report = bytearray(build_packet(message, session, sequence, scene, notification_count))
-    report[2] = LEGACY_VERSION
-    report[10] = 2
-    report[13:17] = b"\0\0\0\0"
+    report[17] = civic.civic_byte()
+    report[18] = civic.secondary_byte()
     report[-1] = crc8(report[:-1])
     return bytes(report)
 

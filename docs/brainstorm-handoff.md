@@ -13,8 +13,9 @@ hardware and the ambient experience.
 ## Accepted baseline
 
 The device is a Corne v3 RP2040 split keyboard with one 128x32 monochrome OLED
-on each half, mounted in portrait and separated by the physical desk gap. M13 is
-implemented and has passed automated, QMK, budget, and physical two-half checks.
+on each half, mounted in portrait and separated by the physical desk gap. Version 0.4 is
+implemented and has passed automated, QMK, and budget checks; its inherited
+world/combat behavior has passed the recorded physical two-half checks.
 Normal typing is never delayed, consumed, or rewritten by display logic.
 
 The firmware runs one deterministic fixed-tick world. The USB master owns
@@ -22,7 +23,7 @@ authoritative shared state; the other half renders synchronized snapshots and
 has a local pose-only fallback if the link goes stale. The host is optional
 semantic enrichment, never required for a coherent keyboard.
 
-M13 already includes:
+The current firmware already includes:
 
 - A privacy-preserving physical-position incantation compiler driven by timing,
   holds, layers, rolls, and release patterns—not keycodes, characters, words, or
@@ -52,7 +53,7 @@ These are ideas, not commitments:
    behaviors, couriers, rare events, residents, medic variants, and roster
    voices.
 5. Add bounded spell forms, payloads, shallow triggers, interactions, aftermath
-   arcs, or outcome grammars beyond M13's eight forms.
+   arcs, or outcome grammars beyond the current eight forms.
 6. Add coarse browser activity such as scroll, tab, or page-event semantics,
    without transmitting content, titles, URLs, or browsing history.
 7. Add shell adapters beyond the current Zsh/Git hook.
@@ -72,15 +73,15 @@ These are ideas, not commitments:
 - Protected OLED regions, physical-gap readability, low visual restlessness,
   stale-link recovery, no-allocation gates, and exact deterministic/visual tests
   remain important.
-- `griffin_arcane` keeps Vial; `griffin_arcane` uses custom Raw HID. They are
-  separate because Vial and the daemon compete for QMK's Raw HID interface.
-- The M13 split v10 packet is exactly 32 bytes, so there is no spare inherited
+- `griffin_arcane` combines secure Vial and custom Raw HID. The safe launcher
+  gives Vial exclusive endpoint ownership by pausing the daemon.
+- The split v10 packet is exactly 32 bytes, so there is no spare inherited
   split byte. New synchronized state requires derivation, repacking, reuse, or a
   protocol-version change.
 - Raw HID is also fixed at 32 bytes.
-- The Vial M13 release is 80,972 flash bytes: only 948 bytes below the 80 KiB
-  target and 17,332 bytes below the 96 KiB hard stop. Future work needs an
-  explicit flash budget and rollback plan.
+- The unified release is 69,644 flash bytes with 13,464 bytes static RAM; the
+  diagnostic image is 71,100 and 13,576 bytes. Future work needs an explicit
+  flash budget and recovery plan.
 - No permanent progression, save files, or long-lived host database under the
   current product direction.
 

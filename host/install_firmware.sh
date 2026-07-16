@@ -1,19 +1,17 @@
 #!/usr/bin/env sh
-# Materialize the current M13 source as the isolated Vial-free host keymap.
+# Materialize the current unified keymap in an existing Vial-QMK checkout.
 set -eu
-root="$(cd "$(dirname "$0")/.." && pwd)"
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 src="$root/firmware"
-dst="${1:-$HOME/src/vial-qmk/keyboards/crkbd/keymaps/griffin_hostoled}"
+qmk_root=${QMK_ROOT:-"$HOME/src/vial-qmk"}
+dst=${1:-"$qmk_root/keyboards/crkbd/keymaps/griffin_arcane"}
 
-if [ ! -d "$dst" ]; then
-    echo "host keymap directory not found: $dst" >&2
-    exit 1
-fi
-
+mkdir -p "$dst"
 rsync -a --delete \
-    --exclude test_runner --exclude preview --exclude visual_runner \
+    --exclude mechanics_runner --exclude visual_runner \
     --exclude gallery --exclude .noalloc.o \
-    --exclude '*.o' --exclude '*.uf2' \
+    --exclude '*.o' --exclude '*.elf' --exclude '*.uf2' \
     "$src/" "$dst/"
-cp "$root/host/firmware/rules.mk" "$dst/rules.mk"
-echo "installed M13 current-source firmware -> $dst"
+
+echo "installed current firmware -> $dst"

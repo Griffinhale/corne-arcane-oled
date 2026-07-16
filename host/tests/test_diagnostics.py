@@ -73,7 +73,7 @@ class FakeDevice:
     def send(self, report: bytes) -> None:
         page = report[4]
         nonce = int.from_bytes(report[6:8], "little")
-        self.reports.append(response(page, nonce, bytes([page]) * 23))
+        self.reports.extend((report, response(page, nonce, bytes([page]) * 23)))
 
     def receive(self, _timeout: float) -> bytes:
         return self.reports.pop(0)
@@ -86,6 +86,33 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(snapshot.master.queue_overflow, 0)
         self.assertEqual(snapshot.master.peak_split_tx_us, 0x01010101)
         self.assertTrue(snapshot.peer.valid)
+
+    def test_requires_exact_via_echo_before_metrics(self) -> None:
+        class Mismatch:
+            def send(self, _report: bytes) -> None:
+                pass
+
+            def receive(self, _timeout: float) -> bytes:
+                return bytes(32)
+
+        with self.assertRaisesRegex(ValueError, "mismatched VIA echo"):
+            query(Mismatch(), nonce=1)
+
+    def test_release_echo_without_metrics_times_out(self) -> None:
+        class EchoOnly:
+            request = b""
+
+            def send(self, report: bytes) -> None:
+                self.request = report
+
+            def receive(self, _timeout: float) -> bytes:
+                if self.request:
+                    report, self.request = self.request, b""
+                    return report
+                raise TimeoutError("release firmware")
+
+        with self.assertRaises(TimeoutError):
+            query(EchoOnly(), nonce=1)
 
 
 if __name__ == "__main__":

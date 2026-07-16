@@ -1,10 +1,12 @@
 # Corne Arcane 0.4 two-half physical acceptance record
 
-Status: PASS, reported by the project owner on 2026-07-15. Exact timing and
-stack measurements were not supplied; threshold results are recorded below.
+Status: current world/combat baseline PASS, reported by the project owner on
+2026-07-15. Unified 0.4 Vial handoff and persistence rerun PENDING. Exact timing
+and stack measurements were not supplied; threshold results are recorded below.
 
-Use the same `artifacts/release/griffin_arcane-diagnostic.uf2` on both halves
-for measurement, then repeat the final smoke test with
+For the 0.4 rerun, use the same
+`artifacts/release/griffin_arcane-diagnostic.uf2` on both halves for
+measurement, then repeat the final smoke test with
 `griffin_arcane-release.uf2`. Never plug or unplug TRRS
 while either half is USB-powered.
 
@@ -126,8 +128,8 @@ while either half is USB-powered.
   sequence and repeat typing, beam symmetry, maximal aftermath, and reconnect
   smoke tests.
 - [x] Preserve the recorded hashes from `acceptance.md` with the sign-off.
-- [x] Finally flash `m12-rollback.uf2` to both halves and confirm the accepted
-  M12 scene still boots; then return both halves to M13 release.
+- [x] Finally flash the preserved historical recovery image to both halves and
+  confirm it still boots; then return both halves to the accepted release.
 
 Sign-off date: 2026-07-15  Tester: project owner (reported)  Result: PASS
 

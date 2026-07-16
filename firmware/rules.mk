@@ -1,38 +1,40 @@
-
 VIA_ENABLE = yes
 VIAL_ENABLE = yes
+RAW_ENABLE = yes
 LTO_ENABLE = yes
 OLED_ENABLE = yes
-WPM_ENABLE = yes
 
-# Hardware-agnostic duel engine sources (also compiled by sim_test/ on the host).
-SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_view.c sim/duel_proto.c sim/duel_host.c sim/duel_display.c sim/duel_resident.c sim/duel_courier.c sim/duel_event.c
+# The compiled fourth layer uses RGB Matrix controls. Other inherited lighting
+# and optional Vial surfaces are intentionally absent from the 0.4 image.
+RGB_MATRIX_ENABLE = yes
+RGBLIGHT_ENABLE = no
+WPM_ENABLE = no
+QMK_SETTINGS = no
+DYNAMIC_MACRO_ENABLE = no
+TAP_DANCE_ENABLE = no
+COMBO_ENABLE = no
+KEY_OVERRIDE_ENABLE = no
+CAPS_WORD_ENABLE = no
+LAYER_LOCK_ENABLE = no
+REPEAT_KEY_ENABLE = no
+ENCODER_MAP_ENABLE = no
 
-# Opt-in instrumentation. Release builds omit counters, timing reads, and the
-# diagnostic overlay entirely: `qmk compile ... -e ARCANE_DIAGNOSTICS=yes`.
+LDFLAGS += -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref
+
+SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_incantation.c \
+       sim/duel_view.c sim/duel_proto.c sim/duel_host.c \
+       sim/duel_display.c sim/duel_resident.c sim/duel_courier.c \
+       sim/duel_event.c
+
+# Instrumentation is compiled out of release images. Diagnostic firmware keeps
+# the identical packet layouts and adds bounded counters/timing responses.
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
-    OPT_DEFS += -DARCANE_DIAGNOSTICS
-    ifeq ($(strip $(ARCANE_M13)),yes)
-        OPT_DEFS += -DCH_DBG_FILL_THREADS=TRUE -DCH_DBG_ENABLE_STACK_CHECK=TRUE
-    endif
+    OPT_DEFS += -DARCANE_DIAGNOSTICS \
+                -DCH_DBG_FILL_THREADS=TRUE \
+                -DCH_DBG_ENABLE_STACK_CHECK=TRUE
 endif
 
-# A/B control for the M11.5 cadence gate. The candidate defaults to a 250 ms
-# static repair heartbeat; this switch restores the fixed 80 ms cadence while
-# retaining the identical v8 absolute packet and acceptance rules.
+# Accepted A/B diagnostic control for the split repair cadence.
 ifeq ($(strip $(ARCANE_FIXED_SPLIT_CADENCE)),yes)
     OPT_DEFS += -DARCANE_FIXED_SPLIT_CADENCE
-endif
-
-# M12 Twin Cities. Opt-in so the accepted M11.5 release stays bit-identical:
-# `qmk compile ... -e ARCANE_M12=yes`. Every M12 addition is compiled out when
-# this is absent, and DUEL_ROOF_DY constant-folds to 0.
-ifeq ($(strip $(ARCANE_M13)),yes)
-    OPT_DEFS += -DARCANE_M13 -DARCANE_M12
-    # Keep the M13 compiler out of every non-M13 object graph. Besides making
-    # the feature boundary explicit, this preserves the accepted M11.5/M12
-    # link inputs for binary/hash regression checks.
-    SRC += sim/duel_m13.c
-else ifeq ($(strip $(ARCANE_M12)),yes)
-    OPT_DEFS += -DARCANE_M12
 endif

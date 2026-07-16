@@ -1,5 +1,5 @@
 /*
- * duel_courier.c — M12 notification ecology (Wave 6).
+ * duel_courier.c — Twin Cities notification ecology (Wave 6).
  *
  * Presentation-only. The master derives one global visitor from the normalized
  * notification summary; both halves render it locally from the packed shared_pres
@@ -8,12 +8,9 @@
  */
 #include "duel_courier.h"
 
-#ifdef ARCANE_M12
 
 #include "duel_host.h"
-#ifdef ARCANE_M13
 #    include "duel_resident.h"
-#endif
 
 // --- Wave 6 notification-ecology routing (spec §11.3) ------------------------
 // Category -> courier kind and city, before the persistent / security override.
@@ -21,14 +18,14 @@
 // calendar land left; transfer and system (and terminal/build) land right.
 static uint8_t category_kind(uint8_t category) {
     switch (category) {
-    case DUEL_HOST_CATEGORY_COMMUNICATION: return DUEL_M12_COURIER_MESSENGER;
-    case DUEL_HOST_CATEGORY_CALENDAR:      return DUEL_M12_COURIER_MESSENGER;
-    case DUEL_HOST_CATEGORY_TRANSFER:      return DUEL_M12_COURIER_PARCEL;
-    case DUEL_HOST_CATEGORY_SYSTEM:        return DUEL_M12_COURIER_BEACON;
-    case DUEL_HOST_CATEGORY_TERMINAL:      return DUEL_M12_COURIER_BEACON;
-    case DUEL_HOST_CATEGORY_SECURITY:      return DUEL_M12_COURIER_SENTINEL;
-    case DUEL_HOST_CATEGORY_OTHER:         return DUEL_M12_COURIER_MESSENGER;
-    default:                               return DUEL_M12_COURIER_NONE;
+    case DUEL_HOST_CATEGORY_COMMUNICATION: return DUEL_CIVIC_COURIER_MESSENGER;
+    case DUEL_HOST_CATEGORY_CALENDAR:      return DUEL_CIVIC_COURIER_MESSENGER;
+    case DUEL_HOST_CATEGORY_TRANSFER:      return DUEL_CIVIC_COURIER_PARCEL;
+    case DUEL_HOST_CATEGORY_SYSTEM:        return DUEL_CIVIC_COURIER_BEACON;
+    case DUEL_HOST_CATEGORY_TERMINAL:      return DUEL_CIVIC_COURIER_BEACON;
+    case DUEL_HOST_CATEGORY_SECURITY:      return DUEL_CIVIC_COURIER_SENTINEL;
+    case DUEL_HOST_CATEGORY_OTHER:         return DUEL_CIVIC_COURIER_MESSENGER;
+    default:                               return DUEL_CIVIC_COURIER_NONE;
     }
 }
 
@@ -44,26 +41,26 @@ static uint8_t category_city(uint8_t category) {
 }
 
 static uint8_t age_lifecycle(uint8_t age) {
-    if (age == 0u)      return DUEL_M12_VISIT_ARRIVING; // new
-    if (age <= 2u)      return DUEL_M12_VISIT_WAITING;  // pending
-    if (age <= 6u)      return DUEL_M12_VISIT_AGING;    // old
-    return DUEL_M12_VISIT_RESOLVING;                    // aged to dismissal (7)
+    if (age == 0u)      return DUEL_CIVIC_VISIT_ARRIVING; // new
+    if (age <= 2u)      return DUEL_CIVIC_VISIT_WAITING;  // pending
+    if (age <= 6u)      return DUEL_CIVIC_VISIT_AGING;    // old
+    return DUEL_CIVIC_VISIT_RESOLVING;                    // aged to dismissal (7)
 }
 
 static uint8_t count_density(uint8_t count) {
-    if (count >= 5u) return DUEL_M12_DENSITY_MANY;
-    if (count >= 2u) return DUEL_M12_DENSITY_FEW;
-    return DUEL_M12_DENSITY_SINGLE;
+    if (count >= 5u) return DUEL_CIVIC_DENSITY_MANY;
+    if (count >= 2u) return DUEL_CIVIC_DENSITY_FEW;
+    return DUEL_CIVIC_DENSITY_SINGLE;
 }
 
-m12_visitor_state_t m12_visitor_derive(uint8_t seed, uint8_t phase, uint8_t category,
+civic_visitor_state_t civic_visitor_derive(uint8_t seed, uint8_t phase, uint8_t category,
                                        uint8_t count, uint8_t age, bool persistent) {
     // Routing is a pure function of the notification summary; seed/phase are
     // reserved for later sub-motion and deliberately do NOT flip the visitor's
     // kind/city/lifecycle (that would strobe the form every civic tick).
     (void)seed; (void)phase;
 
-    m12_visitor_state_t st = {0};
+    civic_visitor_state_t st = {0};
 
     // none / low: no notification, no visitor.
     if (category == DUEL_HOST_CATEGORY_NONE || category >= DUEL_HOST_CATEGORY_COUNT ||
@@ -78,7 +75,7 @@ m12_visitor_state_t m12_visitor_derive(uint8_t seed, uint8_t phase, uint8_t cate
     // city stays the category's city so a persistent transfer entrenches on the
     // right, a persistent message on the left.
     if (persistent || category == DUEL_HOST_CATEGORY_SECURITY)
-        kind = DUEL_M12_COURIER_SENTINEL;
+        kind = DUEL_CIVIC_COURIER_SENTINEL;
 
     st.kind_target     = (uint8_t)((kind & 7u) | ((city & 1u) << 3));
     st.lifecycle_phase = age_lifecycle(age);
@@ -86,14 +83,13 @@ m12_visitor_state_t m12_visitor_derive(uint8_t seed, uint8_t phase, uint8_t cate
     return st;
 }
 
-uint8_t m12_visitor_shared_pres(m12_visitor_state_t state) {
+uint8_t civic_visitor_shared_pres(civic_visitor_state_t state) {
     return (uint8_t)(DUEL_VISITOR_PACK(DUEL_VISITOR_STATE_KIND(state),
                                        DUEL_VISITOR_STATE_CITY(state),
                                        state.lifecycle_phase) |
                      DUEL_VISITOR_DENSITY_PACK(DUEL_VISITOR_STATE_DENSITY(state)));
 }
 
-#ifdef ARCANE_M13
 static void draw_courier_floor_mark(duel_fb_t *fb, bool is_left, uint8_t kind,
                                     uint8_t floor, int x, int y) {
     /* Three pixels reinterpret each stable courier core as, respectively:
@@ -115,14 +111,13 @@ static void draw_courier_floor_mark(duel_fb_t *fb, bool is_left, uint8_t kind,
     };
     const int8_t (*pixels)[2] = mark[kind - 1u][floor];
     for (int i = 0; i < 3; i++)
-        duel_fb_px(fb, m13_desk_x(is_left, x + pixels[i][0]), y + pixels[i][1], true);
+        duel_fb_px(fb, incantation_desk_x(is_left, x + pixels[i][0]), y + pixels[i][1], true);
 }
-#endif
 
 void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     const uint8_t sp   = r->shared_pres;
     const uint8_t kind = DUEL_VISITOR_KIND(sp);
-    if (kind == DUEL_M12_COURIER_NONE || kind >= DUEL_M12_COURIER_COUNT) return;
+    if (kind == DUEL_CIVIC_COURIER_NONE || kind >= DUEL_CIVIC_COURIER_COUNT) return;
 
     // The visitor is assigned to exactly one city; the other half draws nothing.
     const uint8_t city = DUEL_VISITOR_CITY(sp); // 0 left, 1 right
@@ -131,22 +126,21 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 
     const uint8_t life    = DUEL_VISITOR_LIFECYCLE(sp);
     const uint8_t density = DUEL_VISITOR_DENSITY(sp);
-    const bool    quiet   = DUEL_CIVIC_MODE(r->civic) == DUEL_M12_MODE_QUIET;
+    const bool    quiet   = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
 
-#ifdef ARCANE_M13
     uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
-    if (M13_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
-        M13_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
-        floor = M13_FLOOR_TRANSITION_SOURCE(r->floor_transition);
-    if (floor >= M13_OCCUPATION_FLOORS) floor = DUEL_M12_FLOOR_COMMONS;
+    if (INCANTATION_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
+        INCANTATION_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
+        floor = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
+    if (floor >= INCANTATION_OCCUPATION_FLOORS) floor = DUEL_CIVIC_FLOOR_COMMONS;
     static const uint8_t destination_action[] = {
-        DUEL_M12_ACTION_WORK, DUEL_M12_ACTION_HANDLE_DELIVERY,
-        DUEL_M12_ACTION_HANDLE_DELIVERY, DUEL_M12_ACTION_WATCH_ROOF,
-        DUEL_M12_ACTION_INSPECT,
+        DUEL_CIVIC_ACTION_WORK, DUEL_CIVIC_ACTION_HANDLE_DELIVERY,
+        DUEL_CIVIC_ACTION_HANDLE_DELIVERY, DUEL_CIVIC_ACTION_WATCH_ROOF,
+        DUEL_CIVIC_ACTION_INSPECT,
     };
-    m13_point_t destination = m13_occupation_anchor(floor, destination_action[kind]);
+    incantation_point_t destination = incantation_occupation_anchor(floor, destination_action[kind]);
     int x = destination.x, y = destination.y;
-    if (kind != DUEL_M12_COURIER_SENTINEL) {
+    if (kind != DUEL_CIVIC_COURIER_SENTINEL) {
         /* The established gap lift remains the entrance. Waiting is two thirds
          * through the route, aging reaches the occupation object, and resolving
          * returns to the lift. */
@@ -155,10 +149,10 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         x = 27 + (destination.x - 27) * step / 3;
         y = 72 + (destination.y - 72) * step / 3;
     }
-    int cx = m13_desk_x(is_left, x), g = is_left ? 1 : -1;
+    int cx = incantation_desk_x(is_left, x), g = is_left ? 1 : -1;
 
     switch (kind) {
-        case DUEL_M12_COURIER_MESSENGER:
+        case DUEL_CIVIC_COURIER_MESSENGER:
             /* Shared carrier core: a winged dispatch packet. The floor mark is
              * a filing tail, specimen loop, or punched gear card. */
             duel_fb_px(fb, cx, y, true);
@@ -166,23 +160,23 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
             duel_fb_px(fb, cx - 2, y, true); duel_fb_px(fb, cx + 2, y, true);
             duel_fb_px(fb, cx + 2 * g, y + 1, true);
             break;
-        case DUEL_M12_COURIER_PARCEL:
+        case DUEL_CIVIC_COURIER_PARCEL:
             /* Filing cart, canister trolley, or braced parts crate. */
-            m13_civic_hline(fb, is_left, x - 2, x + 2, y);
-            m13_civic_hline(fb, is_left, x - 2, x + 2, y - 4);
-            m13_civic_vline(fb, is_left, x - 2, y - 4, y);
-            m13_civic_vline(fb, is_left, x + 2, y - 4, y);
+            incantation_civic_hline(fb, is_left, x - 2, x + 2, y);
+            incantation_civic_hline(fb, is_left, x - 2, x + 2, y - 4);
+            incantation_civic_vline(fb, is_left, x - 2, y - 4, y);
+            incantation_civic_vline(fb, is_left, x + 2, y - 4, y);
             duel_fb_px(fb, cx - g, y + 1, true); duel_fb_px(fb, cx + g, y + 1, true);
             break;
-        case DUEL_M12_COURIER_BEACON:
-            m13_civic_vline(fb, is_left, x, y - 7, y + 2);
-            m13_civic_hline(fb, is_left, x - 2, x + 2, y + 2);
+        case DUEL_CIVIC_COURIER_BEACON:
+            incantation_civic_vline(fb, is_left, x, y - 7, y + 2);
+            incantation_civic_hline(fb, is_left, x - 2, x + 2, y + 2);
             break;
         default: /* Sentinel: security post / anomaly seal / lockout barrier. */
-            m13_civic_vline(fb, is_left, x, y - 8, y + 1);
-            m13_civic_hline(fb, is_left, x - 2, x + 2, y + 1);
+            incantation_civic_vline(fb, is_left, x, y - 8, y + 1);
+            incantation_civic_hline(fb, is_left, x - 2, x + 2, y + 1);
             draw_courier_floor_mark(fb, is_left, kind, floor, x, y);
-            if (life == DUEL_M12_VISIT_AGING) {
+            if (life == DUEL_CIVIC_VISIT_AGING) {
                 duel_fb_px(fb, cx - 3, y + 1, true); duel_fb_px(fb, cx + 3, y + 1, true);
             }
             return;
@@ -190,145 +184,19 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 
     draw_courier_floor_mark(fb, is_left, kind, floor, x, y);
 
-    if (density >= DUEL_M12_DENSITY_FEW) {
+    if (density >= DUEL_CIVIC_DENSITY_FEW) {
         duel_fb_px(fb, cx - 3, y, true); duel_fb_px(fb, cx + 3, y, true);
     }
-    if (density >= DUEL_M12_DENSITY_MANY) {
+    if (density >= DUEL_CIVIC_DENSITY_MANY) {
         duel_fb_px(fb, cx - 2, y + 4, true); duel_fb_px(fb, cx + 2, y + 4, true);
     }
-    if (life == DUEL_M12_VISIT_ARRIVING && !quiet) {
+    if (life == DUEL_CIVIC_VISIT_ARRIVING && !quiet) {
         duel_fb_px(fb, cx - 2 * g, y + 2, true); duel_fb_px(fb, cx - 4 * g, y + 3, true);
-    } else if (life == DUEL_M12_VISIT_WAITING) {
+    } else if (life == DUEL_CIVIC_VISIT_WAITING) {
         duel_fb_px(fb, cx, y + 3, true);
-    } else if (life == DUEL_M12_VISIT_AGING) {
+    } else if (life == DUEL_CIVIC_VISIT_AGING) {
         duel_fb_px(fb, cx - 1, y + 3, true); duel_fb_px(fb, cx + 1, y + 4, true);
-    } else if (life == DUEL_M12_VISIT_RESOLVING && !quiet) {
+    } else if (life == DUEL_CIVIC_VISIT_RESOLVING && !quiet) {
         duel_fb_px(fb, cx + 3 * g, y, true); duel_fb_px(fb, cx + 4 * g, y - 1, true);
     }
-#else
-#define CX(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
-    const int g = is_left ? +1 : -1; // toward the centre gap
-
-    // Lifecycle station in desk space: ARRIVING enters by the gap-side lift, then
-    // WAITING/AGING drift inward and out, RESOLVING returns to the gap to depart.
-    static const uint8_t life_ax[4] = { 24u, 17u, 11u, 26u };
-    int ax     = life_ax[life & 3u];
-    int settle = (life == DUEL_M12_VISIT_AGING) ? 1 : 0; // old visitors settle
-    int cx = 0, cy = 0;
-
-    switch (kind) {
-    case DUEL_M12_COURIER_MESSENGER: {
-        // Communication / calendar bird flitting high in the floor band.
-        cx = CX(ax); cy = 68 + settle;
-        duel_fb_px(fb, cx - 2, cy, true);           // gull wings meeting at a body
-        duel_fb_px(fb, cx - 1, cy - 1, true);
-        duel_fb_px(fb, cx,     cy, true);
-        duel_fb_px(fb, cx + 1, cy - 1, true);
-        duel_fb_px(fb, cx + 2, cy, true);
-        duel_fb_px(fb, cx + g,     cy + 1, true);   // head + beak toward the gap
-        duel_fb_px(fb, cx + 2 * g, cy + 1, true);
-        if (density >= DUEL_M12_DENSITY_FEW) {      // broader wingspan
-            duel_fb_px(fb, cx - 3, cy + 1, true);
-            duel_fb_px(fb, cx + 3, cy + 1, true);
-        }
-        if (density >= DUEL_M12_DENSITY_MANY) {     // fuller plumage
-            duel_fb_px(fb, cx - 1, cy + 1, true);
-            duel_fb_px(fb, cx + 1, cy + 1, true);
-            duel_fb_px(fb, cx,     cy - 2, true);
-        }
-        break;
-    }
-    case DUEL_M12_COURIER_PARCEL: {
-        // Transfer / download hand-cart resting on the room floor.
-        cx = CX(ax); cy = 88 + settle;
-        for (int yy = cy - 2; yy <= cy; yy++)       // parcel box
-            for (int xx = cx - 1; xx <= cx + 1; xx++) duel_fb_px(fb, xx, yy, true);
-        duel_fb_px(fb, cx - 1, cy + 1, true);       // wheels
-        duel_fb_px(fb, cx + 1, cy + 1, true);
-        duel_fb_px(fb, cx + 2 * g, cy - 1, true);   // pull handle toward the gap
-        duel_fb_px(fb, cx + 2 * g, cy - 2, true);
-        if (density >= DUEL_M12_DENSITY_FEW)        // a second stacked parcel
-            for (int xx = cx - 1; xx <= cx; xx++) {
-                duel_fb_px(fb, xx, cy - 4, true); duel_fb_px(fb, xx, cy - 3, true);
-            }
-        if (density >= DUEL_M12_DENSITY_MANY)       // a third, toppling
-            for (int xx = cx; xx <= cx + 1; xx++) {
-                duel_fb_px(fb, xx, cy - 6, true); duel_fb_px(fb, xx, cy - 5, true);
-            }
-        break;
-    }
-    case DUEL_M12_COURIER_BEACON: {
-        // System / network signal conduit: a mast with a pulsing beacon head.
-        cx = CX(ax); cy = 76 + settle;
-        int top = cy - 6, bot = cy + 8;
-        for (int yy = top; yy <= bot; yy++) duel_fb_px(fb, cx, yy, true); // mast
-        duel_fb_px(fb, cx - 1, top, true);          // beacon head flare
-        duel_fb_px(fb, cx + 1, top, true);
-        duel_fb_px(fb, cx,     top - 1, true);
-        duel_fb_px(fb, cx - 1, bot, true);          // base bracket
-        duel_fb_px(fb, cx + 1, bot, true);
-        if (density >= DUEL_M12_DENSITY_FEW) {      // side conduit taps
-            duel_fb_px(fb, cx + g, cy - 2, true);
-            duel_fb_px(fb, cx + g, cy + 2, true);
-        }
-        if (density >= DUEL_M12_DENSITY_MANY) {     // radiating emitter rays
-            duel_fb_px(fb, cx - 2, top - 1, true);
-            duel_fb_px(fb, cx + 2, top - 1, true);
-            duel_fb_px(fb, cx - g, cy, true);
-        }
-        break;
-    }
-    case DUEL_M12_COURIER_SENTINEL:
-    default: {
-        // Security-critical / persistent stationed alarm: a fixed entrenched post
-        // with a warning lamp. It never drifts with the lifecycle station.
-        cx = CX(19); cy = 90;
-        for (int yy = cy - 8; yy <= cy; yy++) duel_fb_px(fb, cx, yy, true); // staff
-        duel_fb_px(fb, cx,     cy - 9, true);       // alarm lamp
-        duel_fb_px(fb, cx - 1, cy - 8, true);
-        duel_fb_px(fb, cx + 1, cy - 8, true);
-        duel_fb_px(fb, cx - 1, cy, true);           // entrenched foot
-        duel_fb_px(fb, cx + 1, cy, true);
-        duel_fb_px(fb, cx - 2, cy, true);
-        duel_fb_px(fb, cx + 2, cy, true);
-        duel_fb_px(fb, cx + 2 * g, cy - 6, true);   // warning bar toward the gap
-        duel_fb_px(fb, cx + 2 * g, cy - 4, true);
-        duel_fb_px(fb, cx + 2 * g, cy - 2, true);
-        if (life == DUEL_M12_VISIT_AGING) {         // entrenched: dust banked up
-            duel_fb_px(fb, cx - 3, cy, true);
-            duel_fb_px(fb, cx + 3, cy, true);
-        }
-        return; // stationed: no drifting lifecycle badge
-    }
-    }
-
-    // Lifecycle badge for the mobile couriers (the station already differs per
-    // phase; the badge names it). QUIET calms motion: the arrival trail and the
-    // departure spark are suppressed so the visitor reads as settled.
-    switch (life) {
-    case DUEL_M12_VISIT_ARRIVING:
-        if (!quiet) {                               // motion trail, away from gap
-            duel_fb_px(fb, cx - 2 * g, cy - 1, true);
-            duel_fb_px(fb, cx - 3 * g, cy, true);
-        }
-        break;
-    case DUEL_M12_VISIT_WAITING:
-        duel_fb_px(fb, cx, cy + 3, true);           // a patient standing mark
-        break;
-    case DUEL_M12_VISIT_AGING:
-        duel_fb_px(fb, cx - 1, cy + 3, true);       // gathered dust
-        duel_fb_px(fb, cx + 1, cy + 4, true);
-        break;
-    case DUEL_M12_VISIT_RESOLVING:
-        if (!quiet) {                               // departing spark toward gap
-            duel_fb_px(fb, cx + 3 * g, cy, true);
-            duel_fb_px(fb, cx + 4 * g, cy - 1, true);
-        }
-        break;
-    default: break;
-    }
-#undef CX
-#endif
 }
-
-#endif // ARCANE_M12

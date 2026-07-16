@@ -14,10 +14,10 @@ static bool type_valid(uint8_t type) {
            type == DUEL_HOST_MSG_NOTIFY;
 }
 
-void duel_host_encode_summary(uint8_t type, uint32_t session, uint16_t seq,
+void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
                       uint8_t scene, uint8_t notification_count,
                       uint8_t category, uint8_t priority, uint8_t age,
-                      bool persistent,
+                      bool persistent, uint8_t civic, uint8_t secondary,
                       duel_host_packet_t *out) {
     memset(out, 0, sizeof *out);
     out->magic0      = DUEL_HOST_MAGIC0;
@@ -26,49 +26,17 @@ void duel_host_encode_summary(uint8_t type, uint32_t session, uint16_t seq,
     out->type        = type;
     out->session     = session;
     out->seq         = seq;
-    out->payload_len = 6;
+    out->payload_len = DUEL_HOST_PAYLOAD_LEN;
     out->payload[0]  = scene;
     out->payload[1]  = notification_count;
     out->payload[2]  = category;
     out->payload[3]  = priority;
     out->payload[4]  = age;
     out->payload[5]  = persistent ? 1 : 0;
-    out->crc         = duel_crc8(out, offsetof(duel_host_packet_t, crc));
-}
-
-void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
-                      uint8_t scene, uint8_t notification_count,
-                      duel_host_packet_t *out) {
-    duel_host_encode_summary(type, session, seq, scene, notification_count,
-        notification_count ? DUEL_HOST_CATEGORY_OTHER : DUEL_HOST_CATEGORY_NONE,
-        notification_count ? DUEL_HOST_PRIORITY_NORMAL : DUEL_HOST_PRIORITY_NONE,
-        0, false, out);
-}
-
-void duel_host_encode_v1(uint8_t type, uint32_t session, uint16_t seq,
-                         uint8_t scene, uint8_t notification_count,
-                         duel_host_packet_t *out) {
-    duel_host_encode_summary(type, session, seq, scene, notification_count,
-                     DUEL_HOST_CATEGORY_NONE, DUEL_HOST_PRIORITY_NONE, 0, false, out);
-    out->version = DUEL_HOST_VERSION_V1;
-    out->payload_len = 2;
-    out->crc = duel_crc8(out, offsetof(duel_host_packet_t, crc));
-}
-
-#ifdef ARCANE_M12
-void duel_host_encode_civic(uint8_t type, uint32_t session, uint16_t seq,
-                            uint8_t scene, uint8_t notification_count,
-                            uint8_t category, uint8_t priority, uint8_t age,
-                            bool persistent, uint8_t civic, uint8_t secondary,
-                            duel_host_packet_t *out) {
-    duel_host_encode_summary(type, session, seq, scene, notification_count,
-                             category, priority, age, persistent, out);
-    out->payload_len = DUEL_HOST_PAYLOAD_LEN_M12;
     out->payload[DUEL_HOST_PAYLOAD_CIVIC]     = civic;
     out->payload[DUEL_HOST_PAYLOAD_SECONDARY] = secondary;
     out->crc = duel_crc8(out, offsetof(duel_host_packet_t, crc));
 }
-#endif
 
 bool duel_host_packet_valid(const duel_host_packet_t *packet) {
     bool common = packet->magic0 == DUEL_HOST_MAGIC0 &&
@@ -78,25 +46,14 @@ bool duel_host_packet_valid(const duel_host_packet_t *packet) {
            packet->payload[1] <= 15 &&
            packet->crc == duel_crc8(packet, offsetof(duel_host_packet_t, crc));
     if (!common) return false;
-    if (packet->version == DUEL_HOST_VERSION_V1) return packet->payload_len == 2;
     if (packet->version != DUEL_HOST_VERSION) return false;
-#ifdef ARCANE_M12
-    // v2 accepts the legacy 6-byte summary and the M12 8-byte civic summary.
-    if (packet->payload_len != 6 && packet->payload_len != DUEL_HOST_PAYLOAD_LEN_M12) {
+    if (packet->payload_len != DUEL_HOST_PAYLOAD_LEN) return false;
+    if ((packet->payload[DUEL_HOST_PAYLOAD_CIVIC] & 0xC0u) != 0) return false;
+    if ((packet->payload[DUEL_HOST_PAYLOAD_SECONDARY] & 0xF8u) != 0) return false;
+    if (DUEL_SECONDARY_ACTIVITY(packet->payload[DUEL_HOST_PAYLOAD_SECONDARY]) >
+        DUEL_CIVIC_SECONDARY_CALENDAR) {
         return false;
     }
-    if (packet->payload_len == DUEL_HOST_PAYLOAD_LEN_M12) {
-        // Reserved civic/secondary bits must be zero; secondary within the enum.
-        if ((packet->payload[DUEL_HOST_PAYLOAD_CIVIC] & 0xC0u) != 0) return false;
-        if ((packet->payload[DUEL_HOST_PAYLOAD_SECONDARY] & 0xF8u) != 0) return false;
-        if (DUEL_SECONDARY_ACTIVITY(packet->payload[DUEL_HOST_PAYLOAD_SECONDARY]) >
-            DUEL_M12_SECONDARY_CALENDAR) {
-            return false;
-        }
-    }
-#else
-    if (packet->payload_len != 6) return false;
-#endif
     bool empty = packet->payload[1] == 0;
     bool canonical_empty = packet->payload[2] == DUEL_HOST_CATEGORY_NONE &&
                            packet->payload[3] == DUEL_HOST_PRIORITY_NONE &&
@@ -121,25 +78,13 @@ static duel_host_result_t stale(duel_host_state_t *state) {
 
 static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet,
                           bool online) {
-    bool persistent = packet->version == DUEL_HOST_VERSION && packet->payload[5] != 0;
+    bool persistent = packet->payload[5] != 0;
     state->external = DUEL_HOST_CONTEXT_PACK(online, packet->payload[0],
                                              packet->payload[1], persistent);
-    if (packet->version == DUEL_HOST_VERSION) {
-        state->alert = DUEL_HOST_ALERT_PACK(packet->payload[2], packet->payload[3],
-                                           packet->payload[4]);
-    } else {
-        state->alert = 0;
-    }
-#ifdef ARCANE_M12
-    if (packet->version == DUEL_HOST_VERSION &&
-        packet->payload_len == DUEL_HOST_PAYLOAD_LEN_M12) {
-        state->civic     = packet->payload[DUEL_HOST_PAYLOAD_CIVIC];
-        state->secondary = packet->payload[DUEL_HOST_PAYLOAD_SECONDARY];
-    } else {
-        state->civic     = 0;
-        state->secondary = 0;
-    }
-#endif
+    state->alert = DUEL_HOST_ALERT_PACK(packet->payload[2], packet->payload[3],
+                                       packet->payload[4]);
+    state->civic     = packet->payload[DUEL_HOST_PAYLOAD_CIVIC];
+    state->secondary = packet->payload[DUEL_HOST_PAYLOAD_SECONDARY];
 }
 
 duel_host_result_t duel_host_accept(duel_host_state_t *state,
@@ -189,10 +134,8 @@ duel_host_result_t duel_host_accept(duel_host_state_t *state,
 void duel_host_expire(duel_host_state_t *state) {
     state->external = 0;
     state->alert = 0;
-#ifdef ARCANE_M12
     state->civic = 0;
     state->secondary = 0;
-#endif
 }
 
 uint8_t duel_host_context(const duel_host_state_t *state) {
@@ -203,7 +146,6 @@ uint8_t duel_host_alert(const duel_host_state_t *state) {
     return DUEL_HOST_CONTEXT_ONLINE(state->external) ? state->alert : 0;
 }
 
-#ifdef ARCANE_M12
 uint8_t duel_host_civic(const duel_host_state_t *state) {
     return DUEL_HOST_CONTEXT_ONLINE(state->external) ? state->civic : 0;
 }
@@ -211,4 +153,3 @@ uint8_t duel_host_civic(const duel_host_state_t *state) {
 uint8_t duel_host_secondary(const duel_host_state_t *state) {
     return DUEL_HOST_CONTEXT_ONLINE(state->external) ? state->secondary : 0;
 }
-#endif

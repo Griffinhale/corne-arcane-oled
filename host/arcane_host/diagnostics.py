@@ -152,8 +152,12 @@ def decode_pages(page0: bytes, page1: bytes) -> DiagnosticSnapshot:
 
 
 def _read_page(device: object, page: int, nonce: int, timeout: float) -> bytes:
-    device.send(build_request(page, nonce))  # type: ignore[attr-defined]
+    request = build_request(page, nonce)
+    device.send(request)  # type: ignore[attr-defined]
     deadline = time.monotonic() + timeout
+    echo = device.receive(timeout)  # type: ignore[attr-defined]
+    if echo != request:
+        raise ValueError(f"diagnostic page {page} received a mismatched VIA echo")
     last_error: ValueError | None = None
     while True:
         remaining = deadline - time.monotonic()
@@ -204,7 +208,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with Device(choose_device(args.device)) as device:
             snapshot = query(device, timeout=args.timeout)
-    except (OSError, RuntimeError, TimeoutError, ValueError) as error:
+    except TimeoutError as error:
+        print(
+            "corne-arcane-diagnostics: no metrics response; "
+            "flash firmware built with ARCANE_DIAGNOSTICS=yes "
+            f"({error})",
+            file=sys.stderr,
+        )
+        return 1
+    except (OSError, RuntimeError, ValueError) as error:
         print(f"corne-arcane-diagnostics: {error}", file=sys.stderr)
         return 1
     if args.json:

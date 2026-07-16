@@ -16,7 +16,6 @@
 #define DUEL_HOST_MAGIC0      0xCA
 #define DUEL_HOST_MAGIC1      0x8E
 #define DUEL_HOST_VERSION     2
-#define DUEL_HOST_VERSION_V1  1
 #define DUEL_HOST_PAYLOAD_SIZE 20
 
 enum {
@@ -98,7 +97,7 @@ typedef struct __attribute__((packed)) {
     uint32_t session;
     uint16_t seq;
     uint8_t  payload_len;
-    /* v2: scene/count/category/priority/age/persistent */
+    /* scene/count/category/priority/age/persistent/civic/secondary */
     uint8_t  payload[DUEL_HOST_PAYLOAD_SIZE];
     uint8_t  crc;
 } duel_host_packet_t;
@@ -113,10 +112,8 @@ typedef struct {
     uint8_t  state_flags;
     uint8_t  external;
     uint8_t  alert;
-#ifdef ARCANE_M12
     uint8_t  civic;      /* last accepted DUEL_CIVIC_* byte (payload[6]) */
     uint8_t  secondary;  /* last accepted DUEL_SECONDARY_* byte (payload[7]) */
-#endif
 #ifdef ARCANE_DIAGNOSTICS
     uint16_t malformed_packets;
     uint16_t stale_packets;
@@ -137,26 +134,9 @@ typedef enum {
 // implementation checked against the same known vector.
 void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
                       uint8_t scene, uint8_t notification_count,
-                      duel_host_packet_t *out);
-void duel_host_encode_summary(uint8_t type, uint32_t session, uint16_t seq,
-                      uint8_t scene, uint8_t notification_count,
                       uint8_t category, uint8_t priority, uint8_t age,
-                      bool persistent,
+                      bool persistent, uint8_t civic, uint8_t secondary,
                       duel_host_packet_t *out);
-void duel_host_encode_v1(uint8_t type, uint32_t session, uint16_t seq,
-                         uint8_t scene, uint8_t notification_count,
-                         duel_host_packet_t *out);
-
-#ifdef ARCANE_M12
-// M12 v2 civic encoder: a full v2 summary plus payload[6]=civic/[7]=secondary
-// with payload_len promoted to DUEL_HOST_PAYLOAD_LEN_M12 (8). The 32-byte report
-// size is unchanged; only two previously-zero payload bytes now carry meaning.
-void duel_host_encode_civic(uint8_t type, uint32_t session, uint16_t seq,
-                            uint8_t scene, uint8_t notification_count,
-                            uint8_t category, uint8_t priority, uint8_t age,
-                            bool persistent, uint8_t civic, uint8_t secondary,
-                            duel_host_packet_t *out);
-#endif
 
 bool duel_host_packet_valid(const duel_host_packet_t *packet);
 duel_host_result_t duel_host_accept(duel_host_state_t *state,
@@ -183,44 +163,43 @@ void duel_host_expire(duel_host_state_t *state);
 #define DUEL_HOST_ALERT_PRIORITY(value) ((uint8_t)(((value) >> 3) & 3u))
 #define DUEL_HOST_ALERT_AGE(value)      ((uint8_t)(((value) >> 5) & 7u))
 
-/* ------- M12 Twin Cities civic semantics (shared cross-track contract) -------
+/* ------- Twin Cities civic semantics (shared cross-track contract) ----------
  * The stable interface between the host daemon (produces civic bytes), the split
  * protocol (relays them), and the renderer (derives floors/residents). Pure
  * declarations with zero release footprint. Track P wires the encode/decode;
  * Track H produces them; Track R consumes them. Do not renumber these values. */
 
-// Active tower-floor occupation (civic byte bits 0-1). WORKSHOP arrives with the
-// M12.1 terminal/build semantics; SPECIAL stays reserved for a later world.
+// Active tower-floor occupation (civic byte bits 0-1). SPECIAL is reserved.
 enum {
-    DUEL_M12_FLOOR_COMMONS  = 0,
-    DUEL_M12_FLOOR_RESEARCH = 1,
-    DUEL_M12_FLOOR_WORKSHOP = 2,
-    DUEL_M12_FLOOR_SPECIAL  = 3,
+    DUEL_CIVIC_FLOOR_COMMONS  = 0,
+    DUEL_CIVIC_FLOOR_RESEARCH = 1,
+    DUEL_CIVIC_FLOOR_WORKSHOP = 2,
+    DUEL_CIVIC_FLOOR_SPECIAL  = 3,
 };
 // Civic mode (civic byte bits 2-3): quiets or emphasises the current floor
 // without changing which floor is shown.
 enum {
-    DUEL_M12_MODE_NORMAL   = 0,
-    DUEL_M12_MODE_QUIET    = 1,
-    DUEL_M12_MODE_URGENT   = 2,
-    DUEL_M12_MODE_RESERVED = 3,
+    DUEL_CIVIC_MODE_NORMAL   = 0,
+    DUEL_CIVIC_MODE_QUIET    = 1,
+    DUEL_CIVIC_MODE_URGENT   = 2,
+    DUEL_CIVIC_MODE_RESERVED = 3,
 };
 // Secondary host-activity intensity (civic byte bits 4-5): background host
 // workload; local typing intensity stays firmware-derived.
 enum {
-    DUEL_M12_INTENSITY_CALM      = 0,
-    DUEL_M12_INTENSITY_ACTIVE    = 1,
-    DUEL_M12_INTENSITY_BUSY      = 2,
-    DUEL_M12_INTENSITY_SATURATED = 3,
+    DUEL_CIVIC_INTENSITY_CALM      = 0,
+    DUEL_CIVIC_INTENSITY_ACTIVE    = 1,
+    DUEL_CIVIC_INTENSITY_BUSY      = 2,
+    DUEL_CIVIC_INTENSITY_SATURATED = 3,
 };
 // Secondary activity channel (secondary byte bits 0-2): activates one bounded
-// supporting object or ambience. TRANSFER/SYSTEM arrive with M12.1.
+// supporting object or ambience.
 enum {
-    DUEL_M12_SECONDARY_NONE     = 0,
-    DUEL_M12_SECONDARY_MEDIA    = 1,
-    DUEL_M12_SECONDARY_TRANSFER = 2,
-    DUEL_M12_SECONDARY_SYSTEM   = 3,
-    DUEL_M12_SECONDARY_CALENDAR = 4,
+    DUEL_CIVIC_SECONDARY_NONE     = 0,
+    DUEL_CIVIC_SECONDARY_MEDIA    = 1,
+    DUEL_CIVIC_SECONDARY_TRANSFER = 2,
+    DUEL_CIVIC_SECONDARY_SYSTEM   = 3,
+    DUEL_CIVIC_SECONDARY_CALENDAR = 4,
 };
 
 // Civic byte: bits0-1 floor, bits2-3 mode, bits4-5 host intensity, 6-7 reserved.
@@ -231,22 +210,19 @@ enum {
 #define DUEL_CIVIC_INTENSITY(value) ((uint8_t)(((value) >> 4) & 3u))
 
 // Secondary byte: bits0-2 secondary activity, bits3-7 reserved for later civic
-// semantics (visitor/rare-event spill under M12.1/M12.2).
+// semantics.
 #define DUEL_SECONDARY_PACK(activity)  ((uint8_t)((activity) & 7u))
 #define DUEL_SECONDARY_ACTIVITY(value) ((uint8_t)((value) & 7u))
 
-// Raw HID v2 payload positions for the civic bytes. payload_len becomes 8 under
-// M12; Track P owns the encode/validate wiring and the split-packet relay.
+// Raw HID v2 payload positions for the always-present civic bytes.
 #define DUEL_HOST_PAYLOAD_CIVIC     6
 #define DUEL_HOST_PAYLOAD_SECONDARY 7
-#define DUEL_HOST_PAYLOAD_LEN_M12   8
+#define DUEL_HOST_PAYLOAD_LEN       8
 
 uint8_t duel_host_context(const duel_host_state_t *state);
 uint8_t duel_host_alert(const duel_host_state_t *state);
 
-#ifdef ARCANE_M12
 // Disposable civic context: mirrors duel_host_context/alert gating — both
 // collapse to zero while the daemon is offline (expiry clears them too).
 uint8_t duel_host_civic(const duel_host_state_t *state);
 uint8_t duel_host_secondary(const duel_host_state_t *state);
-#endif

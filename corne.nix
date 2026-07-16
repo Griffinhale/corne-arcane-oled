@@ -1,6 +1,6 @@
 { config, pkgs, lib, ... }:
 
-# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and the M10
+# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and the current
 # privacy-redacted notification/focus host service. Import this file directly from the
 # checkout: package sources are resolved relative to it.
 
@@ -30,9 +30,9 @@ in
   config = {
     environment.systemPackages = with pkgs; [
       qmk        # qmk CLI (compile / flash); pulls python + build deps
-      vial       # Vial GUI for the stable griffin/griffin_anim builds
       dfu-util   # generic DFU flashing fallback
-    ] ++ lib.optional cfg.enable corneArcaneHost;
+      corneArcaneHost # daemon tools plus the exclusive-ownership Vial launcher
+    ];
 
     # Non-root flashing of QMK bootloaders: installs qmk-udev-rules and creates
     # the plugdev group. Covers the RP2040 RPI-RP2 bootloader this board enters.

@@ -1,8 +1,8 @@
 # Corne Arcane exploration backlog
 
-M13 is the accepted baseline. Nothing here is required to complete M13; these
-are possible directions for a future milestone and need product/design
-discussion before implementation.
+Version 0.4 is the accepted software baseline. Nothing here is required to
+complete it; these are possible directions for a future milestone and need
+product/design discussion before implementation.
 
 ## Presentation worlds and information surfaces
 
@@ -19,7 +19,7 @@ discussion before implementation.
 ## Input-driven fiction and combat variety
 
 - Explore additional bounded spell forms, payloads, shallow triggers,
-  interactions, aftermath arcs, and outcome grammars beyond M13's eight forms.
+  interactions, aftermath arcs, and outcome grammars beyond the current eight forms.
 - Consider richer browser activity such as coarse scroll, tab, or page-event
   semantics. Any adapter must remain optional, privacy-redacted, and semantic;
   firmware must never receive content, URLs, titles, or streamed frames.
@@ -36,16 +36,16 @@ discussion before implementation.
 
 ## Architecture constraints for any next milestone
 
-- M13's split v10 packet is exactly 32 bytes. New authoritative or synchronized
+- The split v10 packet is exactly 32 bytes. New authoritative or synchronized
   presentation state requires repacking, state reuse, derivation, or a new
   version; there is no inherited five-byte v8 reserve.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
-  interface, so `griffin_arcane` and `griffin_arcane` remain separate unless
-  that conflict is deliberately redesigned.
-- The Vial M13 release is 80,972 flash bytes: 948 bytes below the 80 KiB target
-  and 17,332 bytes below the 96 KiB hard stop. Future content needs an explicit
-  flash budget and must preserve at least the accepted safety reserve or revise
-  the budget intentionally.
+  interface. The safe launcher hands that one endpoint between the daemon and
+  Vial; a future integration must preserve exclusive ownership.
+- The unified release is 69,644 flash bytes and 13,464 bytes of static RAM;
+  the diagnostic image is 71,100 and 13,576 bytes respectively. Future content
+  needs an explicit flash budget and must preserve at least the accepted safety
+  reserve or revise the budget intentionally.
 - Static RAM growth, stack headroom, split/OLED timing, no-allocation gates,
   power policy, stale-link recovery, and exact visual/determinism tests remain
   release gates.
@@ -59,7 +59,7 @@ discussion before implementation.
 1. Which direction adds the most ambient value: a `SPECIAL` world, deeper
    existing cities, richer spells, or richer scry/host semantics?
 2. Should the next milestone spend protocol bytes, flash reserve, or both—and
-   what rollback artifact and hard stop protect the accepted M13 baseline?
+   what recovery artifact and hard stop protect the accepted 0.4 baseline?
 3. Which additions are authoritative mechanics versus disposable presentation
    or external context?
 4. How will each idea remain readable on two 128x32 portrait OLEDs across the

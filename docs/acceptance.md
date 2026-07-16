@@ -1,9 +1,9 @@
 # Corne Arcane 0.4 acceptance record
 
-Status: end-to-end implementation, clean desktop/QMK verification, and physical
-two-half acceptance complete. The project owner reported the complete hardware
-checklist passing on 2026-07-15; exact diagnostic numbers were not supplied for
-the repository record.
+Status: unified 0.4 implementation and automated desktop/QMK acceptance
+complete. The current world and mechanics retain the two-half acceptance
+reported on 2026-07-15. The new unified Vial handoff, EEPROM persistence, and
+release-image flash checks remain explicitly pending in `physical-checklist.md`.
 
 ## Feature boundary
 
@@ -142,14 +142,16 @@ The packed v10 snapshot is exactly 32 bytes:
 | Region | Bytes |
 |---|---:|
 | Header (`magic`, version, session, flags, sequence) | 6 |
-| Canonical M13 combat view | 19 |
+| Canonical current combat view | 19 |
 | Existing host/civic projection, including marked aftermath | 6 |
 | CRC-8 | 1 |
 
-The M13 aftermath marker temporarily assigns the existing `shared_pres` and
+The aftermath marker temporarily assigns the existing `shared_pres` and
 `revision` bytes to two city kinds, world state, two animation phases, and
-coherence. Ordinary M12 civic presentation resumes when no aftermath is active.
-Raw HID remains the existing v2 32-byte host protocol.
+coherence. Ordinary civic presentation resumes when no aftermath is active.
+Raw HID remains the existing v2 32-byte host protocol. VIA routes unknown
+commands to `raw_hid_receive_kb()`: `0xCA` daemon reports are echoed unchanged,
+while VIA and Vial retain their standard command IDs.
 
 ## Resource measurements
 
@@ -157,21 +159,15 @@ Measured 2026-07-16 from clean builds in the configured Vial-QMK checkout with
 `arm-none-eabi-gcc 14.2.1`. Flash is `.text + .data` from GNU size. Static RAM
 is `.data + .bss + .ram0…ram7` and excludes the linker-created heap.
 
-| Build | Flash | Static RAM | Delta from M12 |
+| Build | Flash | Static RAM | Reserve below 96 KiB |
 |---|---:|---:|---:|
-| M12 rollback | 68,076 B | 16,308 B | — |
-| `griffin_arcane` Vial release | 81,896 B | 16,496 B | +13,820 B flash, +188 B RAM |
-| `griffin_arcane` Vial diagnostic | 82,800 B | 16,568 B | +14,724 B flash, +260 B RAM |
-| `griffin_arcane` release | 67,616 B | 13,664 B | −460 B flash, −2,644 B RAM |
-| `griffin_arcane` diagnostic | 69,204 B | 13,780 B | +1,128 B flash, −2,528 B RAM |
+| `griffin_arcane` release | 69,644 B | 13,464 B | 28,660 B |
+| `griffin_arcane` diagnostic | 71,100 B | 13,576 B | 27,204 B |
 
-The budgeted Vial release is 24 bytes below the 80 KiB target and 16,408 bytes
-below the 96 KiB hard stop, preserving the required 16 KiB reserve. It is
-flash-neutral and has zero static-RAM growth relative to accepted commit
-`b7c6d8d`. Diagnostic builds add ChibiOS stack fill/checking, expose both halves'
-timing/queue/split
-telemetry over Raw HID, and keep stack high-water in debugger-visible
-`duel_diag` state without changing their corresponding release image.
+Both secure Vial images are below the 81,896-byte flash ceiling, the
+16,496-byte static-RAM ceiling, the 96 KiB hard stop, and the required 16 KiB
+reserve. Diagnostic firmware adds ChibiOS stack fill/checking and the later
+metrics reply without changing packet layouts or typing behavior.
 
 ## Artifacts and hashes
 
@@ -179,29 +175,23 @@ Artifacts are under `artifacts/release/`.
 
 | Artifact | SHA-256 |
 |---|---|
-| `m12-rollback.uf2` | `e0c91db0c4bfb916efeb7e99d6667ac1d905a484599c1bcf10fcecb94525bbd9` |
-| `m12-rollback.elf` | `22b6ad4f498edd7ac846ad0f07e653411978d9cf52b2eca8ea5cf5a92484804a` |
-| `griffin_arcane-release.uf2` | `968210c5726482d803bb8ad54a7abefdcd4dbf19655c44b7f8d0a36ac94544ba` |
-| `griffin_arcane-release.elf` | `1e7b579953faaf834ab56a5af112a48f5dcb4e76e7849fa9e27203fb168e08e3` |
-| `griffin_arcane-diagnostic.uf2` | `bca860c230d28e5a6d8a1762575036f099ebc7a1b4a6db4729c3b22bddf0bd56` |
-| `griffin_arcane-diagnostic.elf` | `e9e99418dfff804f69bc7a5dba8c1b89bb717ca2cd1bc8bf38cebcd9c845bc04` |
-| `griffin_arcane-release.uf2` | `5be2dcfa2a81b720eaa643f1c4550c1b54b87036b1117d7667569c40eb698ec8` |
-| `griffin_arcane-release.elf` | `f119ae4aeb236bb114969692704d2aab15f30e509dfd9db84881891e4356f9c8` |
-| `griffin_arcane-diagnostic.uf2` | `2b2c5b897e95b02a41883967bba961a000be65da3b1d0616f413b13cf9987d8c` |
-| `griffin_arcane-diagnostic.elf` | `e564edd05dcf87dbc98615534fa4aaf23d823c68dac3fb1fee8429dfdaa0d826` |
+| `griffin_arcane-release.uf2` | `d65afb27318adfdc7a77dc337461945883e6bbc0db7210195114e88b38efbe7d` |
+| `griffin_arcane-release.elf` | `62e3119aa14fad29a0f1f0df3e68f7b3e5b805d718ca035e62c066ba339998b0` |
+| `griffin_arcane-diagnostic.uf2` | `649ec6c4d5d795cf94d74df67e42aec47cd3a7d3692b54f8bc1bd7f98aad72d2` |
+| `griffin_arcane-diagnostic.elf` | `0027987f7eeafc7edfd526cc58bdbc75bb81ec00ed60f21be8d5eba3e78e8916` |
 
-The exact 251-scene M13 visual catalog is
+The exact 251-scene current visual catalog is
 `firmware/sim_test/golden/visual_current.hashes` (SHA-256
-`2fa0707ca0dbf2637dcec38a14bd0d2fd6150a2449dba2e8637c6a14bab5690e`).
-The frozen M12 visual golden remains
-`8c99c437f6cfaa066aec99c375520e181690819c7f62e1c3ac036a900dad95cc`.
+`a64e00a2c8617e9f42a1c6814ddc17c0431b8cf8088156121fb181777a3a3ef2`).
+Only catalog labels changed during neutral renaming; all 251 numeric framebuffer
+hashes remain unchanged.
 
 ## Automated gates
 
-- `make test`: frozen M11.5/M12 suites; M13 end-to-end mechanics, protocol,
-  render, mirror, and convergence tests; both no-allocation symbol gates; and
-  all 59 host tests.
-- `make visual-test`: frozen M11.5/M12 visual suites plus 251 unique exact M13
+- `make test`: consolidated end-to-end mechanics, v10 split protocol, v2 host
+  protocol, render, mirror, convergence, no-allocation, daemon echo/reconnect,
+  diagnostics, privacy, and safe-launcher tests.
+- `make visual-test`: 251 unique exact current
   framebuffer scenes spanning both sides, four voices, every form, temporal
   trajectories, wards/statuses, reactions, outcomes, six occupation scenes,
   every floor/courier, floor/event, and floor/aftermath variant, representative
@@ -209,23 +199,27 @@ The frozen M12 visual golden remains
   phases, and bilateral gap-cue timing.
 - Deterministic steady, burst, and mixed-layer prose workloads produce no KO in
   their first 30 seconds and a first KO between 60 and 180 seconds.
-- `make release-budget`: 80/96 KiB flash limits, 16 KiB reserve, and zero static-RAM
-  growth against accepted M13 commit `b7c6d8d`.
-- Clean Vial and Vial-free release/diagnostic QMK builds all link successfully
-  for `crkbd/rev1`, `CONVERT_TO=rp2040_ce`; preserved rollback images remain.
+- `make release-budget`: fixed flash/RAM ceilings, 96 KiB hard stop, and 16 KiB
+  reserve for both release and diagnostic images.
+- Clean unified secure-Vial release and diagnostic builds link successfully for
+  `crkbd/rev1`, `CONVERT_TO=rp2040_ce`.
+- `make hygiene` rejects retired build variables, production keymap names, and
+  milestone-prefixed active identifiers or paths outside `docs/archive/`.
 - `git diff --check` passes.
 
 ## Physical acceptance
 
-The project owner reported the complete two-half run in
+The project owner reported the current world/combat two-half run in
 `physical-checklist.md` passing on 2026-07-15: diagnostic and release
 flashing, typing non-interference, spell/combat presentation, floors and gap
-cues, civic aftermath, link/power recovery, diagnostic thresholds, and the M12
-rollback/return-to-M13 sequence. The report establishes that housekeeping was
+cues, civic aftermath, link/power recovery, and diagnostic thresholds. The
+report establishes that housekeeping was
 below 2 ms on both halves, render-plus-blit was below 5 ms, stack margin was
 nonzero, and queue/protocol error counts stayed at zero. Exact numeric timing
 and stack values were not supplied, so the checklist records threshold passes
 rather than invented measurements.
 
-The civic-layer parity pass has its own unchecked physical addendum in
-`civic-parity-physical-addendum.md`. It does not inherit the July 15 sign-off.
+The civic-layer parity pass and the unified Vial ownership/persistence checks
+remain unchecked in their respective physical records. Automated tests cannot
+claim flashing, secure physical unlock, power-cycle persistence, or visible
+offline animation during a real GUI handoff.

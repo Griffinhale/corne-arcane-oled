@@ -24,9 +24,10 @@ There are no milestone feature switches or Vial-free production variant.
 ## Vial mapping
 
 `config.h` fixes `DYNAMIC_KEYMAP_LAYER_COUNT` at four and keeps the physical
-secure-unlock combo. The first boot after a build-ID change initializes EEPROM
-from `keymaps`; later edits persist across power cycles. Vial's reset operation
-restores that compiled map.
+secure-unlock combo. Uninitialized or reset dynamic EEPROM is seeded from
+`keymaps`; later edits persist across power cycles and firmware upgrades. Export
+before upgrading, because Vial's reset operation is what restores the compiled
+map.
 
 Dynamic macros, QMK settings, tap dance, combos, key overrides, Caps Word,
 layer lock, repeat keys, and encoder mapping are disabled in `rules.mk`.

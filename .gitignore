@@ -1,15 +1,13 @@
 # Host test-rig build artifacts (rebuilt by sim_test/run_tests.sh)
-firmware/sim_test/test_runner
-firmware/sim_test/preview
+firmware/sim_test/mechanics_runner
 firmware/sim_test/visual_runner
-firmware/sim_test/test_runner_m12
-firmware/sim_test/visual_runner_m12
-firmware/sim_test/preview_m12
 firmware/sim_test/test_runner_m13
 firmware/sim_test/visual_runner_m13
 firmware/sim_test/.noalloc.o
 firmware/sim_test/gallery/
 firmware/sim_test/gallery-m12/
+artifacts/release/*.map
+# Preserved local milestone/rollback evidence is intentionally never cleaned.
 artifacts/m11-gallery/
 artifacts/m11.1-baseline/
 artifacts/m11.1-candidate/

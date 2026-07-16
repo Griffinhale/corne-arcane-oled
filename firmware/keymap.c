@@ -39,10 +39,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "sim/duel_host.h"
 #include "sim/duel_proto.h"
 #include "sim/duel_sim.h"
-#ifdef ARCANE_M12
 #include "sim/duel_courier.h"
 #include "sim/duel_event.h"
-#endif
 
 // Portrait canvas must match the rotated OLED exactly (see duel_draw.h).
 _Static_assert(DUEL_CANVAS_W == OLED_DISPLAY_HEIGHT && DUEL_CANVAS_H == OLED_DISPLAY_WIDTH,
@@ -69,9 +67,7 @@ typedef struct {
     uint32_t peak_split_tx_us;
     uint16_t split_tx_success;
     uint16_t split_tx_failure;
-#ifdef ARCANE_M13
     uint16_t stack_min_free_bytes;
-#endif
 } duel_diag_t;
 
 // Intentionally non-static: a debugger or map-file budget pass can inspect it
@@ -93,7 +89,6 @@ static uint16_t duel_diag_u16(uint32_t value) {
  * untouched prefix of the current main-thread stack records a true high-water
  * minimum without adding any release work or relying on a large stack local.
  * The non-static field is debugger/map-visible; Raw HID v2 remains unchanged. */
-#ifdef ARCANE_M13
 static void duel_diag_stack_sample(void) {
     thread_t *thread = chThdGetSelfX();
     uint8_t *scan = (uint8_t *)chThdGetWorkingAreaX(thread) + sizeof(thread_t);
@@ -107,7 +102,6 @@ static void duel_diag_stack_sample(void) {
     if (!duel_diag.stack_min_free_bytes || free_bytes < duel_diag.stack_min_free_bytes)
         duel_diag.stack_min_free_bytes = free_bytes;
 }
-#endif
 #endif
 
 static void duel_note_physical_key(void) {
@@ -163,8 +157,8 @@ void matrix_slave_scan_user(void) {
     duel_scan_rows(off, off + DUEL_ROWS_PER_HAND - 1, is_keyboard_left() ? SIM_SIDE_L : SIM_SIDE_R);
 }
 
-/* ---- split snapshot sync (M3) --------------------------------------------
- * The master's world is authoritative; it streams 27-byte snapshots to the
+/* ---- split snapshot sync -------------------------------------------------
+ * The master's world is authoritative; it streams 32-byte snapshots to the
  * slave every 2nd tick (12.5 Hz). The slave renders the last accepted packet
  * and can never be rolled backward (see duel_rx_accept). If snapshots stop
  * for DUEL_STALE_MS the slave shows a broken-link glyph and falls back to
@@ -176,16 +170,13 @@ void matrix_slave_scan_user(void) {
  * in progress) lets housekeeping take a consistent copy without locking. */
 #define DUEL_STALE_MS 500
 
-/* ---- M8 disposable host context -----------------------------------------
- * Only griffin_hostoled defines ARCANE_HOST_ENABLE. The Vial build compiles
- * the protocol tests/core but never claims Vial's Raw HID callback.
- *
+/* ---- disposable host context ---------------------------------------------
  * The USB callback remains bounded: one 32-byte seqlock-guarded copy. Parsing,
  * ordering, expiry, and split propagation happen later in housekeeping. The
  * daemon sends absolute context on every report, so latest-wins is safe. */
-#ifdef ARCANE_HOST_ENABLE
-#    include "raw_hid.h"
-#    define DUEL_HOST_TIMEOUT_MS 1500
+#include "raw_hid.h"
+#include "via.h"
+#define DUEL_HOST_TIMEOUT_MS 1500
 
 static volatile uint8_t duel_host_rx_ver;
 static duel_host_packet_t duel_host_rx_staging;
@@ -198,8 +189,11 @@ static duel_host_diag_packet_t duel_diag_usb_rx_staging;
 static uint8_t duel_diag_usb_rx_seen_ver;
 #endif
 
-void raw_hid_receive(uint8_t *data, uint8_t length) {
-    if (length != sizeof(duel_host_packet_t)) return;
+void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
+    if (length != sizeof(duel_host_packet_t) || data[0] != DUEL_HOST_MAGIC0) {
+        data[0] = id_unhandled;
+        return;
+    }
 #ifdef ARCANE_DIAGNOSTICS
     if (data[0] == DUEL_HOST_MAGIC0 && data[1] == DUEL_HOST_MAGIC1 &&
         data[2] == DUEL_HOST_DIAG_VERSION && data[3] == DUEL_HOST_MSG_DIAG_REQUEST) {
@@ -322,7 +316,6 @@ static void duel_diag_usb_respond(const duel_host_diag_packet_t *request) {
     raw_hid_send((uint8_t *)&response, sizeof response);
 }
 #endif
-#endif
 
 static volatile uint8_t duel_rx_ver;
 static duel_snapshot_t  duel_rx_staging;
@@ -366,7 +359,7 @@ static duel_render_t duel_render; // presentation reads ONLY this
 static uint32_t      duel_next_tick_ms;
 static bool          duel_tick_armed;
 
-/* ---- M7 layer-key scry chord: physical-position detection -----------------
+/* ---- scry layer-key scry chord: physical-position detection -----------------
  * The chord is detected from raw matrix positions, NOT emitted keycodes or the
  * active layer, so it is immune to whatever Vial maps onto these keys. On
  * crkbd's LAYOUT_split_3x6_3 the two momentary layer thumbs are the middle
@@ -403,7 +396,6 @@ static sim_inputs_t duel_sample_inputs(void) {
         if (duel_rows[r]) { in.down_mask |= 1 << SIM_SIDE_R; break; }
     }
     in.scry_mask = duel_sample_scry();
-#ifdef ARCANE_M13
     bool layer_l = (duel_rows[SCRY_KEY_L_ROW] & ((matrix_row_t)1u << SCRY_KEY_L_COL)) != 0;
     bool layer_r = (duel_rows[SCRY_KEY_R_ROW] & ((matrix_row_t)1u << SCRY_KEY_R_COL)) != 0;
     for (uint8_t side = 0; side < 2; side++) {
@@ -421,7 +413,6 @@ static sim_inputs_t duel_sample_inputs(void) {
                          side == SIM_SIDE_L && layer_l ? 1u :
                          side == SIM_SIDE_R && layer_r ? 2u : 0u;
     }
-#endif
     return in;
 }
 
@@ -441,7 +432,6 @@ static bool duel_have_tx;
 #    define DUEL_REPAIR_TX_MS 250u
 #endif
 
-#ifdef ARCANE_M12
 // Wall-clock period of one civic tick: the bounded cadence at which the resident
 // and floor advance (duel_render.civic_phase). ~300 ms keeps each 16-tick action
 // (~4.8 s) inside the spec's 3-10 s window while staying far below combat cadence.
@@ -452,9 +442,8 @@ static bool duel_have_tx;
 // from the session seed + civic phase and safety-gated. Both are recomputed each
 // housekeeping pass on the master and relayed in the snapshot's shared_pres /
 // revision bytes so both halves render the same courier and event.
-static uint8_t duel_m12_shared_pres;
-static uint8_t duel_m12_revision;
-#ifdef ARCANE_M13
+static uint8_t duel_civic_shared_pres;
+static uint8_t duel_civic_revision;
 #    define DUEL_FLOOR_TRANSITION_MS 600u
 #    define DUEL_FLOOR_PHASE_MS      150u
 static uint8_t duel_floor_target;
@@ -465,7 +454,7 @@ static bool duel_floor_active;
 
 static void duel_floor_note_target(uint8_t civic, uint32_t now) {
     uint8_t target = DUEL_CIVIC_FLOOR(civic);
-    if (target == DUEL_M12_FLOOR_SPECIAL) return; /* reserved */
+    if (target == DUEL_CIVIC_FLOOR_SPECIAL) return; /* reserved */
     if (!duel_floor_initialized) {
         duel_floor_target = duel_floor_source = target;
         duel_floor_initialized = true;
@@ -483,42 +472,33 @@ static void duel_floor_note_target(uint8_t civic, uint32_t now) {
         duel_floor_active = true;
     }
 }
-#endif
 
-static void duel_m12_update_shared(uint32_t now) {
-#ifdef ARCANE_HOST_ENABLE
+static void duel_civic_update_shared(uint32_t now) {
     uint8_t ext        = duel_host_context(&duel_host_state);
     uint8_t alr        = duel_host_alert(&duel_host_state);
     uint8_t category   = DUEL_HOST_ALERT_CATEGORY(alr);
     uint8_t count      = DUEL_HOST_CONTEXT_NOTIF(ext);
     uint8_t age        = DUEL_HOST_ALERT_AGE(alr);
     bool    persistent = DUEL_HOST_CONTEXT_PERSISTENT(ext);
-#else
-    uint8_t category = 0, count = 0, age = 0;
-    bool    persistent = false;
-#endif
     uint8_t phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);
-    m12_visitor_state_t vis = m12_visitor_derive(duel_session, phase, category,
+    civic_visitor_state_t vis = civic_visitor_derive(duel_session, phase, category,
                                                  count, age, persistent);
-    duel_m12_shared_pres = m12_visitor_shared_pres(vis);
+    duel_civic_shared_pres = civic_visitor_shared_pres(vis);
     // Rare events are safety-gated (spec §14.1): suppressed while a critical
     // (sentinel) visitor is stationed or a champion is not standing.
-    bool eligible = DUEL_VISITOR_KIND(duel_m12_shared_pres) != DUEL_M12_COURIER_SENTINEL &&
+    bool eligible = DUEL_VISITOR_KIND(duel_civic_shared_pres) != DUEL_CIVIC_COURIER_SENTINEL &&
                     duel_world.wiz[SIM_SIDE_L].life == LIFE_ACTIVE &&
                     duel_world.wiz[SIM_SIDE_R].life == LIFE_ACTIVE;
-    duel_m12_revision = m12_event_revision(m12_event_derive(duel_session, phase, eligible));
-#ifdef ARCANE_M13
+    duel_civic_revision = civic_event_revision(civic_event_derive(duel_session, phase, eligible));
     /* Lasting spell aftermath temporarily takes precedence over disposable
      * courier/rare-event coordination. The marker bit lets the renderer select
-     * the M13 interpretation; ordinary M12 presentation resumes at expiry. */
-    uint8_t aftermath_revision = m13_aftermath_revision(&duel_world);
-    if (aftermath_revision & M13_AFTERMATH_WIRE) {
-        duel_m12_shared_pres = m13_aftermath_shared(&duel_world);
-        duel_m12_revision = aftermath_revision;
+     * the current interpretation; ordinary Twin Cities presentation resumes at expiry. */
+    uint8_t aftermath_revision = incantation_aftermath_revision(&duel_world);
+    if (aftermath_revision & INCANTATION_AFTERMATH_WIRE) {
+        duel_civic_shared_pres = incantation_aftermath_shared(&duel_world);
+        duel_civic_revision = aftermath_revision;
     }
-#endif
 }
-#endif
 
 static void duel_master_tx(bool urgent) {
     bool fx_changed = duel_world.fx_seq != duel_fx_sent;
@@ -530,38 +510,25 @@ static void duel_master_tx(bool urgent) {
         duel_session_set = true;
     }
     duel_snapshot_t pkt;
-#ifdef ARCANE_HOST_ENABLE
     uint8_t external = duel_host_context(&duel_host_state);
     uint8_t alert = duel_host_alert(&duel_host_state);
-#else
-    uint8_t external = 0;
-    uint8_t alert = 0;
-#endif
     duel_encode_external_alert_display(&duel_world, duel_session, ++duel_tx_seq,
                                        external, alert, duel_display.phase, &pkt);
-#ifdef ARCANE_M12
     // Relay the host's civic semantics plus the master-derived visitor
     // (shared_pres) and rare-event (revision) coordination. set_civic writes the
     // four bytes and recomputes the CRC over the 31-byte snapshot; release builds
     // omit these bytes entirely.
-#  ifdef ARCANE_HOST_ENABLE
     duel_snapshot_set_civic(&pkt, duel_host_civic(&duel_host_state),
                             duel_host_secondary(&duel_host_state),
-                            duel_m12_shared_pres, duel_m12_revision);
-#  else
-    duel_snapshot_set_civic(&pkt, 0, 0, duel_m12_shared_pres, duel_m12_revision);
-#  endif
-#endif
+                            duel_civic_shared_pres, duel_civic_revision);
     bool semantic_changed = !duel_have_tx ||
                             memcmp(&pkt.view, &duel_last_tx.view, sizeof pkt.view) != 0 ||
                             pkt.external != duel_last_tx.external ||
                             pkt.alert != duel_last_tx.alert ||
-#ifdef ARCANE_M12
                             pkt.civic != duel_last_tx.civic ||
                             pkt.secondary != duel_last_tx.secondary ||
                             pkt.shared_pres != duel_last_tx.shared_pres ||
                             pkt.revision != duel_last_tx.revision ||
-#endif
                             pkt.flags != duel_last_tx.flags;
     // Measure cadence start-to-start. Recording completion would add the
     // blocking split transaction itself (~3 ms on RP2040) to the threshold;
@@ -633,18 +600,14 @@ static void duel_render_set_external(uint8_t external, uint8_t alert) {
     duel_render.alert = alert;
 }
 
-#ifdef ARCANE_M12
 static void duel_render_set_civic(uint8_t civic, uint8_t secondary,
                                   uint8_t shared_pres, uint8_t revision) {
-#ifdef ARCANE_M13
     duel_floor_note_target(civic, timer_read32());
-#endif
     duel_render.civic = civic;
     duel_render.secondary = secondary;
     duel_render.shared_pres = shared_pres;
     duel_render.revision = revision;
 }
-#endif
 
 void housekeeping_task_user(void) {
 #ifdef ARCANE_DIAGNOSTICS
@@ -652,9 +615,7 @@ void housekeeping_task_user(void) {
 #endif
     uint32_t now = timer_read32();
     bool host_changed = false;
-#ifdef ARCANE_HOST_ENABLE
     if (is_keyboard_master()) host_changed = duel_host_housekeeping(now);
-#endif
     if (!duel_tick_armed) {
         sim_init(&duel_world, is_keyboard_master() ? SIMF_AUTHORITATIVE : 0, 0);
         duel_display_init(&duel_display, now);
@@ -697,10 +658,8 @@ void housekeeping_task_user(void) {
                                       ? UINT16_MAX : (uint16_t)(duel_diag.catchup_ticks + add);
     }
     duel_diag.queue_overflow = duel_world.overflow_count;
-#    ifdef ARCANE_HOST_ENABLE
     duel_diag.host_malformed_errors = duel_host_state.malformed_packets;
     duel_diag.host_stale_errors = duel_host_state.stale_packets;
-#    endif
 #endif
 
     bool render_invalid = duel_render_invalid;
@@ -712,30 +671,19 @@ void housekeeping_task_user(void) {
         // avoids encoding/render work until the deadline is actually due.
         bool repair_due = duel_have_tx &&
                           timer_elapsed32(duel_last_tx_ms) >= DUEL_REPAIR_TX_MS;
-#ifdef ARCANE_M12
         // Refresh the visitor + rare-event coordination before both the wire
         // packet and the master's own render read it, so they stay consistent.
-        duel_m12_update_shared(now);
-#endif
+        duel_civic_update_shared(now);
         if (ticked || display_changed || host_changed || repair_due)
             duel_master_tx(display_changed || host_changed);
         if (ticked || display_changed || host_changed || render_invalid) {
             duel_render_from_world(&duel_render, &duel_world);
             duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
-#ifdef ARCANE_HOST_ENABLE
             duel_render_set_external(duel_host_context(&duel_host_state),
                                      duel_host_alert(&duel_host_state));
-#  ifdef ARCANE_M12
             duel_render_set_civic(duel_host_civic(&duel_host_state),
                                   duel_host_secondary(&duel_host_state),
-                                  duel_m12_shared_pres, duel_m12_revision);
-#  endif
-#else
-            duel_render_set_external(0, 0);
-#  ifdef ARCANE_M12
-            duel_render_set_civic(0, 0, duel_m12_shared_pres, duel_m12_revision);
-#  endif
-#endif
+                                  duel_civic_shared_pres, duel_civic_revision);
         }
     } else {
         bool accepted = duel_slave_rx_consume();
@@ -762,10 +710,8 @@ void housekeeping_task_user(void) {
             if (accepted || !using_remote || stale_edge || display_changed || render_invalid) {
                 duel_render.view = duel_rx.last.view;
                 duel_render_set_external(duel_rx.last.external, duel_rx.last.alert);
-#ifdef ARCANE_M12
                 duel_render_set_civic(duel_rx.last.civic, duel_rx.last.secondary,
                                       duel_rx.last.shared_pres, duel_rx.last.revision);
-#endif
                 duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
             }
             using_remote = true;
@@ -777,9 +723,7 @@ void housekeeping_task_user(void) {
             if (ticked || using_remote || stale_edge || display_changed || render_invalid) {
                 duel_render_from_world(&duel_render, &duel_world);
                 duel_render_set_external(0, 0);
-#ifdef ARCANE_M12
                 duel_render_set_civic(0, 0, 0, 0);
-#endif
                 if (stale) duel_render.flags |= DUEL_RENDER_STALE;
                 else duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
             }
@@ -787,9 +731,7 @@ void housekeeping_task_user(void) {
         }
     }
 #ifdef ARCANE_DIAGNOSTICS
-#ifdef ARCANE_M13
     duel_diag_stack_sample();
-#endif
     duel_render.diag_tick = (uint8_t)(duel_world.tick % 25u);
     duel_render.diag_overflow = duel_world.overflow_count;
     duel_diag_peak(&duel_diag.peak_housekeeping_us, time_us_32() - diag_start_us);
@@ -810,12 +752,10 @@ void housekeeping_task_user(void) {
         __asm__ volatile("" ::: "memory");
         duel_diag_response_ver++;
     }
-#    ifdef ARCANE_HOST_ENABLE
     if (is_keyboard_master()) {
         duel_host_diag_packet_t request;
         if (duel_diag_usb_request_consume(&request)) duel_diag_usb_respond(&request);
     }
-#    endif
 #endif
 }
 
@@ -867,18 +807,10 @@ bool oled_task_user(void) {
     // cadence merely samples them instead of stretching their duration.
     if (duel_render.view.fx_seq != seen_fx_seq) {
         seen_fx_seq  = duel_render.view.fx_seq;
-#ifdef ARCANE_M13
         flash_kind   = duel_render.view.outcome_overlay & 0x0fu;
-#else
-        flash_kind   = duel_render.view.fx_kind;
-#endif
-#ifdef ARCANE_M13
         bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L ||
                              flash_kind == FX_FIZZLE_L || flash_kind == FX_HEAL_L ||
                              flash_kind == FX_WARD_SHATTER_L;
-#else
-        bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L || flash_kind == FX_FIZZLE_L;
-#endif
         flash_spell_kind = last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L];
         // Impacts linger longer than deflects/fizzles so a hit really lands.
         bool imp = flash_kind == FX_IMPACT_L || flash_kind == FX_IMPACT_R;
@@ -891,10 +823,9 @@ bool oled_task_user(void) {
     duel_render.flash_kind   = flash_kind;
     duel_render.flash_spell_kind = flash_spell_kind;
 
-    // M7 overlay content (presentation-only; drawn only while scry_is_open).
+    // scry overlay content (presentation-only; drawn only while scry_is_open).
     // The layer is the emitted QMK layer — fine to READ for display; the chord
     // that opens the overlay is detected from physical positions, not this.
-#ifdef ARCANE_M13
     uint8_t local_layer = DUEL_RENDER_LOCAL_NONE;
     if (is_keyboard_left()) {
         if (duel_rows[SCRY_KEY_L_ROW] & ((matrix_row_t)1u << SCRY_KEY_L_COL))
@@ -904,11 +835,7 @@ bool oled_task_user(void) {
     }
     duel_render.layer = DUEL_RENDER_LAYER_PACK(get_highest_layer(layer_state),
                                                 local_layer);
-#else
-    duel_render.layer = get_highest_layer(layer_state);
-#endif
 
-#ifdef ARCANE_M12
     // Presentation seed (the shared 1-byte session) plus the bounded civic clock
     // that paces resident/floor motion. A SLEEP phase already returned above, so
     // advancing civic_phase here can trigger a redraw while awake but never
@@ -916,16 +843,13 @@ bool oled_task_user(void) {
     // half derives its own resident — so it is deliberately not on the wire.
     duel_render.seed = is_keyboard_master() ? duel_session : duel_rx.last.session;
     duel_render.civic_phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);
-#ifdef ARCANE_M13
     if (duel_floor_active &&
         timer_elapsed32(duel_floor_started_ms) >= DUEL_FLOOR_TRANSITION_MS)
         duel_floor_active = false;
     uint8_t floor_phase = duel_floor_active ?
         (uint8_t)(timer_elapsed32(duel_floor_started_ms) / DUEL_FLOOR_PHASE_MS) : 0u;
-    duel_render.floor_transition = M13_FLOOR_TRANSITION_PACK(
+    duel_render.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(
         duel_floor_source, floor_phase, duel_floor_active);
-#endif
-#endif
 
     bool semantic_changed = !have_composed ||
                             memcmp(&duel_render, &composed, sizeof duel_render) != 0;

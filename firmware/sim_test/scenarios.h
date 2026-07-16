@@ -1,4 +1,4 @@
-/* Canonical M11 visual scenarios shared by preview, gallery, and tests. */
+/* Canonical earlier visual scenarios shared by preview, gallery, and tests. */
 #pragma once
 
 #include <stdbool.h>

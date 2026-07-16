@@ -1,7 +1,0 @@
-# Single left cast, right half silent: clean impact on the right wizard.
-# Timing: rising edge tick 10 -> windup 10 -> spawn tick 20 at u=8 ->
-# doorstep (240) tick 78 -> impact (248) tick 80.
-version 1
-@10  press   L 2 3
-@13  release L 2 3
-@120 end
