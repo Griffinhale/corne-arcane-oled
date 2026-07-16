@@ -218,6 +218,19 @@ typedef struct {
 } duel_render_t;
 
 #define DUEL_RENDER_STALE 0x01u
+#ifdef ARCANE_M13
+/* layer stays presentation-only. The low bits are the global QMK layer; the
+ * high nibble records only the raw layer thumb physically owned by this OLED. */
+#    define DUEL_RENDER_GLOBAL_LAYER(v) ((uint8_t)((v) & 0x03u))
+#    define DUEL_RENDER_LOCAL_SHIFT 4u
+#    define DUEL_RENDER_LOCAL_NONE  0u
+#    define DUEL_RENDER_LOCAL_LEFT  1u
+#    define DUEL_RENDER_LOCAL_RIGHT 2u
+#    define DUEL_RENDER_LOCAL_LAYER(v) \
+        ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
+#    define DUEL_RENDER_LAYER_PACK(global, local) \
+        ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
+#endif
 #ifdef ARCANE_M12
 _Static_assert(sizeof(duel_render_t) <= 38, "civic render state stays within one compact block");
 #else

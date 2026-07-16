@@ -22,6 +22,17 @@
 // ~250-500 ms, so ~16 ticks holds each action in the spec's 3-10 s window.
 #define DUEL_M12_ACTION_SLOT 16u
 
+#ifdef ARCANE_M13
+/* Compact floor/action occupation key stored in the existing station byte. */
+#    define M13_OCCUPATION_FLOORS 3u
+#    define M13_OCCUPATION_KEY(floor, action) \
+        ((uint8_t)(((floor) * DUEL_M12_ACTION_COUNT) + (action)))
+#    define M13_OCCUPATION_FLOOR(key) \
+        ((uint8_t)((key) / DUEL_M12_ACTION_COUNT))
+#    define M13_OCCUPATION_ACTION(key) \
+        ((uint8_t)((key) % DUEL_M12_ACTION_COUNT))
+#endif
+
 // Fully-derived resident record for one city at one civic phase. No stored
 // coordinates: the station index maps to a fixed spot in the floor band.
 typedef struct {
@@ -48,5 +59,11 @@ m12_resident_t m12_resident_derive(uint8_t seed, bool is_left, uint8_t floor,
 // 1 px idle sub-motion that is suppressed in QUIET mode.
 void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
                        uint8_t mode, uint32_t frame);
+
+#ifdef ARCANE_M13
+/* Stable local-layer mark anchored through the same WORK descriptor that
+ * drives the resident's ordinary interaction with the dominant floor object. */
+void m13_resident_draw_attunement(duel_fb_t *fb, bool is_left, uint8_t floor);
+#endif
 
 #endif // ARCANE_M12

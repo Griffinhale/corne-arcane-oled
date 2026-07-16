@@ -894,7 +894,19 @@ bool oled_task_user(void) {
     // M7 overlay content (presentation-only; drawn only while scry_is_open).
     // The layer is the emitted QMK layer — fine to READ for display; the chord
     // that opens the overlay is detected from physical positions, not this.
+#ifdef ARCANE_M13
+    uint8_t local_layer = DUEL_RENDER_LOCAL_NONE;
+    if (is_keyboard_left()) {
+        if (duel_rows[SCRY_KEY_L_ROW] & ((matrix_row_t)1u << SCRY_KEY_L_COL))
+            local_layer = DUEL_RENDER_LOCAL_LEFT;
+    } else if (duel_rows[SCRY_KEY_R_ROW] & ((matrix_row_t)1u << SCRY_KEY_R_COL)) {
+        local_layer = DUEL_RENDER_LOCAL_RIGHT;
+    }
+    duel_render.layer = DUEL_RENDER_LAYER_PACK(get_highest_layer(layer_state),
+                                                local_layer);
+#else
     duel_render.layer = get_highest_layer(layer_state);
+#endif
 
 #ifdef ARCANE_M12
     // Presentation seed (the shared 1-byte session) plus the bounded civic clock

@@ -7,10 +7,11 @@
 
 #include "duel_draw.h"
 #include "duel_host.h"
+#include "duel_resident.h"
 #include "duel_sim.h"
 
 typedef struct { char name[48]; uint64_t hash; } visual_case_t;
-static visual_case_t cases[160];
+static visual_case_t cases[224];
 static size_t ncases;
 
 static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
@@ -47,15 +48,61 @@ static void add_case(const char *name, sim_world_t *world, uint32_t frame,
                                    DUEL_M12_MODE_NORMAL, 0), 0u);
 }
 
-static void add_floor_city_case(const char *name, sim_world_t *world,
-                                uint8_t floor, bool is_left) {
+static void add_occupation_case(const char *name, sim_world_t *world,
+                                uint8_t floor, uint8_t action, bool is_left) {
     duel_render_t render = {0};
     duel_render_from_world(&render, world);
-    render.seed = 0x5au; render.civic_phase = 19u;
+    bool found = false;
+    for (uint16_t seed = 0; seed < 256u && !found; seed++) {
+        for (uint8_t slot = 0; slot < 16u; slot++) {
+            uint8_t phase = (uint8_t)(slot * DUEL_M12_ACTION_SLOT + 7u);
+            m12_resident_t resident = m12_resident_derive((uint8_t)seed, is_left,
+                floor, DUEL_M12_MODE_NORMAL, phase);
+            if (resident.action == action) {
+                render.seed = (uint8_t)seed;
+                render.civic_phase = phase;
+                found = true;
+                break;
+            }
+        }
+    }
+    if (!found) abort();
     render.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
     wiz_draw_scene(is_left ? &left : &right, &render, is_left, 7u, false);
+    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
+    hash = fnv1a(hash, right.bits, sizeof right.bits);
+    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
+    cases[ncases++].hash = hash;
+}
+
+static void add_render_case(const char *name, const duel_render_t *render,
+                            uint32_t frame) {
+    duel_fb_t left, right;
+    duel_fb_clear(&left); duel_fb_clear(&right);
+    wiz_draw_scene(&left, render, true, frame, false);
+    wiz_draw_scene(&right, render, false, frame, false);
+    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
+    hash = fnv1a(hash, right.bits, sizeof right.bits);
+    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
+    cases[ncases++].hash = hash;
+}
+
+static void add_bilateral_attunement_case(const char *name, sim_world_t *world) {
+    duel_render_t left_render = {0}, right_render = {0};
+    duel_render_from_world(&left_render, world);
+    right_render = left_render;
+    left_render.seed = right_render.seed = 0x5au;
+    left_render.civic_phase = right_render.civic_phase = 23u;
+    left_render.civic = right_render.civic = DUEL_CIVIC_PACK(
+        DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    left_render.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_LEFT);
+    right_render.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_RIGHT);
+    duel_fb_t left, right;
+    duel_fb_clear(&left); duel_fb_clear(&right);
+    wiz_draw_scene(&left, &left_render, true, 7u, false);
+    wiz_draw_scene(&right, &right_render, false, 7u, false);
     uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
     hash = fnv1a(hash, right.bits, sizeof right.bits);
     snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
@@ -82,12 +129,53 @@ static void build_catalog(void) {
     add_case("idle_12hp", &world, 0, 0);
 
     static const char *floor_name[3] = {"commons", "research", "workshop"};
+    static const char *action_name[DUEL_M12_ACTION_COUNT] = {
+        "work", "walk", "inspect", "rest", "watch", "delivery", "react"
+    };
     for (uint8_t floor = 0; floor < 3u; floor++) {
+        for (uint8_t action = 0; action < DUEL_M12_ACTION_COUNT; action++) {
+            char name[48];
+            snprintf(name, sizeof name, "occupation_astral_%s_%s",
+                     floor_name[floor], action_name[action]);
+            add_occupation_case(name, &world, floor, action, true);
+            snprintf(name, sizeof name, "occupation_mech_%s_%s",
+                     floor_name[floor], action_name[action]);
+            add_occupation_case(name, &world, floor, action, false);
+        }
+    }
+
+    static const uint8_t hp_cases[] = {0, 1, 6};
+    for (size_t i = 0; i < sizeof hp_cases; i++) {
         char name[48];
-        snprintf(name, sizeof name, "floor_astral_%s", floor_name[floor]);
-        add_floor_city_case(name, &world, floor, true);
-        snprintf(name, sizeof name, "floor_mechanical_%s", floor_name[floor]);
-        add_floor_city_case(name, &world, floor, false);
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[0].hp = world.wiz[1].hp = hp_cases[i];
+        snprintf(name, sizeof name, "health_%u", hp_cases[i]);
+        add_case(name, &world, 0, 0);
+    }
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_render_t local = {0}; duel_render_from_world(&local, &world);
+    local.seed = 0x5au; local.civic_phase = 23u;
+    local.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
+    local.layer = DUEL_RENDER_LAYER_PACK(1, DUEL_RENDER_LOCAL_LEFT);
+    add_render_case("attunement_left", &local, 7u);
+    local.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_RIGHT);
+    add_render_case("attunement_right", &local, 7u);
+    add_bilateral_attunement_case("attunement_bilateral_pending", &world);
+
+    for (uint8_t scene = 0; scene < SCRY_SCENES; scene++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.scry.state = SCRY_ACTIVE; world.scry.scene = scene;
+        duel_render_t scry = {0}; duel_render_from_world(&scry, &world);
+        scry.seed = 0x5au; scry.civic_phase = 23u;
+        scry.civic = DUEL_CIVIC_PACK(scene, DUEL_M12_MODE_NORMAL, 0);
+        scry.external = DUEL_HOST_CONTEXT_PACK(true, scene, scene + 2u, scene == 2u);
+        scry.alert = DUEL_HOST_ALERT_PACK((uint8_t)(DUEL_HOST_CATEGORY_TRANSFER + scene),
+                                         (uint8_t)(DUEL_HOST_PRIORITY_LOW + scene), scene * 3u);
+        scry.layer = DUEL_RENDER_LAYER_PACK(scene, DUEL_RENDER_LOCAL_NONE);
+        snprintf(name, sizeof name, "scry_diegetic_scene_%u", scene);
+        add_render_case(name, &scry, 7u);
     }
     for (uint8_t phase = 0; phase < 4u; phase++) {
         char name[48]; snprintf(name, sizeof name, "floor_transition_phase_%u", phase);
