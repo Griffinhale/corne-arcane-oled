@@ -1,10 +1,10 @@
-# M13 civic-layer parity physical addendum
+# Civic-layer parity physical addendum
 
 Status: PENDING. This addendum covers the civic-layer parity pass only and does
 not alter the completed 2026-07-15 M13 acceptance record.
 
-Use the regenerated `griffin_hostoled-m13-diagnostic.uf2` on both halves first,
-then repeat the smoke checks with `griffin_hostoled-m13-release.uf2`. Never plug
+Use the regenerated `griffin_arcane-diagnostic.uf2` on both halves first,
+then repeat the smoke checks with `griffin_arcane-release.uf2`. Never plug
 or unplug TRRS while either half is USB-powered.
 
 ## Desk-distance civic distinction
@@ -56,7 +56,7 @@ or unplug TRRS while either half is USB-powered.
 - [ ] Flash the parity release image to both halves and repeat courier/event
   distinction, transition, aftermath restoration, typing, and reconnect smoke
   checks.
-- [ ] Verify the artifact hashes recorded in `m13-acceptance.md`.
+- [ ] Verify the artifact hashes recorded in `acceptance.md`.
 - [ ] Flash `m12-rollback.uf2` to both halves, confirm the accepted M12 frame still
   boots, then return both halves to the parity release.
 

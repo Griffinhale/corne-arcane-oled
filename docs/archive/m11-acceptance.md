@@ -1,8 +1,12 @@
 # M11 candidate and acceptance record
 
-M11 is implemented, built, and flashed on both physical halves as a release
-candidate. It is not finally accepted until the remaining gallery, stress,
-timing, suspend, and rollback checks below pass.
+> Historical milestone record. The accepted M13 two-half run on 2026-07-15
+> supersedes this candidate gate. Unchecked items below describe what remained
+> at M11; they are not current project blockers.
+
+M11 was implemented, built, and flashed on both physical halves as a release
+candidate. At that milestone it was not finally accepted because the remaining
+gallery, stress, timing, suspend, and rollback checks below had not passed.
 
 M11.1 subsequently hardens this candidate without changing protocols or
 mechanics. Its measured release record and separate pending physical gate are

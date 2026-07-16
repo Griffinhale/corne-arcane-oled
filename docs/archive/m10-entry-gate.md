@@ -2,6 +2,10 @@
 
 Date: 2026-07-13
 
+> Historical milestone record. The accepted M13 two-half run on 2026-07-15
+> supersedes this gate. Unchecked items below describe what remained at M10;
+> they are not current project blockers.
+
 M11 does not retroactively declare M10 accepted. The evidence is split into
 desktop and physical gates so hardware claims remain auditable.
 
@@ -20,7 +24,7 @@ desktop and physical gates so hardware claims remain auditable.
 - M10 candidate UF2 SHA-256:
   `e3247e3efe0efb2f111c7bc9e6055c80dcd24e66a3d1cc516f4b081ab3d8b348`
 
-## Physical gate — pending
+## Physical gate — pending at M10 (historical)
 
 M10 remains hardware-smoke-tested, not fully accepted, until all of these are
 rerun on the assembled keyboard:

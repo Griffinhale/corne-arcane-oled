@@ -1,18 +1,18 @@
-# M13 two-half physical acceptance record
+# Corne Arcane 0.4 two-half physical acceptance record
 
 Status: PASS, reported by the project owner on 2026-07-15. Exact timing and
 stack measurements were not supplied; threshold results are recorded below.
 
-Use the same `artifacts/m13/griffin_hostoled-m13-diagnostic.uf2` on both halves
+Use the same `artifacts/release/griffin_arcane-diagnostic.uf2` on both halves
 for measurement, then repeat the final smoke test with
-`griffin_hostoled-m13-release.uf2`. Never plug or unplug TRRS
+`griffin_arcane-release.uf2`. Never plug or unplug TRRS
 while either half is USB-powered.
 
 ## Flash and identity
 
 - [x] Disconnect USB, then disconnect TRRS.
 - [x] Put the left controller in bootloader mode and copy
-  `griffin_hostoled-m13-diagnostic.uf2`.
+  `griffin_arcane-diagnostic.uf2`.
 - [x] Remove USB, repeat for the right controller with the identical file, then
   reconnect TRRS and power the normal USB half.
 - [x] Confirm both OLEDs leave the stale-link presentation and remain
@@ -122,11 +122,38 @@ while either half is USB-powered.
 
 ## Release and rollback
 
-- [x] Flash `griffin_hostoled-m13-release.uf2` to both halves using the same powered-TRRS safety
+- [x] Flash `griffin_arcane-release.uf2` to both halves using the same powered-TRRS safety
   sequence and repeat typing, beam symmetry, maximal aftermath, and reconnect
   smoke tests.
-- [x] Preserve the recorded hashes from `m13-acceptance.md` with the sign-off.
+- [x] Preserve the recorded hashes from `acceptance.md` with the sign-off.
 - [x] Finally flash `m12-rollback.uf2` to both halves and confirm the accepted
   M12 scene still boots; then return both halves to M13 release.
 
 Sign-off date: 2026-07-15  Tester: project owner (reported)  Result: PASS
+
+## 0.4 Vial handoff and persistence rerun
+
+The checks below are required for the unified `griffin_arcane` image and do not
+inherit the earlier two-variant acceptance evidence.
+
+- [ ] Export the current four-layer mapping before flashing the upgrade.
+- [ ] Flash `artifacts/release/griffin_arcane-diagnostic.uf2` to both halves and
+  confirm secure Vial unlock requires the configured physical combo.
+- [ ] With `corne-arcane-host.service` active, launch `corne-arcane-vial`.
+  Confirm the daemon stops before Vial opens and Vial receives no unsolicited
+  daemon traffic.
+- [ ] While Vial is open, confirm normal typing and the complete offline OLED
+  animation continue; only host semantic enrichment pauses.
+- [ ] Change keys on each of the four layers, close Vial, and confirm the
+  launcher restores the service and the daemon reconnects with a fresh session.
+- [ ] Power-cycle the keyboard and confirm all four edited layers persist.
+- [ ] Launch Vial while the daemon is already inactive, then close and crash
+  Vial in separate runs. Confirm the launcher does not start a previously
+  inactive service and does restore a previously active one on every exit.
+- [ ] Remap a layer/scry key and confirm this can intentionally make its QMK
+  layer gesture unavailable while physical-position incantation recognition is
+  unchanged. Reset the dynamic keymap and confirm the compiled four-layer
+  default returns.
+- [ ] Repeat release flashing with
+  `artifacts/release/griffin_arcane-release.uf2`, then repeat handoff, one edit,
+  daemon restoration, and power-cycle persistence.

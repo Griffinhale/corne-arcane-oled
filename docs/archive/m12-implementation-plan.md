@@ -2,9 +2,14 @@
 
 Grounded in the locked design spec and a fresh read of the codebase. Every file:line anchor verified.
 
+> Historical implementation plan. M12 shipped and was incorporated into the
+> physically accepted M13 baseline. Planning language and open questions below
+> are retained for provenance; use `post-m13-backlog.md` for current future
+> scope.
+
 ---
 
-## IMPLEMENTATION STATUS (desktop-complete; physical acceptance pending)
+## IMPLEMENTATION STATUS (implemented; superseded by accepted M13)
 
 All waves are implemented behind `ARCANE_M12`, converged, and desktop-verified on branch
 `m12-twin-cities`. The release build stays byte-identical to M11.5.
@@ -34,11 +39,10 @@ keymap (host config, `ARCANE_M12`): links clean.
 **Wire budget used:** civic (floor/mode/intensity), secondary (activity), shared_pres (visitor
 kind/city/lifecycle + 2 reserved bits used for count density), revision (event id/phase/target).
 
-**Still pending — physical (yours):** actual-size legibility acceptance across the real desk gap;
-on-hardware stress/power/suspend/rollback; and flashing. NOTE the live QMK tree is a stale copy —
-materialize repo→live first (`host/install_firmware.sh` for the host keymap; the anim equivalent),
-then `qmk compile ... -e ARCANE_M12=yes`. Some floor/courier/event motifs are deliberately schematic
-and are the natural place to iterate after seeing them at actual size.
+**Physical disposition:** M12's current surfaces were exercised as part of the
+accepted M13 two-half run, including actual-size floor legibility, stress,
+power/reconnect behavior, and the preserved M12 rollback boot. This document is
+now a historical implementation plan; `m13-acceptance.md` is authoritative.
 
 ---
 
@@ -65,12 +69,11 @@ archetype enlarges the *library*, never the on-screen density.
 ---
 
 ## 0. Gate status
-M12 gated on signed M11.5 physical acceptance. You report the 6 outstanding items done; to make the
-acceptance record real I need the measured values (master transaction peak/success/failure; slave
-accepted-seq + snapshot age <100ms; housekeeping <2ms; render+blit <5ms; overflow/missed-resync/stale;
-plus the two-half flood and suspend/cable-loss results). Supply those → I update `docs/m11.5-acceptance.md`.
-Nothing below flashes hardware until Phase 8. Headroom confirmed: split 27B/5 free (`duel_proto.h:44`);
-Raw HID 6 of 20 payload bytes (`duel_host.c:29-35`).
+
+Historical gate: M12 originally depended on M11.5 physical acceptance. M12 was
+subsequently implemented and then incorporated into the physically accepted
+M13 build. The current v10 snapshot is 32 bytes; the old v8 five-byte split
+reserve described below no longer exists.
 
 ---
 

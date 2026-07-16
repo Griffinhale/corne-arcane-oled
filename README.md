@@ -1,105 +1,92 @@
-# Corne Arcane OLED
+# Corne Arcane OLED 0.4
 
-A firmware-driven "spell duel" that plays out across the two OLEDs of a Corne v3
-(RP2040) split keyboard. Each physical half renders one wizard; they cast, ward,
-and fall to each other's spells, all driven by your typing — never by streamed
-frames. A later host daemon *enriches* the scene (application class,
-notifications) over Raw HID but is never required for the keyboard to stay
-coherent.
+Corne Arcane is a deterministic spell-duel world for a Corne v3 (RP2040)
+split keyboard. Each half renders locally from compact simulation state; normal
+typing never depends on the host daemon. The daemon adds privacy-redacted focus,
+notification, terminal, and repository semantics over QMK Raw HID.
 
-This repository is the **project archive**: the planning documents, a committed
-snapshot of the firmware, the durable NixOS config, and the original spike
-notes. The live firmware is developed in a separate QMK tree (see below).
+Version 0.4 has two supported firmware identities:
 
-## Layout of this repo
+- `griffin_arcane` is the current four-layer Vial firmware: OLED world, RGB
+  Matrix, secure persistent remapping, split synchronization, diagnostics, and
+  Raw HID host semantics in one image.
+- `griffin` is the stable recovery firmware. Keep a known-good UF2 for both
+  halves before changing the current image.
 
-| Path | What it is |
+The current implementation is unconditional. Historical milestone build flags
+and the former split production variants are not supported.
+
+## Repository map
+
+| Path | Purpose |
 | --- | --- |
-| `firmware/` | **Committed snapshot** of the live keymap (`griffin_anim`): the hardware-agnostic duel engine (`sim/`), the QMK glue (`keymap.c`), and the host test rig (`sim_test/`). See `firmware/README.md` for the deep dive. |
-| `host/` | M11.5's revision/deadline-driven semantic daemon, privacy-redacted adapters, event client, Zsh/Git hook, private D-Bus/KWin bridge, Nix package, and tests. |
-| `Corne_Arcane_OLED_Implementation_Roadmap.docx` | Milestone plan **M0–M11** (the authoritative build order). |
-| `Corne_Arcane_OLED_Design_Audit_Addendum.docx` | Scope guards, failure modes, and the simulation/presentation/**external-context** data-class boundary. |
-| `Corne_Arcane_OLED_Build_Kickoff_Prompt.docx` | The original kickoff brief and stopping rules. |
-| `BUILD_NOTES_NIXOS.md` | How this actually builds on NixOS 26.05 (supersedes the Debian steps in `spike1/`). |
-| `corne.nix` | Durable NixOS module: qmk/vial toolchain, hidraw uaccess, packaged M11.5 daemon/adapters, and Plasma user service. Not yet applied. |
-| `spike1/` | Original working notes + helper scripts from the first hardware spikes (Debian-era; some steps superseded by `BUILD_NOTES_NIXOS.md`). |
-| `sync-firmware.sh` | Refresh the `firmware/` snapshot from the live QMK tree. |
+| `firmware/` | QMK keymap snapshot, deterministic simulation, Vial definition, and native test rig |
+| `host/` | Semantic daemon, diagnostics, safe Vial launcher, Nix package, D-Bus/KWin integration, and tests |
+| `docs/acceptance.md` | Current automated and physical acceptance record |
+| `docs/physical-checklist.md` | Two-half release, Vial handoff, persistence, and recovery procedure |
+| `docs/backlog.md` | Deferred product work |
+| `docs/archive/` | Superseded milestone plans, records, and original planning documents |
+| `corne.nix` | NixOS module for the toolchain, udev access, launcher, and user service |
 
-## The firmware snapshot vs. the live tree
+`firmware/` is the source of truth. `host/install_firmware.sh` materializes it
+as `keyboards/crkbd/keymaps/griffin_arcane` in a Vial-QMK checkout.
 
-`firmware/` is a **real copy**, not a symlink, so this repo is self-contained and
-pushable. The live source of truth is the QMK tree:
-
-```
-~/src/vial-qmk/keyboards/crkbd/keymaps/griffin_anim
-```
-
-After editing the live tree, refresh the committed snapshot and commit the diff:
+## Build and verify
 
 ```bash
-./sync-firmware.sh          # rsyncs the live keymap into firmware/
-git add -A && git commit -m "sync firmware snapshot"
+make test
+make visual-test
+make release-build
+make release-budget
+make hygiene
+git diff --check
 ```
 
-## Keymaps
+The QMK build uses `crkbd/rev1` and `CONVERT_TO=rp2040_ce`. Release and
+diagnostic artifacts are copied to `artifacts/release/` with neutral names.
+The release gate is flash <= 81,896 bytes, static RAM <= 16,496 bytes, flash
+below the 96 KiB hard stop, and at least 16 KiB flash reserve.
 
-- **`griffin`** — stable Vial baseline. The recovery keymap; never experimented on.
-- **`griffin_anim`** — the OLED duel (Vial **on**). Everything in `firmware/` here.
-  Its compiled four-layer default is captured from `../corne-arcane.vil`.
-- **`griffin_hostoled`** — the complete duel fallback plus M8 semantic Raw HID,
-  M9 hybrid Archive renderer, M10 notification sigils, and the M11.5 canonical
-  view/v8 split pipeline,
-  using the same four-layer default. Vial/VIA are **off** because they cannot
-  share QMK's single raw-HID interface with the custom daemon protocol.
+## Flash safely
 
-## Milestone status
-
-**M0–M9 are hardware-verified.** On the physical Corne, real KWin focus changes
-now select the 200 ms-debounced hybrid Archive scene through the daemon and Raw
-HID on both synchronized OLEDs, while non-browser focus returns both halves to
-Duel. The mechanism is accepted; Archive visual refinement is deferred to the
-polish milestone. **M10 is implemented and hardware-smoke-tested; its remaining
-physical checks are tracked as the M11 entry gate. M11 is a desktop-verified,
-physically flashed release candidate. M11.1 was merged under an explicit
-physical-gate waiver. M11.5 is now a desktop-verified protocol/data-flow
-candidate; it has not been flashed or physically accepted.**
-The previously flashed v7 M11 halves boot and type, the
-packaged daemon's notifications reach the physical OLEDs, persistent alerts
-survive USB disconnect/reconnect, and the five-minute synchronized OLED sleep
-has been observed. The M11.5 candidate keeps Raw HID at v2/32 bytes, moves the
-absolute CRC split snapshot to v8/27 bytes, and leaves five RPC bytes free;
-combat, `sim_world_t`, world hashes, and exact visual hashes remain unchanged.
-Its desktop evidence and physical gate are in `docs/m11.5-acceptance.md`.
-
-## Build & flash the M11.5 candidate (NixOS, user-scope, no sudo)
+Never connect or disconnect TRRS while either half is USB-powered. Power down,
+separate the halves, and flash the same UF2 to each half individually:
 
 ```bash
-cd ~/dev/corne-arcane-oled
-./host/install_firmware.sh       # refreshes the isolated live keymap
-cd ~/src/vial-qmk                # qmk + arm-none-eabi-gcc are on PATH
-qmk compile -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce
-# Flash one half at a time — never hot-plug TRRS:
-qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-left
-qmk flash -kb crkbd/rev1 -km griffin_hostoled -e CONVERT_TO=rp2040_ce -bl uf2-split-right
+cd ~/src/vial-qmk
+qmk flash -kb crkbd/rev1 -km griffin_arcane \
+  -e CONVERT_TO=rp2040_ce -bl uf2-split-left
+qmk flash -kb crkbd/rev1 -km griffin_arcane \
+  -e CONVERT_TO=rp2040_ce -bl uf2-split-right
 ```
 
-Reassemble: USB into the **left** half only, TRRS connected while unpowered.
+Reconnect TRRS only while unpowered, then connect USB to the normal left half.
+The split v10 packet is exactly 32 bytes; mixed firmware revisions safely fall
+back to the stale-link presentation.
 
-Host tests (no keyboard needed): `cd firmware/sim_test && ./run_tests.sh`.
-Daemon tests: `cd host && ./run_tests.sh`.
+## Persistent Vial remapping
 
-M11.5 gates: `make test`, `make visual-test`, host `./run_tests.sh`, clean
-release/diagnostic QMK builds, and `scripts/m11_budget.sh`. The measured record,
-cadence A/B switch, and pending physical checklist are in
-`docs/m11.5-acceptance.md`; inherited evidence remains in the M11/M11.1
-records. M12 expansion remains gated in `docs/m12-backlog.md`.
+Launch Vial with `corne-arcane-vial`. The launcher records whether
+`corne-arcane-host` is active, stops it, waits for its Raw HID handle to close,
+runs Vial, and restores the service on every exit only when it was previously
+active. While Vial owns Raw HID the complete offline world continues normally.
 
-## Design invariants
+The secure physical unlock combo remains required. Four complete dynamic
+layers are initialized from the compiled keymap and persist in EEPROM across
+power cycles and daemon restarts. Export the mapping in Vial before a firmware
+upgrade. Use Vial's reset command to restore the compiled four-layer default.
+Remapping either physical layer/scry key can intentionally make that layer
+gesture unavailable until the mapping is reset; incantation recognition still
+uses physical matrix positions and is not changed by keycode remapping.
 
-- Keyboard output never waits on display logic; key-path hooks only record
-  compact key-down events while held/release state is level-sampled.
-- One authoritative fixed-tick simulation (master owns shared state); the firmware
-  always retains a complete duel fallback, so the host daemon is enrichment, never a dependency.
-- Deterministic sim: identical init + identical per-tick input/event streams produce
-  bit-identical worlds. Outcome durations use a presentation-only wall clock,
-  never the sim tick or the number of OLED callbacks.
+## Recovery
+
+If configuration or flashing fails, power down, disconnect TRRS, and flash the
+preserved `griffin` recovery UF2 to each half. User-generated and ignored UF2,
+ELF, and rollback artifacts are intentionally not removed by repository tools.
+See `docs/physical-checklist.md` for the full release and recovery sequence.
+
+The hard invariants remain: no allocation or blocking I/O on the typing path,
+deterministic fixed-tick mechanics, privacy-redacted host payloads, exact CRC
+and bounds checks, physical-position incantations, and a fully functional
+keyboard and OLED world without the daemon.
