@@ -377,7 +377,21 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     } else {
         return false;
     }
+#ifdef ARCANE_M13
+    /* World projection owns these bytes only while authoritative aftermath is
+     * present. Preserve host-authored disposable presentation for exact M13
+     * courier/event scenarios; production projection still clears expired
+     * aftermath normally. */
+    uint8_t authored_shared_pres = r->shared_pres;
+    uint8_t authored_revision = r->revision;
+#endif
     duel_render_from_world(r, &w);
+#ifdef ARCANE_M13
+    if (!(r->revision & M13_AFTERMATH_WIRE)) {
+        r->shared_pres = authored_shared_pres;
+        r->revision = authored_revision;
+    }
+#endif
     r->diag_tick = (uint8_t)(w.tick % 25u);
     r->diag_overflow = w.overflow_count;
     return true;

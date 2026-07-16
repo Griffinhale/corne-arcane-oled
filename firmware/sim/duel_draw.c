@@ -54,9 +54,10 @@ bool duel_fb_get(const duel_fb_t *fb, int x, int y) {
     return (fb->bits[idx] >> (y & 7)) & 1u;
 }
 
-static void wiz_hspan(duel_fb_t *fb, int x0, int x1, int y) {
+void duel_fb_hline(duel_fb_t *fb, int x0, int x1, int y) {
     for (int x = x0; x <= x1; x++) duel_fb_px(fb, x, y, true);
 }
+#define wiz_hspan duel_fb_hline
 
 static void wiz_line(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
     int dx = x1 - x0, dy = y1 - y0;
@@ -575,48 +576,58 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 
 #ifdef ARCANE_M13
     /* Lasting room/object consequences. They share the authoritative aftermath
-     * phase with the resident task, so reconnecting halves resume mid-arc. */
+     * phase with the resident task, so reconnecting halves resume mid-arc. All
+     * marks use the same floor/action descriptor as the assigned civic task. */
+    uint8_t mark_action = after_kind == AFTER_INSPECT ? DUEL_M12_ACTION_INSPECT :
+                          after_kind == AFTER_COMPLAINT ? DUEL_M12_ACTION_INSPECT :
+                          after_kind == AFTER_PANIC ? DUEL_M12_ACTION_REACT :
+                          after_kind == AFTER_MAX_CAST ? DUEL_M12_ACTION_WATCH_ROOF :
+                          after_kind == AFTER_CHEER ? DUEL_M12_ACTION_REACT :
+                          DUEL_M12_ACTION_WORK;
+    m13_point_t mark = m13_occupation_anchor(floor, mark_action);
+    int mx = FLR_X(mark.x), my = mark.y;
     if (after_kind == AFTER_FIRE) {
-        int fx = FLR_X(8), fy = 98;
         if (after_phase < 3u) {
             for (int i = 0; i < 4 - after_phase; i++) {
-                duel_fb_px(fb, fx + i * 2, fy - (int)((r->civic_phase + i) & 3u), true);
-                duel_fb_px(fb, fx + i * 2 + 1, fy + 1, true);
+                int dx = (i - 1) * (is_left ? 1 : -1);
+                duel_fb_px(fb, mx + dx, my - 1 - (int)((r->civic_phase + i) & 3u), true);
+                duel_fb_px(fb, mx + dx, my + 1, true);
             }
         }
         if (after_phase >= 1u && after_phase < 3u)
-            wiz_line(fb, FLR_X(7), 101, FLR_X(15), 96); /* hose / spell stream */
+            wiz_line(fb, FLR_X(mark.x - 6), my + 5, mx, my - 1); /* hose / spell stream */
         if (after_phase == 3u) {
-            wiz_line(fb, FLR_X(5), 100, FLR_X(11), 96);
-            wiz_line(fb, FLR_X(5), 96, FLR_X(11), 100);
+            wiz_line(fb, FLR_X(mark.x - 3), my - 3, FLR_X(mark.x + 3), my + 3);
+            wiz_line(fb, FLR_X(mark.x - 3), my + 3, FLR_X(mark.x + 3), my - 3);
         }
     } else if (after_kind == AFTER_INSPECT) {
-        int rx = FLR_X(19), ry = 101;
         for (int i = 0; i < 5 - after_phase; i++)
-            duel_fb_px(fb, rx + (i & 1 ? i : -i), ry - (i * 2), true);
+            duel_fb_px(fb, mx + (is_left ? 1 : -1) * (i & 1 ? i : -i), my + 4 - i * 2, true);
         if (after_phase >= 2u) {
-            duel_fb_px(fb, FLR_X(17), 99, true); duel_fb_px(fb, FLR_X(18), 98, true);
+            duel_fb_px(fb, FLR_X(mark.x - 2), my + 2, true);
+            duel_fb_px(fb, FLR_X(mark.x - 1), my + 1, true);
         }
     } else if (after_kind == AFTER_REPAIR || after_kind == AFTER_PANIC) {
-        int dx = FLR_X(24);
         if (after_phase < 3u) {
-            wiz_line(fb, dx - 3, 91, dx + 3, 99);
-            wiz_line(fb, dx + 3, 91, dx - 2, 98);
+            wiz_line(fb, FLR_X(mark.x - 3), my - 4, FLR_X(mark.x + 3), my + 4);
+            wiz_line(fb, FLR_X(mark.x + 3), my - 4, FLR_X(mark.x - 2), my + 3);
         } else {
-            wiz_line(fb, dx - 3, 99, dx + 3, 99);
-            duel_fb_px(fb, dx, 96, true);
+            m13_civic_hline(fb, is_left, mark.x - 3, mark.x + 3, my + 3);
+            duel_fb_px(fb, mx, my, true);
         }
     } else if (after_kind == AFTER_MAX_CAST) {
         int motes = 6 - after_phase;
         for (int i = 0; i < motes; i++)
-            duel_fb_px(fb, FLR_X(4 + i * 5), 68 + (int)((r->civic_phase + i * 3u) % 30u), true);
-        if (after_phase == 2u) wiz_line(fb, FLR_X(3), 108, FLR_X(28), 108);
+            duel_fb_px(fb, FLR_X(mark.x - 10 + i * 4), my - 15 +
+                       (int)((r->civic_phase + i * 3u) % 12u), true);
+        if (after_phase == 2u)
+            m13_civic_hline(fb, is_left, mark.x - 8, mark.x + 8, my + 8);
     } else if (after_kind == AFTER_COMPLAINT) {
-        duel_fb_px(fb, FLR_X(19), 95, true);
-        wiz_line(fb, FLR_X(20), 94, FLR_X(24), 94);
+        duel_fb_px(fb, mx, my, true);
+        m13_civic_hline(fb, is_left, mark.x - 4, mark.x, my - 1);
     } else if (after_kind == AFTER_CHEER) {
-        duel_fb_px(fb, FLR_X(11), 91 - after_phase, true);
-        duel_fb_px(fb, FLR_X(13), 89 + after_phase, true);
+        duel_fb_px(fb, FLR_X(mark.x - 2), my - 2 - after_phase, true);
+        duel_fb_px(fb, mx, my - 4 + after_phase, true);
     }
 #endif
 

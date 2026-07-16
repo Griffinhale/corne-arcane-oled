@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_courier.h"
+#include "duel_event.h"
 #include "duel_host.h"
 #include "duel_proto.h"
 #include "duel_resident.h"
@@ -993,6 +995,180 @@ static unsigned framebuffer_pixels(const duel_fb_t *fb) {
 }
 
 static void m13_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
+                       bool diagnostics);
+
+static bool pixels_within(const duel_fb_t *fb, int y0, int y1) {
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (duel_fb_get(fb, x, y) && (y < y0 || y > y1)) return false;
+    return true;
+}
+
+static void test_civic_anchor_and_courier_matrix(void) {
+    bool ok = true;
+    for (uint8_t action = 0; action < DUEL_M12_ACTION_COUNT; action++) {
+        m13_point_t fallback = m13_occupation_anchor(DUEL_M12_FLOOR_SPECIAL, action);
+        m13_point_t commons = m13_occupation_anchor(DUEL_M12_FLOOR_COMMONS, action);
+        ok &= fallback.x == commons.x && fallback.y == commons.y;
+        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
+            m13_point_t point = m13_occupation_anchor(floor, action);
+            ok &= point.x >= 0 && point.x < DUEL_CANVAS_W && point.y >= 61 && point.y <= 110;
+        }
+    }
+
+    sim_world_t world; sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+        for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
+             kind < DUEL_M12_COURIER_COUNT; kind++)
+            for (uint8_t life = DUEL_M12_VISIT_ARRIVING;
+                 life <= DUEL_M12_VISIT_RESOLVING; life++)
+                for (uint8_t density = DUEL_M12_DENSITY_SINGLE;
+                     density <= DUEL_M12_DENSITY_MANY; density++)
+                    for (uint8_t mode = DUEL_M12_MODE_NORMAL;
+                         mode <= DUEL_M12_MODE_QUIET; mode++)
+                        for (uint8_t city = 0; city < 2u; city++) {
+                            duel_render_t r = {0}; duel_render_from_world(&r, &world);
+                            r.civic = DUEL_CIVIC_PACK(floor, mode, 0);
+                            r.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(kind, city, life) |
+                                DUEL_VISITOR_DENSITY_PACK(density));
+                            duel_fb_t assigned, repeat, opposite;
+                            duel_fb_clear(&assigned); duel_fb_clear(&repeat); duel_fb_clear(&opposite);
+                            draw_courier(&assigned, &r, city == 0u);
+                            draw_courier(&repeat, &r, city == 0u);
+                            draw_courier(&opposite, &r, city != 0u);
+                            ok &= memcmp(&assigned, &repeat, sizeof assigned) == 0 &&
+                                  framebuffer_pixels(&assigned) >= 6u &&
+                                  framebuffer_pixels(&opposite) == 0u &&
+                                  pixels_within(&assigned, 61, 110);
+                        }
+
+    /* City assignment is a pure mirror, and transition routing uses the visible
+     * source room until the target reveal begins. */
+    duel_render_t route = {0}; duel_render_from_world(&route, &world);
+    route.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    route.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 0,
+                                           DUEL_M12_VISIT_WAITING);
+    route.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    duel_fb_t source, expected, mirror;
+    duel_fb_clear(&source); duel_fb_clear(&expected); duel_fb_clear(&mirror);
+    draw_courier(&source, &route, true);
+    route.floor_transition = 0;
+    route.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, 0);
+    draw_courier(&expected, &route, true);
+    route.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 1,
+                                           DUEL_M12_VISIT_WAITING);
+    draw_courier(&mirror, &route, false);
+    ok &= memcmp(&source, &expected, sizeof source) == 0 && exact_mirror(&expected, &mirror);
+    for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
+         kind < DUEL_M12_COURIER_COUNT; kind++) {
+        duel_fb_t variant[M13_OCCUPATION_FLOORS];
+        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
+            route.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+            route.shared_pres = DUEL_VISITOR_PACK(kind, 0, DUEL_M12_VISIT_AGING);
+            duel_fb_clear(&variant[floor]); draw_courier(&variant[floor], &route, true);
+        }
+        ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
+              memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
+              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
+    }
+    CHECK(ok, "m13_canonical_anchors_and_courier_floor_lifecycle_density_mode_city_matrix");
+}
+
+static void test_rare_event_floor_phase_mode_target_matrix(void) {
+    bool ok = true;
+    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+        for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
+             id < DUEL_M12_EVENT_COUNT; id++)
+            for (uint8_t phase = DUEL_M12_EVENT_PHASE_ARMED;
+                 phase <= DUEL_M12_EVENT_PHASE_COOLDOWN; phase++)
+                for (uint8_t mode = DUEL_M12_MODE_NORMAL;
+                     mode <= DUEL_M12_MODE_QUIET; mode++) {
+                    bool shared = id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER;
+                    for (uint8_t target_case = 0; target_case < (shared ? 1u : 2u); target_case++) {
+                        uint8_t target = shared ? DUEL_M12_EVENT_TARGET_SHARED : target_case;
+                        duel_render_t r = {0};
+                        r.civic = DUEL_CIVIC_PACK(floor, mode, 0);
+                        r.revision = DUEL_EVENT_PACK(id, phase, target);
+                        duel_fb_t left, right, repeat;
+                        duel_fb_clear(&left); duel_fb_clear(&right); duel_fb_clear(&repeat);
+                        draw_rare_event(&left, &r, true);
+                        draw_rare_event(&right, &r, false);
+                        draw_rare_event(&repeat, &r, true);
+                        ok &= memcmp(&left, &repeat, sizeof left) == 0;
+                        if (shared) {
+                            ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) >= 4u;
+                        } else if (target == DUEL_M12_EVENT_TARGET_LEFT) {
+                            ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) == 0u;
+                        } else {
+                            ok &= framebuffer_pixels(&right) >= 4u && framebuffer_pixels(&left) == 0u;
+                        }
+                        if (id == DUEL_M12_EVENT_CIVIC_SKY)
+                            ok &= pixels_within(&left, 16, 26) && pixels_within(&right, 16, 26);
+                        else
+                            ok &= pixels_within(&left, 61, 110) && pixels_within(&right, 61, 110);
+                    }
+                }
+
+    duel_render_t none = {0}; duel_fb_t empty;
+    none.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_NONE, 0, 0);
+    duel_fb_clear(&empty); draw_rare_event(&empty, &none, true);
+    ok &= framebuffer_pixels(&empty) == 0u;
+    for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
+         id < DUEL_M12_EVENT_COUNT; id++) {
+        duel_fb_t variant[M13_OCCUPATION_FLOORS];
+        for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
+            none.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+            none.revision = DUEL_EVENT_PACK(id, DUEL_M12_EVENT_PHASE_ACTIVE,
+                id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER ?
+                    DUEL_M12_EVENT_TARGET_SHARED : DUEL_M12_EVENT_TARGET_LEFT);
+            duel_fb_clear(&variant[floor]); draw_rare_event(&variant[floor], &none, true);
+        }
+        ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
+              memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
+              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
+    }
+    none.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    none.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
+                                    DUEL_M12_EVENT_PHASE_ACTIVE,
+                                    DUEL_M12_EVENT_TARGET_LEFT);
+    none.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    duel_fb_t transition, commons;
+    duel_fb_clear(&transition); draw_rare_event(&transition, &none, true);
+    none.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_COMMONS, DUEL_M12_MODE_NORMAL, 0);
+    none.floor_transition = 0;
+    duel_fb_clear(&commons); draw_rare_event(&commons, &none, true);
+    ok &= memcmp(&transition, &commons, sizeof transition) == 0;
+    CHECK(ok, "m13_rare_event_floor_family_phase_mode_target_routing_and_safety_matrix");
+}
+
+static void test_aftermath_floor_kind_phase_half_matrix(void) {
+    bool ok = true;
+    sim_world_t world; sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+        for (uint8_t kind = AFTER_CHEER; kind <= AFTER_MAX_CAST; kind++)
+            for (uint8_t phase = 0; phase < 4u; phase++)
+                for (uint8_t side = 0; side < 2u; side++) {
+                    duel_render_t base = {0}; duel_render_from_world(&base, &world);
+                    base.seed = 0x51u; base.civic_phase = 23u;
+                    base.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+                    duel_render_t after = base;
+                    after.shared_pres = (uint8_t)((kind << (side * 3u)) |
+                                                   (WORLD_RECOVERY << 6));
+                    after.revision = (uint8_t)(M13_AFTERMATH_WIRE |
+                                               (phase << (side * 2u)));
+                    duel_fb_t before, first, second;
+                    m13_render(&before, &base, side == 0u, false);
+                    m13_render(&first, &after, side == 0u, false);
+                    m13_render(&second, &after, side == 0u, false);
+                    ok &= memcmp(&first, &second, sizeof first) == 0 &&
+                          memcmp(&before, &first, sizeof first) != 0 &&
+                          band_difference(&before, &first, 0, 60) == 0u &&
+                          band_difference(&before, &first, 111, 127) == 0u;
+                }
+    CHECK(ok, "m13_aftermath_floor_kind_phase_half_anchor_priority_and_protected_regions");
+}
+
+static void m13_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
                        bool diagnostics) {
     duel_fb_clear(fb);
     wiz_draw_scene(fb, r, is_left, 7u, diagnostics);
@@ -1473,6 +1649,9 @@ int main(void) {
     test_bilateral_beam_and_aftermath_split_render();
     test_resident_occupation_derivation();
     test_resident_geometry_and_object_separation();
+    test_civic_anchor_and_courier_matrix();
+    test_rare_event_floor_phase_mode_target_matrix();
+    test_aftermath_floor_kind_phase_half_matrix();
     test_health_grid_geometry_and_lifecycles();
     test_local_layer_attunement();
     test_diegetic_scry_instruments();

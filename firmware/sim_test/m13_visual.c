@@ -6,12 +6,14 @@
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_courier.h"
 #include "duel_host.h"
 #include "duel_resident.h"
 #include "duel_sim.h"
+#include "scenarios.h"
 
 typedef struct { char name[48]; uint64_t hash; } visual_case_t;
-static visual_case_t cases[224];
+static visual_case_t cases[384];
 static size_t ncases;
 
 static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
@@ -89,6 +91,18 @@ static void add_render_case(const char *name, const duel_render_t *render,
     cases[ncases++].hash = hash;
 }
 
+static void add_render_case_diagnostics(const char *name, const duel_render_t *render,
+                                        uint32_t frame) {
+    duel_fb_t left, right;
+    duel_fb_clear(&left); duel_fb_clear(&right);
+    wiz_draw_scene(&left, render, true, frame, true);
+    wiz_draw_scene(&right, render, false, frame, true);
+    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
+    hash = fnv1a(hash, right.bits, sizeof right.bits);
+    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
+    cases[ncases++].hash = hash;
+}
+
 static void add_bilateral_attunement_case(const char *name, sim_world_t *world) {
     duel_render_t left_render = {0}, right_render = {0};
     duel_render_from_world(&left_render, world);
@@ -143,6 +157,111 @@ static void build_catalog(void) {
             add_occupation_case(name, &world, floor, action, false);
         }
     }
+
+    static const char *courier_name[] = {"none", "messenger", "parcel", "beacon", "sentinel"};
+    static const char *event_name[] = {"none", "scroll", "jam", "break", "complaint", "diplomat", "sky"};
+    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++) {
+        for (uint8_t kind = DUEL_M12_COURIER_MESSENGER;
+             kind < DUEL_M12_COURIER_COUNT; kind++) {
+            duel_render_t civic = {0}; duel_render_from_world(&civic, &world);
+            civic.seed = 0x5au; civic.civic_phase = 19u;
+            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+            civic.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(kind, 0,
+                DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_SINGLE));
+            char name[48]; snprintf(name, sizeof name, "courier_%s_%s",
+                                    floor_name[floor], courier_name[kind]);
+            add_render_case(name, &civic, 7u);
+        }
+        for (uint8_t id = DUEL_M12_EVENT_RUNAWAY_SCROLL;
+             id < DUEL_M12_EVENT_COUNT; id++) {
+            duel_render_t civic = {0}; duel_render_from_world(&civic, &world);
+            civic.seed = 0x5au; civic.civic_phase = 19u;
+            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0);
+            uint8_t target = id >= DUEL_M12_EVENT_DIPLOMATIC_COURIER ?
+                DUEL_M12_EVENT_TARGET_SHARED : DUEL_M12_EVENT_TARGET_LEFT;
+            civic.revision = DUEL_EVENT_PACK(id, DUEL_M12_EVENT_PHASE_ACTIVE, target);
+            char name[48]; snprintf(name, sizeof name, "event_%s_%s",
+                                    floor_name[floor], event_name[id]);
+            add_render_case(name, &civic, 7u);
+        }
+    }
+
+    duel_render_t variant = {0}; duel_render_from_world(&variant, &world);
+    variant.seed = 0x6bu; variant.civic_phase = 23u;
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
+    for (uint8_t life = DUEL_M12_VISIT_ARRIVING; life <= DUEL_M12_VISIT_RESOLVING; life++) {
+        if (life == DUEL_M12_VISIT_WAITING) continue;
+        char name[48]; snprintf(name, sizeof name, "courier_lifecycle_%u", life);
+        variant.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0, life);
+        add_render_case(name, &variant, 7u);
+    }
+    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_BEACON, 0,
+        DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_FEW));
+    add_render_case("courier_density_few", &variant, 7u);
+    variant.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_BEACON, 0,
+        DUEL_M12_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_MANY));
+    add_render_case("courier_density_many", &variant, 7u);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, 0);
+    variant.shared_pres = DUEL_VISITOR_PACK(DUEL_M12_COURIER_MESSENGER, 0,
+                                             DUEL_M12_VISIT_ARRIVING);
+    add_render_case("courier_quiet_arrival", &variant, 7u);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    variant.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    add_render_case("courier_transition", &variant, 7u);
+    variant.floor_transition = 0; variant.view.outcome_overlay |= 0x10u;
+    add_render_case("courier_full_scry", &variant, 7u);
+
+    variant.view.outcome_overlay &= (uint8_t)~0x10u; variant.shared_pres = 0;
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_NORMAL, 0);
+    for (uint8_t phase = DUEL_M12_EVENT_PHASE_ARMED;
+         phase <= DUEL_M12_EVENT_PHASE_COOLDOWN; phase++) {
+        if (phase == DUEL_M12_EVENT_PHASE_ACTIVE) continue;
+        char name[48]; snprintf(name, sizeof name, "event_lifecycle_%u", phase);
+        variant.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL, phase,
+                                            DUEL_M12_EVENT_TARGET_LEFT);
+        add_render_case(name, &variant, 7u);
+    }
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_RESEARCH, DUEL_M12_MODE_QUIET, 0);
+    variant.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_RUNAWAY_SCROLL,
+        DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_LEFT);
+    add_render_case("event_quiet", &variant, 7u);
+    variant.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    variant.floor_transition = M13_FLOOR_TRANSITION_PACK(DUEL_M12_FLOOR_COMMONS, 1, true);
+    add_render_case("event_transition", &variant, 7u);
+    variant.floor_transition = 0; variant.view.outcome_overlay |= 0x10u;
+    add_render_case("event_full_scry", &variant, 7u);
+
+    /* Exercise the legacy host catalog under M13: projection must not erase
+     * the authored courier/event coordination bytes before exact rendering. */
+    const duel_scenario_t *legacy = duel_scenario_find("courier-messenger");
+    duel_render_t projected;
+    if (!legacy || !duel_scenario_build(legacy, &projected) ||
+        DUEL_VISITOR_KIND(projected.shared_pres) == DUEL_M12_COURIER_NONE) abort();
+    add_render_case("scenario_m13_courier_projection", &projected, 7u);
+    legacy = duel_scenario_find("event-scroll");
+    if (!legacy || !duel_scenario_build(legacy, &projected) ||
+        DUEL_EVENT_ID(projected.revision) == DUEL_M12_EVENT_NONE) abort();
+    add_render_case("scenario_m13_event_projection", &projected, 7u);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].hp = 0;
+    world.spell[0].active = 1;
+    world.spell[0].descriptor = descriptor(SPELL_PROJECTILE, 3);
+    world.spell[0].kind = DUEL_KIND_WITH_TIER(
+        DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), 2);
+    world.spell[0].progress = 72u;
+    duel_render_t cross = {0}; duel_render_from_world(&cross, &world);
+    cross.seed = 0x39u; cross.civic_phase = 31u;
+    cross.civic = DUEL_CIVIC_PACK(DUEL_M12_FLOOR_WORKSHOP, DUEL_M12_MODE_NORMAL, 0);
+    cross.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_LEFT);
+    cross.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_M12_COURIER_PARCEL, 0,
+        DUEL_M12_VISIT_AGING) | DUEL_VISITOR_DENSITY_PACK(DUEL_M12_DENSITY_MANY));
+    add_render_case("cross_courier_combat_health_attune", &cross, 13u);
+    cross.shared_pres = 0;
+    cross.revision = DUEL_EVENT_PACK(DUEL_M12_EVENT_DAMAGE_COMPLAINT,
+        DUEL_M12_EVENT_PHASE_ACTIVE, DUEL_M12_EVENT_TARGET_RIGHT);
+    cross.flags = DUEL_RENDER_STALE; cross.diag_tick = 17u; cross.diag_overflow = 3u;
+    add_render_case_diagnostics("cross_event_stale_diagnostics", &cross, 13u);
 
     static const uint8_t hp_cases[] = {0, 1, 6};
     for (size_t i = 0; i < sizeof hp_cases; i++) {
@@ -300,14 +419,18 @@ static void build_catalog(void) {
     static const char *aftermath_name[] = { "after_cheer", "after_complaint", "after_panic",
                                             "after_fire", "after_inspect", "after_repair",
                                             "after_max" };
-    for (size_t i = 0; i < sizeof aftermath_kind; i++) {
-        sim_init(&world, SIMF_AUTHORITATIVE, 0);
-        world.aftermath[0].kind = aftermath_kind[i];
-        world.aftermath[0].ticks = aftermath_kind[i] == AFTER_FIRE ? 130u : 75u;
-        world.aftermath[0].intensity = 3u;
-        world.world_state = aftermath_kind[i] == AFTER_FIRE ? WORLD_CRISIS : WORLD_RECOVERY;
-        add_case(aftermath_name[i], &world, (uint32_t)i * 5u, 0);
-    }
+    for (uint8_t floor = 0; floor < M13_OCCUPATION_FLOORS; floor++)
+        for (size_t i = 0; i < sizeof aftermath_kind; i++) {
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            world.aftermath[0].kind = aftermath_kind[i];
+            world.aftermath[0].ticks = aftermath_kind[i] == AFTER_FIRE ? 130u : 75u;
+            world.aftermath[0].intensity = 3u;
+            world.world_state = aftermath_kind[i] == AFTER_FIRE ? WORLD_CRISIS : WORLD_RECOVERY;
+            char name[48]; snprintf(name, sizeof name, "after_%s_%s",
+                                    floor_name[floor], aftermath_name[i]);
+            add_case_civic(name, &world, (uint32_t)(floor * 11u + i), 0,
+                           DUEL_CIVIC_PACK(floor, DUEL_M12_MODE_NORMAL, 0), 0);
+        }
 
     static const char *reaction_name[] = { "heal", "complaint", "roof_panic",
                                            "void_inspect", "combine_repair", "void_collapse" };

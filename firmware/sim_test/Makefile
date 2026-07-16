@@ -79,8 +79,8 @@ test_runner_m13: m13_test.c $(SIM_SRC) $(HDRS)
 test-m13: test_runner_m13
 	ASAN_OPTIONS=detect_leaks=0 ./test_runner_m13
 
-visual_runner_m13: m13_visual.c $(SIM_SRC) $(HDRS)
-	$(CC) $(M13FLAGS) -o $@ m13_visual.c $(SIM_SRC)
+visual_runner_m13: m13_visual.c $(SIM_SRC) $(SCENARIO_SRC) $(HDRS) scenarios.h
+	$(CC) $(M13FLAGS) -o $@ m13_visual.c $(SIM_SRC) $(SCENARIO_SRC)
 
 visual-test-m13: visual_runner_m13
 	ASAN_OPTIONS=detect_leaks=0 ./visual_runner_m13 golden/visual_m13.hashes

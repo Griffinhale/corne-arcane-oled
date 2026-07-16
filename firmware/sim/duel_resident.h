@@ -31,6 +31,18 @@
         ((uint8_t)((key) / DUEL_M12_ACTION_COUNT))
 #    define M13_OCCUPATION_ACTION(key) \
         ((uint8_t)((key) % DUEL_M12_ACTION_COUNT))
+
+/* Canonical desk-space point shared by every M13 civic layer. Coordinates are
+ * authored for the left/desk view; callers mirror x at the final draw site. */
+typedef struct {
+    int8_t x;
+    int8_t y;
+} m13_point_t;
+
+m13_point_t m13_occupation_anchor(uint8_t floor, uint8_t action);
+int m13_desk_x(bool is_left, int x);
+void m13_civic_hline(duel_fb_t *fb, bool is_left, int x0, int x1, int y);
+void m13_civic_vline(duel_fb_t *fb, bool is_left, int x, int y0, int y1);
 #endif
 
 // Fully-derived resident record for one city at one civic phase. No stored

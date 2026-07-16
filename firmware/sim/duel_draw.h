@@ -68,6 +68,7 @@ typedef struct {
 void duel_fb_clear(duel_fb_t *fb);
 void duel_fb_px(duel_fb_t *fb, int x, int y, bool on); // clips out-of-range
 bool duel_fb_get(const duel_fb_t *fb, int x, int y);
+void duel_fb_hline(duel_fb_t *fb, int x0, int x1, int y);
 
 // M1 wizard silhouette. `facing` is +1 (left half) / -1 (right half) and
 // chooses the side the staff rests on — both wizards face the centre gap.

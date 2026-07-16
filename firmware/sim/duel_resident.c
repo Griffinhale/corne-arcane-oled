@@ -352,15 +352,32 @@ static const m13_occupation_desc_t *m13_occupation(uint8_t key) {
     return &m13_occupations[key];
 }
 
-static void m13_object_anchor(uint8_t reaction, int *x, int *y) {
-    static const uint8_t anchors[][2] = {
+int m13_desk_x(bool is_left, int x) {
+    return is_left ? x : DUEL_CANVAS_W - 1 - x;
+}
+
+void m13_civic_hline(duel_fb_t *fb, bool is_left, int x0, int x1, int y) {
+    int a = m13_desk_x(is_left, x0), b = m13_desk_x(is_left, x1);
+    if (a > b) { int t = a; a = b; b = t; }
+    duel_fb_hline(fb, a, b, y);
+}
+
+void m13_civic_vline(duel_fb_t *fb, bool is_left, int x, int y0, int y1) {
+    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+    x = m13_desk_x(is_left, x);
+    for (; y0 <= y1; y0++) duel_fb_px(fb, x, y0, true);
+}
+
+m13_point_t m13_occupation_anchor(uint8_t floor, uint8_t action) {
+    static const int8_t anchors[][2] = {
         {14, 95}, {24, 82}, {11, 88},
         {14, 79}, {24, 88}, {13, 94},
         {14, 91}, {24, 90}, {11, 82},
     };
-    if (reaction >= sizeof anchors / sizeof anchors[0]) reaction = 0;
-    *x = anchors[reaction][0];
-    *y = anchors[reaction][1];
+    if (floor >= M13_OCCUPATION_FLOORS) floor = DUEL_M12_FLOOR_COMMONS;
+    if (action >= DUEL_M12_ACTION_COUNT) action = DUEL_M12_ACTION_WORK;
+    const m13_occupation_desc_t *desc = m13_occupation(M13_OCCUPATION_KEY(floor, action));
+    return (m13_point_t){anchors[desc->reaction][0], anchors[desc->reaction][1]};
 }
 
 static void m13_draw_object_reaction(duel_fb_t *fb, uint8_t reaction,
@@ -371,9 +388,15 @@ static void m13_draw_object_reaction(duel_fb_t *fb, uint8_t reaction,
         {{ 0, -1}, { 0,  1}, { 0,  1}},
         {{-1,  0}, { 1,  0}, { 0, -1}},
     };
-    int x, y;
-    m13_object_anchor(reaction, &x, &y);
-    if (!is_left) x = DUEL_CANVAS_W - 1 - x;
+    uint8_t floor = reaction / 3u;
+    uint8_t object = reaction % 3u;
+    static const uint8_t object_action[3][3] = {
+        {DUEL_M12_ACTION_WORK, DUEL_M12_ACTION_INSPECT, DUEL_M12_ACTION_WATCH_ROOF},
+        {DUEL_M12_ACTION_WORK, DUEL_M12_ACTION_INSPECT, DUEL_M12_ACTION_REST},
+        {DUEL_M12_ACTION_WORK, DUEL_M12_ACTION_INSPECT, DUEL_M12_ACTION_WATCH_ROOF},
+    };
+    m13_point_t anchor = m13_occupation_anchor(floor, object_action[floor][object]);
+    int x = m13_desk_x(is_left, anchor.x), y = anchor.y;
     int toward_gap = is_left ? 1 : -1;
     const int8_t (*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
     for (int i = 0; i < 3; i++)
@@ -399,18 +422,16 @@ static void m13_draw_carried(duel_fb_t *fb, uint8_t mark, int x, int y,
 
 static void m13_draw_core(duel_fb_t *fb, int cx, int fy, bool seated) {
     int top = fy - (seated ? 11 : 13);
-    for (int x = cx - 1; x <= cx + 1; x++) duel_fb_px(fb, x, top, true);
-    for (int x = cx - 2; x <= cx + 2; x++) {
-        duel_fb_px(fb, x, top + 1, true);
-        duel_fb_px(fb, x, top + 2, true);
-        duel_fb_px(fb, x, top + 4, true); /* shoulders */
-    }
-    for (int x = cx - 1; x <= cx + 1; x++) duel_fb_px(fb, x, top + 3, true);
+    duel_fb_hline(fb, cx - 1, cx + 1, top);
+    duel_fb_hline(fb, cx - 2, cx + 2, top + 1);
+    duel_fb_hline(fb, cx - 2, cx + 2, top + 2);
+    duel_fb_hline(fb, cx - 1, cx + 1, top + 3);
+    duel_fb_hline(fb, cx - 2, cx + 2, top + 4); /* shoulders */
     int torso_end = top + (seated ? 8 : 9);
     for (int y = top + 5; y <= torso_end; y++)
-        for (int x = cx - 1; x <= cx + 1; x++) duel_fb_px(fb, x, y, true);
+        duel_fb_hline(fb, cx - 1, cx + 1, y);
     int hips = top + (seated ? 9 : 10);
-    for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, hips, true);
+    duel_fb_hline(fb, cx - 2, cx + 2, hips);
     if (seated) {
         duel_fb_px(fb, cx - 2, top + 10, true); duel_fb_px(fb, cx + 2, top + 10, true);
         duel_fb_px(fb, cx - 2, fy, true); duel_fb_px(fb, cx - 1, fy, true);
@@ -419,7 +440,7 @@ static void m13_draw_core(duel_fb_t *fb, int cx, int fy, bool seated) {
         for (int y = top + 11; y <= top + 12; y++) {
             duel_fb_px(fb, cx - 1, y, true); duel_fb_px(fb, cx + 1, y, true);
         }
-        for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, fy, true);
+        duel_fb_hline(fb, cx - 2, cx + 2, fy);
     }
 }
 
@@ -504,7 +525,7 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
             duel_fb_px(fb, cx + 2, top - 1, true);
             break;
         case RESIDENT_COMPLAIN:
-            for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, top - 1, true);
+            duel_fb_hline(fb, cx - 2, cx + 2, top - 1);
             duel_fb_px(fb, cx + 3 * gapward, top - 2, true);
             break;
         case RESIDENT_PANIC:
@@ -512,7 +533,7 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
             duel_fb_px(fb, cx, top - 3, true);
             break;
         case RESIDENT_FIGHT_FIRE:
-            for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, top - 1, true);
+            duel_fb_hline(fb, cx - 2, cx + 2, top - 1);
             duel_fb_px(fb, cx, top - 2, true);
             break;
         case RESIDENT_INSPECT:
@@ -520,7 +541,7 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
             duel_fb_px(fb, cx + 1, top - 1, true); duel_fb_px(fb, cx + 3 * gapward, top + 2, true);
             break;
         case RESIDENT_REPAIR:
-            for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, top - 1, true);
+            duel_fb_hline(fb, cx - 2, cx + 2, top - 1);
             duel_fb_px(fb, cx - 1, top - 2, true); duel_fb_px(fb, cx + 1, top - 2, true);
             break;
         case RESIDENT_WATCH_CAST:
@@ -533,13 +554,8 @@ void m12_resident_draw(duel_fb_t *fb, const m12_resident_t *res, bool is_left,
 }
 
 void m13_resident_draw_attunement(duel_fb_t *fb, bool is_left, uint8_t floor) {
-    if (floor >= M13_OCCUPATION_FLOORS) floor = DUEL_M12_FLOOR_COMMONS;
-    const m13_occupation_desc_t *work = m13_occupation(
-        M13_OCCUPATION_KEY(floor, DUEL_M12_ACTION_WORK));
-    int x, y;
-    m13_object_anchor(work->reaction, &x, &y);
-    if (!is_left) x = DUEL_CANVAS_W - 1 - x;
-    duel_fb_px(fb, x, y, true);
+    m13_point_t anchor = m13_occupation_anchor(floor, DUEL_M12_ACTION_WORK);
+    duel_fb_px(fb, m13_desk_x(is_left, anchor.x), anchor.y, true);
 }
 
 #endif /* ARCANE_M13 */

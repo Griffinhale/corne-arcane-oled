@@ -28,9 +28,12 @@ baseline_ram=$2
 flash_delta=$((release_flash - baseline_flash))
 ram_delta=$((release_ram - baseline_ram))
 hard_reserve=$((96 * 1024 - release_flash))
+accepted_m13_ram=16496
+m13_ram_delta=$((release_ram - accepted_m13_ram))
 
 echo "M13 release flash: $release_flash bytes (delta $flash_delta)"
 echo "M13 static RAM: $release_ram bytes (delta $ram_delta)"
+echo "Static RAM delta from accepted b7c6d8d M13: $m13_ram_delta bytes"
 echo "Reserve below 96 KiB hard stop: $hard_reserve bytes"
 
 test "$release_flash" -le $((80 * 1024)) || {
@@ -42,8 +45,8 @@ test "$release_flash" -le $((96 * 1024)) || {
 test "$hard_reserve" -ge $((16 * 1024)) || {
     echo "FAIL m13-budget: less than 16 KiB reserve remains" >&2; exit 1;
 }
-test "$ram_delta" -le 1024 || {
-    echo "FAIL m13-budget: static RAM growth exceeds 1 KiB" >&2; exit 1;
+test "$m13_ram_delta" -eq 0 || {
+    echo "FAIL m13-budget: static RAM changed from accepted M13" >&2; exit 1;
 }
 
 echo "PASS m13-budget"

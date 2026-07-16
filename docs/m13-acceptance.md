@@ -1,7 +1,9 @@
 # M13 Arcane Incantation Engine — acceptance record
 
-Status: end-to-end implementation and clean desktop/QMK acceptance complete;
-physical two-half execution remains pending.
+Status: end-to-end implementation, clean desktop/QMK verification, and physical
+two-half acceptance complete. The project owner reported the complete hardware
+checklist passing on 2026-07-15; exact diagnostic numbers were not supplied for
+the repository record.
 
 ## Feature boundary
 
@@ -81,6 +83,15 @@ Resident work, inspect, and rest anchors align with the corresponding major
 objects. Six exact city/floor scenes differ by at least 40 floor-band pixels for
 every same-city occupation pair. `SPECIAL` remains reserved.
 
+The civic-layer parity pass exposes that same `(floor, action)` object anchor to
+residents, local attunement, couriers, rare events, and authoritative aftermath.
+All four courier cores now have Commons, Research, and Workshop treatments and
+route between the established gap lift and their floor destination. All six
+rare-event families likewise retain their deck, targeting, phase, and QUIET
+semantics while adopting dispatch/research/workshop objects. Invalid floors
+fall back to Commons. No timing, policy, allocation, packet, or mutable-state
+contract changed.
+
 Host focus changes use a local 600 ms, four-phase transition: source-room
 shutter, full brick/elevator wipe, target-room reveal, then settling dust and
 sparks. One presentation byte packs source floor, phase, and active flag; the
@@ -113,7 +124,8 @@ recovery. The renderer derives bounded animation phases from that state.
 
 - Residents can cheer, complain, panic, watch a maximal cast, fight fire,
   inspect residue, and repair damage. Their position and task-hat/mark change
-  during the corresponding arc.
+  during the corresponding arc. Fire, inspection, repair, panic, complaint, and
+  celebration marks resolve through the same floor object as the assigned task.
 - Ten-second casts coordinate both cities through watch, wonder, and cheer.
 - Roof fireballs detonate against the roof, disrupt the room, ignite an object,
   send residents through panic/firefighting/repair, and restore calm after the
@@ -142,21 +154,23 @@ Raw HID remains the existing v2 32-byte host protocol.
 
 ## Resource measurements
 
-Measured 2026-07-15 from clean builds in the configured Vial-QMK checkout with
+Measured 2026-07-16 from clean builds in the configured Vial-QMK checkout with
 `arm-none-eabi-gcc 14.2.1`. Flash is `.text + .data` from GNU size. Static RAM
 is `.data + .bss + .ram0…ram7` and excludes the linker-created heap.
 
 | Build | Flash | Static RAM | Delta from M12 |
 |---|---:|---:|---:|
 | M12 rollback | 68,076 B | 16,308 B | — |
-| `griffin_anim` Vial release | 80,972 B | 16,496 B | +12,896 B flash, +188 B RAM |
-| `griffin_anim` Vial diagnostic | 81,868 B | 16,568 B | +13,792 B flash, +260 B RAM |
-| `griffin_hostoled` release | 66,720 B | 13,664 B | −1,356 B flash, −2,644 B RAM |
-| `griffin_hostoled` diagnostic | 68,252 B | 13,780 B | +176 B flash, −2,528 B RAM |
+| `griffin_anim` Vial release | 81,896 B | 16,496 B | +13,820 B flash, +188 B RAM |
+| `griffin_anim` Vial diagnostic | 82,800 B | 16,568 B | +14,724 B flash, +260 B RAM |
+| `griffin_hostoled` release | 67,616 B | 13,664 B | −460 B flash, −2,644 B RAM |
+| `griffin_hostoled` diagnostic | 69,204 B | 13,780 B | +1,128 B flash, −2,528 B RAM |
 
-The budgeted Vial release is 948 bytes below the 80 KiB target and 17,332 bytes
-below the 96 KiB hard stop, preserving the required 16 KiB reserve. Diagnostic
-builds add ChibiOS stack fill/checking, expose both halves' timing/queue/split
+The budgeted Vial release is 24 bytes below the 80 KiB target and 16,408 bytes
+below the 96 KiB hard stop, preserving the required 16 KiB reserve. It is
+flash-neutral and has zero static-RAM growth relative to accepted commit
+`b7c6d8d`. Diagnostic builds add ChibiOS stack fill/checking, expose both halves'
+timing/queue/split
 telemetry over Raw HID, and keep stack high-water in debugger-visible
 `duel_diag` state without changing their corresponding release image.
 
@@ -168,18 +182,18 @@ Artifacts are under `artifacts/m13/`.
 |---|---|
 | `m12-rollback.uf2` | `e0c91db0c4bfb916efeb7e99d6667ac1d905a484599c1bcf10fcecb94525bbd9` |
 | `m12-rollback.elf` | `22b6ad4f498edd7ac846ad0f07e653411978d9cf52b2eca8ea5cf5a92484804a` |
-| `griffin_anim-m13-vial-release.uf2` | `6553ded88b9d2b7d8d571b3bfd5edbc16dd50b5671149c08853d294f897ee79f` |
-| `griffin_anim-m13-vial-release.elf` | `ff8119c014821c7d0bd4c6fa4ff6dfd3ee888b3e3c965b5c0cdc9a9ce87252d6` |
-| `griffin_anim-m13-vial-diagnostic.uf2` | `501626cc18b576fa1d6340815d610461790f3c0b62e0bac3b5802cfd85990dfc` |
-| `griffin_anim-m13-vial-diagnostic.elf` | `6bcef50ad055291516940c2f92ebb27ebba435d8a40a6558ad89a5c0ca462fe2` |
-| `griffin_hostoled-m13-release.uf2` | `fe0ad7f2c4e5d0b74f246e12b398b52e52c740a9c87db05f7a604ea936da949b` |
-| `griffin_hostoled-m13-release.elf` | `60e076d0a3eb002db63c361326964784253137fcea436491833837537c1e2ba2` |
-| `griffin_hostoled-m13-diagnostic.uf2` | `f292dd0bd78a673917f76f09b72e9f436398c98e76beadb57391d6f6febdcfb5` |
-| `griffin_hostoled-m13-diagnostic.elf` | `63cfce6d306263fc37f18565032edda8501189889ce85f571be6f4bce8115c0d` |
+| `griffin_anim-m13-vial-release.uf2` | `968210c5726482d803bb8ad54a7abefdcd4dbf19655c44b7f8d0a36ac94544ba` |
+| `griffin_anim-m13-vial-release.elf` | `1e7b579953faaf834ab56a5af112a48f5dcb4e76e7849fa9e27203fb168e08e3` |
+| `griffin_anim-m13-vial-diagnostic.uf2` | `bca860c230d28e5a6d8a1762575036f099ebc7a1b4a6db4729c3b22bddf0bd56` |
+| `griffin_anim-m13-vial-diagnostic.elf` | `e9e99418dfff804f69bc7a5dba8c1b89bb717ca2cd1bc8bf38cebcd9c845bc04` |
+| `griffin_hostoled-m13-release.uf2` | `5be2dcfa2a81b720eaa643f1c4550c1b54b87036b1117d7667569c40eb698ec8` |
+| `griffin_hostoled-m13-release.elf` | `f119ae4aeb236bb114969692704d2aab15f30e509dfd9db84881891e4356f9c8` |
+| `griffin_hostoled-m13-diagnostic.uf2` | `2b2c5b897e95b02a41883967bba961a000be65da3b1d0616f413b13cf9987d8c` |
+| `griffin_hostoled-m13-diagnostic.elf` | `e564edd05dcf87dbc98615534fa4aaf23d823c68dac3fb1fee8429dfdaa0d826` |
 
-The exact 144-scene M13 visual catalog is
+The exact 251-scene M13 visual catalog is
 `firmware/sim_test/golden/visual_m13.hashes` (SHA-256
-`d4250f57c480c4565d25e7e18d65ed9c9194fe86fa2dd7d91388e91a5b345092`).
+`2fa0707ca0dbf2637dcec38a14bd0d2fd6150a2449dba2e8637c6a14bab5690e`).
 The frozen M12 visual golden remains
 `8c99c437f6cfaa066aec99c375520e181690819c7f62e1c3ac036a900dad95cc`.
 
@@ -188,22 +202,31 @@ The frozen M12 visual golden remains
 - `make test`: frozen M11.5/M12 suites; M13 end-to-end mechanics, protocol,
   render, mirror, and convergence tests; both no-allocation symbol gates; and
   all 59 host tests.
-- `make visual-test`: frozen M11.5/M12 visual suites plus 144 unique exact M13
+- `make visual-test`: frozen M11.5/M12 visual suites plus 251 unique exact M13
   framebuffer scenes spanning both sides, four voices, every form, temporal
   trajectories, wards/statuses, reactions, outcomes, six occupation scenes,
-  four transition phases, and bilateral gap-cue timing.
+  every floor/courier, floor/event, and floor/aftermath variant, representative
+  civic lifecycle/density/QUIET/transition/scry compositions, four transition
+  phases, and bilateral gap-cue timing.
 - Deterministic steady, burst, and mixed-layer prose workloads produce no KO in
   their first 30 seconds and a first KO between 60 and 180 seconds.
-- `make m13-budget`: 80/96 KiB flash limits, 16 KiB reserve, and 1 KiB maximum
-  static-RAM delta against the clean preserved M12 ELF.
+- `make m13-budget`: 80/96 KiB flash limits, 16 KiB reserve, and zero static-RAM
+  growth against accepted M13 commit `b7c6d8d`.
 - Clean Vial and Vial-free release/diagnostic QMK builds all link successfully
   for `crkbd/rev1`, `CONVERT_TO=rp2040_ce`; preserved rollback images remain.
 - `git diff --check` passes.
 
 ## Physical acceptance
 
-No keyboard was flashed during this implementation session. The software and
-artifacts are ready for the explicit two-half run in
-`m13-physical-checklist.md`. Numeric `<2 ms` housekeeping, `<5 ms`
-render-plus-blit, stack high-water, input non-interference, and physical OLED
-legibility remain hardware observations and are deliberately not claimed here.
+The project owner reported the complete two-half run in
+`m13-physical-checklist.md` passing on 2026-07-15: diagnostic and release
+flashing, typing non-interference, spell/combat presentation, floors and gap
+cues, civic aftermath, link/power recovery, diagnostic thresholds, and the M12
+rollback/return-to-M13 sequence. The report establishes that housekeeping was
+below 2 ms on both halves, render-plus-blit was below 5 ms, stack margin was
+nonzero, and queue/protocol error counts stayed at zero. Exact numeric timing
+and stack values were not supplied, so the checklist records threshold passes
+rather than invented measurements.
+
+The civic-layer parity pass has its own unchecked physical addendum in
+`m13-civic-parity-physical-addendum.md`. It does not inherit the July 15 sign-off.
