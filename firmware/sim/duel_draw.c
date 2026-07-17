@@ -1574,7 +1574,7 @@ static void draw_local_attunement(duel_fb_t *fb, const duel_render_t *r,
     incantation_resident_draw_attunement(fb, is_left, DUEL_CIVIC_FLOOR(r->civic));
 }
 
-/* HP pip geometry: twelve 2x1 pips in two columns attached low beside the
+/* HP pip geometry: eight 2x1 pips in two columns attached low beside the
  * wizard. Each row fills gapward then outward, so damage clears from the top.
  * Single source for the clear, fill, and lost-pip flash sites. */
 static void hp_pip_xy(int i, bool is_left, int *px, int *py) {

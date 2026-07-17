@@ -353,6 +353,18 @@ Pure constant changes inside the authoritative sim; world-hash streams
 re-baseline, wire untouched. Goes to hardware immediately for ambient-variety
 feedback while the rest of M15 is in flight.
 
+**Status: complete** (landed 2026-07-17, after Tracks G/P/A — the "ships
+first" slot slipped because flashing is still gated on the M14 physical
+record, so hardware feedback was deferred anyway). Constants as planned:
+eligibility ladder now 1/3 forms below 48, then 4/5/6/7 at 48/76/104/132,
+all 8 at 160; base weights SWARM/CHAIN/CONJURE raised 2/2/1 -> 3/3/2. The
+§4.4 pacing retune landed here too: `SIM_MAX_HP` 12 -> 8, `SIM_REGEN_TICKS`
+750 -> 500. Prose-KO guardrail re-measured at 846/1222/1562 ticks
+(~34/49/62 s) across the three profiles; the test now pins 28-150 s
+(hardware feel review remains backlog Q4). Goldens re-baselined with a
+visual review of the 8-pip health column (sky_commons_dawn_idle_12hp
+renamed to ..._8hp).
+
 ---
 
 ## 6. Track P — split snapshot v11

@@ -167,7 +167,7 @@ static void build_catalog(void) {
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     /* The default secondary byte is dawn, so this is also the explicit
      * Commons/dawn review frame. */
-    add_case("sky_commons_dawn_idle_12hp", &world, 0, 0);
+    add_case("sky_commons_dawn_idle_8hp", &world, 0, 0);
 
     static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {
         "commons", "research", "workshop", "observatory"
@@ -227,7 +227,7 @@ static void build_catalog(void) {
     for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
         for (uint8_t phase = DUEL_SKY_DAWN; phase <= DUEL_SKY_NIGHT; phase++) {
             if (floor == DUEL_CIVIC_FLOOR_COMMONS && phase == DUEL_SKY_DAWN)
-                continue; /* covered by sky_commons_dawn_idle_12hp */
+                continue; /* covered by sky_commons_dawn_idle_8hp */
             duel_render_t sky = {0}; duel_render_from_world(&sky, &world);
             sky.seed = 0x5au; sky.civic_phase = 19u;
             sky.civic = DUEL_CIVIC_PACK(floor,

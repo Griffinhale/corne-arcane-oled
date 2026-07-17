@@ -79,7 +79,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS   12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#define SIM_MAX_HP 12
+#define SIM_MAX_HP 8 /* M15 Track T retune: 12 -> 8 so KOs occur in ordinary typing days */
 
 /* ---- combat (M4) ---------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
@@ -134,7 +134,7 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
 #define SIM_MEDIC_TICKS    25  /* ~1 s medic drags the body off */
 #define SIM_REPLACE_TICKS  20  /* ~0.8 s replacement walks in */
 /* total downtime 82 ticks = 3.28 s at 25 Hz — no dead ends: no input needed to progress */
-#define SIM_REGEN_TICKS 750 /* exactly 30 s per regained pip below max */
+#define SIM_REGEN_TICKS 500 /* exactly 20 s per regained pip below max (M15 Track T) */
 #define SIM_ROSTER_N    4      /* cosmetic roster variants cycled per replacement */
 
 // fx kinds; the side names the DEFENDER (whose screen takes the hit/flash).

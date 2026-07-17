@@ -537,7 +537,7 @@ static void test_view_validation(void) {
     duel_view_spell_t spell = duel_view_spell(&view, 0);
     duel_view_wizard_t wizard = duel_view_wizard(&view, 0);
     EXPECT(spell.active && spell.descriptor == w.spell[0].descriptor && spell.progress == 91);
-    EXPECT(wizard.hp == 12 && wizard.ward_strength == 4 && wizard.status == STATUS_FROZEN);
+    EXPECT(wizard.hp == SIM_MAX_HP && wizard.ward_strength == 4 && wizard.status == STATUS_FROZEN);
     duel_view_t bad = view;
     bad.wizard[0][0] = (uint8_t)((bad.wizard[0][0] & 0xf0u) | 13u);
     EXPECT(!duel_view_valid(&bad));
@@ -628,7 +628,8 @@ static void test_compiler_determinism_and_gates(void) {
               SPELL_DESC_ELEMENT(a) == ELEM_FROST && (a & 0xff000000u) == 0 &&
               SPELL_DESC_VALID(a));
 
-    /* Complexity 64 opens fireball/swarm but never beam/singularity. */
+    /* Track T ladder: complexity 64 opens the first four forms (ground wave
+     * joined at the new 48 gate) but never beam/singularity. */
     memset(&inc, 0, sizeof inc);
     inc.key_count = 8;       /* 16 */
     inc.seen_pos = 0xffffu;  /* 48 => 64 */
@@ -637,10 +638,21 @@ static void test_compiler_determinism_and_gates(void) {
     for (uint32_t h = 1; h < 500; h++) {
         inc.hash = h * 2654435761u;
         uint8_t form = SPELL_DESC_FORM(incantation_compile(&inc, 1));
-        EXPECT(form == SPELL_PROJECTILE || form == SPELL_FIREBALL || form == SPELL_SWARM);
+        EXPECT(form == SPELL_PROJECTILE || form == SPELL_FIREBALL ||
+               form == SPELL_SWARM || form == SPELL_GROUND_WAVE);
         saw_non_projectile |= form != SPELL_PROJECTILE;
     }
     EXPECT(saw_non_projectile);
+
+    /* Track T's headline promise: every form is reachable once complexity
+     * hits 160 (the old ladder held the full roster hostage above 224). */
+    sim_incantation_t open = incantation_at_complexity(160u);
+    uint32_t seen_forms = 0;
+    for (uint32_t h = 1; h < 2000; h++) {
+        open.hash = h * 2654435761u;
+        seen_forms |= 1u << SPELL_DESC_FORM(incantation_compile(&open, 0));
+    }
+    EXPECT(open.key_count != 0xffu && seen_forms == 0xffu);
     CHECK(ok, "incantation_compiler_determinism_privacy_and_complexity_gate");
 }
 
@@ -842,24 +854,24 @@ static void test_ward_capacity_semantics(void) {
 static void test_regeneration_boundary_and_hit_reset(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
-    w.wiz[1].hp = 10u;
+    w.wiz[1].hp = SIM_MAX_HP - 2u;
     wait_ticks(&w, SIM_REGEN_TICKS - 1u);
     bool ok = true;
-    EXPECT(w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == 1u);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 2u && w.wiz[1].regen_ticks == 1u);
     wait_ticks(&w, 1u);
-    EXPECT(w.wiz[1].hp == 11u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 1u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
 
     wait_ticks(&w, SIM_REGEN_TICKS - 2u);
     uint32_t chip = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_MID, 1, STATUS_NONE, INTERACT_PHASE,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
     land_spell(&w, 0, chip);
-    EXPECT(w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 2u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
     wait_ticks(&w, SIM_REGEN_TICKS - 1u);
-    EXPECT(w.wiz[1].hp == 10u);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 2u);
     wait_ticks(&w, 1u);
-    EXPECT(w.wiz[1].hp == 11u);
-    CHECK(ok, "incantation_regeneration_exact_30_seconds_and_damage_reset");
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 1u);
+    CHECK(ok, "incantation_regeneration_exact_20_seconds_and_damage_reset");
 }
 
 static void test_damage_heal_ward_and_status(void) {
@@ -871,21 +883,21 @@ static void test_damage_heal_ward_and_status(void) {
     w.wiz[1].ward_strength = 2; w.wiz[1].ward_focus = 2;
     land_spell(&w, 0, damage);
     bool ok = true;
-    EXPECT(w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 2u && w.wiz[1].ward_strength == 0);
 
     uint32_t heal = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_HEAL,
                                     TRAJ_RETURNING, 4, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
     w.wiz[0].hp = 5;
     land_spell(&w, 0, heal);
-    EXPECT(w.wiz[0].hp == 9);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP); /* 5 + 4 clamps at the retuned max */
 
     uint32_t burn = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS,
                                     TRAJ_MID, 3, STATUS_BURNING, INTERACT_SOLID,
                                     TEMPO_RAPID, TREND_STEADY, 0);
     land_spell(&w, 0, burn);
     uint8_t hp = w.wiz[1].hp;
-    EXPECT(w.wiz[1].status == STATUS_BURNING && hp == 10);
+    EXPECT(w.wiz[1].status == STATUS_BURNING && hp == SIM_MAX_HP - 2u);
     while (!w.wiz[1].status_burned) step(&w, 0, 0, 0, 0, NULL, 0);
     EXPECT(w.wiz[1].hp == (uint8_t)(hp - 1u) &&
           w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
@@ -935,7 +947,7 @@ static void test_status_dominance_and_effects(void) {
                                     TRAJ_AREA, 2, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_RAPID, TREND_STEADY, 0);
     land_spell(&w, 0, area);
-    EXPECT(w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 2u && w.wiz[1].ward_strength == 0);
     CHECK(ok, "incantation_status_strength_frozen_disrupted_and_marked_effects");
 }
 
@@ -947,7 +959,7 @@ static void test_form_lifecycles(void) {
                                     TEMPO_RAPID, TREND_STEADY, 0);
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, beam, 0);
     wait_ticks(&w, 5); uint8_t hp = w.wiz[1].hp;
-    EXPECT(hp == 10 && w.spell[0].progress >= 64);
+    EXPECT(hp == SIM_MAX_HP - 2u && w.spell[0].progress >= 64);
     wait_ticks(&w, 32);
     EXPECT(w.wiz[1].hp == hp && !w.spell[0].active);
 
@@ -963,7 +975,7 @@ static void test_form_lifecycles(void) {
                                      TEMPO_FRANTIC, TREND_STEADY, 0);
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, swarm, 0); w.spell[0].aux = 6;
     wait_ticks(&w, 36);
-    EXPECT(!w.spell[0].active && w.wiz[1].hp == 6);
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP - 6u);
     CHECK(ok, "incantation_beam_once_singularity_empty_and_six_orb_lifecycles");
 }
 
@@ -1256,20 +1268,19 @@ static uint32_t prose_workload_first_ko(uint8_t profile) {
 }
 
 static void test_prose_typing_ko_window(void) {
-    /* Track A shortened the healthy window: doorstep residue charges within
-     * a few exchanges and the same-element feed reaction then strengthens
-     * late-flight spells, so first KOs land ~10-15 % earlier than the
-     * pre-residue 60 s floor. 50-180 s is the new guardrail; the Track B/T
-     * HP retune re-measures it (plan §4.4 watch item). */
+    /* Re-measured after the M15 Track T retune (HP 12->8, regen 30->20 s)
+     * plus Track A residue: the three profiles land their first KO at
+     * 846/1222/1562 ticks (~34/49/62 s). 28-150 s is the honest guardrail;
+     * hardware feel review is backlog Q4 (KO cadence must not be restless). */
     bool ok = true;
     for (uint8_t profile = 0; profile < 3u; profile++) {
         uint32_t ko = prose_workload_first_ko(profile);
-        if (ko < 1250u || ko > 4500u)
+        if (ko < 700u || ko > 3750u)
             printf("DIAG prose profile=%u first_ko_ticks=%lu\n", profile,
                    (unsigned long)ko);
-        EXPECT(ko >= 1250u && ko <= 4500u);
+        EXPECT(ko >= 700u && ko <= 3750u);
     }
-    CHECK(ok, "incantation_steady_burst_mixed_prose_first_ko_50_to_180_seconds");
+    CHECK(ok, "incantation_steady_burst_mixed_prose_first_ko_28_to_150_seconds");
 }
 
 static void test_max_cast_aftermath_and_wire(void) {
@@ -1317,7 +1328,7 @@ static void test_fireball_room_resident_object_arc(void) {
                                         TEMPO_FLOWING, TREND_STEADY, 0);
     land_spell(&w, 0, fireball);
     bool ok = true;
-    EXPECT(!w.spell[0].active && w.wiz[1].hp == 9 &&
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP - 3u &&
               w.fx_kind == FX_DETONATE && w.aftermath[1].kind == AFTER_FIRE &&
               w.aftermath[1].resident_state == RESIDENT_PANIC &&
               w.aftermath[1].room_state == ROOM_DISRUPTED &&
@@ -1384,7 +1395,7 @@ static void test_ground_chain_summon_and_trap(void) {
     install_spell(&w, 1, high, 175);
     step(&w, 0, 0, 0, 0, NULL, 0);
     EXPECT(!w.spell[0].active && !w.spell[1].active &&
-          w.wiz[1].hp == 10 && w.fx_kind == FX_DETONATE);
+          w.wiz[1].hp == SIM_MAX_HP - 2u && w.fx_kind == FX_DETONATE);
 
     uint32_t summon = SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE,
                                       TRAJ_RETURNING, 2, STATUS_NONE, INTERACT_SOLID,
@@ -1392,7 +1403,7 @@ static void test_ground_chain_summon_and_trap(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, summon, 0); w.spell[0].aux = 2;
     wait_ticks(&w, 22);
-    EXPECT(!w.spell[0].active && w.wiz[1].hp == 10);
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP - 2u);
     CHECK(ok, "incantation_ground_chain_summon_and_trap_lifecycles");
 }
 
@@ -1412,7 +1423,7 @@ static void test_swarm_gather_launch_and_tempo_motion(void) {
     wait_ticks(&w, 1);
     EXPECT(w.wiz[1].hp == SIM_MAX_HP - 1u && (w.spell[0].progress >> 5) == 5u);
     wait_ticks(&w, 20);
-    EXPECT(!w.spell[0].active && w.wiz[1].hp == 6);
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP - 6u);
 
     uint32_t slow = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_LOW, 1, STATUS_NONE, INTERACT_SOLID,

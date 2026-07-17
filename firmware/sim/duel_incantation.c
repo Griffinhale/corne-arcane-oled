@@ -121,10 +121,14 @@ static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint32_t hash) {
     static const uint8_t forms[8] = { SPELL_PROJECTILE, SPELL_FIREBALL, SPELL_SWARM,
                                       SPELL_GROUND_WAVE, SPELL_BEAM, SPELL_CHAIN,
                                       SPELL_SINGULARITY, SPELL_CONJURE };
-    uint8_t weights[8] = { 5, 2, 2, 2, 2, 2, 1, 1 };
-    uint8_t eligible = complexity < 64u ? 1u : complexity < 96u ? 3u :
-                       complexity < 128u ? 4u : complexity < 160u ? 5u :
-                       complexity < 192u ? 6u : complexity < 224u ? 7u : 8u;
+    /* M15 Track T: SWARM/CHAIN/CONJURE raised from 2/2/1 so the exotic tail
+     * appears at prose complexity. */
+    uint8_t weights[8] = { 5, 2, 3, 2, 2, 3, 1, 2 };
+    /* M15 Track T flattened ladder: 4 forms open by complexity 48, all 8 by
+     * 160 (the old ladder needed 224, which ordinary typing never reached). */
+    uint8_t eligible = complexity < 32u ? 1u : complexity < 48u ? 3u :
+                       complexity < 76u ? 4u : complexity < 104u ? 5u :
+                       complexity < 132u ? 6u : complexity < 160u ? 7u : 8u;
     for (uint8_t i = 0; i < eligible; i++) {
         bool preferred = (variant == 0u && (forms[i] == SPELL_PROJECTILE || forms[i] == SPELL_SWARM)) ||
                          (variant == 1u && (forms[i] == SPELL_FIREBALL || forms[i] == SPELL_GROUND_WAVE)) ||
