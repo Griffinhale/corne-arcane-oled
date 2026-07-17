@@ -29,3 +29,6 @@ artifacts/m13/*.map
 
 # Agent worktrees (auto-managed)
 .claude/worktrees/
+
+# Serena code-intelligence cache
+.serena/

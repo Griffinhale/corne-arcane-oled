@@ -23,6 +23,32 @@ static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
     return hash;
 }
 
+/* --dump-pgm review images: one 67x128 PGM per case — left canvas, a 3-px
+ * mid-grey desk gap, right canvas. tools/contact_sheet.py sheets a directory
+ * of these for the golden re-baseline visual review. */
+static const char *dump_dir;
+
+static void dump_case_pgm(const char *name, const duel_fb_t *left,
+                          const duel_fb_t *right) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s.pgm", dump_dir, name);
+    FILE *file = fopen(path, "w");
+    if (!file) { perror(path); abort(); }
+    const int width = DUEL_CANVAS_W * 2 + 3;
+    fprintf(file, "P2\n%d %d\n255\n", width, DUEL_CANVAS_H);
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        for (int x = 0; x < width; x++) {
+            int value;
+            if (x < DUEL_CANVAS_W) value = duel_fb_get(left, x, y) ? 255 : 0;
+            else if (x < DUEL_CANVAS_W + 3) value = 96;
+            else value = duel_fb_get(right, x - DUEL_CANVAS_W - 3, y) ? 255 : 0;
+            fprintf(file, "%d ", value);
+        }
+        fputc('\n', file);
+    }
+    if (fclose(file) != 0) { perror(path); abort(); }
+}
+
 /* Every case funnels through here: one hashing/registration idiom, one
  * capacity guard. */
 static void record_case(const char *name, const duel_fb_t *left,
@@ -35,6 +61,7 @@ static void record_case(const char *name, const duel_fb_t *left,
     hash = fnv1a(hash, right->bits, sizeof right->bits);
     snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
     cases[ncases++].hash = hash;
+    if (dump_dir) dump_case_pgm(name, left, right);
 }
 
 static void record_render(const char *name, const duel_render_t *render,
@@ -598,7 +625,9 @@ static int verify_golden(const char *path) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 3 && !strcmp(argv[1], "--dump-pgm")) dump_dir = argv[2];
     build_catalog();
+    if (dump_dir) return 0;
     bool unique = true;
     for (size_t i = 0; i < ncases; i++)
         for (size_t j = i + 1; j < ncases; j++) {
@@ -610,6 +639,6 @@ int main(int argc, char **argv) {
     printf("%s visual_incantation_catalog_unique\n", unique ? "PASS" : "FAIL");
     if (argc == 3 && !strcmp(argv[1], "--write-golden"))
         return unique ? write_golden(argv[2]) : 1;
-    if (argc != 2) { fprintf(stderr, "usage: %s [--write-golden] PATH\n", argv[0]); return 2; }
+    if (argc != 2) { fprintf(stderr, "usage: %s [--write-golden PATH | --dump-pgm DIR | PATH]\n", argv[0]); return 2; }
     return unique ? verify_golden(argv[1]) : 1;
 }
