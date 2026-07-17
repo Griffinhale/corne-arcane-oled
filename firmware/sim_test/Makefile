@@ -47,7 +47,6 @@ noalloc-check:
 	done; echo "PASS noalloc-check"
 
 clean:
-	rm -f mechanics_runner visual_runner .noalloc.o \
-	      test_runner_m13 visual_runner_m13
+	rm -f mechanics_runner visual_runner .noalloc.o
 
 .PHONY: test mechanics-test visual-test visual-golden noalloc-check clean
