@@ -32,7 +32,7 @@ qmk compile -kb crkbd/rev1 -km griffin_arcane \
 ```
 
 There are no milestone feature variables. `griffin_arcane` always contains the
-current v10 world, host semantics, secure Vial support, OLED, RGB Matrix, and
+current v11 world, host semantics, secure Vial support, OLED, RGB Matrix, and
 four persistent dynamic keymap layers. `griffin` remains the recovery image.
 
 Use `make release-build` to produce neutral files under `artifacts/release/`
@@ -46,28 +46,21 @@ corne-arcane-diagnostics
 corne-arcane-vial
 ```
 
-Before the rebuilt NixOS configuration is active, the checkout's build result
-can be invoked directly from the repository root:
-
-```bash
-./result/bin/corne-arcane-vial
-```
-
-If the bare command is missing while `corne-arcane-host` exists, the active
-profile is an older package generation; rebuild/apply the configuration that
-imports this checkout rather than launching raw Vial alongside the daemon.
-
-Do not start the raw `vial` binary while the daemon is active. The wrapped
-launcher is the supported entry point because Vial and the daemon share QMK's
-single Raw HID endpoint. The keyboard keeps typing and simulating offline while
-the daemon is paused.
+Do not start the raw `vial` binary while the daemon is active: Vial and the
+daemon share QMK's single Raw HID endpoint, so the wrapped launcher stops the
+daemon, hands off, and restores it on exit. The full handoff contract, the
+`./result/bin/corne-arcane-vial` fallback for before the rebuilt profile is
+active, and the older-generation caveat are in the top-level `README.md`
+§Persistent Vial remapping. The keyboard keeps typing and simulating offline
+while the daemon is paused.
 
 The service retains its D-Bus, event-client, diagnostics, udev, and command
 identities. Package metadata is `0.4.0`.
 
 ## Flashing
 
-Flashing needs the normal QMK udev rules. Never hot-plug TRRS. Power down,
-disconnect the halves, flash the identical current UF2 to each controller, then
-reconnect TRRS while unpowered. The detailed verification and recovery steps
-are in `docs/physical-checklist.md`.
+Flashing needs the normal QMK udev rules. The flash-safety sequence — never
+hot-plug TRRS, power down, separate the halves, flash the identical UF2 to each
+controller, reconnect TRRS unpowered — and the recovery route are in the
+top-level `README.md` §Flash safely and §Recovery; the detailed physical
+verification and recovery steps are in `docs/physical-checklist.md`.

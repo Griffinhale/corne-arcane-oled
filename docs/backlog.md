@@ -36,16 +36,17 @@ product/design discussion before implementation.
 
 ## Architecture constraints for any next milestone
 
-- The split v10 packet is exactly 32 bytes. New authoritative or synchronized
+- The split v11 packet is exactly 32 bytes. New authoritative or synchronized
   presentation state requires repacking, state reuse, derivation, or a new
-  version; there is no inherited five-byte v8 reserve.
+  version; the v11 Track P repack already spent the bits it freed, so no wire
+  reserve remains.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
   interface. The safe launcher hands that one endpoint between the daemon and
   Vial; a future integration must preserve exclusive ownership.
-- The unified release is 72,164 flash bytes and 13,480 bytes of static RAM;
-  the diagnostic image is 73,288 and 13,608 bytes respectively. Future content
-  needs an explicit flash budget and must preserve at least the accepted safety
-  reserve or revise the budget intentionally.
+- Current flash and static-RAM figures are the single source of truth in
+  `acceptance.md` §Resource measurements. Future content needs an explicit flash
+  budget and must preserve at least the accepted safety reserve or revise the
+  budget intentionally.
 - Static RAM growth, stack headroom, split/OLED timing, no-allocation gates,
   power policy, stale-link recovery, and exact visual/determinism tests remain
   release gates.

@@ -57,6 +57,7 @@ qmk compile -kb crkbd/rev1 -km griffin_arcane \
   -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
 ```
 
-Flash the same UF2 to both halves separately. Never connect or disconnect TRRS
-while either half is powered. Keep `griffin` and a known-good UF2 as the stable
-recovery route.
+Flash the same UF2 to both halves separately. The flash-safety and recovery
+procedure — never hot-plug TRRS while a half is powered, keep `griffin` and a
+known-good UF2 as the recovery route — is in the top-level `README.md`
+§Flash safely and §Recovery.

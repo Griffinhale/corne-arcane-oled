@@ -13,11 +13,11 @@ The package retains these public identities:
 - `io.github.Griffinhale.CorneArcane` on the session bus
 - `corne-arcane-host.service`
 
-It adds `corne-arcane-vial`, the only supported Vial entry point. Because Vial
-and the daemon share one Raw HID endpoint, the launcher records whether the
-service is active, stops it, waits for its hidraw handle to close, runs Vial,
-and restores the service on normal, error, or signal exit only if it was active
-before launch.
+It adds `corne-arcane-vial`, the only supported Vial entry point, because Vial
+and the daemon share one Raw HID endpoint. The launcher's daemon-handoff
+contract — stop the service, wait for its hidraw handle to close, run Vial, and
+restore the service on any exit only if it was active before launch — is
+documented in the top-level `README.md` §Persistent Vial remapping.
 
 ## Raw HID exchange
 
