@@ -106,8 +106,8 @@ untouched.
 
 **Status: complete** (geography landed 2026-07-16, weight pass 2026-07-17):
 tower + peaks + windows + balcony, deck + crenellations, stone-course
-border, arcing celestial (4 coarse positions pending the v11 sub-phase),
-alert banner on the shaft, scry alert summary relocated to the gap-side
+border, arcing celestial (the full 16-step arc landed with Track P's v11
+sub-phase; consumed at duel_draw.c:66), alert banner on the shaft, scry alert summary relocated to the gap-side
 strip (the peak art is asymmetric and the scry mirror contract requires
 symmetric instrument cells), collection runes moved below the balcony
 (their old rows became the slab), wonder wave retired, big-cast tower glow
@@ -198,11 +198,17 @@ review; mockup `mockup2.py` / `mockup-v2.png`):
   the wire, duel_view.c:44–49); it replaces the wonder wave as the
   "civic-scale event" visual, and residents already look up
   (`RESIDENT_WATCH_CAST`).
-- **Open design item**: the HP pips currently float beside the wizard; with
-  the shaft available they could become lit shaft windows going dark as
-  damage lands (8 slots after the §4.4 retune) — diegetic health. Lifecycle
-  tableaus (collapse/downed/medic/replace) restage on the balcony; the
-  medic enters from the shaft doorway behind it.
+- **Open design item — resolved, implemented 2026-07-17 (M15 close-out)**:
+  the HP pips became the shaft's lower window tier — eight 2x2 lit windows,
+  two columns (gapward x7-8, outer x3-4) by four rows (y44-57), each row
+  filling gapward then outward, bottom-up, so damage darkens the shaft from
+  the top. The pip column's presence-is-HP grammar, fill order, and mirror
+  math carry over unchanged; the upper sky window (y20-23) keeps the
+  day/night read. The lost-pip impact flash re-anchored as a four-corner
+  frame around the window that just went dark. The second half of the
+  original idea — restaging lifecycle tableaus (collapse/downed/medic/
+  replace) on the balcony — was not adopted: lifecycle stays on the deck,
+  and only the Track B calm stances use the balcony.
 
 ### 2.2 Foundation band (y 111–127, reclaimed from the dead band)
 
@@ -549,14 +555,25 @@ the 512 B ceiling. `duel_render_t` stays within its 40 B assert
 
 1. Wave identity: is the WONDER ripple the one? (Verified together in the
    previewer at the start of Track G; §1.1 lists two alternates.)
+   **Resolved by landing** — the wonder wave was retired with Track G; desk
+   confirmation rides the M15 physical checklist.
 2. Crown forms: minaret + signal mast as proposed, or symmetric minarets?
+   **Resolved by landing** — astral taper/dome/finial vs mechanical
+   crenellated cap/beacon mast shipped with Track G; desk confirmation
+   pending in the physical checklist.
 3. Alert instrument: bell (astral) / beacon cage (mechanical) acceptable as
    the *only* passive alert surface, with scry keeping the detailed panel?
+   **Resolved by landing** — the alert shipped as the shaft banner (category
+   glyph, priority rails, age accents) rather than a bell/lamp; scry keeps
+   its panel. Desk confirmation pending in the physical checklist.
 4. HP 8 vs 10 — how frequent should KOs feel? (Tunable after T on hardware.
    Desktop measurement after T+B: first prose KO at ~16/55/42 s across the
    three profiles; the 16 s profile is the mirror-variant opening spiral
-   described in §4's status note. Judge on the desk.)
+   described in §4's status note. Judge on the desk.) **Still open** —
+   desk-side; the verdict is the first v12 tuning input (backlog).
 5. Stance set: MEDITATE/STUDY/FORTIFY mechanical + PACE/TAUNT cosmetic — cut
    or add any before art lands? (Minimal PACE/TAUNT art landed with Track B:
    a shuffle table and a staff flourish, a few dozen bytes — still cheap to
    trim at the §8 second-overrun step.)
+   **Answered 2026-07-17**: keep the five-stance set as landed; PACE/TAUNT
+   remains the designated second-overrun trim.

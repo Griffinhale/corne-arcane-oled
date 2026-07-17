@@ -54,6 +54,27 @@ product/design discussion before implementation.
   streamed framebuffers without an explicit product-level reversal of the
   current scope guards.
 
+## v12 seeds (recorded at the M15 close-out, 2026-07-17)
+
+Concrete inputs for the next protocol version, carried over from M15:
+
+- **Field objects (Track C)**: ejected at the 2026-07-17 C gate on flash
+  budget (~1.4 KiB projected against a milestone sitting 464 B under the
+  margin line without it). Design of record in the M15 plan §7: a 2-entry
+  field array (kind/zone/age/owner, 1 byte each on the wire), slot transfer
+  when a trap arms or a singularity matures so the caster's in-flight slot
+  frees, and an additive collision-ladder check before the spell-vs-spell
+  ladder. Needs 2 wire bytes — the impetus for v12.
+- **Descriptor wire compression**: drop the 4 interaction bits by
+  substituting SOLID for COMBINE on the slave — the C-gate spike proved the
+  slave-observable projection exact over the full compile domain, and the
+  render-parity guard test now in the mechanics suite
+  (`incantation_render_combine_solid_parity_all_elements_forms`) fails the
+  moment a slave-side COMBINE visual appears. `variance`-by-session-seed
+  frees 4 more bits (presentation jitter only; goldens re-baseline then).
+- **HP tuning**: the desk-side 8-vs-10 HP verdict (M15 plan §10 Q4, judged
+  during the M15 physical checklist) is the first v12 tuning input.
+
 ## Questions to settle before coding
 
 1. Which direction adds the most ambient value after Observatory acceptance:

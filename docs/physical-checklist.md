@@ -203,8 +203,11 @@ behind the M14 record above — flashing stays gated until it completes.
 
 - [ ] Verify the full-height wizard towers at desk distance: astral peak
   (taper/dome/finial) vs mechanical peak (crenellation/beacon mast), shaft
-  windows reading the sky phase, stone-course bottom border, and the §2.0
-  weight-pass silhouettes (wizard mass, spell presence, ward arcs).
+  windows reading the sky phase, the HP window tier (the shaft's lower two
+  columns of 2x2 windows going dark from the top as damage lands — check
+  the health ladder at 8/6/3/1/0 on both halves), stone-course bottom
+  border, and the §2.0 weight-pass silhouettes (wizard mass, spell
+  presence, ward arcs).
 - [ ] Verify battlefield residue marks are legible at desk distance (marks
   are 1-4 px: force mound, ember column, frost shards, void pit), build
   during ordinary dueling, and fade on the ~45 s per-step clock.
@@ -222,8 +225,10 @@ behind the M14 record above — flashing stays gated until it completes.
   idle presentation on an unhurt neutral wizard. Balcony figures must be
   legible at desk distance.
 - [ ] Judge KO cadence over a normal typing day after the HP 8 / 20 s regen
-  retune plus temperament escalation (backlog Q4: measured desktop floor is
-  ~16 s to first blood in sustained steady prose — decide 8 vs 10 HP here).
+  retune plus temperament escalation — health now reads as the shaft's
+  lower window tier going dark, not a pip column (backlog Q4: measured
+  desktop floor is ~16 s to first blood in sustained steady prose — decide
+  8 vs 10 HP here; the verdict feeds v12 tuning).
 - [ ] Confirm doctrine texture: replacement wizards (variant cycle) visibly
   change element mix via affinity, and temperament shows in windup pace and
   form choice after damage swings.
