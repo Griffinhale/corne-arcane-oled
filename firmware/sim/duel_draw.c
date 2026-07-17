@@ -99,7 +99,7 @@ static void draw_sky(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
  * (left): taper, dome, and finial; mechanical (right): crenellated cap and
  * beacon mast. The gap-side balcony partway up is the future big-cast/
  * stance station; the peak is never occupied. The single shaft window reads
- * the sky phase (outlined by day, lit from dusk onward), and the HP pips
+ * the sky phase (outlined by day, lit from dusk onward), and the HP windows
  * drawn later land inside the shaft as its lower tier of lights. */
 static void draw_wizard_tower(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 #define TWR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
@@ -1618,29 +1618,35 @@ static void draw_local_attunement(duel_fb_t *fb, const duel_render_t *r,
     incantation_resident_draw_attunement(fb, is_left, DUEL_CIVIC_FLOOR(r->civic));
 }
 
-/* HP pip geometry: eight 2x1 pips in two columns attached low beside the
- * wizard. Each row fills gapward then outward, so damage clears from the top.
- * Single source for the clear, fill, and lost-pip flash sites. */
-static void hp_pip_xy(int i, bool is_left, int *px, int *py) {
-    int canonical_x = (i & 1) ? 4 : 7;
+/* Diegetic HP: eight 2x2 lit windows stacked as the shaft's lower tier, two
+ * columns (gapward x7-8, outer x3-4) by four rows between the banner field
+ * and the base flare. Each row fills gapward then outward, bottom-up, so
+ * damage darkens the shaft from the top. Single source for the clear, fill,
+ * and lost-window flash sites. */
+static void hp_window_xy(int i, bool is_left, int *px, int *py) {
+    int canonical_x = (i & 1) ? 3 : 7;
     *px = is_left ? canonical_x : DUEL_CANVAS_W - 2 - canonical_x;
-    *py = 57 - (i / 2) * 2;
+    *py = 56 - (i / 2) * 4;
 }
 
-static void draw_hp_pips(duel_fb_t *fb, const duel_view_wizard_t *wz, bool is_left) {
+static void draw_hp_windows(duel_fb_t *fb, const duel_view_wizard_t *wz, bool is_left) {
     /* The health instrument owns its exact cells even while medics and
      * replacement silhouettes cross the away-side rooftop entrance. */
     int px, py;
     for (int i = 0; i < SIM_MAX_HP; i++) {
-        hp_pip_xy(i, is_left, &px, &py);
-        duel_fb_px(fb, px, py, false);
-        duel_fb_px(fb, px + 1, py, false);
+        hp_window_xy(i, is_left, &px, &py);
+        for (int dy = 0; dy < 2; dy++) {
+            duel_fb_px(fb, px, py + dy, false);
+            duel_fb_px(fb, px + 1, py + dy, false);
+        }
     }
     int hp = wz->hp > SIM_MAX_HP ? SIM_MAX_HP : wz->hp;
     for (int i = 0; i < hp; i++) {
-        hp_pip_xy(i, is_left, &px, &py);
-        duel_fb_px(fb, px, py, true);
-        duel_fb_px(fb, px + 1, py, true);
+        hp_window_xy(i, is_left, &px, &py);
+        for (int dy = 0; dy < 2; dy++) {
+            duel_fb_px(fb, px, py + dy, true);
+            duel_fb_px(fb, px + 1, py + dy, true);
+        }
     }
 }
 
@@ -1656,8 +1662,8 @@ static void draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
 
     if (is_impact) {
         // Force enters from the gap: contact burst, inward shock line,
-        // local debris, recoil above, and a flashing marker at the pip that
-        // just disappeared. Only the defender's border corners twitch.
+        // local debris, recoil above, and a flashing frame at the shaft
+        // window that just went dark. Only the defender's border corners twitch.
         // M15 weight pass: the flourish scales one presentation tier up.
         if (tier < SPELL_TIER_SATURATED) tier++;
         int hx    = 16 + facing * 5;
@@ -1684,9 +1690,11 @@ static void draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
         }
         if (wz->hp < SIM_MAX_HP) {
             int px, py;
-            hp_pip_xy(wz->hp, is_left, &px, &py);
+            hp_window_xy(wz->hp, is_left, &px, &py);
             duel_fb_px(fb, px - 1, py - 1, true);
             duel_fb_px(fb, px + 2, py - 1, true);
+            duel_fb_px(fb, px - 1, py + 2, true);
+            duel_fb_px(fb, px + 2, py + 2, true);
         }
     } else if (is_fizzle) {
         // Harmless dissipation stays away from the body and contracts from
@@ -1986,8 +1994,8 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
 
     draw_incantation_reaction(fb, r->flash_kind, is_left, r->flash_frames);
 
-    // HP pips for THIS half's wizard.
-    draw_hp_pips(fb, wz, is_left);
+    // HP shaft windows for THIS half's wizard.
+    draw_hp_windows(fb, wz, is_left);
 
     // One-shot outcomes use three deliberately different grammars.
     if (local_fx) draw_local_fx(fb, r, wz, facing, is_left);

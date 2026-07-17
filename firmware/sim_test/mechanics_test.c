@@ -2031,11 +2031,13 @@ static void test_render_interaction_combine_solid_parity(void) {
     CHECK(ok, "incantation_render_combine_solid_parity_all_elements_forms");
 }
 
+/* Mirrors hp_window_xy: 2x2 lit windows, gapward column x7-8, outer x3-4,
+ * rows bottom-up at y56/52/48/44 (each window owns py and py+1). */
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
-    int canonical_x = (hp_index & 1) ? 4 : 7;
+    int canonical_x = (hp_index & 1) ? 3 : 7;
     int px = is_left ? canonical_x : DUEL_CANVAS_W - 2 - canonical_x;
-    int py = 57 - (hp_index / 2) * 2;
-    return y == py && (x == px || x == px + 1);
+    int py = 56 - (hp_index / 2) * 4;
+    return (y == py || y == py + 1) && (x == px || x == px + 1);
 }
 
 static void test_health_grid_geometry_and_lifecycles(void) {
@@ -2048,8 +2050,8 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             duel_render_t r = {0}; duel_render_from_world(&r, &w);
             duel_fb_t fb; incantation_render(&fb, &r, side == 0u, false);
             unsigned lit = 0;
-            for (int y = 47; y <= 57; y++) {
-                for (int x = 4; x <= 8; x++) {
+            for (int y = 44; y <= 57; y++) {
+                for (int x = 3; x <= 8; x++) {
                     int sx = side == 0u ? x : DUEL_CANVAS_W - 1 - x;
                     bool expected = false;
                     for (int i = 0; i < hp; i++) expected |= health_pixel(side == 0u, i, sx, y);
@@ -2061,7 +2063,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
                     lit += actual;
                 }
             }
-            EXPECT(lit == 2u * hp);
+            EXPECT(lit == 4u * hp);
         }
     }
 
@@ -2085,7 +2087,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             duel_fb_t grid; incantation_render(&grid, &full, side == 0u, false);
             for (int i = 0; i < SIM_MAX_HP; i++) {
                 for (int x = 0; x < DUEL_CANVAS_W; x++)
-                    for (int y = 47; y <= 57; y++)
+                    for (int y = 44; y <= 57; y++)
                         if (health_pixel(side == 0u, i, x, y))
                             if (duel_fb_get(&zero, x, y) || !duel_fb_get(&grid, x, y)) {
                                 printf("DIAG health-pose side=%u state=%zu x=%d y=%d zero=%u full=%u\n",
@@ -2095,7 +2097,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
                             }
             }
         }
-    CHECK(ok, "incantation_health_0_12_two_pixels_bottom_up_mirror_5x11_pose_clearance");
+    CHECK(ok, "incantation_health_0_8_window_2x2_bottom_up_mirror_6x14_pose_clearance");
 }
 
 static void test_local_layer_attunement(void) {
