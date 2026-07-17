@@ -32,8 +32,8 @@ narrowed to a wrapping byte (+8), the view's fx byte lends its high nibble
 (+4), and the reserved bits of `flags` (+5), `civic` (+2), and `secondary`
 (+3) were allocated — and spent exactly 22: four battlefield-residue zones
 (4 × 4, Track A), two wizard stances (2 × 2, Track B), and the sky sub-phase
-(2). Residue and stance fields ship zeroed until their tracks land; the sky
-sub-phase is live.
+(2). Residue and the sky sub-phase are live; the stance field ships zeroed
+until Track B lands.
 
 | Offset | Size | Field | Allocation |
 |---:|---:|---|---|
@@ -63,8 +63,11 @@ empty, whose canonical form requires element `0` (validators reject
 non-canonical zones). Zone 3 is the one field that straddles bytes — its
 intensity low bit rides `flags.7` and its high bit `secondary.7`; the
 `duel_snapshot_residue_*` accessors in `duel_proto.h` are the only sanctioned
-door. The master writes residue bits after `duel_snapshot_set_civic`, which
-zeroes them.
+door. The encoder fills every zone from the authoritative
+`sim_world_t.residue`; `duel_snapshot_set_civic` masks the borrowed bits out
+of its incoming civic/secondary semantics and preserves the encoder's values,
+so no call ordering is required. Decay timers are master-local and never
+cross the wire.
 
 Within the 19-byte view, the former `fx_seq` byte is now `fx_stance`: bits
 0–3 carry the one-shot outcome sequence (wraps at 16; every consumer compares

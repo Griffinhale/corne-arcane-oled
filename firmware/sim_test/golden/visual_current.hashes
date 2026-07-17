@@ -90,6 +90,11 @@ sky_arc_dawn_sub3 fb8e64704b6863b1
 sky_arc_day_sub2 4c579dbdf134aa5d
 sky_arc_dusk_sub2 bdc7d2ab411d60a6
 sky_arc_night_sub2 48daaa8488678ca8
+residue_force_ramp 14eac16a733fd48c
+residue_ember_ramp 990a88cf020820c2
+residue_frost_ramp a2480bd9f57176ba
+residue_void_ramp 78ed7ff60b795a98
+residue_mixed_history c67f7a288cf7e482
 typing_deliberate bf6e93701a1a626d
 typing_flowing 323e551260d7d9f5
 typing_rapid 0448cd1c585c24b7

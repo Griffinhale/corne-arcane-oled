@@ -416,16 +416,24 @@ static void duel_master_tx(uint32_t now, bool urgent) {
     uint8_t flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(duel_display.phase);
     duel_view_t candidate_view;
     duel_view_from_world(&duel_world, &candidate_view);
+    // The encoder scatters residue (Track A) into the flags/civic/secondary
+    // spare bits, so those comparisons mask residue out and the residue
+    // change check runs separately against the world's packed zones.
+    uint8_t residue_now[2], residue_sent[2];
+    duel_residue_pack(&duel_world, residue_now);
+    duel_snapshot_residue_render(&duel_last_tx, residue_sent);
     bool semantic_changed = !duel_tx_policy.have_sent ||
                             memcmp(&candidate_view, &duel_last_tx.view,
                                    sizeof candidate_view) != 0 ||
                             external != duel_last_tx.external ||
                             alert != duel_last_tx.alert ||
-                            civic != duel_last_tx.civic ||
-                            secondary != duel_last_tx.secondary ||
+                            civic != (uint8_t)(duel_last_tx.civic & ~DUEL_CIVIC_RESIDUE_BITS) ||
+                            secondary != (uint8_t)(duel_last_tx.secondary & ~DUEL_SECONDARY_RESIDUE_BITS) ||
                             duel_civic_shared.shared_pres != duel_last_tx.shared_pres ||
                             duel_civic_shared.revision != duel_last_tx.revision ||
-                            flags != duel_last_tx.flags;
+                            flags != (uint8_t)(duel_last_tx.flags & ~DUEL_FLAGS_RESIDUE_BITS) ||
+                            residue_now[0] != residue_sent[0] ||
+                            residue_now[1] != residue_sent[1];
     if (!duel_tx_attempt(&duel_tx_policy, now, urgent, fx_changed,
                          semantic_changed)) return;
 
@@ -557,8 +565,13 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked,
         if (decide.base_refresh || display_changed) {
             duel_render.view = duel_rx.last.view;
             duel_render_set_external(duel_rx.last.external, duel_rx.last.alert);
-            duel_render_set_civic(now, duel_rx.last.civic, duel_rx.last.secondary,
+            // Residue borrows civic bits 6-7 / secondary bit 7 on the wire;
+            // strip them so render civic semantics match the master's.
+            duel_render_set_civic(now,
+                                  (uint8_t)(duel_rx.last.civic & ~DUEL_CIVIC_RESIDUE_BITS),
+                                  (uint8_t)(duel_rx.last.secondary & ~DUEL_SECONDARY_RESIDUE_BITS),
                                   duel_rx.last.shared_pres, duel_rx.last.revision);
+            duel_snapshot_residue_render(&duel_rx.last, duel_render.residue);
             duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
         }
     } else {

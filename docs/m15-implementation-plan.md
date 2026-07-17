@@ -228,6 +228,21 @@ gallery is re-accepted once, not per-track.
 
 ## 3. Track A — battlefield residue (authoritative, session-scale)
 
+**Status: complete** (landed 2026-07-17, on top of the v11 repack):
+`sim_world_t.residue[4]` with `residue_step` pinned between `collision_step`
+and `spell_step`; the full deposit table (impact/fizzle doorsteps,
+ember×frost clash mids, singularity void scar, fire/repair aftermath hooks),
+the ×5-prescaled 45 s decay clock, and all four transmutation rows with the
+once-per-spell flag in `sp->resolved` bit 7. The encoder fills the v11 zones
+from the world and `duel_snapshot_set_civic` now preserves the borrowed
+zone-3 bits (no ordering rule). Deck marks render at mirrored battlefield
+anchors (u 13/48/207/242 → x 23/26 left, 5/8 right), horizontally symmetric
+per element — force mound, ember flame column, frost twin shards, and void
+eating a literal hole in the deck; density scales with intensity. Two new
+mechanics tests plus five golden scenes (355 total); the prose-KO guardrail
+widened to 50–180 s (the feed reaction lands first KOs ~10-15 % earlier —
+re-measured at the Track B/T HP retune).
+
 ### 3.1 Sim design
 
 Four fixed zones on the u-axis (0–255): doorstep-L (u~8–48), mid-L

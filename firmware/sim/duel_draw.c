@@ -20,6 +20,7 @@ void duel_render_from_world(duel_render_t *render, const sim_world_t *world) {
     duel_view_from_world(world, &render->view);
     render->shared_pres = incantation_aftermath_shared(world);
     render->revision = incantation_aftermath_revision(world);
+    duel_residue_pack(world, render->residue);
 }
 
 static uint8_t render_host(const duel_render_t *render) {
@@ -1695,6 +1696,64 @@ static void draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
     }
 }
 
+/* Battlefield residue marks (M15 Track A): the duel's session-scale history
+ * sits on the rooftop deck directly under the spell lanes, at each zone's
+ * battlefield position. Each canvas shows its own two zones (the other two
+ * live across the gap). Element picks the mark's shape, intensity its
+ * density; every pattern is horizontally symmetric, so the desk-mirror
+ * contract holds without per-side flips. Void residue is the exception that
+ * proves the deck is real: it eats a hole in the deck rows instead of adding
+ * pixels. Anchor u values keep the marks clear of the crenellation teeth
+ * (x28-29 / x2-3) and mirror exactly (13<->242, 48<->207). Wards and local
+ * fx draw later and may transiently overlap — combat happens on top of its
+ * own history. */
+static void draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+    static const uint8_t zone_anchor_u[SIM_RESIDUE_ZONES] = { 13u, 48u, 207u, 242u };
+    for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++) {
+        uint8_t intensity = DUEL_RENDER_RESIDUE_INTENSITY(r, zone);
+        if (!intensity) continue;
+        int x;
+        if (!duel_battlefield_to_x(zone_anchor_u[zone], is_left, &x)) continue;
+        int base = DUEL_DECK_Y0 - 1;
+        switch (DUEL_RENDER_RESIDUE_ELEMENT(r, zone)) {
+            case ELEM_FORCE: /* rubble mound spreading, then heaping */
+                duel_fb_px(fb, x, base, true);
+                if (intensity >= 2) {
+                    duel_fb_px(fb, x - 1, base, true);
+                    duel_fb_px(fb, x + 1, base, true);
+                }
+                if (intensity >= 3) duel_fb_px(fb, x, base - 1, true);
+                break;
+            case ELEM_EMBER: /* flame column rising, then a glowing bed */
+                duel_fb_px(fb, x, base, true);
+                duel_fb_px(fb, x, base - 1, true);
+                if (intensity >= 2) duel_fb_px(fb, x, base - 2, true);
+                if (intensity >= 3) {
+                    duel_fb_px(fb, x - 1, base, true);
+                    duel_fb_px(fb, x + 1, base, true);
+                }
+                break;
+            case ELEM_FROST: /* twin shards growing, then a centre spire */
+                duel_fb_px(fb, x - 1, base, true);
+                duel_fb_px(fb, x + 1, base, true);
+                if (intensity >= 2) {
+                    duel_fb_px(fb, x - 1, base - 1, true);
+                    duel_fb_px(fb, x + 1, base - 1, true);
+                }
+                if (intensity >= 3) duel_fb_px(fb, x, base - 2, true);
+                break;
+            default: /* ELEM_VOID: a pit widening, then biting the beam */
+                duel_fb_px(fb, x, DUEL_DECK_Y0, false);
+                if (intensity >= 2) {
+                    duel_fb_px(fb, x - 1, DUEL_DECK_Y0, false);
+                    duel_fb_px(fb, x + 1, DUEL_DECK_Y0, false);
+                }
+                if (intensity >= 3) duel_fb_px(fb, x, DUEL_FLOOR_BEAM_Y, false);
+                break;
+        }
+    }
+}
+
 void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame, bool debug_hud) {
     int side = is_left ? SIM_SIDE_L : SIM_SIDE_R;
     duel_view_wizard_t wizard = duel_view_wizard(&r->view, (uint8_t)side);
@@ -1720,6 +1779,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     draw_sky(fb, r, is_left);
     draw_wizard_tower(fb, r, is_left);
     draw_floor(fb, r, is_left);
+    draw_residue(fb, r, is_left);
     if (!(r->revision & INCANTATION_AFTERMATH_WIRE) &&
         DUEL_CIVIC_FLOOR(r->civic) != DUEL_CIVIC_FLOOR_SPECIAL) {
         draw_courier(fb, r, is_left);

@@ -106,6 +106,12 @@ typedef struct {
 _Static_assert(sizeof(duel_view_t) == 19, "current canonical view must be exactly 19 bytes");
 
 void duel_view_from_world(const sim_world_t *world, duel_view_t *view);
+/* Track A: pack the four residue zones as two nibble-pair bytes — zones 0-1
+ * into out[0] (exactly the v11 snapshot residue byte: elem[0:1] int[2:3] per
+ * zone, low zone first) and zones 2-3 into out[1] in the same grammar. The
+ * encoder, the master's render fill, and the slave's snapshot unpack all
+ * speak this one layout. */
+void duel_residue_pack(const sim_world_t *world, uint8_t out[2]);
 void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world);
 bool duel_view_valid(const duel_view_t *view);
 duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side);

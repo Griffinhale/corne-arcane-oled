@@ -39,9 +39,11 @@
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
 
-/* Battlefield residue zones on the duel u-axis (Track A fills them; v11
- * carries them zeroed). Zones 0-1 pack into the dedicated residue byte,
- * zone 2 into flags, zone 3 across civic/flags/secondary spare bits. */
+/* Battlefield residue zones on the duel u-axis, live since Track A (the
+ * encoder fills them from sim_world_t.residue). Zones 0-1 pack into the
+ * dedicated residue byte, zone 2 into flags, zone 3 across the
+ * civic/flags/secondary spare bits. Mirrors the SIM_RESIDUE_* enum
+ * (static-asserted in duel_proto.c). */
 enum {
     DUEL_RESIDUE_DOORSTEP_L = 0,
     DUEL_RESIDUE_MID_L,
@@ -49,6 +51,15 @@ enum {
     DUEL_RESIDUE_DOORSTEP_R,
     DUEL_RESIDUE_ZONES,
 };
+
+/* Residue's borrowed bits inside the shared bytes: zone 2 plus zone 3's
+ * intensity low bit in flags, zone 3's element in civic, zone 3's intensity
+ * high bit in secondary. The change detector in the master glue masks these
+ * out when comparing civic semantics, and duel_snapshot_set_civic preserves
+ * them across a civic rewrite. */
+#define DUEL_FLAGS_RESIDUE_BITS     0xF8u
+#define DUEL_CIVIC_RESIDUE_BITS     0xC0u
+#define DUEL_SECONDARY_RESIDUE_BITS 0x80u
 
 typedef struct __attribute__((packed)) {
     uint8_t  magic;        /* DUEL_MAGIC */
@@ -110,20 +121,24 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
 // tests rely on that prefill — do not "simplify" it away); the master glue
 // (keymap.c) then overwrites all four bytes via this call to relay the
 // current civic state, including its own aftermath override.
-// v11 ORDERING: civic bits6-7 and secondary bit7 belong to residue zone 3,
-// which this call zeroes along with the rest of both bytes — any
-// duel_snapshot_set_residue calls must come AFTER set_civic.
+// v11: civic bits6-7 and secondary bit7 belong to residue zone 3, which the
+// encoder fills from the world (Track A). This call masks them out of the
+// incoming semantics and preserves the encoder's bits, so callers need no
+// ordering dance.
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision);
 
 /* v11 residue accessors — the only sanctioned door to the scattered zone
  * bits (zone 3 straddles civic/flags/secondary). The setter recomputes the
  * CRC. Elements reuse ELEM_*; intensity 0 means empty and its canonical
- * form requires element 0 (the validator rejects non-canonical zones). */
+ * form requires element 0 (the validator rejects non-canonical zones).
+ * duel_snapshot_residue_render repacks all four zones into the two-byte
+ * duel_render_t grammar (see duel_residue_pack) for the slave's render fill. */
 uint8_t duel_snapshot_residue_element(const duel_snapshot_t *p, uint8_t zone);
 uint8_t duel_snapshot_residue_intensity(const duel_snapshot_t *p, uint8_t zone);
 void duel_snapshot_set_residue(duel_snapshot_t *p, uint8_t zone,
                                uint8_t element, uint8_t intensity);
+void duel_snapshot_residue_render(const duel_snapshot_t *p, uint8_t out[2]);
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.

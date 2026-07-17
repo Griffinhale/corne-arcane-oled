@@ -24,6 +24,45 @@ static uint8_t popcount24(uint32_t v) {
     return n;
 }
 
+/* ---- battlefield residue (M15 Track A) ----------------------------------
+ * Deposits overwrite the zone's element (the newest event owns the mark),
+ * saturate intensity at SIM_RESIDUE_MAX_INTENSITY, and restart the ~45 s
+ * decay clock. Weakening (decay, repair, transmutation) steps intensity
+ * down and keeps the zone canonical: empty means element 0. */
+static void residue_deposit(sim_world_t *w, uint8_t zone, uint8_t element,
+                            uint8_t amount) {
+    sim_residue_t *rz = &w->residue[zone];
+    rz->element   = (uint8_t)(element & 3u);
+    rz->intensity = min_u8((uint8_t)(rz->intensity + amount),
+                           SIM_RESIDUE_MAX_INTENSITY);
+    rz->decay     = SIM_RESIDUE_DECAY_UNITS;
+}
+
+static void residue_weaken(sim_world_t *w, uint8_t zone) {
+    sim_residue_t *rz = &w->residue[zone];
+    if (!rz->intensity) return;
+    if (--rz->intensity) {
+        rz->decay = SIM_RESIDUE_DECAY_UNITS;
+    } else {
+        rz->element = 0;
+        rz->decay   = 0;
+    }
+}
+
+static uint8_t residue_doorstep_zone(uint8_t side) {
+    return side == SIM_SIDE_L ? SIM_RESIDUE_DOORSTEP_L : SIM_RESIDUE_DOORSTEP_R;
+}
+
+static uint8_t residue_mid_zone(uint8_t side) {
+    return side == SIM_SIDE_L ? SIM_RESIDUE_MID_L : SIM_RESIDUE_MID_R;
+}
+
+static uint8_t residue_zone_for_u(uint8_t u) {
+    if (u < 8u || u > 248u) return SIM_RESIDUE_ZONES; /* off the battlefield */
+    return u < 48u ? SIM_RESIDUE_DOORSTEP_L : u < 128u ? SIM_RESIDUE_MID_L :
+           u < 208u ? SIM_RESIDUE_MID_R : SIM_RESIDUE_DOORSTEP_R;
+}
+
 static uint8_t gap_bucket(uint8_t ticks) {
     return ticks <= 1u ? TEMPO_FRANTIC : ticks <= 2u ? TEMPO_RAPID :
            ticks <= 4u ? TEMPO_FLOWING : TEMPO_DELIBERATE;
@@ -188,6 +227,10 @@ static uint32_t desc_set_magnitude(uint32_t desc, uint8_t magnitude) {
     return (desc & ~(3u << 10)) | ((uint32_t)(magnitude - 1u) << 10);
 }
 
+static uint32_t desc_set_trajectory(uint32_t desc, uint8_t trajectory) {
+    return (desc & ~((uint32_t)7u << 7)) | ((uint32_t)(trajectory & 7u) << 7);
+}
+
 static uint8_t aftermath_duration(uint8_t kind) {
     switch (kind) {
         case AFTER_FIRE: return SIM_AFTER_FIRE_TICKS;
@@ -259,6 +302,10 @@ static void aftermath_start(sim_world_t *w, uint8_t side, uint8_t kind,
     after->ticks = aftermath_duration(kind);
     after->intensity = min_u8(intensity ? intensity : 1u, 4u);
     aftermath_derive(after);
+    /* Track A: aftermaths that visibly change the battlefield mark it. A
+     * fire scorches the side's doorstep; a repair crew also sweeps it. */
+    if (kind == AFTER_FIRE) residue_deposit(w, residue_doorstep_zone(side), ELEM_EMBER, 1u);
+    else if (kind == AFTER_REPAIR) residue_weaken(w, residue_doorstep_zone(side));
 }
 
 static void aftermath_step(sim_world_t *w) {
@@ -400,6 +447,10 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
 
     sim_wizard_t *def = &w->wiz[opponent];
     if (def->life != LIFE_ACTIVE) {
+        /* Track A: the spell dissipates at the downed wizard's doorstep and
+         * soaks into the stones. */
+        residue_deposit(w, residue_doorstep_zone(opponent),
+                        SPELL_DESC_ELEMENT(desc), 1u);
         set_outcome(w, fx_for(FX_FIZZLE_L, opponent));
         return;
     }
@@ -423,6 +474,9 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
     if (direct) {
         def->hp = direct >= def->hp ? 0u : (uint8_t)(def->hp - direct);
         def->regen_ticks = SIM_REGEN_TICKS;
+        /* Track A: a landed hit stains the defender's doorstep. */
+        residue_deposit(w, residue_doorstep_zone(opponent),
+                        SPELL_DESC_ELEMENT(desc), 1u);
     }
     if ((payload == PAY_STATUS || payload == PAY_HYBRID) && def->hp)
         apply_status(def, SPELL_DESC_STATUS(desc), magnitude);
@@ -831,6 +885,10 @@ static void collide_clash(sim_world_t *w, sim_spell_t *a, sim_spell_t *b,
         symmetric_area_pulse(w, da, db, FX_DETONATE);
         aftermath_start(w, 0, AFTER_FIRE, 1u);
         aftermath_start(w, 1, AFTER_FIRE, 1u);
+        /* Track A: the mid-gap detonation showers both mid zones, each with
+         * its own caster's element. */
+        residue_deposit(w, SIM_RESIDUE_MID_L, ea, 1u);
+        residue_deposit(w, SIM_RESIDUE_MID_R, eb, 1u);
     } else if (ma == mb) {
         spell_despawn(a);
         spell_despawn(b);
@@ -953,8 +1011,9 @@ static void step_beam(sim_world_t *w, uint8_t side, sim_spell_t *sp) {
             (uint16_t)(sp->age - build) * 159u / sustain);
     else sp->progress = (uint8_t)(224u +
             min_u8((uint8_t)(sp->age - build - sustain), 7u) * 4u);
-    if (sp->age == (uint8_t)(build + 1u) && !sp->resolved) {
-        resolve_payload(w, side, sp->descriptor, 0); sp->resolved = 1;
+    if (sp->age == (uint8_t)(build + 1u) && !(sp->resolved & SPELL_RESOLVED_PAYLOAD)) {
+        resolve_payload(w, side, sp->descriptor, 0);
+        sp->resolved |= SPELL_RESOLVED_PAYLOAD;
     }
     if (sp->age >= (uint8_t)(build + sustain + 8u)) spell_despawn(sp);
 }
@@ -968,6 +1027,8 @@ static void step_singularity(sim_world_t *w, uint8_t side, sim_spell_t *sp) {
                            : (uint8_t)(128u + (sp->age - SINGULARITY_GROW_TICKS) * 8u);
         if (sp->age >= SINGULARITY_COLLAPSE_TICKS) {
             spell_despawn(sp);
+            /* Track A: the collapse leaves a void scar where it hung. */
+            residue_deposit(w, residue_mid_zone(side), ELEM_VOID, 2u);
             aftermath_start(w, side, AFTER_INSPECT, 2u);
             set_outcome(w, FX_COLLAPSE);
         }
@@ -988,9 +1049,9 @@ static void step_chain(sim_world_t *w, uint8_t side, sim_spell_t *sp) {
     uint8_t end = SPELL_DESC_TEMPO(sp->descriptor) >= TEMPO_RAPID ? 14u : 18u;
     uint16_t chain_progress = (uint16_t)sp->age * 16u;
     sp->progress = chain_progress > 255u ? 255u : (uint8_t)chain_progress;
-    if (sp->age == 6u && !sp->resolved) {
+    if (sp->age == 6u && !(sp->resolved & SPELL_RESOLVED_PAYLOAD)) {
         resolve_payload(w, side, sp->descriptor, 0);
-        sp->resolved = 1;
+        sp->resolved |= SPELL_RESOLVED_PAYLOAD;
         aftermath_start(w, side ^ 1u, AFTER_INSPECT,
                         SPELL_DESC_MAGNITUDE(sp->descriptor));
     }
@@ -1095,6 +1156,63 @@ static void lifecycle_step(sim_wizard_t *wz) {
     }
 }
 
+/* Battlefield residue tick (M15 Track A), pinned between collision_step and
+ * spell_step. First the transmutations: an active spell whose u sits in a
+ * zone charged to intensity >= 2 reacts once per spell lifetime
+ * (SPELL_RESOLVED_REACTED). Reaction table, first match wins:
+ *   ember x frost (either way)  steam burst: zone cleared, 1-damage area
+ *                               pulse through the ordinary ward path
+ *   void x any                  absorb: zone -1, spell magnitude +1 (cap 4)
+ *   force x force               rubble: zone -1, trajectory bumps one lane
+ *   same element                feed: zone -1, spell magnitude +1 (cap 4)
+ * Unmatched pairs do not react and do not consume the flag. Then the decay
+ * clock: one prescaled unit per SIM_RESIDUE_DECAY_PRESCALE ticks, ~45 s per
+ * intensity step. Residue never touches ward_covers. */
+static void residue_step(sim_world_t *w) {
+    for (uint8_t side = 0; side < 2; side++) {
+        sim_spell_t *sp = &w->spell[side];
+        if (!sp->active || (sp->resolved & SPELL_RESOLVED_REACTED)) continue;
+        uint8_t zone = residue_zone_for_u(spell_u(sp, side));
+        if (zone >= SIM_RESIDUE_ZONES) continue;
+        sim_residue_t *rz = &w->residue[zone];
+        if (rz->intensity < 2u) continue;
+        uint8_t se = SPELL_DESC_ELEMENT(sp->descriptor);
+        uint8_t ze = rz->element;
+        bool reacted = true;
+        if ((se == ELEM_EMBER && ze == ELEM_FROST) ||
+            (se == ELEM_FROST && ze == ELEM_EMBER)) {
+            memset(rz, 0, sizeof *rz);
+            resolve_payload(w, side, area_pulse_desc(sp->descriptor), 1u);
+            set_outcome(w, FX_DETONATE);
+        } else if (se == ELEM_VOID) {
+            residue_weaken(w, zone);
+            uint8_t mag = SPELL_DESC_MAGNITUDE(sp->descriptor);
+            if (mag < 4u)
+                sp->descriptor = desc_set_magnitude(sp->descriptor, (uint8_t)(mag + 1u));
+        } else if (se == ELEM_FORCE && ze == ELEM_FORCE) {
+            residue_weaken(w, zone);
+            uint8_t traj = SPELL_DESC_TRAJECTORY(sp->descriptor);
+            if (traj < TRAJ_ROOF) /* pure lanes bump; ROOF and specials hold */
+                sp->descriptor = desc_set_trajectory(sp->descriptor, (uint8_t)(traj + 1u));
+        } else if (se == ze) {
+            residue_weaken(w, zone);
+            uint8_t mag = SPELL_DESC_MAGNITUDE(sp->descriptor);
+            if (mag < 4u)
+                sp->descriptor = desc_set_magnitude(sp->descriptor, (uint8_t)(mag + 1u));
+        } else {
+            reacted = false;
+        }
+        if (reacted) sp->resolved |= SPELL_RESOLVED_REACTED;
+    }
+    if (w->tick % SIM_RESIDUE_DECAY_PRESCALE == 0u) {
+        for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++) {
+            sim_residue_t *rz = &w->residue[zone];
+            if (rz->intensity && rz->decay && --rz->decay == 0u)
+                residue_weaken(w, zone);
+        }
+    }
+}
+
 static void scry_step(sim_scry_t *sc, uint8_t mask) {
     bool l = (mask & SCRY_M_L) != 0, r = (mask & SCRY_M_R) != 0;
     bool both = l && r, any = l || r, other = (mask & SCRY_M_OTHER) != 0;
@@ -1134,7 +1252,8 @@ static void scry_step(sim_scry_t *sc, uint8_t mask) {
  *                         prev_down_mask -> tick++
  *   authoritative only (three SIMF_AUTHORITATIVE gates below): event/rising
  *   ingestion + incantation collection -> lifecycle -> regen -> collision ->
- *   spell flight -> status/windup/release -> aftermath -> scry.
+ *   residue (Track A) -> spell flight -> status/windup/release -> aftermath
+ *   -> scry.
  * The slave structurally cannot decide outcomes because every mutating combat
  * step sits behind the authoritative gates; do not reorder the sub-steps. */
 void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
@@ -1199,6 +1318,7 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
             }
         }
         collision_step(w);
+        residue_step(w);
         spell_step(w, SIM_SIDE_L);
         spell_step(w, SIM_SIDE_R);
         for (uint8_t side = 0; side < 2; side++) {

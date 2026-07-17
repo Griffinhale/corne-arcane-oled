@@ -204,7 +204,16 @@ typedef struct {
     uint8_t     civic_phase;  // coarse civic-tick counter (NOT w.tick, NOT frame)
     uint8_t     floor_transition; // source[2], phase[2], active[1]; target is civic
     uint8_t     local_ambience; // active[1], tempo[2], trend[2], local wizard only
+    // Battlefield residue (Track A), two nibble-pair bytes in the
+    // duel_residue_pack grammar: [0] zones 0-1 (== the wire residue byte),
+    // [1] zones 2-3. Master packs from its world, slave from the snapshot.
+    uint8_t     residue[2];
 } duel_render_t;
+
+#define DUEL_RENDER_RESIDUE_ELEMENT(r, zone) \
+        ((uint8_t)(((r)->residue[(zone) >> 1] >> (((zone) & 1u) * 4u)) & 3u))
+#define DUEL_RENDER_RESIDUE_INTENSITY(r, zone) \
+        ((uint8_t)(((r)->residue[(zone) >> 1] >> (((zone) & 1u) * 4u + 2u)) & 3u))
 
 #define DUEL_RENDER_STALE 0x01u
 /* layer stays presentation-only. The low bits are the global QMK layer; the

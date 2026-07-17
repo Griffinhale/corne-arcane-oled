@@ -315,6 +315,33 @@ typedef struct {
     uint8_t resolved;
 } sim_spell_t;
 
+/* sim_spell_t.resolved bit map: bit0 marks the one-shot payload landed
+ * (beam/chain); the low bits also count swarm pulses (hashed world state,
+ * never read back). Bit7 marks the spell's single residue transmutation
+ * (M15 Track A) — one reaction per spell lifetime. */
+#define SPELL_RESOLVED_PAYLOAD 0x01u
+#define SPELL_RESOLVED_REACTED 0x80u
+
+/* ---- battlefield residue (M15 Track A) ----------------------------------
+ * Session-scale elemental residue in four fixed zones on the duel u-axis:
+ * doorstep-L u 8-47, mid-L 48-127, mid-R 128-207, doorstep-R 208-248.
+ * Element reuses ELEM_*; intensity 0 means empty and its canonical form is
+ * element 0. decay is master-local (never on the wire) and counts in
+ * SIM_RESIDUE_DECAY_PRESCALE-tick units so a u8 spans the ~45 s per
+ * intensity step. Deposits and reactions run only behind the authoritative
+ * gate (residue_step, between collision_step and spell_step). */
+enum { SIM_RESIDUE_DOORSTEP_L = 0, SIM_RESIDUE_MID_L, SIM_RESIDUE_MID_R,
+       SIM_RESIDUE_DOORSTEP_R, SIM_RESIDUE_ZONES };
+#define SIM_RESIDUE_DECAY_PRESCALE 5u   /* decay counts once per 5 ticks */
+#define SIM_RESIDUE_DECAY_UNITS    225u /* x prescale = 1125 ticks = 45 s per step */
+#define SIM_RESIDUE_MAX_INTENSITY  3u
+
+typedef struct {
+    uint8_t element;   /* ELEM_*; 0 (FORCE) only meaningful with intensity > 0 */
+    uint8_t intensity; /* 0 = empty .. SIM_RESIDUE_MAX_INTENSITY */
+    uint8_t decay;     /* prescaled countdown to the next intensity step */
+} sim_residue_t;
+
 /* ---- layer-key scrying overlay (scry) --------------------------------------
  * An explicit chord state machine, driven purely by the level-sampled
  * scry_mask, opens a temporary in-world overlay above the still-running duel.
@@ -361,6 +388,7 @@ typedef struct {
     sim_aftermath_t aftermath[2];
     uint8_t         world_state;
     uint8_t         _incantation_pad;
+    sim_residue_t   residue[SIM_RESIDUE_ZONES]; /* authoritative-only (Track A) */
 } sim_world_t;
 
 uint8_t incantation_aftermath_shared(const sim_world_t *world);

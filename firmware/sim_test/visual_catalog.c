@@ -228,6 +228,30 @@ static void build_catalog(void) {
         add_render_case(name, &arc, 7u);
     }
 
+    /* Track A battlefield residue: per-element deck marks with the full
+     * intensity ramp spread across the four zones (1/2/3/2 along the
+     * u-axis pins every density step of one element on both halves), plus a
+     * mixed-history tableau with a different element in every zone. */
+    static const char *element_name[4] = {"force", "ember", "frost", "void"};
+    for (uint8_t elem = ELEM_FORCE; elem <= ELEM_VOID; elem++) {
+        duel_render_t marks = {0}; duel_render_from_world(&marks, &world);
+        marks.seed = 0x5au; marks.civic_phase = 19u;
+        marks.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS,
+                                      DUEL_CIVIC_MODE_NORMAL, 0);
+        marks.residue[0] = (uint8_t)(elem | (1u << 2) | (elem << 4) | (2u << 6));
+        marks.residue[1] = (uint8_t)(elem | (3u << 2) | (elem << 4) | (2u << 6));
+        char name[48]; snprintf(name, sizeof name, "residue_%s_ramp",
+                                element_name[elem]);
+        add_render_case(name, &marks, 7u);
+    }
+    duel_render_t history = {0}; duel_render_from_world(&history, &world);
+    history.seed = 0x5au; history.civic_phase = 19u;
+    history.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS,
+                                    DUEL_CIVIC_MODE_NORMAL, 0);
+    history.residue[0] = (uint8_t)(ELEM_FORCE | (2u << 2) | (ELEM_EMBER << 4) | (3u << 6));
+    history.residue[1] = (uint8_t)(ELEM_FROST | (1u << 2) | (ELEM_VOID << 4) | (3u << 6));
+    add_render_case("residue_mixed_history", &history, 7u);
+
     static const uint8_t ambience_trend[] = {
         TREND_DECELERATING, TREND_STEADY,
         TREND_ACCELERATING, TREND_IRREGULAR

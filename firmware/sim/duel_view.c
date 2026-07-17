@@ -61,6 +61,15 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
                                               world->scry.scene);
 }
 
+void duel_residue_pack(const sim_world_t *world, uint8_t out[2]) {
+    for (uint8_t half = 0; half < 2; half++) {
+        const sim_residue_t *lo = &world->residue[half * 2u];
+        const sim_residue_t *hi = &world->residue[half * 2u + 1u];
+        out[half] = (uint8_t)((lo->element & 3u) | ((lo->intensity & 3u) << 2) |
+                              ((hi->element & 3u) << 4) | ((hi->intensity & 3u) << 6));
+    }
+}
+
 duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
     uint8_t b0 = view->wizard[side][0], b1 = view->wizard[side][1], b2 = view->wizard[side][2];
     uint8_t nibble = (uint8_t)(view->status_visual >> (side * 4u));
