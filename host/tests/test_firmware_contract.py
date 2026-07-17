@@ -52,9 +52,12 @@ class UnifiedFirmwareContractTests(unittest.TestCase):
         source = (ROOT / "firmware" / "sim" / "duel_host.c").read_text()
         self.assertNotIn("VERSION_V1", header + source)
         self.assertIn("#define DUEL_HOST_PAYLOAD_LEN       8", header)
-        # The validator requires the exact payload length (no v1 fallback);
-        # the check lives in envelope_valid as a positive conjunct.
-        self.assertIn("packet->payload_len == DUEL_HOST_PAYLOAD_LEN", source)
+        # The validator requires the exact payload length (no v1 fallback).
+        # Accept either the accepting or rejecting phrasing of the comparison.
+        self.assertTrue(
+            "packet->payload_len == DUEL_HOST_PAYLOAD_LEN" in source
+            or "packet->payload_len != DUEL_HOST_PAYLOAD_LEN" in source
+        )
 
 
 if __name__ == "__main__":

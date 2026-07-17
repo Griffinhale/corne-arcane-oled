@@ -190,15 +190,18 @@ static void draw_floor_occupation(duel_fb_t *fb, uint8_t floor, bool is_left) {
         if (is_left) {
             floor_dome(fb, OX(24), OX(30), 66); /* arched notice board */
             for (int y = 75; y <= 87; y += 6) {
-                duel_fb_hline(fb, OX(25), OX(29), y);
+                OSPAN(25, 29, y);
                 duel_fb_px(fb, OX(24), y - 2, true);
             }
             floor_dome(fb, OX(8), OX(14), 88); /* tea-orb stand */
             for (int y = 91; y <= 95; y++) duel_fb_px(fb, OX(11), y, true);
             duel_fb_px(fb, OX(9), 94, true); duel_fb_px(fb, OX(13), 93, true);
         } else {
-            /* Dispatch cubbies and clock. */
-            for (int y = 75; y <= 87; y += 6) duel_fb_hline(fb, OX(25), OX(29), y);
+            /* Dispatch cubbies and clock. The shelf spans previously passed
+             * unordered mirrored coordinates straight to duel_fb_hline, whose
+             * loop draws nothing when x0 > x1 — so the right half never
+             * actually showed its cubby shelves. */
+            for (int y = 75; y <= 87; y += 6) OSPAN(25, 29, y);
             for (int x = 26; x <= 29; x += 3)
                 for (int y = 70; y <= 90; y++) duel_fb_px(fb, OX(x), y, true);
             floor_gear(fb, OX(11), 90, 3);
@@ -242,7 +245,7 @@ static void draw_floor_occupation(duel_fb_t *fb, uint8_t floor, bool is_left) {
         /* Dominant forge: cauldron on astral, anvil/gear press on mechanical. */
         if (is_left) {
             floor_dome(fb, OX(3), OX(14), 90);
-            duel_fb_hline(fb, OX(4), OX(13), 96);
+            OSPAN(4, 13, 96);
             for (int y = 97; y <= 103; y++) {
                 duel_fb_px(fb, OX(5), y, true); duel_fb_px(fb, OX(13), y, true);
             }

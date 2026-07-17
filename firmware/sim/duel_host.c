@@ -39,12 +39,19 @@ void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
 }
 
 static bool envelope_valid(const duel_host_packet_t *packet) {
-    return packet->magic0 == DUEL_HOST_MAGIC0 &&
-           packet->magic1 == DUEL_HOST_MAGIC1 &&
-           type_valid(packet->type) &&
-           packet->version == DUEL_HOST_VERSION &&
-           packet->payload_len == DUEL_HOST_PAYLOAD_LEN &&
-           packet->crc == duel_crc8(packet, offsetof(duel_host_packet_t, crc));
+    if (packet->magic0 != DUEL_HOST_MAGIC0 ||
+        packet->magic1 != DUEL_HOST_MAGIC1 ||
+        !type_valid(packet->type) ||
+        packet->version != DUEL_HOST_VERSION ||
+        packet->payload_len != DUEL_HOST_PAYLOAD_LEN ||
+        packet->crc != duel_crc8(packet, offsetof(duel_host_packet_t, crc)))
+        return false;
+    /* Bytes beyond payload_len are reserved and must ship zero (the canonical
+     * host encoder always zeroes them). Rejecting CRC-covered garbage here
+     * keeps the reserved space genuinely available for future versions. */
+    for (uint8_t i = DUEL_HOST_PAYLOAD_LEN; i < DUEL_HOST_PAYLOAD_SIZE; i++)
+        if (packet->payload[i] != 0) return false;
+    return true;
 }
 
 static bool civic_bytes_valid(const duel_host_packet_t *packet) {

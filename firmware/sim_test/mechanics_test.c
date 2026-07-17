@@ -159,7 +159,18 @@ static void test_host_protocol_current_payload_and_ordering(void) {
     bad.payload[DUEL_HOST_PAYLOAD_SECONDARY] = 0x80u;
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
     EXPECT(!duel_host_packet_valid(&bad));
-    CHECK(ok, "host_v2_eight_byte_payload_malformed_and_stale_ordering");
+    /* Reserved tail bytes beyond payload_len must ship zero: CRC-covered
+     * garbage there is rejected so the space stays usable for future
+     * versions. */
+    bad = heartbeat;
+    bad.payload[DUEL_HOST_PAYLOAD_LEN] = 1u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    EXPECT(!duel_host_packet_valid(&bad));
+    bad = heartbeat;
+    bad.payload[DUEL_HOST_PAYLOAD_SIZE - 1u] = 0xffu;
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    EXPECT(!duel_host_packet_valid(&bad));
+    CHECK(ok, "host_v2_eight_byte_payload_malformed_stale_ordering_and_reserved_tail");
 }
 
 static void test_view_validation(void) {
@@ -652,6 +663,75 @@ static uint32_t clash_desc(uint8_t element, uint8_t magnitude, uint8_t tempo,
                            uint8_t trend) {
     return SPELL_DESC_PACK(SPELL_PROJECTILE, element, PAY_DAMAGE, TRAJ_MID,
                            magnitude, STATUS_NONE, INTERACT_SOLID, tempo, trend, 0);
+}
+
+static uint32_t form_desc(uint8_t form, uint8_t trajectory, uint8_t magnitude,
+                          uint8_t tempo, uint8_t trend) {
+    return SPELL_DESC_PACK(form, ELEM_FORCE, PAY_DAMAGE, trajectory, magnitude,
+                           STATUS_NONE, INTERACT_SOLID, tempo, trend, 0);
+}
+
+// Mirror-form duels resolve symmetrically (magnitude, then the tempo/trend
+// tiebreak, dead tie annihilating both) instead of silently favouring the
+// left slot.
+static void test_mirror_form_collisions(void) {
+    sim_world_t w;
+    bool ok = true;
+
+    /* Beams: dead tie burns both out. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    uint32_t beam = form_desc(SPELL_BEAM, TRAJ_MID, 2, TEMPO_FLOWING, TREND_STEADY);
+    install_spell(&w, 0, beam, 120); install_spell(&w, 1, beam, 120);
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && !w.spell[1].active);
+
+    /* Beams: the better-paced RIGHT beam survives (the old code would have
+     * kept the left one regardless). */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    install_spell(&w, 0, beam, 120);
+    install_spell(&w, 1, form_desc(SPELL_BEAM, TRAJ_MID, 2, TEMPO_FRANTIC,
+                                   TREND_STEADY), 120);
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && w.spell[1].active);
+
+    /* Chains: the stronger side survives, and equal-magnitude survivors pay
+     * the ordinary one-step chain toll; a dead tie consumes both. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    uint32_t chain3 = form_desc(SPELL_CHAIN, TRAJ_HOMING, 3, TEMPO_RAPID, TREND_STEADY);
+    install_spell(&w, 0, form_desc(SPELL_CHAIN, TRAJ_HOMING, 2, TEMPO_RAPID,
+                                   TREND_STEADY), 120);
+    install_spell(&w, 1, chain3, 120);
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && w.spell[1].active &&
+           SPELL_DESC_MAGNITUDE(w.spell[1].descriptor) == 3u &&
+           w.fx_kind == FX_RESIDUE);
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    install_spell(&w, 0, chain3, 120); install_spell(&w, 1, chain3, 120);
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && !w.spell[1].active && w.fx_kind == FX_RESIDUE);
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    install_spell(&w, 0, chain3, 120);
+    install_spell(&w, 1, form_desc(SPELL_CHAIN, TRAJ_HOMING, 3, TEMPO_FRANTIC,
+                                   TREND_STEADY), 120);
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && w.spell[1].active &&
+           SPELL_DESC_MAGNITUDE(w.spell[1].descriptor) == 2u);
+
+    /* Swarms trade one mote each per contact tick (the old code bled only
+     * the left swarm). progress 49 puts both swarms mid-gap in contact. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    uint32_t swarm = form_desc(SPELL_SWARM, TRAJ_MID, 2, TEMPO_DELIBERATE,
+                               TREND_STEADY);
+    install_spell(&w, 0, swarm, 49); w.spell[0].aux = 2;
+    install_spell(&w, 1, swarm, 49); w.spell[1].aux = 1;
+    idle_step(&w);
+    EXPECT(w.spell[0].active && w.spell[0].aux == 1u && !w.spell[1].active);
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    install_spell(&w, 0, swarm, 49); w.spell[0].aux = 1;
+    install_spell(&w, 1, swarm, 49); w.spell[1].aux = 1;
+    idle_step(&w);
+    EXPECT(!w.spell[0].active && !w.spell[1].active);
+    CHECK(ok, "incantation_mirror_beam_chain_swarm_symmetric_resolution");
 }
 
 static void collide(sim_world_t *w, uint32_t left, uint32_t right) {
@@ -2267,6 +2347,7 @@ int main(void) {
     test_status_dominance_and_effects();
     test_form_lifecycles();
     test_collision_precedence();
+    test_mirror_form_collisions();
     test_productive_clashes();
     test_incantation_link_ordering();
     test_render_purity();

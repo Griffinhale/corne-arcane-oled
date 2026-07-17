@@ -672,10 +672,10 @@ static void spell_despawn(sim_spell_t *sp) {
     sp->descriptor = 0;
 }
 
-/* NOTE on mirror matches: when both spells carry the priority form, the
- * `fa == FORM ? a : b` selections below make the LEFT spell the actor and
- * the RIGHT one "other". This left bias is intentional and hash-pinned;
- * making it symmetric would change world hashes. */
+/* Mirror matches (both spells carrying the priority form) resolve
+ * symmetrically: magnitude first, then the same tempo/trend tiebreak as the
+ * elemental clash, with a dead tie annihilating both. Historically the left
+ * spell silently won these. */
 
 // A stronger beam pops the singularity; anything else (except another
 // singularity) is captured, feeding its magnitude into the charge.
@@ -711,6 +711,57 @@ static void collide_trap(sim_world_t *w, uint8_t trap_side) {
                     min_u8(SPELL_DESC_MAGNITUDE(trap_desc), 2u));
     aftermath_start(w, trap_side ^ 1u, AFTER_PANIC, 2u);
     set_outcome(w, FX_DETONATE);
+}
+
+/* Winner of a same-form mirror duel: +1 left survives, -1 right survives,
+ * 0 mutual annihilation. Magnitude decides; equal magnitudes fall through to
+ * the shared tempo/trend tiebreak. */
+static int8_t mirror_winner(uint32_t da, uint32_t db) {
+    uint8_t ma = SPELL_DESC_MAGNITUDE(da), mb = SPELL_DESC_MAGNITUDE(db);
+    if (ma != mb) return ma > mb ? 1 : -1;
+    return clash_tiebreak(da, db);
+}
+
+// Crossed beams: the stronger (or better-paced) beam burns through; a dead
+// tie annihilates both mid-gap.
+static void collide_mirror_beams(sim_spell_t *a, sim_spell_t *b,
+                                 uint32_t da, uint32_t db) {
+    int8_t winner = mirror_winner(da, db);
+    if (winner >= 0) spell_despawn(b);
+    if (winner <= 0) spell_despawn(a);
+}
+
+// Crossed chains: the losing chain is consumed like any other victim, and an
+// equal-magnitude survivor weakens one step (the ordinary chain toll). A dead
+// tie consumes both.
+static void collide_mirror_chains(sim_world_t *w, sim_spell_t *a, sim_spell_t *b,
+                                  uint32_t da, uint32_t db) {
+    uint8_t ma = SPELL_DESC_MAGNITUDE(da), mb = SPELL_DESC_MAGNITUDE(db);
+    int8_t winner = mirror_winner(da, db);
+    if (winner == 0) {
+        spell_despawn(a);
+        spell_despawn(b);
+    } else {
+        sim_spell_t *survivor = winner > 0 ? a : b;
+        uint8_t mag = winner > 0 ? ma : mb;
+        spell_despawn(winner > 0 ? b : a);
+        if (ma == mb && mag > 1u)
+            survivor->descriptor = desc_set_magnitude(survivor->descriptor,
+                                                      (uint8_t)(mag - 1u));
+    }
+    aftermath_start(w, 0, AFTER_INSPECT, ma);
+    aftermath_start(w, 1, AFTER_INSPECT, mb);
+    set_outcome(w, FX_RESIDUE);
+}
+
+// Crossed swarms trade one mote each per contact tick; each side dies when
+// its own motes run out. (Historically the left swarm bled motes while the
+// right one survived untouched.)
+static void collide_mirror_swarms(sim_spell_t *a, sim_spell_t *b) {
+    if (a->aux) a->aux--;
+    if (b->aux) b->aux--;
+    if (!a->aux) spell_despawn(a);
+    if (!b->aux) spell_despawn(b);
 }
 
 // A beam burns through whatever crosses it; a fireball detonates in the
@@ -809,15 +860,25 @@ static void collision_step(sim_world_t *w) {
 
     uint8_t fa = SPELL_DESC_FORM(da), fb = SPELL_DESC_FORM(db);
     if (fa == SPELL_SINGULARITY || fb == SPELL_SINGULARITY) {
+        /* singularity-vs-singularity is deliberately inert (both persist),
+         * so the mirror case needs no special handling. */
         collide_singularity(w, fa == SPELL_SINGULARITY ? a : b,
                             fa == SPELL_SINGULARITY ? b : a);
     } else if ((fa == SPELL_CONJURE && conjure_is_trap(da)) ||
                (fb == SPELL_CONJURE && conjure_is_trap(db))) {
+        /* trap-vs-trap is unreachable: each trap sits at its caster's own
+         * doorstep, so the distance gate above never lets them touch. */
         collide_trap(w, (fa == SPELL_CONJURE && conjure_is_trap(da)) ? 0u : 1u);
+    } else if (fa == SPELL_BEAM && fb == SPELL_BEAM) {
+        collide_mirror_beams(a, b, da, db);
     } else if (fa == SPELL_BEAM || fb == SPELL_BEAM) {
         collide_beam(w, fa == SPELL_BEAM ? b : a, da, db);
+    } else if (fa == SPELL_CHAIN && fb == SPELL_CHAIN) {
+        collide_mirror_chains(w, a, b, da, db);
     } else if (fa == SPELL_CHAIN || fb == SPELL_CHAIN) {
         collide_chain(w, fa == SPELL_CHAIN ? a : b, fa == SPELL_CHAIN ? b : a);
+    } else if (fa == SPELL_SWARM && fb == SPELL_SWARM) {
+        collide_mirror_swarms(a, b);
     } else if (fa == SPELL_SWARM || fb == SPELL_SWARM) {
         collide_swarm(fa == SPELL_SWARM ? a : b, fa == SPELL_SWARM ? b : a);
     } else {
