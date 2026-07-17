@@ -194,3 +194,36 @@ not inherit the 2026-07-15 presentation evidence.
 - [ ] Repeat the full Vial handoff/persistence section above, then flash the
   release artifact and repeat the essential RGB, Observatory, reconnect,
   sleep/non-wake, typing, and rollback smoke tests.
+
+## M15 foundations-and-spires physical acceptance — pending M14 clearance
+
+These checks apply to M15 artifacts (first built 2026-07-17, `make
+release-build`; measured growth 6,704 B of the 8,192 allowance). They queue
+behind the M14 record above — flashing stays gated until it completes.
+
+- [ ] Verify the full-height wizard towers at desk distance: astral peak
+  (taper/dome/finial) vs mechanical peak (crenellation/beacon mast), shaft
+  windows reading the sky phase, stone-course bottom border, and the §2.0
+  weight-pass silhouettes (wizard mass, spell presence, ward arcs).
+- [ ] Verify battlefield residue marks are legible at desk distance (marks
+  are 1-4 px: force mound, ember column, frost shards, void pit), build
+  during ordinary dueling, and fade on the ~45 s per-step clock.
+- [ ] Observe the 16-step celestial arc across a sky phase (sun tucks behind
+  the left tower at dawn, splits across the gap at midday, sets behind the
+  right tower at dusk; moon at night).
+- [ ] Trigger a host alert and verify the shaft banner (category glyph,
+  priority rails, age accents, notification pips) is legible over lit
+  windows and lifecycle traffic, and that scry replaces it with the panel
+  summary.
+- [ ] Leave both halves idle 3+ s and verify the Track B stances: STUDY on
+  the balcony with the tome at full health, MEDITATE seated on the balcony
+  when hurt and calm (ward hidden, restored instantly on a keydown),
+  FORTIFY braced on deck against an opponent windup, and the PACE/TAUNT
+  idle presentation on an unhurt neutral wizard. Balcony figures must be
+  legible at desk distance.
+- [ ] Judge KO cadence over a normal typing day after the HP 8 / 20 s regen
+  retune plus temperament escalation (backlog Q4: measured desktop floor is
+  ~16 s to first blood in sustained steady prose — decide 8 vs 10 HP here).
+- [ ] Confirm doctrine texture: replacement wizards (variant cycle) visibly
+  change element mix via affinity, and temperament shows in windup pace and
+  form choice after damage swings.

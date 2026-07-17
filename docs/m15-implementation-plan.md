@@ -485,6 +485,30 @@ T/G/A/B measure flash and the descriptor-compression spike proves the slave
 reconstruction is exact on the full compile domain, C proceeds only if
 projected total growth stays under 8,192 B minus a 1 KiB margin.
 
+**Gate outcome (2026-07-17): C is ejected — held for v12.** First QMK build
+of M15 (all of T/G/P/A/B landed) measures release flash 76,348 B against
+the 69,644 B M14 baseline: **6,704 B of the 8,192 allowance** (estimate was
+~6.8 KiB — honest). Static RAM +40 B of 512. The margin rule allows 7,168 B
+projected total; C's ~1.4 KiB estimate projects ~8.1 KiB — first overrun,
+so C is ejected per §8. The second trim (PACE/TAUNT art) is not needed:
+without C the milestone sits 464 B under the margin line.
+
+Descriptor-compression spike result (262,144-descriptor enumeration of the
+compile domain, host-side): the **full 2-bit `interaction` is NOT exactly
+recomputable** from element+form — 74,081 compiled descriptors carry
+INTERACT_COMBINE (it depends on `layer_transitions`, not element+form) and
+are indistinguishable from SOLID on the wire-free side. However, the
+**slave-observable projection is exact with zero mismatches**: the only
+non-authoritative consumer is the INTERACT_PHASE portal look
+(duel_draw.c), and PHASE ⇔ element VOID ∧ form ≠ SINGULARITY, ABSORB ⇔
+SINGULARITY, both perfectly derivable. COMBINE is read only inside the
+authoritative collision/ward paths the slave never runs. So v12 may drop
+the 4 interaction wire bits with a substitution rule (SOLID for COMBINE)
+**plus a guard**: any future slave-side COMBINE visual would silently
+break the compression — pin it with a test when v12 takes the bits.
+`variance` remains substitutable-by-seed as planned (presentation jitter
+only; goldens re-baseline when it happens).
+
 ---
 
 ## 8. Budgets
