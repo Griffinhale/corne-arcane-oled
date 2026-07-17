@@ -34,34 +34,127 @@ static uint8_t render_notif(const duel_render_t *render) {
     return DUEL_HOST_CONTEXT_NOTIF(render->external);
 }
 
-/* Thirty-minute firmware sky. It is an underlay: every protected gameplay and
- * alert layer is painted later and therefore always wins. */
+/* Thirty-minute firmware sky, M15: ONE small celestial body arcs across the
+ * desk instead of mirroring to both halves — dawn rises beside the left
+ * tower, day rides high by the gap, dusk descends through the right half's
+ * sky, and night hangs a moon there. The old dotted horizon rows are gone.
+ * It is an underlay: every gameplay and instrument layer paints later and
+ * therefore always wins. Tower windows (draw_wizard_tower) light from dusk
+ * onward, so the phase also reads from the architecture itself. */
+static void sky_sun(duel_fb_t *fb, int x, int y) {
+    for (int dy = -1; dy <= 1; dy++)
+        for (int dx = -1; dx <= 1; dx++) duel_fb_px(fb, x + dx, y + dy, true);
+    duel_fb_px(fb, x + 2, y, true); duel_fb_px(fb, x - 2, y, true);
+    duel_fb_px(fb, x, y + 2, true); duel_fb_px(fb, x, y - 2, true);
+    duel_fb_px(fb, x + 4, y, true); duel_fb_px(fb, x - 4, y, true);
+    duel_fb_px(fb, x, y + 4, true); duel_fb_px(fb, x, y - 4, true);
+}
+
+static void sky_moon(duel_fb_t *fb, int x, int y) {
+    duel_fb_px(fb, x, y - 3, true); duel_fb_px(fb, x + 1, y - 3, true);
+    duel_fb_px(fb, x + 2, y - 2, true);
+    duel_fb_px(fb, x + 3, y - 1, true); duel_fb_px(fb, x + 3, y, true);
+    duel_fb_px(fb, x + 3, y + 1, true);
+    duel_fb_px(fb, x + 2, y + 2, true);
+    duel_fb_px(fb, x, y + 3, true); duel_fb_px(fb, x + 1, y + 3, true);
+}
+
 static void draw_sky(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
     uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
     if (phase == DUEL_SKY_DAWN) {
-        for (int x = 3; x < 32; x += 7) duel_fb_px(fb, x, 57 - ((x + is_left) & 1), true);
+        /* One row below/right of the scry lens tip: added scry instruments
+         * must stay off any asymmetric base cell (mirror-test contract). */
+        if (is_left) sky_sun(fb, 17, 15);
     } else if (phase == DUEL_SKY_DAY) {
-        int sun = is_left ? 5 : 26;
-        duel_fb_px(fb, sun, 20, true);
-        duel_fb_px(fb, sun - 2, 20, true); duel_fb_px(fb, sun + 2, 20, true);
-        duel_fb_px(fb, sun, 18, true); duel_fb_px(fb, sun, 22, true);
-        for (int x = 2; x < 32; x += 9) duel_fb_px(fb, x, 55, true);
+        if (is_left) sky_sun(fb, 27, 6);
     } else if (phase == DUEL_SKY_DUSK) {
-        for (int x = 0; x < 32; x += 4)
-            duel_fb_px(fb, x, 55 + ((x / 4) & 1), true);
-        duel_fb_px(fb, is_left ? 27 : 4, 25, true);
+        if (!is_left) sky_sun(fb, 10, 14);
     } else {
-        uint8_t stars = floor == DUEL_CIVIC_FLOOR_SPECIAL ? 9u : 5u;
+        if (!is_left) sky_moon(fb, 7, 9);
+        uint8_t stars = floor == DUEL_CIVIC_FLOOR_SPECIAL ? 7u : 3u;
         for (uint8_t i = 0; i < stars; i++) {
             uint8_t h = (uint8_t)(r->seed * 29u + i * 47u + (is_left ? 11u : 83u));
-            int x = 2 + h % 28u;
-            int y = 17 + ((h >> 2) % 38u);
+            int x = (is_left ? 14 : 2) + (int)(h % 16u);
+            int y = 3 + (int)((h >> 2) % 13u);
             duel_fb_px(fb, x, y, true);
             if (floor == DUEL_CIVIC_FLOOR_SPECIAL && i && (i % 3u) == 0u)
                 wiz_line(fb, x - 3, y - 2, x, y);
         }
     }
+}
+
+/* M15 wizard tower: a half-width shaft on the outer side of each canvas
+ * rising from the rooftop deck into a full architectural peak — astral
+ * (left): taper, dome, and finial; mechanical (right): crenellated cap and
+ * beacon mast. The gap-side balcony partway up is the future big-cast/
+ * stance station; the peak is never occupied. The single shaft window reads
+ * the sky phase (outlined by day, lit from dusk onward), and the HP pips
+ * drawn later land inside the shaft as its lower tier of lights. */
+static void draw_wizard_tower(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+#define TWR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
+    uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
+    bool lit = phase == DUEL_SKY_DUSK || phase == DUEL_SKY_NIGHT;
+
+    // Shaft edges from the peak base down onto the deck, with a base flare.
+    for (int y = DUEL_TOWER_PEAK_Y; y <= DUEL_DECK_Y0; y++) {
+        duel_fb_px(fb, TWR_X(1), y, true);
+        duel_fb_px(fb, TWR_X(11), y, true);
+    }
+    duel_fb_px(fb, TWR_X(0), 58, true); duel_fb_px(fb, TWR_X(0), 59, true);
+    duel_fb_px(fb, TWR_X(12), 58, true); duel_fb_px(fb, TWR_X(12), 59, true);
+
+    if (is_left) {
+        // Astral peak: shoulder, taper, dome, finial.
+        duel_fb_hline(fb, 2, 10, 13);
+        duel_fb_px(fb, 3, 12, true); duel_fb_px(fb, 9, 12, true);
+        duel_fb_px(fb, 3, 11, true); duel_fb_px(fb, 9, 11, true);
+        duel_fb_px(fb, 3, 10, true); duel_fb_px(fb, 9, 10, true);
+        duel_fb_px(fb, 3, 9, true); duel_fb_px(fb, 9, 9, true);
+        duel_fb_hline(fb, 4, 8, 8);
+        duel_fb_px(fb, 4, 7, true); duel_fb_px(fb, 8, 7, true);
+        duel_fb_px(fb, 5, 6, true); duel_fb_px(fb, 7, 6, true);
+        duel_fb_px(fb, 6, 5, true);
+        duel_fb_px(fb, 6, 4, true); duel_fb_px(fb, 6, 3, true);
+        duel_fb_px(fb, 6, 2, true);
+    } else {
+        // Mechanical peak: crenellated cap with a beacon mast.
+        incantation_civic_hline(fb, is_left, 0, 12, 13);
+        incantation_civic_hline(fb, is_left, 1, 11, 12);
+        for (int c = 1; c <= 9; c += 4) {
+            duel_fb_px(fb, TWR_X(c), 10, true);
+            duel_fb_px(fb, TWR_X(c), 11, true);
+        }
+        for (int y = 3; y <= 9; y++) {
+            duel_fb_px(fb, TWR_X(5), y, true);
+            duel_fb_px(fb, TWR_X(6), y, true);
+        }
+        incantation_civic_hline(fb, is_left, 4, 7, 2);
+        duel_fb_px(fb, TWR_X(4), 1, true); duel_fb_px(fb, TWR_X(7), 1, true);
+        if (lit) { duel_fb_px(fb, TWR_X(5), 0, true); duel_fb_px(fb, TWR_X(6), 0, true); }
+    }
+
+    // Upper shaft window: astral arches, mechanical squares its lintel.
+    if (lit) {
+        for (int y = 20; y <= 23; y++)
+            incantation_civic_hline(fb, is_left, 4, 8, y);
+        if (is_left) duel_fb_px(fb, 6, 19, true);
+    } else {
+        for (int y = 20; y <= 23; y++) {
+            duel_fb_px(fb, TWR_X(4), y, true);
+            duel_fb_px(fb, TWR_X(8), y, true);
+        }
+        if (is_left) duel_fb_px(fb, 6, 19, true);
+        else incantation_civic_hline(fb, is_left, 4, 8, 19);
+    }
+
+    // Gap-side balcony: slab and corbel. Empty for now — the Track B calm
+    // stances and the big-cast ascent restage the wizard here.
+    incantation_civic_hline(fb, is_left, 11, 16, 30);
+    incantation_civic_hline(fb, is_left, 11, 16, 31);
+    duel_fb_px(fb, TWR_X(13), 32, true);
+    duel_fb_px(fb, TWR_X(12), 33, true);
+#undef TWR_X
 }
 
 static void draw_typing_ambience(duel_fb_t *fb, const duel_render_t *r,
@@ -354,16 +447,22 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t floor = incantation_effective_floor(r);
     uint8_t mode  = DUEL_CIVIC_MODE(r->civic);
 
-    // Solid ceiling beam splitting the rooftop from the floor (both cities).
-    // City character lives in the details below the beam, not the beam itself.
-    for (int x = 0; x < DUEL_CANVAS_W; x++)
+    // Rooftop deck: the ceiling beam thickened one row upward (both cities),
+    // with crenellation teeth at the gap corner; the wizard tower's base
+    // flare crenellates the other end. City character lives in the details
+    // below the beam, not the beam itself.
+    for (int x = 0; x < DUEL_CANVAS_W; x++) {
+        duel_fb_px(fb, x, DUEL_DECK_Y0, true);
         duel_fb_px(fb, x, DUEL_FLOOR_BEAM_Y, true);
+    }
+    int tooth = is_left ? 28 : 2;
+    duel_fb_px(fb, tooth, 58, true); duel_fb_px(fb, tooth + 1, 58, true);
+    duel_fb_px(fb, tooth, 59, true); duel_fb_px(fb, tooth + 1, 59, true);
     if (r->revision & INCANTATION_AFTERMATH_WIRE) {
         uint8_t world = INCANTATION_AFTER_WORLD(r->shared_pres);
-        if (world == WORLD_WONDER) {
-            for (int x = 2; x < DUEL_CANVAS_W; x += 5)
-                duel_fb_px(fb, x, 64 + (int)((x + r->civic_phase) & 3u), true);
-        } else if (world == WORLD_CRISIS) {
+        /* WORLD_WONDER's abstract ripple is retired (M15): wonder now reads
+         * from the big-cast tower glow and the residents watching the roof. */
+        if (world == WORLD_CRISIS) {
             wiz_line(fb, FLR_X(12), 61, FLR_X(15), 66);
             wiz_line(fb, FLR_X(15), 66, FLR_X(17), 63);
         } else if (world == WORLD_RECOVERY) {
@@ -518,36 +617,17 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         duel_fb_px(fb, mx, my - 4 + after_phase, true);
     }
 
-    // Paving course in the band freed by relocating HP up to the rooftop
-    // (y112-115). A 1-byte session seed staggers the pattern so each boot lays a
-    // slightly different pavement without streaming anything. Astral sets rounded
-    // cobbles; mechanical lays rectangular flagstones with joints.
+    // M15 stone course: a single masonry border under the room floor (the
+    // former pavement/foundation texture is retired; rows below stay dark
+    // for the debug odometer). The 1-byte session seed staggers the joints,
+    // and the two cities offset differently so the border never looks
+    // stamped from one mold.
     uint8_t g = r->seed;
-    if (is_left) {
-        for (int x = (g & 3); x < DUEL_CANVAS_W; x += 4) {
-            duel_fb_px(fb, x + 1, 113, true);                      // cobble crown
-            duel_fb_px(fb, x, 114, true);
-            duel_fb_px(fb, x + 1, 114, true);
-            duel_fb_px(fb, x + 2, 114, true);
-        }
-    } else {
-        for (int x = 0; x < DUEL_CANVAS_W; x++)
-            if (((x + (g & 1)) & 3) != 3) duel_fb_px(fb, x, 114, true); // flagstone tops
-        for (int x = 1 + (g & 3); x < DUEL_CANVAS_W; x += 4)
-            duel_fb_px(fb, x, 112, true);                          // vertical joints
-    }
-
-    // Foundation coursing, clear of the y127 odometer. The capstone line reads as
-    // masonry base; regular joints below give texture without noise. Left is a
-    // sparser astral course; right a denser mechanical one.
-    duel_fb_hline(fb, 0, DUEL_CANVAS_W - 1, 117);                       // capstone (both cities)
-    if (is_left) {
-        for (int x = 2; x < DUEL_CANVAS_W; x += 8)                 // sparse ashlar joints
-            for (int y = 119; y <= 122; y++) duel_fb_px(fb, x, y, true);
-    } else {
-        for (int x = 0; x < DUEL_CANVAS_W; x += 4)                 // dense brick joints, offset course
-            for (int y = 119; y <= 122; y++) duel_fb_px(fb, x + ((y >> 1) & 1) * 2, y, true);
-    }
+    duel_fb_hline(fb, 0, DUEL_CANVAS_W - 1, DUEL_STONE_Y0);
+    duel_fb_hline(fb, 0, DUEL_CANVAS_W - 1, DUEL_STONE_Y1);
+    for (int x = (int)(g & 3u) + (is_left ? 2 : 4); x < DUEL_CANVAS_W; x += 6)
+        for (int y = DUEL_STONE_Y0 + 1; y < DUEL_STONE_Y1; y++)
+            duel_fb_px(fb, x, y, true);
     draw_floor_transition(fb, r, is_left);
 #undef FLR_X
 }
@@ -1222,51 +1302,47 @@ static void draw_alert_bitmap(duel_fb_t *fb, uint8_t category,
     }
 }
 
-static void clear_alert_corner(duel_fb_t *fb, bool is_left) {
-    int x0 = is_left ? 0 : 22;
-    int x1 = is_left ? 9 : 31;
-    for (int y = 1; y <= 15; y++)
-        for (int x = x0; x <= x1; x++) duel_fb_px(fb, x, y, false);
-}
-
+/* M15: the alert hangs as a banner on the wizard tower's shaft (between the
+ * upper window and the balcony) instead of owning a reserved top corner.
+ * Canonical coordinates describe the left shaft; the right half is its exact
+ * desk mirror, so the pair still reads as one desk-space instrument. */
 static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
     uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
     uint8_t age = DUEL_HOST_ALERT_AGE(r->alert);
     if (!render_host(r) || !render_notif(r) || category == DUEL_HOST_CATEGORY_NONE ||
         priority == DUEL_HOST_PRIORITY_NONE) return;
-    clear_alert_corner(fb, is_left);
-    // Canonical coordinates describe the left outer corner. The right half is
-    // its exact x mirror, producing a single paired desk-space sigil.
-    draw_alert_bitmap(fb, category, is_left ? 2 : 29, 4, !is_left);
+    // Clear the banner field on the shaft face so the glyph stays legible
+    // over a lit window edge or a dragged body crossing the doorway.
+    for (int y = 24; y <= 35; y++)
+        for (int x = 2; x <= 10; x++)
+            duel_fb_px(fb, is_left ? x : 31 - x, y, false);
+    draw_alert_bitmap(fb, category, is_left ? 3 : 28, 26, !is_left);
     if (priority >= DUEL_HOST_PRIORITY_NORMAL) {
-        for (int x = 1; x <= 7; x++) {
-            duel_fb_px(fb, is_left ? x : 31 - x, 3, true);
-            duel_fb_px(fb, is_left ? x : 31 - x, 11, true);
+        for (int x = 2; x <= 8; x++) {
+            duel_fb_px(fb, is_left ? x : 31 - x, 25, true);
+            duel_fb_px(fb, is_left ? x : 31 - x, 33, true);
         }
-        duel_fb_px(fb, is_left ? 1 : 30, 4, true);
-        duel_fb_px(fb, is_left ? 7 : 24, 4, true);
     }
     if (priority == DUEL_HOST_PRIORITY_CRITICAL) {
-        for (int y = 3; y <= 11; y++) {
-            duel_fb_px(fb, is_left ? 1 : 30, y, true);
-            duel_fb_px(fb, is_left ? 7 : 24, y, true);
+        for (int y = 26; y <= 32; y++) {
+            duel_fb_px(fb, is_left ? 2 : 29, y, true);
+            duel_fb_px(fb, is_left ? 8 : 23, y, true);
         }
-        duel_fb_px(fb, is_left ? 9 : 22, 2, true);
-        duel_fb_px(fb, is_left ? 9 : 22, 12, true);
+        duel_fb_px(fb, is_left ? 10 : 21, 25, true);
+        duel_fb_px(fb, is_left ? 10 : 21, 33, true);
     }
     int accents = 3 - (age > 5 ? 3 : age / 2);
     for (int i = 0; i < accents; i++)
-        duel_fb_px(fb, is_left ? 1 + i * 3 : 30 - i * 3, 1, true);
+        duel_fb_px(fb, is_left ? 2 + i * 3 : 29 - i * 3, 24, true);
     int pips = render_notif(r) > 4 ? 4 : render_notif(r);
     for (int i = 0; i < pips; i++)
-        duel_fb_px(fb, is_left ? 1 + i * 2 : 30 - i * 2, 13, true);
+        duel_fb_px(fb, is_left ? 2 + i * 2 : 29 - i * 2, 35, true);
     if (DUEL_HOST_CONTEXT_PERSISTENT(r->external)) {
-        int ax = is_left ? 4 : 27;
-        duel_fb_px(fb, ax, 13, true); duel_fb_px(fb, ax, 14, true);
-        duel_fb_px(fb, ax, 15, true);
-        duel_fb_px(fb, ax + (is_left ? -1 : 1), 15, true);
-        duel_fb_px(fb, ax + (is_left ? 1 : -1), 15, true);
+        int ax = is_left ? 6 : 25;
+        duel_fb_px(fb, ax, 36, true); duel_fb_px(fb, ax, 37, true);
+        duel_fb_px(fb, ax + (is_left ? -1 : 1), 38, true);
+        duel_fb_px(fb, ax + (is_left ? 1 : -1), 38, true);
     }
 }
 
@@ -1325,19 +1401,22 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         duel_fb_px(fb, SCRY_X(27), hy + 2, true);
     }
 
-    /* The normalized alert keeps its established outer corner. Scry suppresses
-     * the ordinary sigil, then adds only these category/priority instruments. */
+    /* The scry alert summary sits in the gap-side top strip (the former
+     * outer corner now belongs to the tower peak, whose art is deliberately
+     * asymmetric — added scry instruments must land on mirror-symmetric
+     * base cells). Scry suppresses the ordinary shaft banner, then adds only
+     * these category/priority instruments. */
     uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
     uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
     if (category && priority) {
-        draw_alert_bitmap(fb, category, is_left ? 2 : 29, 4, !is_left);
+        draw_alert_bitmap(fb, category, is_left ? 24 : 7, 3, !is_left);
         for (int i = 0; i < priority; i++)
-            duel_fb_px(fb, SCRY_X(1 + i * 3), 2, true);
+            duel_fb_px(fb, SCRY_X(23 + i * 3), 1, true);
         if (DUEL_HOST_CONTEXT_PERSISTENT(r->external)) {
-            duel_fb_px(fb, SCRY_X(4), 13, true);
-            duel_fb_px(fb, SCRY_X(4), 14, true);
-            duel_fb_px(fb, SCRY_X(3), 15, true);
-            duel_fb_px(fb, SCRY_X(5), 15, true);
+            duel_fb_px(fb, SCRY_X(26), 11, true);
+            duel_fb_px(fb, SCRY_X(26), 12, true);
+            duel_fb_px(fb, SCRY_X(25), 13, true);
+            duel_fb_px(fb, SCRY_X(27), 13, true);
         }
     }
 
@@ -1522,6 +1601,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     // retired); the archival occupation lives in the tower floor below, where
     // the courier (Wave 6) and rare event (Wave 7) layer in as well.
     draw_sky(fb, r, is_left);
+    draw_wizard_tower(fb, r, is_left);
     draw_floor(fb, r, is_left);
     if (!(r->revision & INCANTATION_AFTERMATH_WIRE) &&
         DUEL_CIVIC_FLOOR(r->civic) != DUEL_CIVIC_FLOOR_SPECIAL) {
@@ -1555,11 +1635,13 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
             }
             draw_charge(fb, wz, facing, frame);
             if (wz->inc_state == INC_COLLECTING) {
+                // Collection runes ride between the balcony and the hat —
+                // their old rows (y30-31) are the balcony slab now.
                 int runes = 1 + r->view.phase[side] / 64;
                 for (int i = 0; i < runes; i++) {
                     int rx = 12 + i * 3;
-                    duel_fb_px(fb, rx, 48 + DUEL_ROOF_DY, true);
-                    duel_fb_px(fb, rx + 1, 47 + DUEL_ROOF_DY, true);
+                    duel_fb_px(fb, rx, 35, true);
+                    duel_fb_px(fb, rx + 1, 34, true);
                 }
             } else if (wz->prepared) {
                 int px = 16 + facing * 2, py = 43 + DUEL_ROOF_DY;
@@ -1567,6 +1649,25 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
                 duel_fb_px(fb, px - 2, py, true); duel_fb_px(fb, px + 2, py, true);
             }
             draw_incantation_status(fb, wz, facing, frame);
+            if (wz->rearm_lock && wz->inc_state == INC_WINDUP) {
+                // Forced-commit "civic-scale" cast: the whole tower lights —
+                // blinking halo around the wizard, peak flare, motes rising
+                // past the shaft. Replaces the retired WORLD_WONDER ripple.
+                static const int8_t halo[5][2] = {
+                    {-7, -16}, {6, -18}, {8, -6}, {-8, -2}, {7, 4}};
+                for (int i = 0; i < 5; i++)
+                    if ((((frame >> 1) + (uint32_t)i) & 1u) == 0u)
+                        duel_fb_px(fb, 16 + halo[i][0], 44 + halo[i][1], true);
+                int shaft_lip = is_left ? 13 : 18;
+                for (int i = 0; i < 3; i++) {
+                    int my = 56 - (int)((frame * 2u + (uint32_t)i * 12u) % 36u);
+                    duel_fb_px(fb, shaft_lip, my, true);
+                }
+                int peak_x = is_left ? 6 : 25;
+                duel_fb_px(fb, peak_x - 2, 2, true);
+                duel_fb_px(fb, peak_x + 2, 2, true);
+                duel_fb_px(fb, peak_x, 0, true);
+            }
             break;
 
         case LIFE_COLLAPSE: {

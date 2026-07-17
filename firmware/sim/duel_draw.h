@@ -23,27 +23,34 @@
 #define DUEL_CANVAS_W 32
 #define DUEL_CANVAS_H 128
 
-// Protected presentation regions. Layer order is underlay -> combat -> health
-// -> alert -> scry -> recovery -> diagnostics; later layers may deliberately
-// clear/replace earlier pixels only inside their own protected region.
-#define DUEL_ALERT_Y0 1
-#define DUEL_ALERT_Y1 15
-#define DUEL_HEALTH_Y0 111
-#define DUEL_HEALTH_Y1 114
-// Tower-floor band: the ceiling beam row separating rooftop from floor, the
-// room interior, and the ground line. Shared with the harness so protection
-// checks and the renderer cannot drift (a one-row hole at the beam row went
-// unasserted while these lived as loose literals).
+// Screen bands (M15 Foundations & Spires). Layer order is underlay (sky,
+// wizard tower) -> floor -> combat -> health -> alert instrument -> scry ->
+// recovery -> diagnostics; later layers may deliberately clear/replace
+// earlier pixels only inside their own region.
+//
+// The former reserved alert band (y1-15) and bottom health band (y111-114)
+// are retired: the top strip is open sky/spell lanes beside the wizard
+// tower's peak, and the bottom border is a stone course. The alert sigil
+// now hangs as a banner on the wizard tower's shaft (see draw_alert_sigil).
+#define DUEL_DECK_Y0      60  /* rooftop deck rows 60-61 (thickened beam) */
 #define DUEL_FLOOR_BEAM_Y 61
 #define DUEL_FLOOR_Y0     62
 #define DUEL_FLOOR_Y1     110
+#define DUEL_STONE_Y0     112 /* stone-course bottom border rails */
+#define DUEL_STONE_Y1     116
+// Wizard tower shaft: half-width, outer side of each canvas, from the deck
+// up into a full architectural peak. Canonical (left) columns; the right
+// half mirrors. The deck wizard at cx=16 keeps its robe (reaching x12)
+// clear of the shaft's gap edge.
+#define DUEL_TOWER_X0      0
+#define DUEL_TOWER_X1     12  /* shaft edges at x1 and x11, flare to x0/x12 */
+#define DUEL_TOWER_PEAK_Y 14  /* shaft top; the peak owns y0..13 */
 
-// Twin Cities rooftop relocation. The whole combat cluster (champion,
-// ward, spell lanes, charge anticipation, recovery sparks, downed/medic) shifts
-// UP by this many pixels to open a tower-floor band beneath it. The lift is
-// bounded by the alert region: draw_charge reaches cy-6, which must stay below
-// DUEL_ALERT_Y1 (15), so with cy=39 the safe maximum is -17. Zero in release
-// builds while keeping the protected alert region clear.
+// Twin Cities rooftop relocation (M12), kept as the deck offset: the combat
+// cluster (champion, ward, spell lanes, charge, recovery sparks,
+// downed/medic) sits this many pixels above its pre-M12 authoring
+// coordinates, which lands the wizard's feet on the rooftop deck. The old
+// alert-region bound on this value is gone with the band itself.
 #define DUEL_ROOF_DY (-17)
 
 // 1bpp framebuffer in QMK's native page-major OLED layout. Each byte is one

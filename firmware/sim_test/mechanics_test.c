@@ -2208,9 +2208,11 @@ static void test_observatory_sky_and_suppression(void) {
             EXPECT(memcmp(phase_fb[phase - 1].bits, phase_fb[phase].bits,
                          sizeof phase_fb[phase].bits) != 0);
     }
-    for (int y = 0; y < DUEL_CANVAS_H; y++) {
-        if (!((y >= DUEL_ALERT_Y0 && y <= DUEL_ALERT_Y1) ||
-              (y >= DUEL_HEALTH_Y0 && y <= DUEL_HEALTH_Y1))) continue;
+    /* M15 contract: the sky may repaint the upper band (celestial arc, tower
+     * window lighting), but the room interior and everything below it —
+     * floor band through the stone course to the canvas bottom — must be
+     * bit-identical across phases. */
+    for (int y = DUEL_FLOOR_Y0; y < DUEL_CANVAS_H; y++) {
         for (int x = 0; x < DUEL_CANVAS_W; x++)
             EXPECT(duel_fb_get(&phase_fb[DUEL_SKY_DAWN], x, y) ==
                   duel_fb_get(&phase_fb[DUEL_SKY_NIGHT], x, y));
