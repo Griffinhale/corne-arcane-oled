@@ -26,7 +26,11 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
     memset(view, 0, sizeof *view);
     for (uint8_t side = 0; side < 2; side++) {
         const sim_wizard_t *wz = &world->wiz[side];
-        view->wizard[side][0] = VIEW_W0_PACK(wz->hp, wz->ward_strength, wz->rearm_lock);
+        /* Track B MEDITATE presents the ward as 0 (matching ward_covers'
+         * suppression gate) without touching the stored strength, so both
+         * halves hide it and a keydown restores it instantly. */
+        uint8_t ward = wz->stance == DUEL_STANCE_MEDITATE ? 0u : wz->ward_strength;
+        view->wizard[side][0] = VIEW_W0_PACK(wz->hp, ward, wz->rearm_lock);
         view->wizard[side][1] = VIEW_W1_PACK(wz->life, wz->variant, wz->status);
         view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus,
                                              wz->prepared);
@@ -54,9 +58,10 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
         view->status_visual |= (uint8_t)(((wz->status_intensity & 3u) |
                                   (duration_bucket(wz->status_ticks) << 2)) << (side * 4u));
     }
-    /* Stances are wired-but-zero until Track B adds the sim field; the fx
-     * sequence wears the low nibble (equality-compared, wrap at 16 is ample). */
-    view->fx_stance = VIEW_FX_PACK(world->fx_seq, DUEL_STANCE_NONE, DUEL_STANCE_NONE);
+    /* The fx sequence wears the low nibble (equality-compared, wrap at 16 is
+     * ample); the high nibble carries the Track B stances. */
+    view->fx_stance = VIEW_FX_PACK(world->fx_seq, world->wiz[0].stance,
+                                   world->wiz[1].stance);
     view->outcome_overlay = VIEW_OVERLAY_PACK(world->fx_kind, scry_is_open(world),
                                               world->scry.scene);
 }
@@ -131,6 +136,7 @@ void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world) {
         world->wiz[side].rearm_lock = wz.rearm_lock;
         world->wiz[side].status = wz.status;
         world->wiz[side].status_intensity = wz.status_intensity;
+        world->wiz[side].stance = wz.stance;
         duel_view_spell_t sp = duel_view_spell(view, side);
         world->spell[side].active = sp.active;
         world->spell[side].pos = sp.pos;

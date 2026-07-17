@@ -137,6 +137,21 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
 #define SIM_REGEN_TICKS 500 /* exactly 20 s per regained pip below max (M15 Track T) */
 #define SIM_ROSTER_N    4      /* cosmetic roster variants cycled per replacement */
 
+/* ---- non-casting stances & temperament (M15 Track B) ---------------------
+ * `stance` is a sub-state of LIFE_ACTIVE: entry is evaluated by rule after
+ * SIM_STANCE_ENTRY_TICKS of INC_IDLE (stance_step, authoritative only) and
+ * exit is any own keydown — a byte write in inc_keydown, so the typing path
+ * never waits on stance logic. Values ride the view's fx_stance high nibble
+ * (v11); PACE/TAUNT deliberately have no sim state and never ride the wire —
+ * the renderer derives them locally from NONE + idle + seed.
+ * `temper` (0..7, starts SIM_TEMPER_NEUTRAL) drifts at resolve time: damage
+ * taken +1, own spell stopped -1, KO one step back toward neutral. */
+enum { DUEL_STANCE_NONE = 0, DUEL_STANCE_MEDITATE, DUEL_STANCE_STUDY,
+       DUEL_STANCE_FORTIFY };
+#define SIM_STANCE_ENTRY_TICKS        75 /* 3 s of INC_IDLE before a stance opens */
+#define SIM_STANCE_FORTIFY_HOLD_TICKS 50 /* held FORTIFY grants its ward pip once */
+#define SIM_TEMPER_NEUTRAL            4
+
 // fx kinds; the side names the DEFENDER (whose screen takes the hit/flash).
 // FIZZLE = a spell dissipating at a downed wizard's doorstep.
 enum { FX_NONE = 0, FX_IMPACT_L = 1, FX_IMPACT_R = 2,
@@ -257,7 +272,10 @@ typedef struct {
 } sim_incantation_t;
 
 uint8_t incantation_complexity(const sim_incantation_t *inc);
-uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant);
+/* temper (Track B) reweights choose_form: pass SIM_TEMPER_NEUTRAL for the
+ * pre-temperament behaviour. */
+uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant,
+                             uint8_t temper);
 
 /* Shared live/compiler classifier. Low bit is active, then tempo and trend. */
 #define INCANTATION_AMBIENCE_PACK(active, tempo, trend) \
@@ -282,7 +300,7 @@ typedef struct {
     uint8_t  recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
     uint8_t  cast_tier;     /* scry.5 capped presentation tier while charging */
     uint8_t  recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
-    uint8_t  _pad;          /* explicit padding: keeps world hashing deterministic */
+    uint8_t  temper;        /* 0..7 temperament, starts SIM_TEMPER_NEUTRAL (Track B) */
     uint16_t regen_ticks;   /* countdown to next regen pip; local, never in snapshots */
     sim_incantation_t inc;
     uint32_t pending_desc;
@@ -299,6 +317,10 @@ typedef struct {
     uint8_t  status_intensity;
     uint8_t  status_ticks;
     uint8_t  status_burned;
+    uint8_t  stance;        /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE (Track B) */
+    uint8_t  stance_ticks;  /* idle ticks toward entry, then held ticks in-stance */
+    uint8_t  studied;       /* STUDY buff pending; consumed by the next inc_commit */
+    uint8_t  _pad[2];       /* explicit padding: keeps world hashing deterministic */
 } sim_wizard_t;
 
 uint8_t incantation_local_ambience(const sim_wizard_t *wizard);

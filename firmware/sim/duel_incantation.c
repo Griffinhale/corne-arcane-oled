@@ -99,25 +99,43 @@ uint8_t incantation_complexity(const sim_incantation_t *inc) {
     return score > 255u ? 255u : (uint8_t)score;
 }
 
-static uint8_t dominant_row(const sim_incantation_t *inc) {
+static uint8_t row_element(uint8_t row) {
+    static const uint8_t element[4] = { ELEM_FROST, ELEM_FORCE, ELEM_EMBER, ELEM_VOID };
+    return element[row & 3u];
+}
+
+/* Doctrine affinity (Track B §4.2): roster variant 0-3 -> force/ember/frost/
+ * void. element_row is the inverse of row_element's {frost, force, ember,
+ * void} row order — NOT the ELEM_* enum order. */
+static uint8_t affinity_element(uint8_t variant) {
+    static const uint8_t element[4] = { ELEM_FORCE, ELEM_EMBER, ELEM_FROST, ELEM_VOID };
+    return element[variant & 3u];
+}
+
+static uint8_t element_row(uint8_t element) {
+    static const uint8_t row[4] = { 1u, 2u, 0u, 3u };
+    return row[element & 3u];
+}
+
+/* Track B: exact-count ties break toward the caster's doctrine affinity row;
+ * recency still breaks ties among non-affinity rows. */
+static uint8_t dominant_row(const sim_incantation_t *inc, uint8_t affinity_row) {
     uint8_t best = 0, best_n = 0, best_recent = 0;
     for (uint8_t row = 0; row < 4; row++) {
-        if (inc->row_hist[row] > best_n ||
-            (inc->row_hist[row] == best_n && inc->row_recent[row] >= best_recent)) {
+        uint8_t n = inc->row_hist[row];
+        if (n > best_n ||
+            (n == best_n && best != affinity_row &&
+             (row == affinity_row || inc->row_recent[row] >= best_recent))) {
             best = row;
-            best_n = inc->row_hist[row];
+            best_n = n;
             best_recent = inc->row_recent[row];
         }
     }
     return best;
 }
 
-static uint8_t row_element(uint8_t row) {
-    static const uint8_t element[4] = { ELEM_FROST, ELEM_FORCE, ELEM_EMBER, ELEM_VOID };
-    return element[row & 3u];
-}
-
-static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint32_t hash) {
+static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint8_t temper,
+                           uint32_t hash) {
     static const uint8_t forms[8] = { SPELL_PROJECTILE, SPELL_FIREBALL, SPELL_SWARM,
                                       SPELL_GROUND_WAVE, SPELL_BEAM, SPELL_CHAIN,
                                       SPELL_SINGULARITY, SPELL_CONJURE };
@@ -135,6 +153,11 @@ static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint32_t hash) {
                          (variant == 2u && (forms[i] == SPELL_BEAM || forms[i] == SPELL_CHAIN)) ||
                          (variant == 3u && (forms[i] == SPELL_SINGULARITY || forms[i] == SPELL_CONJURE));
         if (preferred) weights[i] = (uint8_t)(weights[i] * 2u);
+        /* Track B temperament: a hot wizard doubles the aggressive forms, a
+         * cool one the patient ones. */
+        bool hot  = temper >= 6u && (forms[i] == SPELL_FIREBALL || forms[i] == SPELL_CHAIN);
+        bool cool = temper <= 2u && (forms[i] == SPELL_CONJURE || forms[i] == SPELL_SINGULARITY);
+        if (hot || cool) weights[i] = (uint8_t)(weights[i] * 2u);
     }
     uint8_t total = 0;
     for (uint8_t i = 0; i < eligible; i++) total = (uint8_t)(total + weights[i]);
@@ -176,13 +199,14 @@ uint8_t incantation_local_ambience(const sim_wizard_t *wizard) {
     return 0;
 }
 
-uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant) {
+uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant,
+                             uint8_t temper) {
     uint8_t complexity = incantation_complexity(inc);
     uint8_t magnitude = complexity < 48u ? 1u : complexity < 112u ? 2u :
                         complexity < 192u ? 3u : 4u;
-    uint8_t row = dominant_row(inc);
+    uint8_t row = dominant_row(inc, element_row(affinity_element(variant)));
     uint8_t element = row_element(row);
-    uint8_t form = choose_form(complexity, (uint8_t)(variant & 3u), inc->hash);
+    uint8_t form = choose_form(complexity, (uint8_t)(variant & 3u), temper, inc->hash);
     bool strong_inward = inc->column_drift >= 4;
     bool held_dense = inc->key_count && inc->held_ticks >= (uint16_t)inc->key_count * 3u;
     uint8_t payload;
@@ -233,6 +257,10 @@ static uint32_t desc_set_magnitude(uint32_t desc, uint8_t magnitude) {
 
 static uint32_t desc_set_trajectory(uint32_t desc, uint8_t trajectory) {
     return (desc & ~((uint32_t)7u << 7)) | ((uint32_t)(trajectory & 7u) << 7);
+}
+
+static uint32_t desc_set_element(uint32_t desc, uint8_t element) {
+    return (desc & ~((uint32_t)3u << 3)) | ((uint32_t)(element & 3u) << 3);
 }
 
 static uint8_t aftermath_duration(uint8_t kind) {
@@ -358,6 +386,11 @@ static void wizard_clear_cast(sim_wizard_t *wz) {
 static void wizard_interrupt(sim_wizard_t *wz) {
     inc_reset(&wz->inc);
     wizard_clear_cast(wz);
+    /* Track B: an interruption (damage, KO) ends any stance and forfeits an
+     * unconsumed STUDY buff. */
+    wz->stance = DUEL_STANCE_NONE;
+    wz->stance_ticks = 0;
+    wz->studied = 0;
 }
 
 static void wizard_ko(sim_world_t *w, uint8_t side) {
@@ -370,6 +403,10 @@ static void wizard_ko(sim_world_t *w, uint8_t side) {
     wz->status = STATUS_NONE;
     wz->status_intensity = 0;
     wz->status_ticks = 0;
+    /* Track B §4.1: a KO steps temper one back toward neutral, so the
+     * replacement arrives calmer (or steadier) than the fallen wizard. */
+    if (wz->temper > SIM_TEMPER_NEUTRAL) wz->temper--;
+    else if (wz->temper < SIM_TEMPER_NEUTRAL) wz->temper++;
     wizard_interrupt(wz);
     w->spell[side].active = 0;
     w->spell[side].descriptor = 0;
@@ -399,6 +436,9 @@ static uint8_t trajectory_lane(uint8_t trajectory) {
 }
 
 static bool ward_covers(const sim_wizard_t *wz, uint32_t desc) {
+    /* Track B MEDITATE suppresses the ward as a coverage/presentation gate:
+     * stored strength survives, so any keydown restores it instantly. */
+    if (wz->stance == DUEL_STANCE_MEDITATE) return false;
     uint8_t strength = wz->ward_strength;
     uint8_t trajectory = SPELL_DESC_TRAJECTORY(desc);
     if (wz->status == STATUS_MARKED &&
@@ -467,6 +507,8 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
         def->ward_strength = (uint8_t)(def->ward_strength - absorbed);
         shattered = def->ward_strength == 0u;
         if (absorbed >= contact_power) {
+            /* Track B: a fully stopped spell cools its caster one step. */
+            if (w->wiz[caster].temper) w->wiz[caster].temper--;
             set_outcome(w, fx_for(shattered ? FX_WARD_SHATTER_L : FX_DEFLECT_L,
                                   opponent));
             return;
@@ -478,6 +520,8 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
     if (direct) {
         def->hp = direct >= def->hp ? 0u : (uint8_t)(def->hp - direct);
         def->regen_ticks = SIM_REGEN_TICKS;
+        /* Track B: taking damage runs the defender one step hotter. */
+        if (def->temper < 7u) def->temper++;
         /* Track A: a landed hit stains the defender's doorstep. */
         residue_deposit(w, residue_doorstep_zone(opponent),
                         SPELL_DESC_ELEMENT(desc), 1u);
@@ -530,6 +574,11 @@ static void ward_grow_to(sim_wizard_t *wz, uint8_t capacity) {
 }
 
 static void inc_keydown(sim_wizard_t *wz, uint8_t pos, uint8_t layer) {
+    /* Track B: any own keydown ends a stance instantly — exit is this byte
+     * write, before every gate below, so the typing path never carries
+     * stance logic. (The STUDY buff deliberately survives into the commit.) */
+    wz->stance = DUEL_STANCE_NONE;
+    wz->stance_ticks = 0;
     if (wz->life != LIFE_ACTIVE || wz->rearm_lock || wz->inc_state == INC_WINDUP ||
         wz->inc_state == INC_PREPARED) return;
     if (wz->inc_state == INC_IDLE) {
@@ -585,11 +634,32 @@ static void inc_keydown(sim_wizard_t *wz, uint8_t pos, uint8_t layer) {
 static void inc_commit(sim_world_t *w, uint8_t side, bool forced) {
     sim_wizard_t *wz = &w->wiz[side];
     uint8_t complexity = incantation_complexity(&wz->inc);
-    wz->pending_desc = incantation_compile(&wz->inc, wz->variant);
+    wz->pending_desc = incantation_compile(&wz->inc, wz->variant, wz->temper);
+    /* Track B STUDY: the pending buff shifts this cast's element to the
+     * doctrine affinity, or deepens the cast (+1 magnitude, cap 4) when the
+     * element is already aligned. Consumed exactly once, here. */
+    if (wz->studied) {
+        wz->studied = 0;
+        uint32_t desc = wz->pending_desc;
+        uint8_t affinity = affinity_element(wz->variant);
+        if (SPELL_DESC_ELEMENT(desc) != affinity) {
+            desc = desc_set_element(desc, affinity);
+        } else if (SPELL_DESC_MAGNITUDE(desc) < 4u) {
+            desc = desc_set_magnitude(desc, (uint8_t)(SPELL_DESC_MAGNITUDE(desc) + 1u));
+        }
+        wz->pending_desc = desc;
+    }
     ward_grow_to(wz, ward_capacity_for(complexity));
     uint16_t windup = (uint16_t)INCANTATION_WINDUP_MIN_TICKS +
                       ((uint16_t)complexity * 42u + 254u) / 255u;
     if (wz->status == STATUS_FROZEN) windup += (uint16_t)wz->status_intensity * 3u;
+    /* Track B temperament: hot wizards wind up 2 ticks faster, cool ones 2
+     * slower, always inside the existing clamps. */
+    if (wz->temper >= 6u)
+        windup = windup > INCANTATION_WINDUP_MIN_TICKS + 2u
+                     ? (uint16_t)(windup - 2u) : INCANTATION_WINDUP_MIN_TICKS;
+    else if (wz->temper <= 2u)
+        windup += 2u;
     if (windup > INCANTATION_WINDUP_MAX_TICKS) windup = INCANTATION_WINDUP_MAX_TICKS;
     wz->cast_windup = (uint8_t)windup;
     wz->windup_total = (uint8_t)windup;
@@ -1160,6 +1230,46 @@ static void lifecycle_step(sim_wizard_t *wz) {
     }
 }
 
+/* Track B stance machine (authoritative only, pinned after lifecycle and
+ * before regen). Entry is evaluated on idle ticks — after
+ * SIM_STANCE_ENTRY_TICKS of LIFE_ACTIVE + INC_IDLE — and keeps re-evaluating
+ * each tick until a stance opens, so a later-appearing trigger (an opponent
+ * windup) still catches. Every rule reads only authoritative fields already
+ * on the wire's view, so the slave renders stance without ever deciding one.
+ * Exit lives in inc_keydown; §4.3 table order: MEDITATE, STUDY, FORTIFY,
+ * otherwise NONE (the renderer's PACE/TAUNT). */
+static void stance_step(sim_world_t *w, uint8_t side) {
+    sim_wizard_t *wz = &w->wiz[side];
+    if (wz->life != LIFE_ACTIVE || wz->inc_state != INC_IDLE) {
+        wz->stance_ticks = 0;
+        return;
+    }
+    wz->stance_ticks = sat_inc(wz->stance_ticks);
+    if (wz->stance == DUEL_STANCE_NONE) {
+        if (wz->stance_ticks < SIM_STANCE_ENTRY_TICKS) return;
+        bool hp_low = wz->hp <= SIM_MAX_HP / 2u;
+        uint8_t entered = DUEL_STANCE_NONE;
+        if (hp_low && wz->temper <= 2u) entered = DUEL_STANCE_MEDITATE;
+        /* "hp fine" reads as unhurt: mid-duel (any pip missing) an idle
+         * wizard paces or fortifies instead, so the STUDY buff stays idle
+         * flavour rather than a flat damage inflation — measured to triple
+         * the prose KO cadence under the >half reading. */
+        else if (wz->hp == SIM_MAX_HP && wz->temper >= 3u && wz->temper <= 5u)
+            entered = DUEL_STANCE_STUDY;
+        else if (wz->temper >= 6u || w->wiz[side ^ 1u].inc_state == INC_WINDUP)
+            entered = DUEL_STANCE_FORTIFY;
+        if (entered != DUEL_STANCE_NONE) {
+            wz->stance = entered;
+            wz->stance_ticks = 0; /* now counts held ticks in-stance */
+            if (entered == DUEL_STANCE_STUDY) wz->studied = 1;
+        }
+    } else if (wz->stance == DUEL_STANCE_FORTIFY &&
+               wz->stance_ticks == SIM_STANCE_FORTIFY_HOLD_TICKS) {
+        /* Exactly-once: the counter passes this value a single time. */
+        wz->ward_strength = min_u8((uint8_t)(wz->ward_strength + 1u), 4u);
+    }
+}
+
 /* Battlefield residue tick (M15 Track A), pinned between collision_step and
  * spell_step. First the transmutations: an active spell whose u sits in a
  * zone charged to intensity >= 2 reacts once per spell lifetime
@@ -1255,9 +1365,9 @@ static void scry_step(sim_scry_t *sc, uint8_t mask) {
  *   shared (both halves): overflow accounting -> pose edges -> prev_held ->
  *                         prev_down_mask -> tick++
  *   authoritative only (three SIMF_AUTHORITATIVE gates below): event/rising
- *   ingestion + incantation collection -> lifecycle -> regen -> collision ->
- *   residue (Track A) -> spell flight -> status/windup/release -> aftermath
- *   -> scry.
+ *   ingestion + incantation collection -> lifecycle -> stance (Track B) ->
+ *   regen -> collision -> residue (Track A) -> spell flight ->
+ *   status/windup/release -> aftermath -> scry.
  * The slave structurally cannot decide outcomes because every mutating combat
  * step sits behind the authoritative gates; do not reorder the sub-steps. */
 void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
@@ -1310,13 +1420,19 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
 
     if (w->flags & SIMF_AUTHORITATIVE) {
         for (uint8_t side = 0; side < 2; side++) lifecycle_step(&w->wiz[side]);
+        for (uint8_t side = 0; side < 2; side++) stance_step(w, side);
         /* Regeneration runs before contacts. A hit later in this tick resets
-         * the full countdown, so the boundary is exactly 30 seconds after the
-         * damaging event rather than one simulation quantum early. */
+         * the full countdown, so the boundary is exactly 20 seconds after the
+         * damaging event rather than one simulation quantum early. MEDITATE
+         * (Track B) burns the countdown at double rate while held. */
         for (uint8_t side = 0; side < 2; side++) {
             sim_wizard_t *wz = &w->wiz[side];
-            if (wz->life == LIFE_ACTIVE && wz->hp < SIM_MAX_HP &&
-                wz->regen_ticks && --wz->regen_ticks == 0u) {
+            if (wz->life != LIFE_ACTIVE || wz->hp >= SIM_MAX_HP || !wz->regen_ticks)
+                continue;
+            uint16_t burn = wz->stance == DUEL_STANCE_MEDITATE ? 2u : 1u;
+            wz->regen_ticks = wz->regen_ticks > burn
+                                  ? (uint16_t)(wz->regen_ticks - burn) : 0u;
+            if (!wz->regen_ticks) {
                 wz->hp++;
                 wz->regen_ticks = SIM_REGEN_TICKS;
             }

@@ -755,6 +755,50 @@ static void medic_draw(duel_fb_t *fb, int x, int facing) {
     duel_fb_px(fb, x - facing + 1, 73 + DUEL_ROOF_DY, true);
 }
 
+/* Track B calm stances: MEDITATE and STUDY restage the wizard on the tower
+ * balcony (slab desk x11-16 at y30-31 — the restage point authored into
+ * draw_wizard_tower). Balcony art is architecture-side, so it is authored in
+ * desk space and mirrors with the tower; FORTIFY and PACE/TAUNT stay with
+ * the unmirrored combat cluster on the deck and never come here. */
+static void draw_stance_balcony(duel_fb_t *fb, bool is_left, uint8_t stance,
+                                uint32_t frame) {
+#define BX(x) incantation_desk_x(is_left, x)
+    if (stance == DUEL_STANCE_MEDITATE) {
+        // Seated figure folded onto the slab: hat, head, robe, crossed lap.
+        duel_fb_px(fb, BX(13), 21, true);
+        incantation_civic_hline(fb, is_left, 12, 15, 22);
+        duel_fb_px(fb, BX(13), 23, true); duel_fb_px(fb, BX(14), 23, true);
+        incantation_civic_hline(fb, is_left, 13, 14, 24);
+        for (int y = 25; y <= 27; y++)
+            incantation_civic_hline(fb, is_left, 12, 15, y);
+        incantation_civic_hline(fb, is_left, 11, 16, 28);
+        incantation_civic_hline(fb, is_left, 11, 16, 29);
+        // Slow motes circling the crown (render-frame cosmetic).
+        uint8_t beat = (uint8_t)((frame >> 3) & 3u);
+        duel_fb_px(fb, BX(11), 19 - (beat & 1u), true);
+        duel_fb_px(fb, BX(16), 18 + (beat >> 1), true);
+    } else {
+        // Standing at the gap-side rail, nose in an open tome.
+        duel_fb_px(fb, BX(12), 19, true);
+        incantation_civic_hline(fb, is_left, 11, 14, 20);
+        duel_fb_px(fb, BX(12), 21, true); duel_fb_px(fb, BX(13), 21, true);
+        duel_fb_px(fb, BX(12), 22, true); duel_fb_px(fb, BX(13), 22, true);
+        for (int y = 23; y <= 28; y++) {
+            duel_fb_px(fb, BX(12), y, true);
+            duel_fb_px(fb, BX(13), y, true);
+        }
+        incantation_civic_hline(fb, is_left, 11, 14, 29);
+        // The tome, pages peaked at the spine, held over the rail.
+        incantation_civic_hline(fb, is_left, 14, 16, 26);
+        incantation_civic_hline(fb, is_left, 14, 16, 27);
+        duel_fb_px(fb, BX(15), 25, true);
+        // A study rune drifts up off the page (render-frame cosmetic).
+        duel_fb_px(fb, BX(15 + (int)((frame >> 4) & 1u)),
+                   23 - (int)((frame >> 3) & 1u), true);
+    }
+#undef BX
+}
+
 /* Battlefield gap band: u in [DUEL_U_GAP_LO, DUEL_U_GAP_HI] is between the two
  * canvases (visible on neither half). The flare windows and per-half mapping
  * below all share these fenceposts. */
@@ -1790,12 +1834,56 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     // (life, life_ticks, variant) so master and slave render identically.
     // Sparks and the shield arc only apply to a standing, active wizard.
     switch (wz->life) {
-        case LIFE_ACTIVE:
+        case LIFE_ACTIVE: {
+            // Track B calm stances: MEDITATE/STUDY restage the wizard on the
+            // balcony and leave the deck empty. MEDITATE's ward is already
+            // presented as 0 by the packer; STUDY's stored ward keeps
+            // guarding the vacated deck below.
+            if (wz->stance == DUEL_STANCE_MEDITATE || wz->stance == DUEL_STANCE_STUDY) {
+                draw_stance_balcony(fb, is_left, wz->stance, frame);
+                if (wz->ward_strength)
+                    draw_ward(fb, facing, wz->ward_strength, wz->ward_focus,
+                              ward_punctured, ward_lane);
+                break;
+            }
+            // PACE/TAUNT never ride the wire: a calm idle wizard (stance
+            // NONE, nothing brewing, no own carrier in flight) alternates
+            // between a slow deck shuffle and a defiant staff flourish,
+            // phased by the session seed.
+            bool calm = wz->stance == DUEL_STANCE_NONE && wz->inc_state == INC_IDLE &&
+                        wz->pose == POSE_IDLE && !local_fx &&
+                        !duel_view_spell(&r->view, (uint8_t)side).active;
+            int idle_xo = 0;
+            bool taunt = false;
+            if (calm) {
+                if ((((r->seed >> 2) ^ (frame >> 7)) & 1u) != 0u) {
+                    taunt = ((frame >> 4) & 3u) == 0u;
+                } else {
+                    static const int8_t shuffle[8] = { 0, 1, 1, 0, 0, -1, -1, 0 };
+                    idle_xo = shuffle[(frame >> 3) & 7u];
+                }
+            }
             // A damaging hit pushes the defender away from the gap and briefly
             // compresses the silhouette. Deflect/fizzle leave it rock steady.
-            wiz_body(fb, wz->pose == POSE_CAST, facing, wz->variant,
-                     local_impact ? -facing * (r->flash_frames >= 8 ? 2 : 1) : 0,
+            wiz_body(fb, wz->pose == POSE_CAST || taunt, facing, wz->variant,
+                     local_impact ? -facing * (r->flash_frames >= 8 ? 2 : 1) : idle_xo,
                      local_impact && r->flash_frames >= 8 ? 1 : 0);
+            if (taunt) {
+                // Defiant sparks flicking off the raised orb.
+                duel_fb_px(fb, 16 + facing * 7, 36, true);
+                duel_fb_px(fb, 16 + facing * 6, 34, true);
+            }
+            if (wz->stance == DUEL_STANCE_FORTIFY) {
+                // Braced on deck: heels dug in beside the hem, and the staff
+                // orb pulsing while the ward charge builds.
+                duel_fb_px(fb, 16 - facing * 4, 59, true);
+                duel_fb_px(fb, 16 + facing * 4, 59, true);
+                if (((frame >> 2) & 1u) == 0u) {
+                    int sx = 16 + facing * 5;
+                    duel_fb_px(fb, sx, 39, true);
+                    duel_fb_px(fb, sx + facing, 39, true);
+                }
+            }
 
             if (wz->pose == POSE_RECOVER && !local_impact) {
                 // Fading sparks above the hat make RECOVER observable on hardware.
@@ -1846,6 +1934,7 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
                 duel_fb_px(fb, peak_x, 0, true);
             }
             break;
+        }
 
         case LIFE_COLLAPSE: {
             // Sink the standing figure for the first two thirds, then flat.

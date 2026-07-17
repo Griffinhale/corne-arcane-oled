@@ -442,6 +442,29 @@ static void build_catalog(void) {
         add_case(names[status], &world, status, 0);
     }
 
+    /* Track B stances. MEDITATE/STUDY restage onto the balcony (MEDITATE's
+     * ward suppressed on the wire, STUDY's still guarding the empty deck);
+     * FORTIFY braces on deck; PACE/TAUNT are renderer-derived idle frames
+     * (seed 0x5a phases frame<128 into the pace arm, >=128 into taunt). */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].stance = DUEL_STANCE_MEDITATE; world.wiz[0].hp = 3;
+    world.wiz[0].ward_strength = 2; world.wiz[0].ward_focus = 2;
+    world.wiz[1].stance = DUEL_STANCE_MEDITATE; world.wiz[1].hp = 4;
+    add_case("stance_meditate_balcony", &world, 8, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].stance = DUEL_STANCE_STUDY;
+    world.wiz[0].ward_strength = 2; world.wiz[0].ward_focus = 2;
+    world.wiz[1].stance = DUEL_STANCE_STUDY;
+    add_case("stance_study_balcony", &world, 8, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].stance = DUEL_STANCE_FORTIFY; world.wiz[0].ward_strength = 1;
+    world.wiz[1].stance = DUEL_STANCE_FORTIFY; world.wiz[1].ward_strength = 1;
+    world.wiz[1].ward_focus = 2;
+    add_case("stance_fortify_braced", &world, 8, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    add_case("idle_pace_step", &world, 8, 0);
+    add_case("idle_taunt_flourish", &world, 130, 0);
+
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     world.wiz[0].inc_state = INC_COLLECTING; world.wiz[0].ward_strength = 1;
     world.wiz[0].inc.key_count = 3; world.wiz[0].inc.seen_pos = 7;

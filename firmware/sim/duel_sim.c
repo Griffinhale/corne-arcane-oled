@@ -28,4 +28,6 @@ void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick) {
     w->wiz[1].hp = SIM_MAX_HP;
     w->wiz[0].regen_ticks = SIM_REGEN_TICKS;
     w->wiz[1].regen_ticks = SIM_REGEN_TICKS;
+    w->wiz[0].temper = SIM_TEMPER_NEUTRAL;
+    w->wiz[1].temper = SIM_TEMPER_NEUTRAL;
 }

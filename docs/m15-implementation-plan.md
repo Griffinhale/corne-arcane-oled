@@ -338,6 +338,44 @@ geometry (duel_draw.c:1385) shrinks to 8 pips; the freed rows join the ward
 column. Watch item for physical acceptance: KO cadence must not become
 restless (backlog Q4).
 
+**Status: complete** (landed 2026-07-17, after Track T carried the §4.4
+retune). What landed, with the resolved details:
+
+- `sim_wizard_t` gains `temper` (0-7, starts `SIM_TEMPER_NEUTRAL`),
+  `stance`, `stance_ticks` (idle-toward-entry, then held-in-stance), and
+  `studied`, all explicitly padded. Drift: damage taken +1 (per resolve, so
+  a swarm's pulses each count), fully stopped own spell -1, KO one step
+  back toward neutral (in `wizard_ko`).
+- Temper bands: low <= 2, mid 3-5, high >= 6 — shared by stance entry and
+  `choose_form`'s doubling (hot: FIREBALL/CHAIN, cool: CONJURE/SINGULARITY).
+  Windup ±2 by temper inside the existing clamps.
+- Doctrine affinity: variant 0-3 -> force/ember/frost/void; exact-count
+  ties in `dominant_row` break toward the affinity's row (via the
+  `row_element`-order inverse table), and STUDY's element shift targets it.
+- Stances: `stance_step` sits between lifecycle and regen in the pinned
+  tick order; entry after `SIM_STANCE_ENTRY_TICKS` (75) of INC_IDLE with
+  re-evaluation every idle tick; exit is a byte write at the top of
+  `inc_keydown`. **"hp fine" resolved as hp == max** for STUDY: under the
+  ">= half" reading the STUDY buff rode essentially every prose cast and
+  tripled the profile-0 KO cadence. MEDITATE (hp <= half, temper low)
+  doubles the regen countdown and suppresses the ward as a coverage +
+  wire-presentation gate (`ward_covers` and the packer; stored strength
+  survives). STUDY sets `studied`, consumed once in `inc_commit`: element
+  shift to affinity, or +1 magnitude (cap 4) when already aligned. FORTIFY
+  (temper high, or opponent INC_WINDUP visible) grants +1 ward exactly once
+  at 50 held ticks.
+- Wire: the packer fills fx_stance's high nibble from the sim fields; the
+  stance-only-no-flash-re-arm pin holds; slave render worlds carry stance.
+- Renderer: MEDITATE/STUDY restage onto the balcony (desk-space,
+  architecture-side art; deck left empty, STUDY's stored ward still guards
+  it), FORTIFY braces on deck with a pulsing orb, PACE/TAUNT derive locally
+  from stance NONE + idle + seed, gated on no own carrier in flight.
+  Five new golden scenes; full catalog re-baselined with visual review.
+- Prose KO window re-measured under T+B: 398/1367/1044 ticks
+  (~16/55/42 s); guardrail now 14-150 s. Profile 0's opening spiral
+  (STUDY-buffed swarm -> per-pulse temper drift -> hot fireball weighting)
+  is deliberate but flagged under Q4 for hardware feel.
+
 ---
 
 ## 5. Track T — tuning pass (ships first, no protocol change)
@@ -490,6 +528,11 @@ the 512 B ceiling. `duel_render_t` stays within its 40 B assert
 2. Crown forms: minaret + signal mast as proposed, or symmetric minarets?
 3. Alert instrument: bell (astral) / beacon cage (mechanical) acceptable as
    the *only* passive alert surface, with scry keeping the detailed panel?
-4. HP 8 vs 10 — how frequent should KOs feel? (Tunable after T on hardware.)
+4. HP 8 vs 10 — how frequent should KOs feel? (Tunable after T on hardware.
+   Desktop measurement after T+B: first prose KO at ~16/55/42 s across the
+   three profiles; the 16 s profile is the mirror-variant opening spiral
+   described in §4's status note. Judge on the desk.)
 5. Stance set: MEDITATE/STUDY/FORTIFY mechanical + PACE/TAUNT cosmetic — cut
-   or add any before art lands?
+   or add any before art lands? (Minimal PACE/TAUNT art landed with Track B:
+   a shuffle table and a staff flourish, a few dozen bytes — still cheap to
+   trim at the §8 second-overrun step.)

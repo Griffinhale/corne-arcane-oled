@@ -30,14 +30,9 @@ typedef struct __attribute__((packed)) {
  *   sequence wraps at 16 and every consumer compares equality only, so the
  *   v11 repack lends the high nibble to the Track B stance channel. */
 
-/* Non-casting stances (Track B). PACE/TAUNT derive locally from
- * NONE + idle + seed and never ride the wire. */
-enum {
-    DUEL_STANCE_NONE = 0,
-    DUEL_STANCE_MEDITATE,
-    DUEL_STANCE_STUDY,
-    DUEL_STANCE_FORTIFY,
-};
+/* Non-casting stances: DUEL_STANCE_* live in duel_sim.h now that Track B
+ * made them sim state. PACE/TAUNT derive locally from NONE + idle + seed
+ * and never ride the wire. */
 
 #define VIEW_FX_PACK(seq, stance_l, stance_r) \
     ((uint8_t)(((seq) & 0x0fu) | (((stance_l) & 3u) << 4) | (((stance_r) & 3u) << 6)))
@@ -91,7 +86,7 @@ typedef struct {
     uint8_t status;
     uint8_t status_intensity;
     uint8_t status_duration;
-    uint8_t stance; /* DUEL_STANCE_*, v11 placeholder until Track B renders it */
+    uint8_t stance; /* DUEL_STANCE_* (Track B) */
 } duel_view_wizard_t;
 
 typedef struct {
