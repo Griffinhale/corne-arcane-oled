@@ -28,14 +28,15 @@
 // clear/replace earlier pixels only inside their own protected region.
 #define DUEL_ALERT_Y0 1
 #define DUEL_ALERT_Y1 15
-#define DUEL_SCRY_X0  3
-#define DUEL_SCRY_X1 28
-#define DUEL_SCRY_Y0  3
-#define DUEL_SCRY_Y1 41
 #define DUEL_HEALTH_Y0 111
 #define DUEL_HEALTH_Y1 114
-#define DUEL_DIAG_TOP_Y 0
-#define DUEL_DIAG_BOTTOM_Y (DUEL_CANVAS_H - 1)
+// Tower-floor band: the ceiling beam row separating rooftop from floor, the
+// room interior, and the ground line. Shared with the harness so protection
+// checks and the renderer cannot drift (a one-row hole at the beam row went
+// unasserted while these lived as loose literals).
+#define DUEL_FLOOR_BEAM_Y 61
+#define DUEL_FLOOR_Y0     62
+#define DUEL_FLOOR_Y1     110
 
 // Twin Cities rooftop relocation. The whole combat cluster (champion,
 // ward, spell lanes, charge anticipation, recovery sparks, downed/medic) shifts
@@ -44,16 +45,6 @@
 // DUEL_ALERT_Y1 (15), so with cy=39 the safe maximum is -17. Zero in release
 // builds while keeping the protected alert region clear.
 #define DUEL_ROOF_DY (-17)
-
-typedef enum {
-    DUEL_LAYER_UNDERLAY,
-    DUEL_LAYER_COMBAT,
-    DUEL_LAYER_HEALTH,
-    DUEL_LAYER_ALERT,
-    DUEL_LAYER_SCRY,
-    DUEL_LAYER_RECOVERY,
-    DUEL_LAYER_DIAGNOSTICS,
-} duel_render_layer_t;
 
 // 1bpp framebuffer in QMK's native page-major OLED layout. Each byte is one
 // vertical 8-pixel column: index = x + (y >> 3) * width, bit = y & 7.
@@ -72,7 +63,7 @@ void duel_fb_hline(duel_fb_t *fb, int x0, int x1, int y);
 // hat/robe markings so a replacement wizard is visibly a new combatant.
 void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
 
-/* ------- Twin Cities Twin Cities presentation contract (shared cross-track) ---------
+/* ------- Twin Cities presentation contract (shared cross-track) -----------
  * Enums and fixed-slot state the renderer derives locally on each half. Pure
  * declarations with zero release footprint. Track R owns the drawing that
  * consumes them; the civic wire bytes that drive them are in duel_host.h. */
@@ -122,8 +113,6 @@ enum {
 
 // Fixed-slot local runtime records (spec §16.1). No coordinates: station and
 // progress derive them. Field packing is implementation-tunable per track.
-typedef struct { uint8_t identity_personality; uint8_t action_phase; uint8_t progress; } civic_resident_state_t;
-typedef struct { uint8_t kind_phase; uint8_t progress_flags; } civic_prop_state_t;
 typedef struct { uint8_t kind_target; uint8_t lifecycle_phase; uint8_t progress_flags; } civic_visitor_state_t;
 typedef struct { uint8_t id_target; uint8_t phase; uint8_t progress; } civic_event_state_t;
 
@@ -170,15 +159,16 @@ enum {
 /* While an authoritative aftermath is active, current temporarily owns the two
  * existing Twin Cities coordination bytes. bit7 of revision is the discriminator;
  * ordinary courier/rare-event semantics resume automatically when it clears. */
-#    define INCANTATION_AFTERMATH_WIRE       0x80u
-#    define INCANTATION_AFTER_KIND(v, side)  ((uint8_t)(((v) >> ((side) * 3u)) & 7u))
-#    define INCANTATION_AFTER_WORLD(v)       ((uint8_t)(((v) >> 6) & 3u))
-#    define INCANTATION_AFTER_PHASE(v, side) ((uint8_t)(((v) >> ((side) * 2u)) & 3u))
-#    define INCANTATION_FLOOR_TRANSITION_PACK(source, phase, active) \
+#define INCANTATION_AFTERMATH_WIRE       0x80u
+#define INCANTATION_AFTERMATH_REV_RESERVED 0x70u /* bits 4-6 must be clear while aftermath owns the byte */
+#define INCANTATION_AFTER_KIND(v, side)  ((uint8_t)(((v) >> ((side) * 3u)) & 7u))
+#define INCANTATION_AFTER_WORLD(v)       ((uint8_t)(((v) >> 6) & 3u))
+#define INCANTATION_AFTER_PHASE(v, side) ((uint8_t)(((v) >> ((side) * 2u)) & 3u))
+#define INCANTATION_FLOOR_TRANSITION_PACK(source, phase, active) \
         ((uint8_t)(((source) & 3u) | (((phase) & 3u) << 2) | ((active) ? 0x10u : 0u)))
-#    define INCANTATION_FLOOR_TRANSITION_SOURCE(v) ((uint8_t)((v) & 3u))
-#    define INCANTATION_FLOOR_TRANSITION_PHASE(v)  ((uint8_t)(((v) >> 2) & 3u))
-#    define INCANTATION_FLOOR_TRANSITION_ACTIVE(v) (((v) & 0x10u) != 0u)
+#define INCANTATION_FLOOR_TRANSITION_SOURCE(v) ((uint8_t)((v) & 3u))
+#define INCANTATION_FLOOR_TRANSITION_PHASE(v)  ((uint8_t)(((v) >> 2) & 3u))
+#define INCANTATION_FLOOR_TRANSITION_ACTIVE(v) (((v) & 0x10u) != 0u)
 
 // Everything the renderer needs for one frame: a stable world snapshot plus
 // presentation-only state the glue layer maintains (never fed back to the sim).
@@ -206,21 +196,22 @@ typedef struct {
     uint8_t     seed;         // session-persistent presentation seed
     uint8_t     civic_phase;  // coarse civic-tick counter (NOT w.tick, NOT frame)
     uint8_t     floor_transition; // source[2], phase[2], active[1]; target is civic
+    uint8_t     local_ambience; // active[1], tempo[2], trend[2], local wizard only
 } duel_render_t;
 
 #define DUEL_RENDER_STALE 0x01u
 /* layer stays presentation-only. The low bits are the global QMK layer; the
  * high nibble records only the raw layer thumb physically owned by this OLED. */
-#    define DUEL_RENDER_GLOBAL_LAYER(v) ((uint8_t)((v) & 0x03u))
-#    define DUEL_RENDER_LOCAL_SHIFT 4u
-#    define DUEL_RENDER_LOCAL_NONE  0u
-#    define DUEL_RENDER_LOCAL_LEFT  1u
-#    define DUEL_RENDER_LOCAL_RIGHT 2u
-#    define DUEL_RENDER_LOCAL_LAYER(v) \
+#define DUEL_RENDER_GLOBAL_LAYER(v) ((uint8_t)((v) & 0x03u))
+#define DUEL_RENDER_LOCAL_SHIFT 4u
+#define DUEL_RENDER_LOCAL_NONE  0u
+#define DUEL_RENDER_LOCAL_LEFT  1u
+#define DUEL_RENDER_LOCAL_RIGHT 2u
+#define DUEL_RENDER_LOCAL_LAYER(v) \
         ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
-#    define DUEL_RENDER_LAYER_PACK(global, local) \
+#define DUEL_RENDER_LAYER_PACK(global, local) \
         ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
-_Static_assert(sizeof(duel_render_t) <= 38, "civic render state stays within one compact block");
+_Static_assert(sizeof(duel_render_t) <= 40, "render state stays within the M14 compact budget");
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 
@@ -240,7 +231,7 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
 // cosmetics key off `frame` (the render frame counter), never off w.tick,
 // so render cadence cannot feed back into simulation outcomes. `debug_hud`
 // adds the M2 verification overlay: a 1-px tick odometer sweeping the bottom
-// row once per second and up to 4 top-corner dots for dropped events. Archive's
-// Archive is selected only by online external scene 1 and remains a pure
-// underlay; Duel/Focus frames take the exact pre-Archive path.
+// row once per second and up to 4 top-corner dots for dropped events. The
+// Archive underlay is selected only by online external scene 1; Duel/Focus
+// frames take the exact pre-Archive path.
 void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame, bool debug_hud);

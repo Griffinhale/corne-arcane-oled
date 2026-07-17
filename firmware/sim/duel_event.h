@@ -12,10 +12,12 @@
 #include "duel_draw.h"
 
 
-// Advance the deterministic deck one civic phase. `eligible` folds the safety
+// Derive the deck's state for one civic phase — a pure, stateless function of
+// (seed, phase); nothing advances. `eligible` folds the safety
 // gates (no critical visitor, no transition, no KO/replacement, family cooldown).
 // Master-side; the result is packed into revision via DUEL_EVENT_PACK.
-civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligible);
+civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligible,
+                                       int8_t session_balance);
 
 // Compose the snapshot revision byte from a derived event state. The deck packs
 // the family id (bits 0-2) and target (bits 5-6) into id_target already, so this

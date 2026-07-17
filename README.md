@@ -24,6 +24,7 @@ and the former split production variants are not supported.
 | `host/` | Semantic daemon, diagnostics, safe Vial launcher, Nix package, D-Bus/KWin integration, and tests |
 | `docs/acceptance.md` | Current automated and physical acceptance record |
 | `docs/physical-checklist.md` | Two-half release, Vial handoff, persistence, and recovery procedure |
+| `docs/protocol-ledger.md` | Raw HID v2 and split v10 byte/bit allocations and overlay precedence |
 | `docs/backlog.md` | Deferred product work |
 | `docs/archive/` | Superseded milestone plans, records, and original planning documents |
 | `corne.nix` | NixOS module for the toolchain, udev access, launcher, and user service |
@@ -45,7 +46,8 @@ git diff --check
 The QMK build uses `crkbd/rev1` and `CONVERT_TO=rp2040_ce`. Release and
 diagnostic artifacts are copied to `artifacts/release/` with neutral names.
 The release gate is flash <= 81,896 bytes, static RAM <= 16,496 bytes, flash
-below the 96 KiB hard stop, and at least 16 KiB flash reserve.
+below the 96 KiB hard stop, at least 16 KiB flash reserve, and M14 growth of no
+more than 8,192 bytes flash / 512 bytes static RAM per image.
 
 ## Flash safely
 
@@ -66,10 +68,41 @@ back to the stale-link presentation.
 
 ## Persistent Vial remapping
 
-Launch Vial with `corne-arcane-vial`. The launcher records whether
+Launch Vial with this command, not the raw `vial` executable:
+
+```bash
+corne-arcane-vial
+```
+
+If the checkout has been built but the current NixOS/user profile has not yet
+been updated and zsh reports `command not found`, run the built wrapper from
+the repository root:
+
+```bash
+./result/bin/corne-arcane-vial
+```
+
+Then apply the NixOS configuration importing this checkout's `corne.nix` to
+install the bare command persistently. An older `corne-arcane-host` already in
+`~/.nix-profile` may predate this launcher.
+
+The launcher records whether
 `corne-arcane-host` is active, stops it, waits for its Raw HID handle to close,
 runs Vial, and restores the service on every exit only when it was previously
-active. While Vial owns Raw HID the complete offline world continues normally.
+active. That includes normal close, Vial failure, and an interrupt sent to the
+launcher. If the daemon was already inactive, the launcher leaves it inactive.
+While Vial owns Raw HID the complete offline world continues normally.
+
+The equivalent manual sequence is:
+
+```bash
+systemctl --user stop corne-arcane-host.service
+vial
+systemctl --user start corne-arcane-host.service
+```
+
+The manual form does not provide automatic restoration if the shell or Vial
+exits unexpectedly, so `corne-arcane-vial` is the supported path.
 
 The secure physical unlock combo remains required. Four complete dynamic
 layers are initialized from the compiled keymap and persist in EEPROM across

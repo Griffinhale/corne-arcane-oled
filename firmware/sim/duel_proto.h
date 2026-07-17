@@ -28,6 +28,7 @@
 #define DUEL_FLAGS_WORLD_VALID 0x01u
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
+#define DUEL_FLAGS_RESERVED_MASK       0xF8u /* bits 3-7 must be clear */
 
 typedef struct __attribute__((packed)) {
     uint8_t  magic;        /* DUEL_MAGIC */
@@ -46,9 +47,9 @@ typedef struct __attribute__((packed)) {
      * duel_host.h for the DUEL_CIVIC / DUEL_SECONDARY bit layouts; the master
      * writes them via duel_snapshot_set_civic. */
     uint8_t  civic;        /* DUEL_CIVIC_* : floor, mode, host intensity */
-    uint8_t  secondary;    /* DUEL_SECONDARY_* : one supporting activity channel */
-    uint8_t  shared_pres;  /* shared rare-event id/phase + visitor assignment */
-    uint8_t  revision;     /* monotonic shared-presentation coherence counter */
+    uint8_t  secondary;    /* activity bits0-2 + master sky phase bits3-4 */
+    uint8_t  shared_pres;  /* visitor, or aftermath payload when revision.7=1 */
+    uint8_t  revision;     /* rare event, or marked aftermath phases */
     uint8_t  crc;          /* duel_crc8 over the preceding bytes (offsetof(crc)) */
 } duel_snapshot_t;
 
@@ -77,20 +78,17 @@ void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snaps
 
 // `external` is a packed, disposable presentation summary. The ordinary
 // encoder writes zero for offline simulation and tests.
-void duel_encode_external(const sim_world_t *w, uint8_t session, uint16_t seq,
-                          uint8_t external, duel_snapshot_t *out);
-void duel_encode_external_alert(const sim_world_t *w, uint8_t session, uint16_t seq,
-                                uint8_t external, uint8_t alert,
-                                duel_snapshot_t *out);
 void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
                                         uint16_t seq, uint8_t external,
                                         uint8_t alert, uint8_t display_phase,
                                         duel_snapshot_t *out);
 
 // Convergence setter: overwrite the four civic bytes on an already
-// encoded snapshot and recompute the CRC. The encoders above always zero these
-// bytes, so a packet is well-formed with or without this call; the master glue
-// (keymap.c) invokes it after encoding to relay the current civic state.
+// encoded snapshot and recompute the CRC. The encoders prefill shared_pres
+// and revision from the world's aftermath state (offline simulation and the
+// tests rely on that prefill — do not "simplify" it away); the master glue
+// (keymap.c) then overwrites all four bytes via this call to relay the
+// current civic state, including its own aftermath override.
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision);
 

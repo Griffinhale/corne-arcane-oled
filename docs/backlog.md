@@ -6,8 +6,8 @@ product/design discussion before implementation.
 
 ## Presentation worlds and information surfaces
 
-- Define the reserved `SPECIAL` floor/world and decide what host or firmware
-  state selects it. Current firmware deliberately ignores `SPECIAL` targets.
+- Deepen the Pomodoro-selected Observatory only after its pending desk-distance
+  and full-cycle physical acceptance establishes that it remains calm/readable.
 - Add application worlds beyond Commons, Research, and Workshop without turning
   every application into a bespoke scene.
 - Add denser or multi-page scry views while keeping the gesture deliberate and
@@ -42,8 +42,8 @@ product/design discussion before implementation.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
   interface. The safe launcher hands that one endpoint between the daemon and
   Vial; a future integration must preserve exclusive ownership.
-- The unified release is 69,644 flash bytes and 13,464 bytes of static RAM;
-  the diagnostic image is 71,100 and 13,576 bytes respectively. Future content
+- The unified release is 72,164 flash bytes and 13,480 bytes of static RAM;
+  the diagnostic image is 73,288 and 13,608 bytes respectively. Future content
   needs an explicit flash budget and must preserve at least the accepted safety
   reserve or revise the budget intentionally.
 - Static RAM growth, stack headroom, split/OLED timing, no-allocation gates,
@@ -56,8 +56,8 @@ product/design discussion before implementation.
 
 ## Questions to settle before coding
 
-1. Which direction adds the most ambient value: a `SPECIAL` world, deeper
-   existing cities, richer spells, or richer scry/host semantics?
+1. Which direction adds the most ambient value after Observatory acceptance:
+   deeper existing cities, richer spells, or richer scry/host semantics?
 2. Should the next milestone spend protocol bytes, flash reserve, or both—and
    what recovery artifact and hard stop protect the accepted 0.4 baseline?
 3. Which additions are authoritative mechanics versus disposable presentation

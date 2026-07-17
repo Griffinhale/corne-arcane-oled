@@ -10,7 +10,7 @@
 
 
 #include "duel_host.h"
-#    include "duel_resident.h"
+#include "duel_resident.h"
 
 // --- Wave 6 notification-ecology routing (spec §11.3) ------------------------
 // Category -> courier kind and city, before the persistent / security override.
@@ -128,10 +128,8 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     const uint8_t density = DUEL_VISITOR_DENSITY(sp);
     const bool    quiet   = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
 
-    uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
-    if (INCANTATION_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
-        INCANTATION_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
-        floor = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
+    uint8_t floor = incantation_effective_floor(r);
+    if (floor == DUEL_CIVIC_FLOOR_SPECIAL) return;
     if (floor >= INCANTATION_OCCUPATION_FLOORS) floor = DUEL_CIVIC_FLOOR_COMMONS;
     static const uint8_t destination_action[] = {
         DUEL_CIVIC_ACTION_WORK, DUEL_CIVIC_ACTION_HANDLE_DELIVERY,
@@ -143,11 +141,14 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     if (kind != DUEL_CIVIC_COURIER_SENTINEL) {
         /* The established gap lift remains the entrance. Waiting is two thirds
          * through the route, aging reaches the occupation object, and resolving
-         * returns to the lift. */
+         * returns to the lift. The entrance point must match the lift stub the
+         * floor scenery draws by the gap. */
+#define INCANTATION_LIFT_X 27
+#define INCANTATION_LIFT_Y 72
         static const uint8_t route_step[4] = {0, 2, 3, 0};
         int step = route_step[life & 3u];
-        x = 27 + (destination.x - 27) * step / 3;
-        y = 72 + (destination.y - 72) * step / 3;
+        x = INCANTATION_LIFT_X + (destination.x - INCANTATION_LIFT_X) * step / 3;
+        y = INCANTATION_LIFT_Y + (destination.y - INCANTATION_LIFT_Y) * step / 3;
     }
     int cx = incantation_desk_x(is_left, x), g = is_left ? 1 : -1;
 

@@ -46,6 +46,17 @@ corne-arcane-diagnostics
 corne-arcane-vial
 ```
 
+Before the rebuilt NixOS configuration is active, the checkout's build result
+can be invoked directly from the repository root:
+
+```bash
+./result/bin/corne-arcane-vial
+```
+
+If the bare command is missing while `corne-arcane-host` exists, the active
+profile is an older package generation; rebuild/apply the configuration that
+imports this checkout rather than launching raw Vial alongside the daemon.
+
 Do not start the raw `vial` binary while the daemon is active. The wrapped
 launcher is the supported entry point because Vial and the daemon share QMK's
 single Raw HID endpoint. The keyboard keeps typing and simulating offline while

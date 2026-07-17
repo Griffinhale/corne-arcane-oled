@@ -22,12 +22,12 @@
 #define DUEL_CIVIC_ACTION_SLOT 16u
 
 /* Compact floor/action occupation key stored in the existing station byte. */
-#    define INCANTATION_OCCUPATION_FLOORS 3u
-#    define INCANTATION_OCCUPATION_KEY(floor, action) \
+#define INCANTATION_OCCUPATION_FLOORS 4u
+#define INCANTATION_OCCUPATION_KEY(floor, action) \
         ((uint8_t)(((floor) * DUEL_CIVIC_ACTION_COUNT) + (action)))
-#    define INCANTATION_OCCUPATION_FLOOR(key) \
+#define INCANTATION_OCCUPATION_FLOOR(key) \
         ((uint8_t)((key) / DUEL_CIVIC_ACTION_COUNT))
-#    define INCANTATION_OCCUPATION_ACTION(key) \
+#define INCANTATION_OCCUPATION_ACTION(key) \
         ((uint8_t)((key) % DUEL_CIVIC_ACTION_COUNT))
 
 /* Canonical desk-space point shared by every current civic layer. Coordinates are
@@ -38,6 +38,13 @@ typedef struct {
 } incantation_point_t;
 
 incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action);
+
+// The floor currently SHOWN: during the first two floor-transition phases the
+// outgoing (source) floor still owns the room. Every renderer that keys off
+// the floor (scenery, courier, marks) must use this one derivation so the
+// layers cannot desync mid-transition.
+uint8_t incantation_effective_floor(const duel_render_t *r);
+
 int incantation_desk_x(bool is_left, int x);
 void incantation_civic_hline(duel_fb_t *fb, bool is_left, int x0, int x1, int y);
 void incantation_civic_vline(duel_fb_t *fb, bool is_left, int x, int y0, int y1);

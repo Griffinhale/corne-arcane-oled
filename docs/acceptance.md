@@ -1,9 +1,10 @@
 # Corne Arcane 0.4 acceptance record
 
-Status: unified 0.4 implementation and automated desktop/QMK acceptance
-complete. The current world and mechanics retain the two-half acceptance
-reported on 2026-07-15. The new unified Vial handoff, EEPROM persistence, and
-release-image flash checks remain explicitly pending in `physical-checklist.md`.
+Status: combined M14 implementation and automated desktop/QMK acceptance are
+complete. The prior world/mechanics two-half acceptance reported on 2026-07-15
+remains the rollback baseline. M14 hardware acceptance, the unified Vial
+handoff, EEPROM persistence, and release-image flash checks remain explicitly
+pending in `physical-checklist.md`.
 
 ## Feature boundary
 
@@ -77,10 +78,38 @@ voices retained:
 | Commons | communal table + notice/mail board | tea orb, arched notice board | dispatch desk, cubbies, clock |
 | Research | telescope/analyzer + specimen cabinet | orrery and star chart | probe, scope display, specimen cylinder |
 | Workshop | forge + tool station | cauldron and reagent rack | anvil, gear press, hoist |
+| Observatory | stargazing instrument | nested dome, telescope, constellation | gear observatory, astrolabe, scope |
 
 Resident work, inspect, and rest anchors align with the corresponding major
-objects. Six exact city/floor scenes differ by at least 40 floor-band pixels for
-every same-city occupation pair. `SPECIAL` remains reserved.
+objects. The Observatory is selected only by an active Pomodoro, is always
+QUIET, suppresses disposable couriers/events and energetic typing accents, and
+keeps combat, alerts, health, scry, transitions, and authoritative aftermath.
+Pomodoro completion returns to the current focus-derived floor; DND quiets the
+ordinary focused floor without selecting Observatory.
+
+A master-owned, host-independent 30-minute sky cycles through dawn (0:00–2:30),
+day (2:30–22:30), dusk (22:30–25:00), and night (25:00–30:00). Its two bits
+ride split `secondary` bits 3–4. A stale half continues locally and adopts the
+master's current phase at reconnect without replay. Sparse sky pixels remain an
+underlay beneath all protected presentation regions.
+
+Each OLED derives a packed local typing ambience from its physically local
+wizard. Live collection and compiled spell descriptions share one tempo/trend
+classifier; launch and cancellation return to calm. Tempo bounds floor motes
+and work accents while trend varies drift/cadence. Nothing about this ambience
+crosses the split link.
+
+The master also maintains a non-mechanical session diplomacy balance from −3
+to +3. KO edges move it toward the surviving side, diplomatic-event weight is
+`4 + 2 × abs(balance)`, and the existing event target selects proud,
+receiving, or neutral resident poses. It never feeds combat state.
+
+RGB Matrix is now entirely world-owned: all compiled layer-3 RGB controls and
+all remapped RGB keycodes are no-ops, every LED is overridden through flags and
+coordinates, and EEPROM lighting settings cannot disable the surface. Sleep,
+stale-link, impact, shatter, prepared element, Observatory, and city baseline
+priorities are pure-policy tested. DIM scales output to 25%; SLEEP is black;
+only physical key activity wakes OLED and RGB.
 
 The civic-layer parity pass exposes that same `(floor, action)` object anchor to
 residents, local attunement, couriers, rare events, and authoritative aftermath.
@@ -147,11 +176,12 @@ The packed v10 snapshot is exactly 32 bytes:
 | CRC-8 | 1 |
 
 The aftermath marker temporarily assigns the existing `shared_pres` and
-`revision` bytes to two city kinds, world state, two animation phases, and
-coherence. Ordinary civic presentation resumes when no aftermath is active.
+`revision` bytes to two city kinds, world state, and two animation phases.
+Ordinary civic presentation resumes when no aftermath is active.
 Raw HID remains the existing v2 32-byte host protocol. VIA routes unknown
 commands to `raw_hid_receive_kb()`: `0xCA` daemon reports are echoed unchanged,
-while VIA and Vial retain their standard command IDs.
+while VIA and Vial retain their standard command IDs. The authoritative bit
+allocation and overlay precedence are recorded in `protocol-ledger.md`.
 
 ## Resource measurements
 
@@ -161,13 +191,18 @@ is `.data + .bss + .ram0…ram7` and excludes the linker-created heap.
 
 | Build | Flash | Static RAM | Reserve below 96 KiB |
 |---|---:|---:|---:|
-| `griffin_arcane` release | 69,644 B | 13,464 B | 28,660 B |
-| `griffin_arcane` diagnostic | 71,100 B | 13,576 B | 27,204 B |
+| `griffin_arcane` release | 72,164 B | 13,480 B | 26,140 B |
+| `griffin_arcane` diagnostic | 73,288 B | 13,608 B | 25,016 B |
 
 Both secure Vial images are below the 81,896-byte flash ceiling, the
 16,496-byte static-RAM ceiling, the 96 KiB hard stop, and the required 16 KiB
 reserve. Diagnostic firmware adds ChibiOS stack fill/checking and the later
 metrics reply without changing packet layouts or typing behavior.
+
+Relative to the accepted pre-M14 baseline, release grew 2,520 bytes flash and
+16 bytes static RAM; diagnostic grew 2,188 bytes flash and 32 bytes static RAM.
+The budget script enforces the milestone's +8,192-byte flash and +512-byte RAM
+limits separately for each image as well as all absolute ceilings.
 
 ## Artifacts and hashes
 
@@ -175,23 +210,24 @@ Artifacts are under `artifacts/release/`.
 
 | Artifact | SHA-256 |
 |---|---|
-| `griffin_arcane-release.uf2` | `d65afb27318adfdc7a77dc337461945883e6bbc0db7210195114e88b38efbe7d` |
-| `griffin_arcane-release.elf` | `62e3119aa14fad29a0f1f0df3e68f7b3e5b805d718ca035e62c066ba339998b0` |
-| `griffin_arcane-diagnostic.uf2` | `649ec6c4d5d795cf94d74df67e42aec47cd3a7d3692b54f8bc1bd7f98aad72d2` |
-| `griffin_arcane-diagnostic.elf` | `0027987f7eeafc7edfd526cc58bdbc75bb81ec00ed60f21be8d5eba3e78e8916` |
+| `griffin_arcane-release.uf2` | `313303a89c594030e23f7564c924c0b970e023911aa80f9169385b0e98c49a8d` |
+| `griffin_arcane-release.elf` | `54f4ace7ce171391b937477bdc5cbea72109c22c88e5587ec066d18505f184f9` |
+| `griffin_arcane-diagnostic.uf2` | `c10b54c4cf4f08ef9ddbdfa5c879afc88734f20e9bf59c4a9314f5d96ef8aa67` |
+| `griffin_arcane-diagnostic.elf` | `a7c2fc3c611b4fdd0071bb432abf6d36181d539dc87fdf29c6d81d0fe004dd13` |
 
-The exact 251-scene current visual catalog is
+The exact 279-scene current visual catalog is
 `firmware/sim_test/golden/visual_current.hashes` (SHA-256
-`a64e00a2c8617e9f42a1c6814ddc17c0431b8cf8088156121fb181777a3a3ef2`).
-Only catalog labels changed during neutral renaming; all 251 numeric framebuffer
-hashes remain unchanged.
+`85e454592a84ab05171959a449bb3d262141d85c5d63eecc4cfbd1d113a5fc44`).
+The 28 deliberately reviewed additions cover the four-floor/four-sky matrix,
+four typing tempos/trends, three diplomacy targets, and seven Observatory
+aftermath anchors; existing scenes were rebaselined for the sky underlay.
 
 ## Automated gates
 
 - `make test`: consolidated end-to-end mechanics, v10 split protocol, v2 host
   protocol, render, mirror, convergence, no-allocation, daemon echo/reconnect,
   diagnostics, privacy, and safe-launcher tests.
-- `make visual-test`: 251 unique exact current
+- `make visual-test`: 279 unique exact current
   framebuffer scenes spanning both sides, four voices, every form, temporal
   trajectories, wards/statuses, reactions, outcomes, six occupation scenes,
   every floor/courier, floor/event, and floor/aftermath variant, representative
@@ -199,8 +235,8 @@ hashes remain unchanged.
   phases, and bilateral gap-cue timing.
 - Deterministic steady, burst, and mixed-layer prose workloads produce no KO in
   their first 30 seconds and a first KO between 60 and 180 seconds.
-- `make release-budget`: fixed flash/RAM ceilings, 96 KiB hard stop, and 16 KiB
-  reserve for both release and diagnostic images.
+- `make release-budget`: fixed flash/RAM ceilings, milestone growth ceilings,
+  96 KiB hard stop, and 16 KiB reserve for both images.
 - Clean unified secure-Vial release and diagnostic builds link successfully for
   `crkbd/rev1`, `CONVERT_TO=rp2040_ce`.
 - `make hygiene` rejects retired build variables, production keymap names, and
@@ -219,7 +255,9 @@ nonzero, and queue/protocol error counts stayed at zero. Exact numeric timing
 and stack values were not supplied, so the checklist records threshold passes
 rather than invented measurements.
 
-The civic-layer parity pass and the unified Vial ownership/persistence checks
-remain unchecked in their respective physical records. Automated tests cannot
-claim flashing, secure physical unlock, power-cycle persistence, or visible
-offline animation during a real GUI handoff.
+The M14 Observatory, full sky cycle, local ambience, diplomacy, RGB priorities,
+entropy timing, reconnect convergence, and the civic/Vial ownership/persistence
+checks remain unchecked in their physical records. Automated tests cannot
+claim flashing, desk-distance readability, real timing/stack headroom, secure
+physical unlock, power-cycle persistence, or visible offline animation during
+a real GUI handoff.

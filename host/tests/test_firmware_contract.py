@@ -32,6 +32,14 @@ class UnifiedFirmwareContractTests(unittest.TestCase):
         self.assertNotIn("VIAL_INSECURE", config)
         self.assertEqual(len(re.findall(r"(?m)^\s*\[[0-3]\]\s*=", layout)), 4)
 
+    def test_rgb_is_world_owned_not_keymap_or_eeprom_owned(self) -> None:
+        layout = (ROOT / "firmware" / "corne_arcane_layout.h").read_text()
+        keymap = (ROOT / "firmware" / "keymap.c").read_text()
+        self.assertNotRegex(layout, r"\bRM_(?:ON|OFF|TOGG|NEXT|PREV|HUEU|HUED|SATU|SATD|VALU|VALD|SPDU|SPDD)\b")
+        self.assertIn("return !IS_RGB_MATRIX_KEYCODE(keycode);", keymap)
+        self.assertIn("rgb_matrix_enable_noeeprom();", keymap)
+        self.assertIn("rgb_matrix_indicators_advanced_user", keymap)
+
     def test_daemon_uses_via_unknown_command_hook(self) -> None:
         keymap = (ROOT / "firmware" / "keymap.c").read_text()
         self.assertIn("void raw_hid_receive_kb(uint8_t *data, uint8_t length)", keymap)
@@ -44,7 +52,9 @@ class UnifiedFirmwareContractTests(unittest.TestCase):
         source = (ROOT / "firmware" / "sim" / "duel_host.c").read_text()
         self.assertNotIn("VERSION_V1", header + source)
         self.assertIn("#define DUEL_HOST_PAYLOAD_LEN       8", header)
-        self.assertIn("packet->payload_len != DUEL_HOST_PAYLOAD_LEN", source)
+        # The validator requires the exact payload length (no v1 fallback);
+        # the check lives in envelope_valid as a positive conjunct.
+        self.assertIn("packet->payload_len == DUEL_HOST_PAYLOAD_LEN", source)
 
 
 if __name__ == "__main__":

@@ -34,8 +34,11 @@ The current firmware already includes:
   clashes, combinations, detonations, reflection/absorption, area pulses,
   spatial lanes, aftermath, KO/medic/replacement, and roster variation.
 - Twin Cities presentation with Astral and Mechanical voices; Commons,
-  Research, and Workshop floors; residents, couriers, rare events, occupation
-  objects, focus transitions, and authoritative civic aftermath.
+  Research, Workshop, and Pomodoro Observatory floors; residents, couriers,
+  rare events, occupation objects, focus transitions, and authoritative civic
+  aftermath.
+- A firmware-owned 30-minute sky, independent per-half typing ambience,
+  event-only session diplomacy, and a world-owned RGB surface.
 - A deliberate layer-key scry overlay, notification glyphs, application-focus
   semantics, privacy-redacted notification/media/network/timer/Git context, and
   sleep/reconnect/stale-link behavior.
@@ -44,8 +47,8 @@ The current firmware already includes:
 
 These are ideas, not commitments:
 
-1. Define the reserved `SPECIAL` floor/world and what selects it.
-2. Add application worlds beyond Commons, Research, and Workshop without making
+1. Deepen the Observatory only after its pending physical acceptance.
+2. Add application worlds beyond the current floors without making
    every application a bespoke scene.
 3. Add denser or multi-page scry views while keeping the gesture deliberate and
    the underlying world active.
@@ -79,8 +82,8 @@ These are ideas, not commitments:
   split byte. New synchronized state requires derivation, repacking, reuse, or a
   protocol-version change.
 - Raw HID is also fixed at 32 bytes.
-- The unified release is 69,644 flash bytes with 13,464 bytes static RAM; the
-  diagnostic image is 71,100 and 13,576 bytes. Future work needs an explicit
+- The unified release is 72,164 flash bytes with 13,480 bytes static RAM; the
+  diagnostic image is 73,288 and 13,608 bytes. Future work needs an explicit
   flash budget and recovery plan.
 - No permanent progression, save files, or long-lived host database under the
   current product direction.
@@ -89,8 +92,8 @@ These are ideas, not commitments:
 
 Start by asking me 3–5 high-leverage questions about the feeling, frequency,
 and purpose of the next addition. Then help me compare at least three coherent
-directions—for example a `SPECIAL` world, deeper Twin Cities, richer spells, or
-richer scry/host semantics.
+directions—for example deeper Twin Cities/Observatory, richer spells, or richer
+scry/host semantics.
 
 For each direction, discuss:
 

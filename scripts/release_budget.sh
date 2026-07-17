@@ -5,6 +5,10 @@ flash_limit=81896
 ram_limit=16496
 hard_stop=$((96 * 1024))
 reserve_min=$((16 * 1024))
+release_flash_growth_limit=$((69644 + 8192))
+release_ram_growth_limit=$((13464 + 512))
+diagnostic_flash_growth_limit=$((71100 + 8192))
+diagnostic_ram_growth_limit=$((13576 + 512))
 
 measure() {
     image=$1
@@ -21,6 +25,28 @@ measure() {
     }
     test "$ram" -le "$ram_limit" || {
         echo "FAIL release-budget: $image exceeds $ram_limit static RAM bytes" >&2
+        return 1
+    }
+    case "$image" in
+        *-release.elf)
+            growth_flash_limit=$release_flash_growth_limit
+            growth_ram_limit=$release_ram_growth_limit
+            ;;
+        *-diagnostic.elf)
+            growth_flash_limit=$diagnostic_flash_growth_limit
+            growth_ram_limit=$diagnostic_ram_growth_limit
+            ;;
+        *)
+            echo "FAIL release-budget: unknown image class: $image" >&2
+            return 1
+            ;;
+    esac
+    test "$flash" -le "$growth_flash_limit" || {
+        echo "FAIL release-budget: $image exceeds its +8192 flash growth allowance ($growth_flash_limit)" >&2
+        return 1
+    }
+    test "$ram" -le "$growth_ram_limit" || {
+        echo "FAIL release-budget: $image exceeds its +512 static RAM growth allowance ($growth_ram_limit)" >&2
         return 1
     }
     test "$flash" -le "$hard_stop" || {

@@ -99,7 +99,7 @@ class SemanticResolver:
         )
         mode = Mode.QUIET if (self.dnd or self.pomodoro) else Mode.NORMAL
         civic = CivicState(
-            floor=self.focus_floor,
+            floor=Floor.SPECIAL if self.pomodoro else self.focus_floor,
             mode=mode,
             intensity=self.intensity,
             secondary=self._resolve_secondary(),

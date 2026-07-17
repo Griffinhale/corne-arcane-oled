@@ -9,6 +9,7 @@
 #include "duel_courier.h"
 #include "duel_host.h"
 #include "duel_resident.h"
+#include "duel_runtime.h"
 #include "duel_sim.h"
 #include "scenarios.h"
 
@@ -22,6 +23,29 @@ static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
     return hash;
 }
 
+/* Every case funnels through here: one hashing/registration idiom, one
+ * capacity guard. */
+static void record_case(const char *name, const duel_fb_t *left,
+                        const duel_fb_t *right) {
+    if (ncases >= sizeof cases / sizeof cases[0]) {
+        fprintf(stderr, "visual catalog overflow at %s (%zu cases)\n", name, ncases);
+        abort();
+    }
+    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left->bits, sizeof left->bits);
+    hash = fnv1a(hash, right->bits, sizeof right->bits);
+    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
+    cases[ncases++].hash = hash;
+}
+
+static void record_render(const char *name, const duel_render_t *render,
+                          uint32_t frame, bool hud) {
+    duel_fb_t left, right;
+    duel_fb_clear(&left); duel_fb_clear(&right);
+    wiz_draw_scene(&left, render, true, frame, hud);
+    wiz_draw_scene(&right, render, false, frame, hud);
+    record_case(name, &left, &right);
+}
+
 static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame,
                            uint8_t flash_kind, uint8_t civic,
                            uint8_t transition) {
@@ -33,14 +57,7 @@ static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame,
     render.flash_frames = flash_kind ? 8u : 0u;
     render.civic = civic;
     render.floor_transition = transition;
-    duel_fb_t left, right;
-    duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(&left, &render, true, frame, false);
-    wiz_draw_scene(&right, &render, false, frame, false);
-    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
-    hash = fnv1a(hash, right.bits, sizeof right.bits);
-    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
-    cases[ncases++].hash = hash;
+    record_render(name, &render, frame, false);
 }
 
 static void add_case(const char *name, sim_world_t *world, uint32_t frame,
@@ -70,37 +87,21 @@ static void add_occupation_case(const char *name, sim_world_t *world,
     }
     if (!found) abort();
     render.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+    /* Only the requested half is drawn; the other framebuffer stays blank. */
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
     wiz_draw_scene(is_left ? &left : &right, &render, is_left, 7u, false);
-    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
-    hash = fnv1a(hash, right.bits, sizeof right.bits);
-    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
-    cases[ncases++].hash = hash;
+    record_case(name, &left, &right);
 }
 
 static void add_render_case(const char *name, const duel_render_t *render,
                             uint32_t frame) {
-    duel_fb_t left, right;
-    duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(&left, render, true, frame, false);
-    wiz_draw_scene(&right, render, false, frame, false);
-    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
-    hash = fnv1a(hash, right.bits, sizeof right.bits);
-    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
-    cases[ncases++].hash = hash;
+    record_render(name, render, frame, false);
 }
 
 static void add_render_case_diagnostics(const char *name, const duel_render_t *render,
                                         uint32_t frame) {
-    duel_fb_t left, right;
-    duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(&left, render, true, frame, true);
-    wiz_draw_scene(&right, render, false, frame, true);
-    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
-    hash = fnv1a(hash, right.bits, sizeof right.bits);
-    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
-    cases[ncases++].hash = hash;
+    record_render(name, render, frame, true);
 }
 
 static void add_bilateral_attunement_case(const char *name, sim_world_t *world) {
@@ -117,10 +118,7 @@ static void add_bilateral_attunement_case(const char *name, sim_world_t *world) 
     duel_fb_clear(&left); duel_fb_clear(&right);
     wiz_draw_scene(&left, &left_render, true, 7u, false);
     wiz_draw_scene(&right, &right_render, false, 7u, false);
-    uint64_t hash = fnv1a(UINT64_C(0xcbf29ce484222325), left.bits, sizeof left.bits);
-    hash = fnv1a(hash, right.bits, sizeof right.bits);
-    snprintf(cases[ncases].name, sizeof cases[ncases].name, "%s", name);
-    cases[ncases++].hash = hash;
+    record_case(name, &left, &right);
 }
 
 static uint32_t descriptor(uint8_t form, uint8_t magnitude) {
@@ -140,9 +138,13 @@ static uint32_t descriptor(uint8_t form, uint8_t magnitude) {
 static void build_catalog(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
-    add_case("idle_12hp", &world, 0, 0);
+    /* The default secondary byte is dawn, so this is also the explicit
+     * Commons/dawn review frame. */
+    add_case("sky_commons_dawn_idle_12hp", &world, 0, 0);
 
-    static const char *floor_name[3] = {"commons", "research", "workshop"};
+    static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {
+        "commons", "research", "workshop", "observatory"
+    };
     static const char *action_name[DUEL_CIVIC_ACTION_COUNT] = {
         "work", "walk", "inspect", "rest", "watch", "delivery", "react"
     };
@@ -160,7 +162,8 @@ static void build_catalog(void) {
 
     static const char *courier_name[] = {"none", "messenger", "parcel", "beacon", "sentinel"};
     static const char *event_name[] = {"none", "scroll", "jam", "break", "complaint", "diplomat", "sky"};
-    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+    /* Disposable couriers and rare events exist only on ordinary floors. */
+    for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_SPECIAL; floor++) {
         for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER;
              kind < DUEL_CIVIC_COURIER_COUNT; kind++) {
             duel_render_t civic = {0}; duel_render_from_world(&civic, &world);
@@ -180,10 +183,66 @@ static void build_catalog(void) {
             uint8_t target = id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER ?
                 DUEL_CIVIC_EVENT_TARGET_SHARED : DUEL_CIVIC_EVENT_TARGET_LEFT;
             civic.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE, target);
-            char name[48]; snprintf(name, sizeof name, "event_%s_%s",
-                                    floor_name[floor], event_name[id]);
+            char name[48];
+            if (floor == DUEL_CIVIC_FLOOR_COMMONS &&
+                id == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+                snprintf(name, sizeof name, "diplomacy_balance");
+            else
+                snprintf(name, sizeof name, "event_%s_%s",
+                         floor_name[floor], event_name[id]);
             add_render_case(name, &civic, 7u);
         }
+    }
+
+    /* Deliberately reviewed M14 surface: every floor under every sky phase.
+     * Observatory is always quiet, matching host semantic resolution. */
+    static const char *sky_name[] = {"dawn", "day", "dusk", "night"};
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+        for (uint8_t phase = DUEL_SKY_DAWN; phase <= DUEL_SKY_NIGHT; phase++) {
+            if (floor == DUEL_CIVIC_FLOOR_COMMONS && phase == DUEL_SKY_DAWN)
+                continue; /* covered by sky_commons_dawn_idle_12hp */
+            duel_render_t sky = {0}; duel_render_from_world(&sky, &world);
+            sky.seed = 0x5au; sky.civic_phase = 19u;
+            sky.civic = DUEL_CIVIC_PACK(floor,
+                floor == DUEL_CIVIC_FLOOR_SPECIAL ? DUEL_CIVIC_MODE_QUIET
+                                                  : DUEL_CIVIC_MODE_NORMAL, 0);
+            sky.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
+            char name[48]; snprintf(name, sizeof name, "sky_%s_%s",
+                                    floor_name[floor], sky_name[phase]);
+            add_render_case(name, &sky, 7u);
+        }
+    }
+
+    static const uint8_t ambience_trend[] = {
+        TREND_DECELERATING, TREND_STEADY,
+        TREND_ACCELERATING, TREND_IRREGULAR
+    };
+    static const char *tempo_name[] = {"deliberate", "flowing", "rapid", "frantic"};
+    for (uint8_t tempo = TEMPO_DELIBERATE; tempo <= TEMPO_FRANTIC; tempo++) {
+        duel_render_t ambience = {0}; duel_render_from_world(&ambience, &world);
+        ambience.seed = 0x5au; ambience.civic_phase = 19u;
+        ambience.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP,
+                                         DUEL_CIVIC_MODE_NORMAL, 0);
+        ambience.local_ambience = INCANTATION_AMBIENCE_PACK(
+            true, tempo, ambience_trend[tempo]);
+        char name[48]; snprintf(name, sizeof name, "typing_%s", tempo_name[tempo]);
+        add_render_case(name, &ambience, 7u);
+    }
+
+    static const char *diplomacy_name[] = {"left_advantage", "right_advantage", "balance"};
+    static const uint8_t diplomacy_target[] = {
+        DUEL_CIVIC_EVENT_TARGET_LEFT, DUEL_CIVIC_EVENT_TARGET_RIGHT,
+        DUEL_CIVIC_EVENT_TARGET_SHARED
+    };
+    for (size_t i = 0; i < 2u; i++) { /* balance is the ordinary event case above */
+        duel_render_t diplomacy = {0}; duel_render_from_world(&diplomacy, &world);
+        diplomacy.seed = 0x5au; diplomacy.civic_phase = 19u;
+        diplomacy.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS,
+                                          DUEL_CIVIC_MODE_NORMAL, 0);
+        diplomacy.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER,
+            DUEL_CIVIC_EVENT_PHASE_ACTIVE, diplomacy_target[i]);
+        char name[48]; snprintf(name, sizeof name, "diplomacy_%s", diplomacy_name[i]);
+        add_render_case(name, &diplomacy, 7u);
     }
 
     duel_render_t variant = {0}; duel_render_from_world(&variant, &world);
@@ -231,17 +290,16 @@ static void build_catalog(void) {
     variant.floor_transition = 0; variant.view.outcome_overlay |= 0x10u;
     add_render_case("event_full_scry", &variant, 7u);
 
-    /* Exercise the scenario host catalog under current: projection must not erase
-     * the authored courier/event coordination bytes before exact rendering. */
+    /* Projection sanity: building a scenario must not erase the authored
+     * courier/event coordination bytes. (The renders themselves are pinned by
+     * the full scenario-gallery loop at the end of this catalog.) */
     const duel_scenario_t *scenario = duel_scenario_find("courier-messenger");
     duel_render_t projected;
     if (!scenario || !duel_scenario_build(scenario, &projected) ||
         DUEL_VISITOR_KIND(projected.shared_pres) == DUEL_CIVIC_COURIER_NONE) abort();
-    add_render_case("scenario_incantation_courier_projection", &projected, 7u);
     scenario = duel_scenario_find("event-scroll");
     if (!scenario || !duel_scenario_build(scenario, &projected) ||
         DUEL_EVENT_ID(projected.revision) == DUEL_CIVIC_EVENT_NONE) abort();
-    add_render_case("scenario_incantation_event_projection", &projected, 7u);
 
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     world.wiz[0].hp = 0;
@@ -439,6 +497,19 @@ static void build_catalog(void) {
         sim_init(&world, SIMF_AUTHORITATIVE, 0);
         add_case(reaction_name[i], &world, (uint32_t)i, reaction_kind[i]);
     }
+
+    /* Pin the ENTIRE scenario gallery under the golden determinism check —
+     * previously only two scenarios were exercised, leaving the rest of
+     * scenarios.c dead in the tracked tree. Each renders at its declared
+     * frame with its declared diagnostics flag. */
+    for (size_t i = 0; i < duel_scenario_count(); i++) {
+        const duel_scenario_t *scenario = duel_scenario_at(i);
+        duel_fb_t left, right;
+        duel_scenario_render(scenario, scenario->frame, &left, &right);
+        char name[48];
+        snprintf(name, sizeof name, "scenario_%s", scenario->name);
+        record_case(name, &left, &right);
+    }
 }
 
 static int write_golden(const char *path) {
@@ -449,17 +520,39 @@ static int write_golden(const char *path) {
     return fclose(file) != 0;
 }
 
+/* Per-case comparison so a regression names the exact scene and hashes, and a
+ * missing/renamed/extra case is reported as such instead of desyncing every
+ * subsequent line. */
 static int verify_golden(const char *path) {
     FILE *file = fopen(path, "r");
     if (!file) { perror(path); return 1; }
     bool ok = true;
     for (size_t i = 0; i < ncases; i++) {
         char name[48]; uint64_t hash;
-        if (fscanf(file, "%47s %" SCNx64, name, &hash) != 2 ||
-            strcmp(name, cases[i].name) || hash != cases[i].hash) ok = false;
+        if (fscanf(file, "%47s %" SCNx64, name, &hash) != 2) {
+            printf("FAIL visual %s: golden file ends early (case %zu of %zu)\n",
+                   cases[i].name, i, ncases);
+            ok = false;
+            break;
+        }
+        if (strcmp(name, cases[i].name) != 0) {
+            printf("FAIL visual: golden names '%s' where catalog has '%s' "
+                   "(case added/removed/renamed?)\n", name, cases[i].name);
+            ok = false;
+            break; /* the sequences are misaligned; later lines are noise */
+        }
+        if (hash != cases[i].hash) {
+            printf("FAIL visual %s expected=%016" PRIx64 " got=%016" PRIx64 "\n",
+                   name, hash, cases[i].hash);
+            ok = false; /* aligned mismatch: keep going, report every one */
+        }
     }
-    char trailing[2];
-    if (fscanf(file, "%1s", trailing) == 1) ok = false;
+    char trailing[64];
+    if (ok && fscanf(file, "%63s", trailing) == 1) {
+        printf("FAIL visual: golden has extra case '%s' beyond the %zu in the catalog\n",
+               trailing, ncases);
+        ok = false;
+    }
     fclose(file);
     printf("%s visual_incantation_exact_framebuffer_hashes (%zu scenes)\n", ok ? "PASS" : "FAIL", ncases);
     return ok ? 0 : 1;

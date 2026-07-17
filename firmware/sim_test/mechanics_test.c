@@ -9,16 +9,39 @@
 #include "duel_host.h"
 #include "duel_proto.h"
 #include "duel_resident.h"
+#include "duel_runtime.h"
+#include "duel_rgb.h"
 #include "duel_sim.h"
 #include "duel_view.h"
 
 static int failures;
+static const char *expect_expr; /* first failing EXPECT of the current test */
+static int expect_line;
+
 #define CHECK(condition, name) do { \
     if (condition) printf("PASS %s\n", name); \
-    else { printf("FAIL %s (%s:%d)\n", name, __FILE__, __LINE__); failures++; } \
+    else { \
+        printf("FAIL %s (%s:%d)\n", name, __FILE__, __LINE__); \
+        if (expect_expr) \
+            printf("     first failing sub-assertion (line %d): %s\n", \
+                   expect_line, expect_expr); \
+        failures++; \
+    } \
+    expect_expr = NULL; \
+} while (0)
+
+/* Folds a sub-assertion into the enclosing test's `ok` accumulator (single
+ * evaluation — conditions may have side effects) and records the first
+ * failure so CHECK can print WHICH condition sank the test. */
+#define EXPECT(cond) do { \
+    bool expect_ok_ = (cond); \
+    if (!expect_ok_ && !expect_expr) { expect_expr = #cond; expect_line = __LINE__; } \
+    ok &= expect_ok_; \
 } while (0)
 
 static void install_spell(sim_world_t *w, uint8_t side, uint32_t desc, uint8_t progress);
+static void land_spell(sim_world_t *w, uint8_t side, uint32_t desc);
+static uint64_t incantation_bytes_hash(const void *data, size_t size);
 
 static uint32_t desc_set_magnitude_for_test(uint32_t desc, uint8_t magnitude) {
     return (desc & ~(3u << 10)) | ((uint32_t)(magnitude - 1u) << 10);
@@ -61,18 +84,33 @@ static void test_layout_and_protocol(void) {
     duel_snapshot_t packet;
     duel_encode_external_alert_display(&w, 9, 0x1234, 0x55, 0x2a, 2, &packet);
     duel_snapshot_set_civic(&packet, 1, 2, 3, 4);
-    bool ok = sizeof(duel_view_t) == 19 && sizeof(duel_snapshot_t) == 32 &&
-              DUEL_VER == 10 && sizeof(sim_world_t) <= 56u + 1024u &&
-              duel_decode_valid(&packet);
+    bool ok = true;
+    EXPECT(sizeof(duel_view_t) == 19 && sizeof(duel_snapshot_t) == 32 &&
+              DUEL_VER == 10 && sizeof(duel_render_t) <= 40u &&
+              sizeof(sim_world_t) <= 56u + 1024u &&
+              duel_decode_valid(&packet));
     duel_snapshot_t bad = packet;
     for (size_t i = 0; i < offsetof(duel_snapshot_t, crc); i++) {
         ((uint8_t *)&bad)[i] ^= 0x40u;
-        ok &= !duel_decode_valid(&bad);
+        EXPECT(!duel_decode_valid(&bad));
         bad = packet;
     }
     bad.ver = 9;
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
-    ok &= !duel_decode_valid(&bad);
+    EXPECT(!duel_decode_valid(&bad));
+    bad = packet; bad.secondary |= 0x20u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&bad));
+    bad = packet; bad.shared_pres = DUEL_VISITOR_PACK(7u, 0u, 0u); bad.revision = 0u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&bad));
+    bad = packet; bad.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_WORK_BREAK,
+        DUEL_CIVIC_EVENT_PHASE_ACTIVE, 3u);
+    bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&bad));
+    bad = packet; bad.revision = INCANTATION_AFTERMATH_WIRE | 0x10u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&bad));
     CHECK(ok, "incantation_v10_exact_size_crc_and_version_rejection");
 }
 
@@ -88,13 +126,14 @@ static void test_host_protocol_current_payload_and_ordering(void) {
                      DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_MEDIA),
                      &hello);
     duel_host_state_t state = {0};
-    bool ok = sizeof hello == DUEL_HOST_REPORT_SIZE &&
+    bool ok = true;
+    EXPECT(sizeof hello == DUEL_HOST_REPORT_SIZE &&
               hello.version == DUEL_HOST_VERSION &&
               hello.payload_len == DUEL_HOST_PAYLOAD_LEN &&
               duel_host_packet_valid(&hello) &&
               duel_host_accept(&state, &hello) == DUEL_HOST_APPLIED_HEARTBEAT &&
               DUEL_HOST_CONTEXT_SCENE(duel_host_context(&state)) == DUEL_HOST_SCENE_ARCHIVE &&
-              DUEL_CIVIC_FLOOR(duel_host_civic(&state)) == DUEL_CIVIC_FLOOR_RESEARCH;
+              DUEL_CIVIC_FLOOR(duel_host_civic(&state)) == DUEL_CIVIC_FLOOR_RESEARCH);
 
     duel_host_packet_t heartbeat;
     duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, 0x11223344u, 1,
@@ -105,21 +144,21 @@ static void test_host_protocol_current_payload_and_ordering(void) {
                                      DUEL_CIVIC_INTENSITY_CALM),
                      DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_NONE),
                      &heartbeat);
-    ok &= duel_host_accept(&state, &heartbeat) == DUEL_HOST_APPLIED_HEARTBEAT;
-    ok &= duel_host_accept(&state, &heartbeat) == DUEL_HOST_DROP_STALE;
+    EXPECT(duel_host_accept(&state, &heartbeat) == DUEL_HOST_APPLIED_HEARTBEAT);
+    EXPECT(duel_host_accept(&state, &heartbeat) == DUEL_HOST_DROP_STALE);
 
     duel_host_packet_t bad = heartbeat;
     bad.payload_len = 6;
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
-    ok &= !duel_host_packet_valid(&bad);
+    EXPECT(!duel_host_packet_valid(&bad));
     bad = heartbeat;
     bad.version = 1;
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
-    ok &= !duel_host_packet_valid(&bad);
+    EXPECT(!duel_host_packet_valid(&bad));
     bad = heartbeat;
     bad.payload[DUEL_HOST_PAYLOAD_SECONDARY] = 0x80u;
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
-    ok &= !duel_host_packet_valid(&bad);
+    EXPECT(!duel_host_packet_valid(&bad));
     CHECK(ok, "host_v2_eight_byte_payload_malformed_and_stale_ordering");
 }
 
@@ -138,22 +177,23 @@ static void test_view_validation(void) {
     w.spell[0].progress = 91;
     duel_view_t view;
     duel_view_from_world(&w, &view);
-    bool ok = duel_view_valid(&view);
+    bool ok = true;
+    EXPECT(duel_view_valid(&view));
     duel_view_spell_t spell = duel_view_spell(&view, 0);
     duel_view_wizard_t wizard = duel_view_wizard(&view, 0);
-    ok &= spell.active && spell.descriptor == w.spell[0].descriptor && spell.progress == 91;
-    ok &= wizard.hp == 12 && wizard.ward_strength == 4 && wizard.status == STATUS_FROZEN;
+    EXPECT(spell.active && spell.descriptor == w.spell[0].descriptor && spell.progress == 91);
+    EXPECT(wizard.hp == 12 && wizard.ward_strength == 4 && wizard.status == STATUS_FROZEN);
     duel_view_t bad = view;
     bad.wizard[0][0] = (uint8_t)((bad.wizard[0][0] & 0xf0u) | 13u);
-    ok &= !duel_view_valid(&bad);
+    EXPECT(!duel_view_valid(&bad));
     bad = view; bad.wizard[0][0] = (uint8_t)((bad.wizard[0][0] & 0x8fu) | (5u << 4));
-    ok &= !duel_view_valid(&bad);
+    EXPECT(!duel_view_valid(&bad));
     bad = view; bad.outcome_overlay |= 0x80u;
-    ok &= !duel_view_valid(&bad);
+    EXPECT(!duel_view_valid(&bad));
     bad = view; memset(bad.spell[1], 0, 3); bad.spell[1][3] = 1;
-    ok &= !duel_view_valid(&bad);
+    EXPECT(!duel_view_valid(&bad));
     bad = view; bad.spell[0][1] |= 0x70u; /* reserved status encoding */
-    ok &= !duel_view_valid(&bad);
+    EXPECT(!duel_view_valid(&bad));
     CHECK(ok, "incantation_view_roundtrip_and_reserved_validation");
 }
 
@@ -165,7 +205,8 @@ static void test_complexity_formula(void) {
     inc.layer_transitions = 9;
     inc.overlap_peak = 5;
     inc.rhythm_changes = 9;
-    bool ok = incantation_complexity(&inc) == 255;
+    bool ok = true;
+    EXPECT(incantation_complexity(&inc) == 255);
     memset(&inc, 0, sizeof inc);
     inc.key_count = 3;             /* 6 */
     inc.seen_pos = 7;              /* 9 */
@@ -173,7 +214,7 @@ static void test_complexity_formula(void) {
     inc.layer_transitions = 1;     /* 4 */
     inc.overlap_peak = 2;          /* 8 */
     inc.rhythm_changes = 1;        /* 3 = 34 */
-    ok &= incantation_complexity(&inc) == 34;
+    EXPECT(incantation_complexity(&inc) == 34);
     CHECK(ok, "incantation_complexity_exact_and_clamped");
 }
 
@@ -206,15 +247,15 @@ static void test_magnitude_thresholds(void) {
     bool ok = true;
     for (size_t i = 0; i < sizeof complexity; i++) {
         sim_incantation_t inc = incantation_at_complexity(complexity[i]);
-        ok &= inc.key_count != 0xffu && incantation_complexity(&inc) == complexity[i] &&
-              SPELL_DESC_MAGNITUDE(incantation_compile(&inc, 0)) == magnitude[i];
+        EXPECT(inc.key_count != 0xffu && incantation_complexity(&inc) == complexity[i] &&
+              SPELL_DESC_MAGNITUDE(incantation_compile(&inc, 0)) == magnitude[i]);
     }
     sim_incantation_t saturated = {0};
     saturated.hash = 1u; saturated.key_count = 64u; saturated.seen_pos = 0xffffu;
     saturated.turns = 16u; saturated.layer_transitions = 8u;
     saturated.overlap_peak = 5u; saturated.rhythm_changes = 8u;
     saturated.row_hist[1] = 64u;
-    ok &= SPELL_DESC_MAGNITUDE(incantation_compile(&saturated, 0)) == 4u;
+    EXPECT(SPELL_DESC_MAGNITUDE(incantation_compile(&saturated, 0)) == 4u);
     CHECK(ok, "incantation_magnitude_thresholds_48_112_192");
 }
 
@@ -227,9 +268,10 @@ static void test_compiler_determinism_and_gates(void) {
     inc.row_recent[0] = 1;
     inc.gap_min = 1;
     uint32_t a = incantation_compile(&inc, 0), b = incantation_compile(&inc, 0);
-    bool ok = a == b && SPELL_DESC_FORM(a) == SPELL_PROJECTILE &&
+    bool ok = true;
+    EXPECT(a == b && SPELL_DESC_FORM(a) == SPELL_PROJECTILE &&
               SPELL_DESC_ELEMENT(a) == ELEM_FROST && (a & 0xff000000u) == 0 &&
-              SPELL_DESC_VALID(a);
+              SPELL_DESC_VALID(a));
 
     /* Complexity 64 opens fireball/swarm but never beam/singularity. */
     memset(&inc, 0, sizeof inc);
@@ -240,10 +282,10 @@ static void test_compiler_determinism_and_gates(void) {
     for (uint32_t h = 1; h < 500; h++) {
         inc.hash = h * 2654435761u;
         uint8_t form = SPELL_DESC_FORM(incantation_compile(&inc, 1));
-        ok &= form == SPELL_PROJECTILE || form == SPELL_FIREBALL || form == SPELL_SWARM;
+        EXPECT(form == SPELL_PROJECTILE || form == SPELL_FIREBALL || form == SPELL_SWARM);
         saw_non_projectile |= form != SPELL_PROJECTILE;
     }
-    ok &= saw_non_projectile;
+    EXPECT(saw_non_projectile);
     CHECK(ok, "incantation_compiler_determinism_privacy_and_complexity_gate");
 }
 
@@ -282,10 +324,11 @@ static void test_compiler_reachability(void) {
             trends |= 1u << SPELL_DESC_TREND(desc);
         }
     }
-    bool ok = forms == 0xffu && elements == 0x0fu && payloads == 0x0fu &&
+    bool ok = true;
+    EXPECT(forms == 0xffu && elements == 0x0fu && payloads == 0x0fu &&
               trajectories == 0xffu && magnitudes == 0x0fu &&
               (statuses & 0x1fu) == 0x1fu && interactions == 0x0fu &&
-              tempos == 0x0fu && trends == 0x0fu;
+              tempos == 0x0fu && trends == 0x0fu);
     CHECK(ok, "incantation_initial_descriptor_attribute_reachability");
 }
 
@@ -298,13 +341,14 @@ static void test_independent_accumulators_and_commit(void) {
     };
     step(&w, 1u << 1, 1u << 16, 0, 2, events, 2);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.wiz[0].inc.key_count == 1 && w.wiz[1].inc.key_count == 1 &&
+    bool ok = true;
+    EXPECT(w.wiz[0].inc.key_count == 1 && w.wiz[1].inc.key_count == 1 &&
               w.wiz[0].inc.seen_pos == (1u << 1) && w.wiz[1].inc.seen_pos == (1u << 16) &&
-              w.wiz[0].inc.hash != w.wiz[1].inc.hash;
+              w.wiz[0].inc.hash != w.wiz[1].inc.hash);
     wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
-    ok &= w.wiz[0].inc_state == INC_WINDUP && w.wiz[1].inc_state == INC_WINDUP;
+    EXPECT(w.wiz[0].inc_state == INC_WINDUP && w.wiz[1].inc_state == INC_WINDUP);
     uint32_t left = w.wiz[0].pending_desc, right = w.wiz[1].pending_desc;
-    ok &= SPELL_DESC_ELEMENT(left) == ELEM_FROST && SPELL_DESC_ELEMENT(right) == ELEM_EMBER;
+    EXPECT(SPELL_DESC_ELEMENT(left) == ELEM_FROST && SPELL_DESC_ELEMENT(right) == ELEM_EMBER);
     CHECK(ok, "incantation_simultaneous_per_half_idle_commit");
 }
 
@@ -315,13 +359,14 @@ static void test_forced_cap_and_rearm(void) {
     uint32_t held = 1u << 8;
     step(&w, held, 0, 0, 0, &event, 1);
     for (unsigned i = 1; i < INCANTATION_FORCE_COMMIT_TICKS; i++) step(&w, held, 0, 0, 0, NULL, 0);
-    bool ok = w.wiz[0].rearm_lock && w.wiz[0].inc_state == INC_WINDUP;
+    bool ok = true;
+    EXPECT(w.wiz[0].rearm_lock && w.wiz[0].inc_state == INC_WINDUP);
     uint8_t count = w.wiz[0].inc.key_count;
     sim_event_t ignored = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 0, 0);
     step(&w, held | 1u, 0, 0, 0, &ignored, 1);
-    ok &= w.wiz[0].inc.key_count == count;
+    EXPECT(w.wiz[0].inc.key_count == count);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= !w.wiz[0].rearm_lock;
+    EXPECT(!w.wiz[0].rearm_lock);
     CHECK(ok, "incantation_ten_second_force_commit_full_release_rearm");
 }
 
@@ -329,14 +374,15 @@ static void test_release_and_prepared(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     release_recipe(&w, 0, 1);
-    bool ok = w.spell[0].active && SPELL_DESC_VALID(w.spell[0].descriptor);
+    bool ok = true;
+    EXPECT(w.spell[0].active && SPELL_DESC_VALID(w.spell[0].descriptor));
     tap(&w, 0, 2, 2, 0);
     wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
     unsigned guard = 0;
     while (w.wiz[0].inc_state == INC_WINDUP && guard++ < 60) step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].inc_state == INC_PREPARED && w.wiz[0].prepared && w.wiz[0].ward_strength;
+    EXPECT(w.wiz[0].inc_state == INC_PREPARED && w.wiz[0].prepared && w.wiz[0].ward_strength);
     while (w.wiz[0].prepared && guard++ < 120) step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.spell[0].active && !w.wiz[0].prepared;
+    EXPECT(w.spell[0].active && !w.wiz[0].prepared);
     CHECK(ok, "incantation_one_active_one_prepared_auto_release");
 }
 
@@ -345,21 +391,21 @@ static void test_windup_ignored_input_and_interruption(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     tap(&w, 0, 1, 1, 0);
     wait_ticks(&w, INCANTATION_IDLE_COMMIT_TICKS - 1u);
-    bool ok = w.wiz[0].inc_state == INC_WINDUP && w.wiz[0].ward_strength == 1;
+    bool ok = true;
+    EXPECT(w.wiz[0].inc_state == INC_WINDUP && w.wiz[0].ward_strength == 1);
     uint8_t count = w.wiz[0].inc.key_count;
     sim_event_t ignored = SIM_EV_PACK(SIM_EV_KEYDOWN, 0, 2, 5);
     step(&w, 1u << 17, 0, 3, 0, &ignored, 1);
-    ok &= w.wiz[0].inc.key_count == count;
+    EXPECT(w.wiz[0].inc.key_count == count);
     step(&w, 0, 0, 0, 0, NULL, 0);
 
     uint32_t hostile = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_VOID, PAY_DAMAGE,
                                        TRAJ_LOW, 2, STATUS_NONE, INTERACT_PHASE,
                                        TEMPO_RAPID, TREND_STEADY, 0);
-    install_spell(&w, 1, hostile, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].inc_state == INC_IDLE && !w.wiz[0].pending_desc &&
+    land_spell(&w, 1, hostile);
+    EXPECT(w.wiz[0].inc_state == INC_IDLE && !w.wiz[0].pending_desc &&
           !w.wiz[0].prepared && !w.wiz[0].ward_strength &&
-          !w.wiz[0].ward_capacity;
+          !w.wiz[0].ward_capacity);
     CHECK(ok, "incantation_windup_input_ignored_and_unblocked_contact_interrupts");
 }
 
@@ -372,20 +418,31 @@ static void install_spell(sim_world_t *w, uint8_t side, uint32_t desc, uint8_t p
     sp->dir = side ? -1 : 1;
 }
 
+/* Installed here, one idle tick carries a ballistic spell across the
+ * defender's doorstep and resolves contact. */
+#define SIM_CONTACT_PROGRESS 239u
+
+static void idle_step(sim_world_t *w) { step(w, 0, 0, 0, 0, NULL, 0); }
+
+static void land_spell(sim_world_t *w, uint8_t side, uint32_t desc) {
+    install_spell(w, side, desc, SIM_CONTACT_PROGRESS);
+    idle_step(w);
+}
+
 static void test_ward_capacity_semantics(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     tap(&w, 0, 1, 1, 0);
-    bool ok = w.wiz[0].inc_state == INC_COLLECTING &&
-              w.wiz[0].ward_capacity == 1u && w.wiz[0].ward_strength == 1u;
+    bool ok = true;
+    EXPECT(w.wiz[0].inc_state == INC_COLLECTING &&
+              w.wiz[0].ward_capacity == 1u && w.wiz[0].ward_strength == 1u);
 
     uint32_t chip = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_MID, 1, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 1, chip, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_capacity == 1u &&
-          w.wiz[0].ward_strength == 0u && w.wiz[0].inc_state == INC_COLLECTING;
+    land_spell(&w, 1, chip);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_capacity == 1u &&
+          w.wiz[0].ward_strength == 0u && w.wiz[0].inc_state == INC_COLLECTING);
 
     bool stayed_spent_below_threshold = true;
     unsigned guard = 0;
@@ -395,16 +452,15 @@ static void test_ward_capacity_semantics(void) {
         if (w.wiz[0].ward_capacity == 1u) stayed_spent_below_threshold &=
             w.wiz[0].ward_strength == 0u;
     }
-    ok &= stayed_spent_below_threshold && w.wiz[0].ward_capacity == 2u &&
-          w.wiz[0].ward_strength == 1u; /* only the newly crossed tier returns */
+    EXPECT(stayed_spent_below_threshold && w.wiz[0].ward_capacity == 2u &&
+          w.wiz[0].ward_strength == 1u); /* only the newly crossed tier returns */
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     tap(&w, 0, 1, 1, 0);
     uint32_t two = desc_set_magnitude_for_test(chip, 2u);
-    install_spell(&w, 1, two, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].hp == SIM_MAX_HP - 1u && !w.wiz[0].ward_strength &&
-          !w.wiz[0].ward_capacity && w.wiz[0].inc_state == INC_IDLE;
+    land_spell(&w, 1, two);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP - 1u && !w.wiz[0].ward_strength &&
+          !w.wiz[0].ward_capacity && w.wiz[0].inc_state == INC_IDLE);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[0].ward_capacity = 2u; w.wiz[0].ward_strength = 2u;
@@ -412,19 +468,19 @@ static void test_ward_capacity_semantics(void) {
     uint32_t high = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FROST, PAY_DAMAGE,
                                     TRAJ_HIGH, 1, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 1, high, 239); step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_strength == 1u;
+    land_spell(&w, 1, high);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_strength == 1u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[0].ward_capacity = 1u; w.wiz[0].ward_strength = 1u;
     w.wiz[0].ward_focus = 2u;
-    install_spell(&w, 1, high, 239); step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].hp == SIM_MAX_HP - 1u && !w.wiz[0].ward_capacity;
+    land_spell(&w, 1, high);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP - 1u && !w.wiz[0].ward_capacity);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     release_recipe(&w, 0, 1);
-    ok &= w.spell[0].active && !w.wiz[0].ward_strength &&
-          !w.wiz[0].ward_capacity;
+    EXPECT(w.spell[0].active && !w.wiz[0].ward_strength &&
+          !w.wiz[0].ward_capacity);
     CHECK(ok, "incantation_ward_capacity_spend_growth_leakage_coverage_and_launch_clear");
 }
 
@@ -433,21 +489,21 @@ static void test_regeneration_boundary_and_hit_reset(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[1].hp = 10u;
     wait_ticks(&w, SIM_REGEN_TICKS - 1u);
-    bool ok = w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == 1u;
+    bool ok = true;
+    EXPECT(w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == 1u);
     wait_ticks(&w, 1u);
-    ok &= w.wiz[1].hp == 11u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS;
+    EXPECT(w.wiz[1].hp == 11u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
 
     wait_ticks(&w, SIM_REGEN_TICKS - 2u);
     uint32_t chip = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_MID, 1, STATUS_NONE, INTERACT_PHASE,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 0, chip, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS;
+    land_spell(&w, 0, chip);
+    EXPECT(w.wiz[1].hp == 10u && w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
     wait_ticks(&w, SIM_REGEN_TICKS - 1u);
-    ok &= w.wiz[1].hp == 10u;
+    EXPECT(w.wiz[1].hp == 10u);
     wait_ticks(&w, 1u);
-    ok &= w.wiz[1].hp == 11u;
+    EXPECT(w.wiz[1].hp == 11u);
     CHECK(ok, "incantation_regeneration_exact_30_seconds_and_damage_reset");
 }
 
@@ -458,28 +514,26 @@ static void test_damage_heal_ward_and_status(void) {
                                       TRAJ_MID, 4, STATUS_NONE, INTERACT_SOLID,
                                       TEMPO_FLOWING, TREND_STEADY, 0);
     w.wiz[1].ward_strength = 2; w.wiz[1].ward_focus = 2;
-    install_spell(&w, 0, damage, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0;
+    land_spell(&w, 0, damage);
+    bool ok = true;
+    EXPECT(w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0);
 
     uint32_t heal = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_HEAL,
                                     TRAJ_RETURNING, 4, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
     w.wiz[0].hp = 5;
-    install_spell(&w, 0, heal, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[0].hp == 9;
+    land_spell(&w, 0, heal);
+    EXPECT(w.wiz[0].hp == 9);
 
     uint32_t burn = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS,
                                     TRAJ_MID, 3, STATUS_BURNING, INTERACT_SOLID,
                                     TEMPO_RAPID, TREND_STEADY, 0);
-    install_spell(&w, 0, burn, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
+    land_spell(&w, 0, burn);
     uint8_t hp = w.wiz[1].hp;
-    ok &= w.wiz[1].status == STATUS_BURNING && hp == 10;
+    EXPECT(w.wiz[1].status == STATUS_BURNING && hp == 10);
     while (!w.wiz[1].status_burned) step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[1].hp == (uint8_t)(hp - 1u) &&
-          w.wiz[1].regen_ticks == SIM_REGEN_TICKS;
+    EXPECT(w.wiz[1].hp == (uint8_t)(hp - 1u) &&
+          w.wiz[1].regen_ticks == SIM_REGEN_TICKS);
     CHECK(ok, "incantation_damage_residual_heal_clamp_and_delayed_burn");
 }
 
@@ -489,17 +543,16 @@ static void test_status_dominance_and_effects(void) {
     uint32_t frozen = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FROST, PAY_STATUS,
                                       TRAJ_LOW, 3, STATUS_FROZEN, INTERACT_PHASE,
                                       TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 0, frozen, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3;
+    land_spell(&w, 0, frozen);
+    bool ok = true;
+    EXPECT(w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3);
     uint8_t duration = w.wiz[1].status_ticks;
     uint32_t weak_burn = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS,
                                          TRAJ_LOW, 1, STATUS_BURNING, INTERACT_PHASE,
                                          TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 0, weak_burn, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3 &&
-          w.wiz[1].status_ticks < duration;
+    land_spell(&w, 0, weak_burn);
+    EXPECT(w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3 &&
+          w.wiz[1].status_ticks < duration);
 
     sim_world_t normal, slowed;
     sim_init(&normal, SIMF_AUTHORITATIVE, 0); sim_init(&slowed, SIMF_AUTHORITATIVE, 0);
@@ -510,15 +563,15 @@ static void test_status_dominance_and_effects(void) {
     slowed.wiz[0].status = STATUS_FROZEN; slowed.wiz[0].status_intensity = 2; slowed.wiz[0].status_ticks = 100;
     step(&normal, 0, 0, 0, 0, NULL, 0); step(&normal, 0, 0, 0, 0, NULL, 0);
     step(&slowed, 0, 0, 0, 0, NULL, 0); step(&slowed, 0, 0, 0, 0, NULL, 0);
-    ok &= normal.spell[0].progress == 22 && slowed.spell[0].progress == 11;
+    EXPECT(normal.spell[0].progress == 22 && slowed.spell[0].progress == 11);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[0].inc_state = INC_PREPARED; w.wiz[0].prepared = 1;
     w.wiz[0].prepared_desc = desc_set_magnitude_for_test(bolt, 3);
     w.wiz[0].status = STATUS_DISRUPTED; w.wiz[0].status_intensity = 2; w.wiz[0].status_ticks = 100;
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.spell[0].active && SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 2 &&
-          w.wiz[0].status == STATUS_NONE;
+    EXPECT(w.spell[0].active && SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 2 &&
+          w.wiz[0].status == STATUS_NONE);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[1].ward_strength = 4; w.wiz[1].ward_focus = 2;
@@ -526,8 +579,8 @@ static void test_status_dominance_and_effects(void) {
     uint32_t area = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_AREA, 2, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_RAPID, TREND_STEADY, 0);
-    install_spell(&w, 0, area, 239); step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0;
+    land_spell(&w, 0, area);
+    EXPECT(w.wiz[1].hp == 10 && w.wiz[1].ward_strength == 0);
     CHECK(ok, "incantation_status_strength_frozen_disrupted_and_marked_effects");
 }
 
@@ -539,23 +592,23 @@ static void test_form_lifecycles(void) {
                                     TEMPO_RAPID, TREND_STEADY, 0);
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, beam, 0);
     wait_ticks(&w, 5); uint8_t hp = w.wiz[1].hp;
-    ok &= hp == 10 && w.spell[0].progress >= 64;
+    EXPECT(hp == 10 && w.spell[0].progress >= 64);
     wait_ticks(&w, 32);
-    ok &= w.wiz[1].hp == hp && !w.spell[0].active;
+    EXPECT(w.wiz[1].hp == hp && !w.spell[0].active);
 
     uint32_t singularity = SPELL_DESC_PACK(SPELL_SINGULARITY, ELEM_VOID, PAY_DAMAGE,
                                            TRAJ_AREA, 2, STATUS_NONE, INTERACT_ABSORB,
                                            TEMPO_DELIBERATE, TREND_STEADY, 0);
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, singularity, 0);
     wait_ticks(&w, 28);
-    ok &= !w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP;
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP);
 
     uint32_t swarm = SPELL_DESC_PACK(SPELL_SWARM, ELEM_FORCE, PAY_DAMAGE,
                                      TRAJ_MID, 4, STATUS_NONE, INTERACT_SOLID,
                                      TEMPO_FRANTIC, TREND_STEADY, 0);
     sim_init(&w, SIMF_AUTHORITATIVE, 0); install_spell(&w, 0, swarm, 0); w.spell[0].aux = 6;
     wait_ticks(&w, 36);
-    ok &= !w.spell[0].active && w.wiz[1].hp == 6;
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == 6);
     CHECK(ok, "incantation_beam_once_singularity_empty_and_six_orb_lifecycles");
 }
 
@@ -570,7 +623,8 @@ static void test_collision_precedence(void) {
                                      TEMPO_RAPID, TREND_STEADY, 0);
     install_spell(&w, 0, phase, 120); install_spell(&w, 1, solid, 120);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.spell[0].active && w.spell[1].active;
+    bool ok = true;
+    EXPECT(w.spell[0].active && w.spell[1].active);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     uint32_t sing = SPELL_DESC_PACK(SPELL_SINGULARITY, ELEM_FORCE, PAY_DAMAGE,
@@ -579,7 +633,7 @@ static void test_collision_precedence(void) {
     install_spell(&w, 0, sing, 48); w.spell[0].age = 10;
     install_spell(&w, 1, solid, 207);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.spell[0].active && w.spell[0].aux == 4 && !w.spell[1].active;
+    EXPECT(w.spell[0].active && w.spell[0].aux == 4 && !w.spell[1].active);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     uint32_t ember = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE,
@@ -590,7 +644,7 @@ static void test_collision_precedence(void) {
                                      TEMPO_RAPID, TREND_STEADY, 0);
     install_spell(&w, 0, ember, 120); install_spell(&w, 1, frost, 120);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= !w.spell[0].active && !w.spell[1].active;
+    EXPECT(!w.spell[0].active && !w.spell[1].active);
     CHECK(ok, "incantation_collision_phase_singularity_and_ember_frost_precedence");
 }
 
@@ -613,51 +667,50 @@ static void test_productive_clashes(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     collide(&w, clash_desc(ELEM_FORCE, 3, TEMPO_FLOWING, TREND_STEADY),
             clash_desc(ELEM_FORCE, 2, TEMPO_FRANTIC, TREND_IRREGULAR));
-    ok &= w.spell[0].active && !w.spell[1].active &&
-          SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 4u;
+    EXPECT(w.spell[0].active && !w.spell[1].active &&
+          SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 4u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     collide(&w, clash_desc(ELEM_FROST, 2, TEMPO_RAPID, TREND_STEADY),
             clash_desc(ELEM_FROST, 2, TEMPO_FLOWING, TREND_IRREGULAR));
-    ok &= w.spell[0].active && !w.spell[1].active &&
-          SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 4u;
+    EXPECT(w.spell[0].active && !w.spell[1].active &&
+          SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == 4u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     collide(&w, clash_desc(ELEM_FORCE, 2, TEMPO_RAPID, TREND_ACCELERATING),
             clash_desc(ELEM_FORCE, 2, TEMPO_RAPID, TREND_STEADY));
-    ok &= w.spell[0].active && !w.spell[1].active;
+    EXPECT(w.spell[0].active && !w.spell[1].active);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     uint32_t exact = clash_desc(ELEM_FORCE, 2, TEMPO_FLOWING, TREND_STEADY);
     collide(&w, exact, exact);
-    ok &= !w.spell[0].active && !w.spell[1].active &&
-          w.wiz[0].hp == SIM_MAX_HP - 1u && w.wiz[1].hp == SIM_MAX_HP - 1u;
+    EXPECT(!w.spell[0].active && !w.spell[1].active &&
+          w.wiz[0].hp == SIM_MAX_HP - 1u && w.wiz[1].hp == SIM_MAX_HP - 1u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[0].ward_capacity = 4u; w.wiz[0].ward_strength = 4u;
     w.wiz[1].ward_capacity = 4u; w.wiz[1].ward_strength = 4u;
     collide(&w, exact, exact);
-    ok &= w.wiz[0].hp == SIM_MAX_HP && w.wiz[1].hp == SIM_MAX_HP &&
-          w.wiz[0].ward_strength == 3u && w.wiz[1].ward_strength == 3u;
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP && w.wiz[1].hp == SIM_MAX_HP &&
+          w.wiz[0].ward_strength == 3u && w.wiz[1].ward_strength == 3u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     w.wiz[0].ward_capacity = 4u; w.wiz[0].ward_strength = 4u;
     collide(&w, clash_desc(ELEM_EMBER, 4, TEMPO_FRANTIC, TREND_IRREGULAR),
             clash_desc(ELEM_FROST, 4, TEMPO_FRANTIC, TREND_IRREGULAR));
-    ok &= w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_strength == 3u &&
-          w.wiz[1].hp == SIM_MAX_HP - 1u;
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP && w.wiz[0].ward_strength == 3u &&
+          w.wiz[1].hp == SIM_MAX_HP - 1u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     collide(&w, clash_desc(ELEM_FORCE, 2, TEMPO_FLOWING, TREND_STEADY),
             clash_desc(ELEM_VOID, 2, TEMPO_FLOWING, TREND_STEADY));
-    ok &= !w.spell[0].active && !w.spell[1].active &&
-          w.wiz[0].hp == SIM_MAX_HP && w.wiz[1].hp == SIM_MAX_HP;
+    EXPECT(!w.spell[0].active && !w.spell[1].active &&
+          w.wiz[0].hp == SIM_MAX_HP && w.wiz[1].hp == SIM_MAX_HP);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     uint32_t maximum = clash_desc(ELEM_FORCE, 4, TEMPO_FLOWING, TREND_STEADY);
-    install_spell(&w, 0, maximum, 239u);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.wiz[1].hp == SIM_MAX_HP - 4u;
+    land_spell(&w, 0, maximum);
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 4u);
     CHECK(ok, "incantation_productive_clash_cap_tiebreak_pulses_wards_and_damage_cap");
 }
 
@@ -669,10 +722,11 @@ static void test_incantation_link_ordering(void) {
     duel_encode(&w, 7, 0u, &b);
     duel_encode(&w, 6, 100u, &old_session);
     duel_rx_state_t rx = {0};
-    bool ok = duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &b, false) &&
-              !duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &old_session, false);
+    bool ok = true;
+    EXPECT(duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &b, false) &&
+              !duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &old_session, false));
     duel_snapshot_t corrupt = b; corrupt.view.phase[0] ^= 0x40u;
-    ok &= !duel_decode_valid(&corrupt);
+    EXPECT(!duel_decode_valid(&corrupt));
     CHECK(ok, "incantation_sequence_wrap_session_restart_and_corruption");
 }
 
@@ -707,7 +761,8 @@ static uint32_t compile_actual_pattern(uint32_t seed, uint8_t extra_gap) {
 static void test_real_input_reachability_and_timing_buckets(void) {
     uint32_t bucket_a = compile_actual_pattern(3u, 1u);
     uint32_t bucket_b = compile_actual_pattern(3u, 2u);
-    bool ok = bucket_a == bucket_b;
+    bool ok = true;
+    EXPECT(bucket_a == bucket_b);
     uint32_t forms = 0;
     uint8_t max_complexity = 0;
     for (uint32_t seed = 0; seed < 2048u && forms != 0xffu; seed++) {
@@ -736,7 +791,7 @@ static void test_real_input_reachability_and_timing_buckets(void) {
     if (!ok || forms != 0xffu)
         printf("DIAG actual forms=%02x complexity=%u bucket_a=%06x bucket_b=%06x\n",
                (unsigned)forms, max_complexity, (unsigned)bucket_a, (unsigned)bucket_b);
-    ok &= forms == 0xffu;
+    EXPECT(forms == 0xffu);
     CHECK(ok, "incantation_real_input_all_forms_and_bucket_repeatability");
 }
 
@@ -783,7 +838,7 @@ static void test_prose_typing_ko_window(void) {
         if (ko < 1500u || ko > 4500u)
             printf("DIAG prose profile=%u first_ko_ticks=%lu\n", profile,
                    (unsigned long)ko);
-        ok &= ko >= 1500u && ko <= 4500u;
+        EXPECT(ko >= 1500u && ko <= 4500u);
     }
     CHECK(ok, "incantation_steady_burst_mixed_prose_first_ko_60_to_180_seconds");
 }
@@ -798,25 +853,30 @@ static void test_max_cast_aftermath_and_wire(void) {
         step(&w, held, 0, 0, 0, NULL, 0);
     uint8_t shared = incantation_aftermath_shared(&w);
     uint8_t revision = incantation_aftermath_revision(&w);
-    bool ok = w.aftermath[0].kind == AFTER_MAX_CAST &&
+    bool ok = true;
+    EXPECT(w.aftermath[0].kind == AFTER_MAX_CAST &&
               w.aftermath[1].kind == AFTER_MAX_CAST &&
               w.aftermath[0].resident_state == RESIDENT_WATCH_CAST &&
               w.world_state == WORLD_WONDER &&
               INCANTATION_AFTER_KIND(shared, 0) == AFTER_MAX_CAST &&
               INCANTATION_AFTER_KIND(shared, 1) == AFTER_MAX_CAST &&
-              (revision & INCANTATION_AFTERMATH_WIRE);
+              (revision & INCANTATION_AFTERMATH_WIRE));
     duel_snapshot_t packet;
     duel_encode(&w, 4, 9, &packet);
-    ok &= packet.shared_pres == shared && packet.revision == revision && duel_decode_valid(&packet);
+    EXPECT(packet.shared_pres == shared && packet.revision == revision && duel_decode_valid(&packet));
     duel_render_t render = {0};
     duel_render_from_world(&render, &w);
-    ok &= render.shared_pres == shared && render.revision == revision;
+    EXPECT(render.shared_pres == shared && render.revision == revision);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    wait_ticks(&w, 55);
-    ok &= w.aftermath[0].kind == AFTER_MAX_CAST &&
-          w.aftermath[0].resident_state == RESIDENT_WATCH_CAST;
-    wait_ticks(&w, 45);
-    ok &= w.aftermath[0].resident_state == RESIDENT_CHEER;
+    /* Wait to one tick shy of the halfway boundary (phase 2 = cheer), then
+     * cross it. The arc started during the casts above, so derive the elapsed
+     * ticks from the countdown rather than assuming a fresh start. */
+    unsigned elapsed = SIM_AFTER_MAX_CAST_TICKS - w.aftermath[0].ticks;
+    wait_ticks(&w, SIM_AFTER_MAX_CAST_TICKS / 2u - 1u - elapsed);
+    EXPECT(w.aftermath[0].kind == AFTER_MAX_CAST &&
+          w.aftermath[0].resident_state == RESIDENT_WATCH_CAST);
+    wait_ticks(&w, 2u);
+    EXPECT(w.aftermath[0].resident_state == RESIDENT_CHEER);
     CHECK(ok, "incantation_max_cast_coordinated_authoritative_wire_aftermath");
 }
 
@@ -826,23 +886,24 @@ static void test_fireball_room_resident_object_arc(void) {
     uint32_t fireball = SPELL_DESC_PACK(SPELL_FIREBALL, ELEM_EMBER, PAY_DAMAGE,
                                         TRAJ_ROOF, 3, STATUS_NONE, INTERACT_SOLID,
                                         TEMPO_FLOWING, TREND_STEADY, 0);
-    install_spell(&w, 0, fireball, 239);
-    step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = !w.spell[0].active && w.wiz[1].hp == 9 &&
+    land_spell(&w, 0, fireball);
+    bool ok = true;
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == 9 &&
               w.fx_kind == FX_DETONATE && w.aftermath[1].kind == AFTER_FIRE &&
               w.aftermath[1].resident_state == RESIDENT_PANIC &&
               w.aftermath[1].room_state == ROOM_DISRUPTED &&
               w.aftermath[1].object_state == OBJECT_FIRE &&
-              w.world_state == WORLD_CRISIS;
-    wait_ticks(&w, 50);
-    ok &= w.aftermath[1].resident_state == RESIDENT_FIGHT_FIRE &&
-          w.aftermath[1].object_state == OBJECT_FIRE;
-    wait_ticks(&w, 85);
-    ok &= w.aftermath[1].resident_state == RESIDENT_REPAIR &&
+              w.world_state == WORLD_CRISIS);
+    /* Quarter-phase boundaries of the fire arc: response, recovery, expiry. */
+    wait_ticks(&w, SIM_AFTER_FIRE_TICKS / 4u + 1u);
+    EXPECT(w.aftermath[1].resident_state == RESIDENT_FIGHT_FIRE &&
+          w.aftermath[1].object_state == OBJECT_FIRE);
+    wait_ticks(&w, SIM_AFTER_FIRE_TICKS / 2u + 1u);
+    EXPECT(w.aftermath[1].resident_state == RESIDENT_REPAIR &&
           w.aftermath[1].room_state == ROOM_RECOVERY &&
-          w.aftermath[1].object_state == OBJECT_DAMAGED;
-    wait_ticks(&w, 40);
-    ok &= w.aftermath[1].kind == AFTER_NONE && w.world_state == WORLD_CALM;
+          w.aftermath[1].object_state == OBJECT_DAMAGED);
+    wait_ticks(&w, SIM_AFTER_FIRE_TICKS / 4u + 2u);
+    EXPECT(w.aftermath[1].kind == AFTER_NONE && w.world_state == WORLD_CALM);
     CHECK(ok, "incantation_fireball_roof_resident_room_object_recovery_arc");
 }
 
@@ -853,13 +914,14 @@ static void test_reachable_complaint_and_ward_shatter(void) {
                                     TRAJ_MID, 1, STATUS_NONE, INTERACT_SOLID,
                                     TEMPO_FLOWING, TREND_STEADY, 0);
     w.wiz[1].ward_strength = 1; w.wiz[1].ward_focus = 2;
-    install_spell(&w, 0, chip, 239); step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.fx_kind == FX_WARD_SHATTER_R && w.wiz[1].hp == SIM_MAX_HP &&
-              w.wiz[1].ward_strength == 0;
-    install_spell(&w, 0, chip, 239); step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.fx_kind == FX_COMPLAINT && w.wiz[1].hp == SIM_MAX_HP - 1u &&
+    land_spell(&w, 0, chip);
+    bool ok = true;
+    EXPECT(w.fx_kind == FX_WARD_SHATTER_R && w.wiz[1].hp == SIM_MAX_HP &&
+              w.wiz[1].ward_strength == 0);
+    land_spell(&w, 0, chip);
+    EXPECT(w.fx_kind == FX_COMPLAINT && w.wiz[1].hp == SIM_MAX_HP - 1u &&
           w.aftermath[1].kind == AFTER_COMPLAINT &&
-          w.aftermath[1].resident_state == RESIDENT_COMPLAIN;
+          w.aftermath[1].resident_state == RESIDENT_COMPLAIN);
     CHECK(ok, "incantation_ward_shatter_and_complaint_reachable");
 }
 
@@ -874,7 +936,8 @@ static void test_ground_chain_summon_and_trap(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, ground, 120); install_spell(&w, 1, high, 120);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    bool ok = w.spell[0].active && w.spell[1].active;
+    bool ok = true;
+    EXPECT(w.spell[0].active && w.spell[1].active);
 
     uint32_t chain = SPELL_DESC_PACK(SPELL_CHAIN, ELEM_FORCE, PAY_DAMAGE,
                                      TRAJ_HOMING, 2, STATUS_NONE, INTERACT_SOLID,
@@ -882,7 +945,7 @@ static void test_ground_chain_summon_and_trap(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, chain, 120); install_spell(&w, 1, high, 120);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= w.spell[0].active && !w.spell[1].active && w.fx_kind == FX_RESIDUE;
+    EXPECT(w.spell[0].active && !w.spell[1].active && w.fx_kind == FX_RESIDUE);
 
     uint32_t trap = SPELL_DESC_PACK(SPELL_CONJURE, ELEM_EMBER, PAY_DAMAGE,
                                     TRAJ_GROUND, 2, STATUS_NONE, INTERACT_SOLID,
@@ -891,8 +954,8 @@ static void test_ground_chain_summon_and_trap(void) {
     install_spell(&w, 0, trap, 16); w.spell[0].aux = 3;
     install_spell(&w, 1, high, 175);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    ok &= !w.spell[0].active && !w.spell[1].active &&
-          w.wiz[1].hp == 10 && w.fx_kind == FX_DETONATE;
+    EXPECT(!w.spell[0].active && !w.spell[1].active &&
+          w.wiz[1].hp == 10 && w.fx_kind == FX_DETONATE);
 
     uint32_t summon = SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE,
                                       TRAJ_RETURNING, 2, STATUS_NONE, INTERACT_SOLID,
@@ -900,7 +963,7 @@ static void test_ground_chain_summon_and_trap(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, summon, 0); w.spell[0].aux = 2;
     wait_ticks(&w, 22);
-    ok &= !w.spell[0].active && w.wiz[1].hp == 10;
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == 10);
     CHECK(ok, "incantation_ground_chain_summon_and_trap_lifecycles");
 }
 
@@ -912,14 +975,15 @@ static void test_swarm_gather_launch_and_tempo_motion(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, swarm, 0); w.spell[0].aux = 6;
     wait_ticks(&w, 11);
-    bool ok = w.wiz[1].hp == SIM_MAX_HP && (w.spell[0].progress >> 5) == 6u &&
-              (w.spell[0].progress & 31u) < 12u;
+    bool ok = true;
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP && (w.spell[0].progress >> 5) == 6u &&
+              (w.spell[0].progress & 31u) < 12u);
     wait_ticks(&w, 4);
-    ok &= w.wiz[1].hp == SIM_MAX_HP && (w.spell[0].progress & 31u) >= 12u;
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP && (w.spell[0].progress & 31u) >= 12u);
     wait_ticks(&w, 1);
-    ok &= w.wiz[1].hp == SIM_MAX_HP - 1u && (w.spell[0].progress >> 5) == 5u;
+    EXPECT(w.wiz[1].hp == SIM_MAX_HP - 1u && (w.spell[0].progress >> 5) == 5u);
     wait_ticks(&w, 20);
-    ok &= !w.spell[0].active && w.wiz[1].hp == 6;
+    EXPECT(!w.spell[0].active && w.wiz[1].hp == 6);
 
     uint32_t slow = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE,
                                     TRAJ_LOW, 1, STATUS_NONE, INTERACT_SOLID,
@@ -931,7 +995,7 @@ static void test_swarm_gather_launch_and_tempo_motion(void) {
     sim_init(&a, SIMF_AUTHORITATIVE, 0); sim_init(&b, SIMF_AUTHORITATIVE, 0);
     install_spell(&a, 0, slow, 0); install_spell(&b, 0, fast, 0);
     wait_ticks(&a, 8); wait_ticks(&b, 8);
-    ok &= b.spell[0].progress > a.spell[0].progress;
+    EXPECT(b.spell[0].progress > a.spell[0].progress);
     CHECK(ok, "incantation_swarm_gather_serial_launch_and_tempo_trend_motion");
 }
 
@@ -952,14 +1016,15 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     wiz_draw_scene(&ml, &master, true, 0, false);
     wiz_draw_scene(&mr, &master, false, 0, false);
     int beam_y = 63 + DUEL_ROOF_DY;
-    bool ok = duel_fb_get(&ml, 21, beam_y) && duel_fb_get(&ml, 31, beam_y) &&
+    bool ok = true;
+    EXPECT(duel_fb_get(&ml, 21, beam_y) && duel_fb_get(&ml, 31, beam_y) &&
               duel_fb_get(&mr, 0, beam_y) && duel_fb_get(&mr, 10, beam_y) &&
-              !duel_fb_get(&ml, 0, beam_y) && !duel_fb_get(&mr, 31, beam_y);
+              !duel_fb_get(&ml, 0, beam_y) && !duel_fb_get(&mr, 31, beam_y));
 
     duel_snapshot_t packet;
     duel_encode(&w, 8, 20, &packet);
     duel_rx_state_t rx = {0};
-    ok &= duel_rx_accept(&rx, &packet, false) && duel_decode_valid(&rx.last);
+    EXPECT(duel_rx_accept(&rx, &packet, false) && duel_decode_valid(&rx.last));
     duel_render_t slave = master;
     slave.view = rx.last.view; slave.shared_pres = rx.last.shared_pres;
     slave.revision = rx.last.revision;
@@ -967,7 +1032,7 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     duel_fb_clear(&sl); duel_fb_clear(&sr);
     wiz_draw_scene(&sl, &slave, true, 0, false);
     wiz_draw_scene(&sr, &slave, false, 0, false);
-    ok &= memcmp(&ml, &sl, sizeof ml) == 0 && memcmp(&mr, &sr, sizeof mr) == 0;
+    EXPECT(memcmp(&ml, &sl, sizeof ml) == 0 && memcmp(&mr, &sr, sizeof mr) == 0);
     CHECK(ok, "incantation_bilateral_beam_and_aftermath_split_render_convergence");
 }
 
@@ -1011,10 +1076,10 @@ static void test_floor_occupations_and_transitions(void) {
     for (uint8_t city = 0; city < 2u; city++)
         for (uint8_t a = 0; a < 3u; a++)
             for (uint8_t b = (uint8_t)(a + 1u); b < 3u; b++) {
-                unsigned diff = band_difference(&floor[city][a], &floor[city][b], 62, 110);
+                unsigned diff = band_difference(&floor[city][a], &floor[city][b], DUEL_FLOOR_Y0, DUEL_FLOOR_Y1);
                 if (diff < 40u) printf("DIAG floor city=%u pair=%u/%u diff=%u\n",
                                        city, a, b, diff);
-                ok &= diff >= 40u;
+                EXPECT(diff >= 40u);
             }
 
     for (uint8_t phase = 0; phase < 4u; phase++) {
@@ -1024,12 +1089,13 @@ static void test_floor_occupations_and_transitions(void) {
         render_floor_scene(DUEL_CIVIC_FLOOR_WORKSHOP, true, byte, &transitioned);
         const duel_fb_t *reference = phase < 2u ?
             &floor[0][DUEL_CIVIC_FLOOR_COMMONS] : &floor[0][DUEL_CIVIC_FLOOR_WORKSHOP];
-        ok &= band_difference(&transitioned, reference, 62, 110) > 0u;
-        ok &= band_difference(&transitioned, reference, 0, 60) == 0u;
-        ok &= band_difference(&transitioned, reference, 111, 127) == 0u;
-        ok &= INCANTATION_FLOOR_TRANSITION_SOURCE(byte) == DUEL_CIVIC_FLOOR_COMMONS &&
+        EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y0, DUEL_FLOOR_Y1) > 0u);
+        /* Protection now includes the beam row itself (previously a one-row hole). */
+        EXPECT(band_difference(&transitioned, reference, 0, DUEL_FLOOR_BEAM_Y) == 0u);
+        EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y1 + 1, DUEL_CANVAS_H - 1) == 0u);
+        EXPECT(INCANTATION_FLOOR_TRANSITION_SOURCE(byte) == DUEL_CIVIC_FLOOR_COMMONS &&
               INCANTATION_FLOOR_TRANSITION_PHASE(byte) == phase &&
-              INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xe0u);
+              INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xe0u));
     }
     CHECK(ok, "incantation_six_occupation_scenes_40px_and_four_protected_transition_phases");
 }
@@ -1054,12 +1120,12 @@ static bool pixels_within(const duel_fb_t *fb, int y0, int y1) {
 static void test_civic_anchor_and_courier_matrix(void) {
     bool ok = true;
     for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++) {
-        incantation_point_t fallback = incantation_occupation_anchor(DUEL_CIVIC_FLOOR_SPECIAL, action);
+        incantation_point_t fallback = incantation_occupation_anchor(INCANTATION_OCCUPATION_FLOORS, action);
         incantation_point_t commons = incantation_occupation_anchor(DUEL_CIVIC_FLOOR_COMMONS, action);
-        ok &= fallback.x == commons.x && fallback.y == commons.y;
+        EXPECT(fallback.x == commons.x && fallback.y == commons.y);
         for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
             incantation_point_t point = incantation_occupation_anchor(floor, action);
-            ok &= point.x >= 0 && point.x < DUEL_CANVAS_W && point.y >= 61 && point.y <= 110;
+            EXPECT(point.x >= 0 && point.x < DUEL_CANVAS_W && point.y >= DUEL_FLOOR_BEAM_Y && point.y <= DUEL_FLOOR_Y1);
         }
     }
 
@@ -1083,10 +1149,13 @@ static void test_civic_anchor_and_courier_matrix(void) {
                             draw_courier(&assigned, &r, city == 0u);
                             draw_courier(&repeat, &r, city == 0u);
                             draw_courier(&opposite, &r, city != 0u);
-                            ok &= memcmp(&assigned, &repeat, sizeof assigned) == 0 &&
-                                  framebuffer_pixels(&assigned) >= 6u &&
+                            EXPECT(memcmp(&assigned, &repeat, sizeof assigned) == 0 &&
                                   framebuffer_pixels(&opposite) == 0u &&
-                                  pixels_within(&assigned, 61, 110);
+                                  pixels_within(&assigned, DUEL_FLOOR_BEAM_Y, DUEL_FLOOR_Y1));
+                            if (floor == DUEL_CIVIC_FLOOR_SPECIAL)
+                                EXPECT(framebuffer_pixels(&assigned) == 0u);
+                            else
+                                EXPECT(framebuffer_pixels(&assigned) >= 6u);
                         }
 
     /* City assignment is a pure mirror, and transition routing uses the visible
@@ -1105,7 +1174,7 @@ static void test_civic_anchor_and_courier_matrix(void) {
     route.shared_pres = DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_PARCEL, 1,
                                            DUEL_CIVIC_VISIT_WAITING);
     draw_courier(&mirror, &route, false);
-    ok &= memcmp(&source, &expected, sizeof source) == 0 && exact_mirror(&expected, &mirror);
+    EXPECT(memcmp(&source, &expected, sizeof source) == 0 && exact_mirror(&expected, &mirror));
     for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER;
          kind < DUEL_CIVIC_COURIER_COUNT; kind++) {
         duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
@@ -1114,9 +1183,9 @@ static void test_civic_anchor_and_courier_matrix(void) {
             route.shared_pres = DUEL_VISITOR_PACK(kind, 0, DUEL_CIVIC_VISIT_AGING);
             duel_fb_clear(&variant[floor]); draw_courier(&variant[floor], &route, true);
         }
-        ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
+        EXPECT(memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
               memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
-              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
+              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0);
     }
     CHECK(ok, "incantation_canonical_anchors_and_courier_floor_lifecycle_density_mode_city_matrix");
 }
@@ -1141,25 +1210,29 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
                         draw_rare_event(&left, &r, true);
                         draw_rare_event(&right, &r, false);
                         draw_rare_event(&repeat, &r, true);
-                        ok &= memcmp(&left, &repeat, sizeof left) == 0;
-                        if (shared) {
-                            ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) >= 4u;
+                        EXPECT(memcmp(&left, &repeat, sizeof left) == 0);
+                        if (floor == DUEL_CIVIC_FLOOR_SPECIAL) {
+                            EXPECT(framebuffer_pixels(&left) == 0u &&
+                                  framebuffer_pixels(&right) == 0u);
+                        } else if (shared) {
+                            EXPECT(framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) >= 4u);
                         } else if (target == DUEL_CIVIC_EVENT_TARGET_LEFT) {
-                            ok &= framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) == 0u;
+                            EXPECT(framebuffer_pixels(&left) >= 4u && framebuffer_pixels(&right) == 0u);
                         } else {
-                            ok &= framebuffer_pixels(&right) >= 4u && framebuffer_pixels(&left) == 0u;
+                            EXPECT(framebuffer_pixels(&right) >= 4u && framebuffer_pixels(&left) == 0u);
                         }
                         if (id == DUEL_CIVIC_EVENT_CIVIC_SKY)
-                            ok &= pixels_within(&left, 16, 26) && pixels_within(&right, 16, 26);
+                            EXPECT(pixels_within(&left, 16, 26) && pixels_within(&right, 16, 26));
                         else
-                            ok &= pixels_within(&left, 61, 110) && pixels_within(&right, 61, 110);
+                            EXPECT(pixels_within(&left, DUEL_FLOOR_BEAM_Y, DUEL_FLOOR_Y1) &&
+                                  pixels_within(&right, DUEL_FLOOR_BEAM_Y, DUEL_FLOOR_Y1));
                     }
                 }
 
     duel_render_t none = {0}; duel_fb_t empty;
     none.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_NONE, 0, 0);
     duel_fb_clear(&empty); draw_rare_event(&empty, &none, true);
-    ok &= framebuffer_pixels(&empty) == 0u;
+    EXPECT(framebuffer_pixels(&empty) == 0u);
     for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
          id < DUEL_CIVIC_EVENT_COUNT; id++) {
         duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
@@ -1170,9 +1243,9 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
                     DUEL_CIVIC_EVENT_TARGET_SHARED : DUEL_CIVIC_EVENT_TARGET_LEFT);
             duel_fb_clear(&variant[floor]); draw_rare_event(&variant[floor], &none, true);
         }
-        ok &= memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
+        EXPECT(memcmp(&variant[0], &variant[1], sizeof variant[0]) != 0 &&
               memcmp(&variant[0], &variant[2], sizeof variant[0]) != 0 &&
-              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0;
+              memcmp(&variant[1], &variant[2], sizeof variant[0]) != 0);
     }
     none.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
     none.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL,
@@ -1184,7 +1257,7 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
     none.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
     none.floor_transition = 0;
     duel_fb_clear(&commons); draw_rare_event(&commons, &none, true);
-    ok &= memcmp(&transition, &commons, sizeof transition) == 0;
+    EXPECT(memcmp(&transition, &commons, sizeof transition) == 0);
     CHECK(ok, "incantation_rare_event_floor_family_phase_mode_target_routing_and_safety_matrix");
 }
 
@@ -1207,10 +1280,10 @@ static void test_aftermath_floor_kind_phase_half_matrix(void) {
                     incantation_render(&before, &base, side == 0u, false);
                     incantation_render(&first, &after, side == 0u, false);
                     incantation_render(&second, &after, side == 0u, false);
-                    ok &= memcmp(&first, &second, sizeof first) == 0 &&
+                    EXPECT(memcmp(&first, &second, sizeof first) == 0 &&
                           memcmp(&before, &first, sizeof first) != 0 &&
-                          band_difference(&before, &first, 0, 60) == 0u &&
-                          band_difference(&before, &first, 111, 127) == 0u;
+                          band_difference(&before, &first, 0, DUEL_FLOOR_BEAM_Y) == 0u &&
+                          band_difference(&before, &first, DUEL_FLOOR_Y1 + 1, DUEL_CANVAS_H - 1) == 0u);
                 }
     CHECK(ok, "incantation_aftermath_floor_kind_phase_half_anchor_priority_and_protected_regions");
 }
@@ -1251,28 +1324,28 @@ static void test_resident_occupation_derivation(void) {
                         floor, DUEL_CIVIC_MODE_NORMAL, phase);
                     civic_resident_t b = civic_resident_derive((uint8_t)seed, side == 0u,
                         floor, DUEL_CIVIC_MODE_NORMAL, phase);
-                    ok &= memcmp(&a, &b, sizeof a) == 0 && a.action == common.action;
-                    ok &= a.station == INCANTATION_OCCUPATION_KEY(floor, a.action);
+                    EXPECT(memcmp(&a, &b, sizeof a) == 0 && a.action == common.action);
+                    EXPECT(a.station == INCANTATION_OCCUPATION_KEY(floor, a.action));
                     seen[side][floor][a.action] = true;
 
                     civic_resident_t quiet = civic_resident_derive((uint8_t)seed, side == 0u,
                         floor, DUEL_CIVIC_MODE_QUIET, phase);
-                    ok &= quiet.action == quiet_action(common.action) &&
-                          quiet.station == INCANTATION_OCCUPATION_KEY(floor, quiet.action);
+                    EXPECT(quiet.action == quiet_action(common.action) &&
+                          quiet.station == INCANTATION_OCCUPATION_KEY(floor, quiet.action));
                 }
-                civic_resident_t invalid = civic_resident_derive((uint8_t)seed, side == 0u,
+                civic_resident_t special = civic_resident_derive((uint8_t)seed, side == 0u,
                     DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_MODE_NORMAL, phase);
-                ok &= invalid.action == common.action &&
-                      invalid.station == INCANTATION_OCCUPATION_KEY(DUEL_CIVIC_FLOOR_COMMONS,
-                                                            invalid.action);
+                EXPECT(special.action == common.action &&
+                      special.station == INCANTATION_OCCUPATION_KEY(DUEL_CIVIC_FLOOR_SPECIAL,
+                                                            special.action));
             }
         }
     }
     for (uint8_t side = 0; side < 2u; side++) {
-        for (uint8_t p = 0; p < DUEL_CIVIC_PERSONALITY_COUNT; p++) ok &= personalities[side][p];
+        for (uint8_t p = 0; p < DUEL_CIVIC_PERSONALITY_COUNT; p++) EXPECT(personalities[side][p]);
         for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
             for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++)
-                ok &= seen[side][floor][action];
+                EXPECT(seen[side][floor][action]);
     }
 
     /* Authoritative aftermath suppresses personality, progress, carry, and
@@ -1285,7 +1358,7 @@ static void test_resident_occupation_derivation(void) {
     civic_resident_draw(&first, &after, true, DUEL_CIVIC_MODE_NORMAL, 0);
     after.personality = DUEL_CIVIC_PERSONALITY_DISTRACTED; after.progress = 15;
     civic_resident_draw(&second, &after, true, DUEL_CIVIC_MODE_NORMAL, 99);
-    ok &= memcmp(&first, &second, sizeof first) == 0;
+    EXPECT(memcmp(&first, &second, sizeof first) == 0);
     CHECK(ok, "incantation_resident_42_keys_personalities_quiet_fallback_deterministic_aftermath");
 }
 
@@ -1306,7 +1379,7 @@ static void test_resident_geometry_and_object_separation(void) {
                     if (y < y0) y0 = y;
                     if (y > y1) y1 = y;
                 }
-        ok &= x1 - x0 + 1 == 5 && y1 - y0 + 1 == 14 && y0 >= 61 && y1 <= 110;
+        EXPECT(x1 - x0 + 1 == 5 && y1 - y0 + 1 == 14 && y0 >= 61 && y1 <= 110);
 
         for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
             core.station = INCANTATION_OCCUPATION_KEY(floor, DUEL_CIVIC_ACTION_WORK);
@@ -1317,11 +1390,11 @@ static void test_resident_geometry_and_object_separation(void) {
             incantation_resident_draw_attunement(&object, side == 0u, floor);
             for (int y = 0; y < DUEL_CANVAS_H; y++)
                 for (int x = 0; x < DUEL_CANVAS_W; x++)
-                    ok &= !(duel_fb_get(&body, x, y) && duel_fb_get(&object, x, y));
+                    EXPECT(!(duel_fb_get(&body, x, y) && duel_fb_get(&object, x, y)));
 
             duel_fb_t room;
             render_floor_scene(floor, side == 0u, 0u, &room);
-            ok &= framebuffer_pixels(&room) > framebuffer_pixels(&body) * 2u;
+            EXPECT(framebuffer_pixels(&room) > framebuffer_pixels(&body) * 2u);
         }
     }
     CHECK(ok, "incantation_resident_5x14_core_bounds_negative_space_and_object_mass");
@@ -1353,11 +1426,11 @@ static void test_health_grid_geometry_and_lifecycles(void) {
                     if (actual != expected)
                         printf("DIAG health side=%u hp=%u x=%d y=%d actual=%u expected=%u\n",
                                side, hp, sx, y, actual, expected);
-                    ok &= actual == expected;
+                    EXPECT(actual == expected);
                     lit += actual;
                 }
             }
-            ok &= lit == 2u * hp;
+            EXPECT(lit == 2u * hp);
         }
     }
 
@@ -1410,19 +1483,20 @@ static void test_local_layer_attunement(void) {
     incantation_render(&ll, &local, true, false); incantation_render(&lr, &local, false, false);
     bool left_changes = memcmp(&bl, &ll, sizeof bl) != 0;
     bool left_spares_right = memcmp(&br, &lr, sizeof br) == 0;
-    bool ok = left_changes && left_spares_right;
+    bool ok = true;
+    EXPECT(left_changes && left_spares_right);
     local.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_RIGHT);
     incantation_render(&rl, &local, true, false); incantation_render(&rr, &local, false, false);
     bool right_spares_left = memcmp(&bl, &rl, sizeof bl) == 0;
     bool right_changes = memcmp(&br, &rr, sizeof br) != 0;
-    ok &= right_spares_left && right_changes;
+    EXPECT(right_spares_left && right_changes);
 
     /* Release and ordinary global-layer typing reproduce the exact baseline. */
     local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
     incantation_render(&rl, &local, true, false); incantation_render(&rr, &local, false, false);
     bool global_left_same = memcmp(&bl, &rl, sizeof bl) == 0;
     bool global_right_same = memcmp(&br, &rr, sizeof br) == 0;
-    ok &= global_left_same && global_right_same;
+    EXPECT(global_left_same && global_right_same);
 
     /* During the bilateral dwell each OLED can show its own mark. Once scry is
      * authoritative, the instruments replace both without retaining either. */
@@ -1438,7 +1512,7 @@ static void test_local_layer_attunement(void) {
     incantation_render(&or1, &open_local, false, false);
     bool open_left_same = memcmp(&ol0, &ol1, sizeof ol0) == 0;
     bool open_right_same = memcmp(&or0, &or1, sizeof or0) == 0;
-    ok &= open_left_same && open_right_same;
+    EXPECT(open_left_same && open_right_same);
 
     sim_world_t typed;
     sim_init(&typed, SIMF_AUTHORITATIVE, 0);
@@ -1447,7 +1521,7 @@ static void test_local_layer_attunement(void) {
                  .layer = {1, 0}, .held_pos = {1u, 0}}, NULL, 0, 0);
     bool typing_closed = !scry_is_open(&typed) && typed.scry.state == SCRY_FIRST_HELD;
     bool world_same = incantation_bytes_hash(&w, sizeof w) == before;
-    ok &= typing_closed && world_same;
+    EXPECT(typing_closed && world_same);
     if (!ok) printf("DIAG local lc=%u lsr=%u rsl=%u rc=%u gl=%u gr=%u ol=%u or=%u typing=%u world=%u state=%u\n",
                     left_changes, left_spares_right, right_spares_left, right_changes,
                     global_left_same, global_right_same, open_left_same, open_right_same,
@@ -1488,7 +1562,7 @@ static void test_diegetic_scry_instruments(void) {
                     if (!subset || !changed)
                         printf("DIAG scry case floor=%u scene=%u online=%u notif=%u side=%u subset=%u changed=%u\n",
                                floor, scene, online, notif, side, subset, changed);
-                    ok &= subset && changed;
+                    EXPECT(subset && changed);
                     for (int y = 0; y < DUEL_CANVAS_H; y++)
                         for (int x = 0; x < DUEL_CANVAS_W; x++)
                             if (duel_fb_get(&base, x, y) != duel_fb_get(&open, x, y))
@@ -1541,13 +1615,13 @@ static void test_diegetic_scry_instruments(void) {
                 alert.alert = DUEL_HOST_ALERT_PACK(category, priority_level, 3);
                 duel_fb_t category_fb;
                 incantation_render(&category_fb, &alert, true, false);
-                ok &= memcmp(&empty_alert_fb, &category_fb, sizeof category_fb) != 0;
+                EXPECT(memcmp(&empty_alert_fb, &category_fb, sizeof category_fb) != 0);
             }
     r.flags |= DUEL_RENDER_STALE;
     r.diag_tick = 7;
     duel_fb_t priority;
     incantation_render(&priority, &r, true, true);
-    ok &= duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 7, 127);
+    EXPECT(duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 7, 127));
     CHECK(ok, "incantation_diegetic_scry_all_scenes_floors_host_alert_subset_mirror_exclusions_priority");
 }
 
@@ -1579,8 +1653,8 @@ static void test_gap_cue_families_temporal_mirrors(void) {
             incantation_draw_spell(&lr, &left, 0, 0, false, 9u);
             incantation_draw_spell(&rl, &right, 1, 0, true, 9u);
             incantation_draw_spell(&rr, &right, 1, 0, false, 9u);
-            ok &= exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl) &&
-                  framebuffer_pixels(&ll) + framebuffer_pixels(&lr) > 0u;
+            EXPECT(exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl) &&
+                  framebuffer_pixels(&ll) + framebuffer_pixels(&lr) > 0u);
         }
     }
 
@@ -1597,7 +1671,7 @@ static void test_gap_cue_families_temporal_mirrors(void) {
             incantation_draw_spell(&left, &sp, 0, 0, true, 9u);
             incantation_draw_spell(&right, &sp, 0, 0, false, 9u);
             for (int y = 0; y < DUEL_CANVAS_H; y++)
-                ok &= !duel_fb_get(&left, 31, y) && !duel_fb_get(&right, 0, y);
+                EXPECT(!duel_fb_get(&left, 31, y) && !duel_fb_get(&right, 0, y));
             if (p == 224u) break;
         }
     }
@@ -1636,7 +1710,7 @@ static void test_all_forms_bilateral_mirror(void) {
         incantation_draw_spell(&rr, &rs, 1, 0, false, 5);
         bool mirrored = exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl);
         if (!mirrored) printf("DIAG bilateral form=%u\n", form);
-        ok &= mirrored;
+        EXPECT(mirrored);
     }
     CHECK(ok, "incantation_all_forms_bilateral_pixel_mirror");
 }
@@ -1650,23 +1724,532 @@ static void test_aftermath_split_loss_and_reconnect(void) {
     duel_snapshot_t first, later, corrupt, restarted;
     duel_encode(&w, 3, 10, &first);
     duel_rx_state_t rx = {0};
-    bool ok = duel_decode_valid(&first) && duel_rx_accept(&rx, &first, false);
+    bool ok = true;
+    EXPECT(duel_decode_valid(&first) && duel_rx_accept(&rx, &first, false));
     uint8_t old_revision = rx.last.revision;
     wait_ticks(&w, 50);
     duel_encode(&w, 3, 11, &later);
-    ok &= later.revision != old_revision && rx.last.revision == old_revision; /* dropped update */
+    EXPECT(later.revision != old_revision && rx.last.revision == old_revision); /* dropped update */
     corrupt = later; corrupt.shared_pres ^= 0x04u;
-    ok &= !duel_decode_valid(&corrupt) && rx.last.revision == old_revision;
-    ok &= duel_rx_accept(&rx, &later, false) && rx.last.revision == later.revision;
+    EXPECT(!duel_decode_valid(&corrupt) && rx.last.revision == old_revision);
+    EXPECT(duel_rx_accept(&rx, &later, false) && rx.last.revision == later.revision);
     wait_ticks(&w, 50);
     duel_encode(&w, 4, 1, &restarted);
-    ok &= duel_rx_accept(&rx, &restarted, true) &&
+    EXPECT(duel_rx_accept(&rx, &restarted, true) &&
           rx.last.session == 4u && rx.last.revision == restarted.revision &&
-          INCANTATION_AFTER_KIND(rx.last.shared_pres, 0) == AFTER_FIRE;
+          INCANTATION_AFTER_KIND(rx.last.shared_pres, 0) == AFTER_FIRE);
     CHECK(ok, "incantation_aftermath_split_loss_corruption_and_reconnect");
 }
 
+static void test_runtime_mailbox_policy(void) {
+    duel_mailbox_t box = {0};
+    uint8_t seen = 0, out[8] = {0};
+    const uint8_t first[8] = {1,2,3,4,5,6,7,8};
+    const uint8_t latest[8] = {8,7,6,5,4,3,2,1};
+    duel_mailbox_publish(&box, first, sizeof first);
+    bool ok = true;
+    EXPECT(duel_mailbox_consume(&box, &seen, out, sizeof out) &&
+              memcmp(out, first, sizeof out) == 0 &&
+              !duel_mailbox_consume(&box, &seen, out, sizeof out));
+    box.version++; /* writer in progress: a partial/torn value is never read */
+    box.data[0] = 0xffu;
+    EXPECT(!duel_mailbox_consume(&box, &seen, out, sizeof out));
+    box.version++;
+    EXPECT(duel_mailbox_consume(&box, &seen, out, sizeof out) && out[0] == 0xffu);
+    duel_mailbox_publish(&box, first, sizeof first);
+    duel_mailbox_publish(&box, latest, sizeof latest);
+    EXPECT(duel_mailbox_consume(&box, &seen, out, sizeof out) &&
+          memcmp(out, latest, sizeof out) == 0);
+    box.version = 254u;
+    seen = 254u;
+    duel_mailbox_publish(&box, first, sizeof first); /* version wraps to zero */
+    EXPECT(box.version == 0u && duel_mailbox_consume(&box, &seen, out, sizeof out) &&
+          seen == 0u && memcmp(out, first, sizeof out) == 0);
+    CHECK(ok, "runtime_mailbox_stable_odd_torn_retry_latest_wins_and_wrap");
+}
+
+static void test_runtime_tx_policy(void) {
+    duel_tx_policy_t tx = {0};
+    bool ok = true;
+    EXPECT(duel_tx_attempt(&tx, 1000u, false, false, true) && tx.sequence == 1u);
+    duel_tx_commit(&tx, 1000u);
+    EXPECT(!duel_tx_attempt(&tx, 1079u, false, false, true) && tx.sequence == 2u);
+    EXPECT(duel_tx_attempt(&tx, 1080u, false, false, true));
+    duel_tx_commit(&tx, 1080u);
+    EXPECT(!duel_tx_attempt(&tx, 1329u, false, false, false));
+    EXPECT(duel_tx_attempt(&tx, 1330u, false, false, false));
+    duel_tx_commit(&tx, 1330u);
+    EXPECT(!duel_tx_attempt(&tx, 1331u, true, false, false));
+    EXPECT(!duel_tx_attempt(&tx, 1332u, false, true, false));
+    EXPECT(duel_tx_attempt(&tx, 1410u, true, false, false));
+    EXPECT(duel_tx_attempt(&tx, 1411u, false, true, false));
+    tx.have_sent = true;
+    tx.last_sent_ms = UINT32_MAX - 39u;
+    EXPECT(!duel_tx_attempt(&tx, 39u, false, false, true));
+    EXPECT(duel_tx_attempt(&tx, 40u, false, false, true));
+    tx.sequence = UINT16_MAX;
+    (void)duel_tx_attempt(&tx, 41u, true, false, false);
+    EXPECT(tx.sequence == 0u);
+    CHECK(ok, "runtime_tx_urgent_semantic_repair_boundaries_sequence_and_timer_wrap");
+}
+
+static void test_runtime_presentation_policy(void) {
+    duel_floor_policy_t floor = {0};
+    bool ok = true;
+    EXPECT(duel_floor_note_target(&floor,
+        DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, 0, 0), 100u, DUEL_DISPLAY_ACTIVE));
+    EXPECT(duel_floor_note_target(&floor,
+        DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, 0, 0), 200u, DUEL_DISPLAY_ACTIVE));
+    EXPECT(INCANTATION_FLOOR_TRANSITION_ACTIVE(duel_floor_presentation(&floor, 349u)) &&
+          INCANTATION_FLOOR_TRANSITION_PHASE(duel_floor_presentation(&floor, 350u)) == 1u);
+    EXPECT(duel_floor_note_target(&floor,
+        DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL, 0, 0), 400u, DUEL_DISPLAY_ACTIVE) &&
+          floor.source == DUEL_CIVIC_FLOOR_RESEARCH);
+    EXPECT(!INCANTATION_FLOOR_TRANSITION_ACTIVE(duel_floor_presentation(&floor, 1000u)));
+    EXPECT(duel_floor_note_target(&floor,
+        DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, 0, 0), 1100u, DUEL_DISPLAY_SLEEP) &&
+          !floor.active);
+
+    duel_flash_policy_t flash = {0};
+    EXPECT(duel_flash_note(&flash, 1u, FX_IMPACT_L, ELEM_EMBER, UINT32_MAX - 99u) &&
+          duel_flash_remaining(&flash, 400u) == 2u &&
+          duel_flash_remaining(&flash, 500u) == 0u);
+    EXPECT(duel_flash_note(&flash, 2u, FX_WARD_SHATTER_R, ELEM_FORCE, 1000u) &&
+          duel_flash_remaining(&flash, 1399u) == 1u &&
+          duel_flash_remaining(&flash, 1400u) == 0u);
+
+    uint32_t grace = 19u;
+    EXPECT(duel_wake_grace_active(&grace, UINT32_MAX - 20u) &&
+          duel_wake_grace_active(&grace, 0u) &&
+          !duel_display_should_follow(DUEL_DISPLAY_SLEEP, &grace, 0u) &&
+          duel_display_should_follow(DUEL_DISPLAY_SLEEP, &grace, 20u) && grace == 0u);
+    CHECK(ok, "runtime_floor_restart_sleep_snap_flash_deadlines_wake_grace_and_follow");
+}
+
+// OLED power policy: the only sim module previously without a direct test.
+// Timer arithmetic is wrap-safe unsigned age, so a wrap boundary case is
+// included alongside the DIM/SLEEP thresholds, key wake, follow, and fade.
+static void test_display_power_policy(void) {
+    bool ok = true;
+    duel_display_policy_t d;
+    duel_display_init(&d, 1000u);
+    EXPECT(d.phase == DUEL_DISPLAY_ACTIVE && d.initialized);
+
+    /* Threshold ticks: one ms early stays, the boundary transitions. */
+    EXPECT(duel_display_update(&d, 1000u + DUEL_DISPLAY_DIM_MS - 1u) == DUEL_DISPLAY_ACTIVE);
+    EXPECT(duel_display_update(&d, 1000u + DUEL_DISPLAY_DIM_MS) == DUEL_DISPLAY_DIM);
+    EXPECT(duel_display_update(&d, 1000u + DUEL_DISPLAY_SLEEP_MS - 1u) == DUEL_DISPLAY_DIM);
+    EXPECT(duel_display_update(&d, 1000u + DUEL_DISPLAY_SLEEP_MS) == DUEL_DISPLAY_SLEEP);
+
+    /* A physical key is the sole wake source. */
+    duel_display_note_key(&d, 2000000u);
+    EXPECT(d.phase == DUEL_DISPLAY_ACTIVE &&
+           duel_display_update(&d, 2000001u) == DUEL_DISPLAY_ACTIVE);
+
+    /* Brightness: full while active, ramp during the dim fade, floor after,
+     * dark asleep. */
+    EXPECT(duel_display_brightness(&d, 2000001u) == DUEL_DISPLAY_ACTIVE_BRIGHTNESS);
+    uint32_t dim_at = 2000000u + DUEL_DISPLAY_DIM_MS;
+    duel_display_update(&d, dim_at);
+    EXPECT(d.phase == DUEL_DISPLAY_DIM &&
+           duel_display_brightness(&d, dim_at) == DUEL_DISPLAY_ACTIVE_BRIGHTNESS);
+    uint8_t mid_fade = duel_display_brightness(&d, dim_at + DUEL_DISPLAY_FADE_MS / 2u);
+    EXPECT(mid_fade < DUEL_DISPLAY_ACTIVE_BRIGHTNESS && mid_fade > DUEL_DISPLAY_DIM_BRIGHTNESS);
+    EXPECT(duel_display_brightness(&d, dim_at + DUEL_DISPLAY_FADE_MS) ==
+           DUEL_DISPLAY_DIM_BRIGHTNESS);
+    EXPECT(duel_display_redraw_ms(&d) == DUEL_DISPLAY_DIM_REDRAW_MS);
+    duel_display_update(&d, 2000000u + DUEL_DISPLAY_SLEEP_MS);
+    EXPECT(duel_display_brightness(&d, 2000000u + DUEL_DISPLAY_SLEEP_MS + 5u) == 0u);
+
+    /* Follow adopts the master's phase; ACTIVE also refreshes the local key
+     * clock; out-of-range phases clamp to ACTIVE. */
+    duel_display_follow(&d, DUEL_DISPLAY_ACTIVE, 3000000u);
+    EXPECT(d.phase == DUEL_DISPLAY_ACTIVE && d.last_key_ms == 3000000u);
+    duel_display_follow(&d, (duel_display_phase_t)3, 3000001u);
+    EXPECT(d.phase == DUEL_DISPLAY_ACTIVE);
+    duel_display_follow(&d, DUEL_DISPLAY_SLEEP, 3000002u);
+    EXPECT(d.phase == DUEL_DISPLAY_SLEEP &&
+           duel_display_redraw_ms(&d) == DUEL_DISPLAY_ACTIVE_REDRAW_MS);
+
+    /* ms-clock wrap: a key just before wrap keeps the panel awake across 0. */
+    duel_display_note_key(&d, UINT32_MAX - 10u);
+    EXPECT(duel_display_update(&d, 5u) == DUEL_DISPLAY_ACTIVE);
+    EXPECT(duel_display_update(&d, DUEL_DISPLAY_DIM_MS - 11u) == DUEL_DISPLAY_DIM);
+
+    /* Presentation deadlines share the same wrap-safe idiom. */
+    EXPECT(duel_presentation_remaining(UINT32_MAX - 99u, DUEL_PRESENTATION_IMPACT_MS, 400u) == 2u);
+    EXPECT(duel_presentation_remaining(0u, DUEL_PRESENTATION_OTHER_MS, DUEL_PRESENTATION_OTHER_MS) == 0u);
+    EXPECT(duel_presentation_remaining(0u, DUEL_PRESENTATION_OTHER_MS, 1u) == 8u);
+    CHECK(ok, "display_power_policy_thresholds_wake_follow_fade_and_wrap");
+}
+
+// Matrix -> sim_inputs_t sampling (moved out of keymap.c): the scry chord,
+// per-side held positions, and the physical spell-layer policy.
+static void test_runtime_input_sampling(void) {
+    bool ok = true;
+    uint16_t rows[DUEL_INPUT_ROWS] = {0};
+    sim_inputs_t in = duel_inputs_from_rows(rows);
+    EXPECT(in.down_mask == 0 && in.scry_mask == 0 &&
+           in.layer[0] == 0 && in.layer[1] == 0 &&
+           !in.held_pos[0] && !in.held_pos[1]);
+
+    /* An ordinary key: left down mask, position bit, OTHER (kills the chord). */
+    rows[1] = 1u << 2;
+    in = duel_inputs_from_rows(rows);
+    EXPECT(in.down_mask == 1u && in.held_pos[0] == (1u << (1u * 6u + 2u)) &&
+           in.held_pos[1] == 0 && in.scry_mask == SCRY_M_OTHER &&
+           in.layer[0] == 0);
+
+    /* Lone left layer thumb: spell layer 1 on the left wizard only. */
+    memset(rows, 0, sizeof rows);
+    rows[SCRY_KEY_L_ROW] = 1u << SCRY_KEY_L_COL;
+    in = duel_inputs_from_rows(rows);
+    EXPECT(in.scry_mask == SCRY_M_L && in.layer[0] == 1u && in.layer[1] == 0u &&
+           in.down_mask == 1u);
+
+    /* Lone right layer thumb: spell layer 2 on the right wizard only. */
+    memset(rows, 0, sizeof rows);
+    rows[SCRY_KEY_R_ROW] = 1u << SCRY_KEY_R_COL;
+    in = duel_inputs_from_rows(rows);
+    EXPECT(in.scry_mask == SCRY_M_R && in.layer[0] == 0u && in.layer[1] == 2u &&
+           in.down_mask == 2u && in.held_pos[1] == (1u << (3u * 6u + 4u)));
+
+    /* The deliberate two-thumb chord: layer 3 for both, no OTHER. */
+    rows[SCRY_KEY_L_ROW] = 1u << SCRY_KEY_L_COL;
+    in = duel_inputs_from_rows(rows);
+    EXPECT(in.scry_mask == (SCRY_M_L | SCRY_M_R) &&
+           in.layer[0] == 3u && in.layer[1] == 3u && in.down_mask == 3u);
+
+    /* Chord plus any other key = ordinary layer-3 use: OTHER set. */
+    rows[0] = 1u;
+    in = duel_inputs_from_rows(rows);
+    EXPECT(in.scry_mask == (SCRY_M_L | SCRY_M_R | SCRY_M_OTHER));
+    CHECK(ok, "runtime_input_sampling_scry_chord_positions_and_spell_layers");
+}
+
+static void test_runtime_tick_budget(void) {
+    bool ok = true;
+    uint32_t next = 1000u;
+    bool resynced = true;
+    EXPECT(duel_tick_budget(&next, 999u, &resynced) == 0u && !resynced && next == 1000u);
+    EXPECT(duel_tick_budget(&next, 1000u, &resynced) == 1u && !resynced &&
+           next == 1000u + SIM_TICK_MS);
+    /* Missed two deadlines: catch up by replaying, deadline stays on grid. */
+    EXPECT(duel_tick_budget(&next, 1000u + 3u * SIM_TICK_MS, &resynced) == 3u &&
+           !resynced && next == 1000u + 4u * SIM_TICK_MS);
+    /* Long stall (USB suspend): capped at DUEL_TICK_CATCHUP_MAX and resynced
+     * to now + one tick instead of replaying history. */
+    next = 2000u;
+    EXPECT(duel_tick_budget(&next, 2000u + 10u * SIM_TICK_MS, &resynced) ==
+               DUEL_TICK_CATCHUP_MAX && resynced &&
+           next == 2000u + 11u * SIM_TICK_MS);
+    /* 49.7-day wrap boundary: a deadline just before wrap still fires. */
+    next = UINT32_MAX - 10u;
+    EXPECT(duel_tick_budget(&next, 5u, &resynced) == 1u && !resynced &&
+           next == (uint32_t)(UINT32_MAX - 10u + SIM_TICK_MS));
+    CHECK(ok, "runtime_tick_budget_catchup_stall_resync_and_wrap");
+}
+
+static void test_runtime_slave_presenter(void) {
+    bool ok = true;
+    duel_slave_presenter_t pres = {0};
+    /* Nothing ever received: local fallback, quiet while idle. */
+    duel_slave_decision_t d = duel_slave_present(&pres, false, false, false,
+                                                 false, false, false);
+    EXPECT(!d.use_remote && !d.base_refresh && !d.set_stale);
+    /* Local ticks re-render the fallback. */
+    d = duel_slave_present(&pres, false, false, false, true, false, false);
+    EXPECT(!d.use_remote && d.base_refresh && !d.set_stale);
+    /* First accepted snapshot: adopt remote, follow the master's phase. */
+    d = duel_slave_present(&pres, true, true, false, false, false, false);
+    EXPECT(d.use_remote && d.consider_follow && d.base_refresh);
+    /* Steady remote with no new packet: nothing to redo. */
+    d = duel_slave_present(&pres, false, true, false, false, false, false);
+    EXPECT(d.use_remote && !d.consider_follow && !d.base_refresh);
+    /* Link goes stale: fall back once, marking the render stale. */
+    d = duel_slave_present(&pres, false, true, true, false, false, false);
+    EXPECT(!d.use_remote && d.base_refresh && d.set_stale);
+    /* Still stale and already presented as such: quiet until a tick. */
+    d = duel_slave_present(&pres, false, true, true, false, false, true);
+    EXPECT(!d.use_remote && !d.base_refresh);
+    d = duel_slave_present(&pres, false, true, true, true, false, true);
+    EXPECT(!d.use_remote && d.base_refresh && d.set_stale);
+    /* Re-acquire: fresh acceptance clears stale, re-follows, re-presents. */
+    d = duel_slave_present(&pres, true, true, false, false, false, true);
+    EXPECT(d.use_remote && d.consider_follow && d.base_refresh);
+    /* A render invalidation alone (local keypress) also re-presents remote. */
+    d = duel_slave_present(&pres, false, true, false, false, true, false);
+    EXPECT(d.use_remote && !d.consider_follow && d.base_refresh);
+    CHECK(ok, "runtime_slave_presenter_fallback_stale_edge_and_reacquire");
+}
+
+static void test_runtime_civic_shared_derive(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_host_state_t host = {0};
+    /* Offline host: no visitor is derived; the rare-event deck still runs
+     * (both champions standing => eligible). */
+    duel_civic_shared_t calm = duel_civic_shared_derive(0x5au, 1900u, &host,
+                                                        &world, 0);
+    EXPECT(DUEL_VISITOR_KIND(calm.shared_pres) == DUEL_CIVIC_COURIER_NONE &&
+           !(calm.revision & INCANTATION_AFTERMATH_WIRE));
+    /* Safety gate (spec §14.1): a downed champion empties the event slot at
+     * every civic phase. */
+    world.wiz[SIM_SIDE_L].life = LIFE_DOWNED;
+    for (uint32_t phase = 0; phase < 256u; phase++) {
+        duel_civic_shared_t gated = duel_civic_shared_derive(0x5au,
+            phase * DUEL_CIVIC_TICK_MS, &host, &world, 0);
+        EXPECT(DUEL_EVENT_ID(gated.revision) == DUEL_CIVIC_EVENT_NONE);
+    }
+    world.wiz[SIM_SIDE_L].life = LIFE_ACTIVE;
+    /* A live aftermath owns both coordination bytes (bit7 discriminator). */
+    world.aftermath[0].kind = AFTER_CHEER;
+    world.aftermath[0].ticks = 50u;
+    world.aftermath[0].intensity = 2u;
+    duel_civic_shared_t owned = duel_civic_shared_derive(0x5au, 1900u, &host,
+                                                         &world, 0);
+    EXPECT((owned.revision & INCANTATION_AFTERMATH_WIRE) &&
+           owned.shared_pres == incantation_aftermath_shared(&world) &&
+           owned.revision == incantation_aftermath_revision(&world));
+    CHECK(ok, "runtime_civic_shared_offline_safety_gate_and_aftermath_override");
+}
+
+static void test_runtime_flash_observe(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    /* Left slot carries a live spell; the world then reports a right-side
+     * impact: the flash must scale from the LEFT slot's cached style. */
+    world.spell[SIM_SIDE_L].active = 1;
+    world.spell[SIM_SIDE_L].descriptor = SPELL_DESC_PACK(SPELL_PROJECTILE,
+        ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE, INTERACT_SOLID,
+        TEMPO_FLOWING, TREND_STEADY, 2);
+    world.spell[SIM_SIDE_L].progress = 100u;
+    duel_view_t view;
+    duel_view_from_world(&world, &view);
+    duel_flash_policy_t flash = {0};
+    uint8_t last_kind[2] = {0, 0};
+    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 100u) &&
+           DUEL_KIND_ELEMENT(last_kind[SIM_SIDE_L]) == ELEM_EMBER);
+    world.spell[SIM_SIDE_L].active = 0;
+    world.spell[SIM_SIDE_L].descriptor = 0;
+    world.fx_seq = 1u;
+    world.fx_kind = FX_IMPACT_R;
+    duel_view_from_world(&world, &view);
+    EXPECT(duel_flash_observe_view(&flash, last_kind, &view, 200u) &&
+           flash.kind == FX_IMPACT_R &&
+           flash.spell_kind == last_kind[SIM_SIDE_L] &&
+           flash.duration_ms == DUEL_PRESENTATION_IMPACT_MS);
+    /* The same fx_seq never re-arms. */
+    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 300u));
+    CHECK(ok, "runtime_flash_observe_caches_style_and_arms_defender_flash");
+}
+
+static void test_runtime_sky_and_diplomacy(void) {
+    bool ok = true;
+    EXPECT(duel_sky_phase(0u) == DUEL_SKY_DAWN &&
+              duel_sky_phase(149999u) == DUEL_SKY_DAWN &&
+              duel_sky_phase(150000u) == DUEL_SKY_DAY &&
+              duel_sky_phase(1349999u) == DUEL_SKY_DAY &&
+              duel_sky_phase(1350000u) == DUEL_SKY_DUSK &&
+              duel_sky_phase(1499999u) == DUEL_SKY_DUSK &&
+              duel_sky_phase(1500000u) == DUEL_SKY_NIGHT &&
+              duel_sky_phase(1799999u) == DUEL_SKY_NIGHT &&
+              duel_sky_phase(1800000u) == DUEL_SKY_DAWN);
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_snapshot_t master;
+    duel_encode(&world, 7u, 500u, &master);
+    duel_snapshot_set_civic(&master, 0u,
+        DUEL_SECONDARY_SKY_PACK(0u, DUEL_SKY_NIGHT), 0u, 0u);
+    duel_rx_state_t rx = {0};
+    EXPECT(duel_decode_valid(&master) && duel_rx_accept(&rx, &master, false) &&
+          DUEL_SECONDARY_SKY_PHASE(rx.last.secondary) == DUEL_SKY_NIGHT);
+    /* A stale half may be in its own dawn; stale adoption takes the live
+     * master's current phase even when a collided session has a lower seq. */
+    duel_snapshot_set_civic(&master, 0u,
+        DUEL_SECONDARY_SKY_PACK(0u, DUEL_SKY_DAY), 0u, 0u);
+    master.seq = 1u;
+    master.crc = duel_crc8(&master, offsetof(duel_snapshot_t, crc));
+    EXPECT(duel_sky_phase(0u) == DUEL_SKY_DAWN &&
+          duel_rx_accept(&rx, &master, true) &&
+          DUEL_SECONDARY_SKY_PHASE(rx.last.secondary) == DUEL_SKY_DAY);
+    duel_diplomacy_t dip;
+    duel_diplomacy_init(&dip);
+    EXPECT(!duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_ACTIVE));
+    EXPECT(duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_COLLAPSE) && dip.balance == 1);
+    EXPECT(!duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_DOWNED) && dip.balance == 1);
+    duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_ACTIVE);
+    for (int i = 0; i < 5; i++) {
+        duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_COLLAPSE);
+        duel_diplomacy_update(&dip, LIFE_ACTIVE, LIFE_ACTIVE);
+    }
+    EXPECT(dip.balance == 3 && duel_diplomacy_target(&dip) == DUEL_DIPLOMACY_LEFT_ADVANTAGE);
+    duel_diplomacy_init(&dip);
+    EXPECT(dip.balance == 0 && duel_diplomacy_target(&dip) == DUEL_DIPLOMACY_BALANCED);
+    CHECK(ok, "runtime_sky_boundaries_wrap_and_diplomacy_ko_edge_saturation_reset");
+}
+
+static void test_observatory_sky_and_suppression(void) {
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    duel_render_t base = {0};
+    duel_render_from_world(&base, &world);
+    base.seed = 0x5au;
+    base.civic_phase = 19u;
+    base.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL,
+                                 DUEL_CIVIC_MODE_QUIET, 0);
+    base.alert = DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_COMMUNICATION,
+                                      DUEL_HOST_PRIORITY_CRITICAL, 2);
+
+    duel_fb_t clean, disposable;
+    duel_fb_clear(&clean);
+    wiz_draw_scene(&clean, &base, true, 7u, false);
+    duel_render_t noisy = base;
+    noisy.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_BEACON, 0,
+        DUEL_CIVIC_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_MANY));
+    noisy.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER,
+        DUEL_CIVIC_EVENT_PHASE_ACTIVE, DUEL_CIVIC_EVENT_TARGET_LEFT);
+    noisy.local_ambience = INCANTATION_AMBIENCE_PACK(true, TEMPO_FRANTIC,
+                                                     TREND_IRREGULAR);
+    duel_fb_clear(&disposable);
+    wiz_draw_scene(&disposable, &noisy, true, 7u, false);
+    bool ok = true;
+    EXPECT(memcmp(clean.bits, disposable.bits, sizeof clean.bits) == 0);
+
+    duel_fb_t phase_fb[4];
+    for (uint8_t phase = DUEL_SKY_DAWN; phase <= DUEL_SKY_NIGHT; phase++) {
+        duel_render_t sky = base;
+        sky.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
+        duel_fb_clear(&phase_fb[phase]);
+        wiz_draw_scene(&phase_fb[phase], &sky, true, 7u, false);
+        if (phase)
+            EXPECT(memcmp(phase_fb[phase - 1].bits, phase_fb[phase].bits,
+                         sizeof phase_fb[phase].bits) != 0);
+    }
+    for (int y = 0; y < DUEL_CANVAS_H; y++) {
+        if (!((y >= DUEL_ALERT_Y0 && y <= DUEL_ALERT_Y1) ||
+              (y >= DUEL_HEALTH_Y0 && y <= DUEL_HEALTH_Y1))) continue;
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            EXPECT(duel_fb_get(&phase_fb[DUEL_SKY_DAWN], x, y) ==
+                  duel_fb_get(&phase_fb[DUEL_SKY_NIGHT], x, y));
+    }
+    CHECK(ok, "observatory_distinct_sky_protected_regions_and_disposable_ambience_suppression");
+}
+
+static bool rgb_is(duel_rgb_t color, uint8_t r, uint8_t g, uint8_t b) {
+    return color.r == r && color.g == g && color.b == b;
+}
+
+static void test_rgb_world_surface_policy(void) {
+    duel_rgb_world_t world = {.display_phase = DUEL_DISPLAY_ACTIVE};
+    bool ok = true;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, true), 6, 0, 18) &&
+              rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, false), 18, 6, 0) &&
+              rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, true), 0, 0, 0));
+    world.observatory = true;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, true), 4, 0, 20));
+    world.prepared[SIM_SIDE_L] = true;
+    for (uint8_t element = ELEM_FORCE; element <= ELEM_VOID; element++) {
+        static const duel_rgb_t expected[4] = {
+            {12,12,16}, {24,3,0}, {0,10,24}, {8,0,20},
+        };
+        world.prepared_element[SIM_SIDE_L] = element;
+        duel_rgb_t color = duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, true);
+        EXPECT(rgb_is(color, expected[element].r, expected[element].g, expected[element].b));
+        EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, false), 0, 0, 0));
+    }
+    world.flash_active = true; world.flash_kind = FX_WARD_SHATTER_L;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, true), 20, 20, 32) &&
+          !rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, false), 20, 20, 32));
+    world.flash_kind = FX_IMPACT_R;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, false), 32, 0, 0));
+    world.stale = true;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, true), 0, 4, 10) &&
+          rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_KEYLIGHT, true), 0, 0, 0));
+    world.display_phase = DUEL_DISPLAY_DIM;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, true), 0, 1, 2));
+    world.display_phase = DUEL_DISPLAY_SLEEP;
+    EXPECT(rgb_is(duel_rgb_policy(&world, DUEL_RGB_LED_UNDERGLOW, true), 0, 0, 0));
+    CHECK(ok, "rgb_world_surface_all_priorities_sides_elements_dim_sleep_and_stale");
+}
+
+static void test_live_ambience_classifier(void) {
+    bool ok = true;
+    static const struct { uint16_t sum; uint8_t count, first, last, min, max; } cases[] = {
+        {12, 2, 6, 6, 6, 6}, {8, 2, 5, 3, 3, 5},
+        {4, 2, 1, 3, 1, 3}, {2, 2, 1, 1, 1, 1},
+        {8, 3, 2, 2, 1, 6},
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        sim_incantation_t inc = {0};
+        inc.key_count = 3; inc.row_hist[1] = 3; inc.hash = (uint32_t)(0x1234u + i);
+        inc.gap_sum = cases[i].sum; inc.gap_count = cases[i].count;
+        inc.first_gap = cases[i].first; inc.last_gap = cases[i].last;
+        inc.gap_min = cases[i].min; inc.gap_max = cases[i].max;
+        uint8_t live = incantation_tempo_trend(&inc);
+        uint32_t desc = incantation_compile(&inc, 0);
+        EXPECT(INCANTATION_AMBIENCE_TEMPO(live) == SPELL_DESC_TEMPO(desc) &&
+              INCANTATION_AMBIENCE_TREND(live) == SPELL_DESC_TREND(desc));
+        sim_wizard_t wizard = {.inc = inc, .inc_state = INC_COLLECTING};
+        EXPECT(incantation_local_ambience(&wizard) == live);
+        wizard.inc_state = INC_WINDUP; wizard.pending_desc = desc;
+        EXPECT(INCANTATION_AMBIENCE_TEMPO(incantation_local_ambience(&wizard)) ==
+              SPELL_DESC_TEMPO(desc));
+        wizard.inc_state = INC_IDLE;
+        EXPECT(incantation_local_ambience(&wizard) == 0u);
+    }
+    sim_wizard_t halves[2] = {{0}};
+    halves[0].inc_state = halves[1].inc_state = INC_COLLECTING;
+    halves[0].inc.gap_count = halves[1].inc.gap_count = 2;
+    halves[0].inc.gap_sum = 2; halves[1].inc.gap_sum = 12;
+    EXPECT(INCANTATION_AMBIENCE_TEMPO(incantation_local_ambience(&halves[0])) == TEMPO_FRANTIC &&
+          INCANTATION_AMBIENCE_TEMPO(incantation_local_ambience(&halves[1])) == TEMPO_DELIBERATE);
+    CHECK(ok, "ambience_live_compiler_equivalence_launch_calm_and_per_half_independence");
+}
+
+static void test_diplomatic_weight_target_and_combat_independence(void) {
+    unsigned balanced = 0, imbalanced = 0;
+    bool ok = true, saw_left = false, saw_right = false, saw_balanced = false;
+    sim_world_t world; sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    uint64_t before = incantation_bytes_hash(&world, sizeof world);
+    for (unsigned seed = 0; seed < 256u; seed++) {
+        for (uint8_t cycle = 0; cycle < 16u; cycle++) {
+            uint8_t phase = (uint8_t)(cycle * 8u + 2u);
+            civic_event_state_t zero = civic_event_derive((uint8_t)seed, phase, true, 0);
+            civic_event_state_t left = civic_event_derive((uint8_t)seed, phase, true, 3);
+            civic_event_state_t right = civic_event_derive((uint8_t)seed, phase, true, -3);
+            balanced += (zero.id_target & 7u) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER;
+            imbalanced += (left.id_target & 7u) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER;
+            if ((zero.id_target & 7u) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+                saw_balanced |= ((zero.id_target >> 5) & 3u) == DUEL_CIVIC_EVENT_TARGET_SHARED;
+            if ((left.id_target & 7u) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+                saw_left |= ((left.id_target >> 5) & 3u) == DUEL_CIVIC_EVENT_TARGET_LEFT;
+            if ((right.id_target & 7u) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+                saw_right |= ((right.id_target >> 5) & 3u) == DUEL_CIVIC_EVENT_TARGET_RIGHT;
+        }
+    }
+    EXPECT(imbalanced > balanced && saw_left && saw_right && saw_balanced &&
+          incantation_bytes_hash(&world, sizeof world) == before);
+    CHECK(ok, "diplomacy_weight_4_plus_balance_targeting_and_zero_combat_influence");
+}
+
 int main(void) {
+    test_runtime_mailbox_policy();
+    test_runtime_tx_policy();
+    test_display_power_policy();
+    test_runtime_input_sampling();
+    test_runtime_tick_budget();
+    test_runtime_slave_presenter();
+    test_runtime_civic_shared_derive();
+    test_runtime_flash_observe();
+    test_runtime_presentation_policy();
+    test_runtime_sky_and_diplomacy();
+    test_observatory_sky_and_suppression();
+    test_rgb_world_surface_policy();
+    test_live_ambience_classifier();
+    test_diplomatic_weight_target_and_combat_independence();
     test_layout_and_protocol();
     test_host_protocol_current_payload_and_ordering();
     test_view_validation();

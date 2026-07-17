@@ -4,8 +4,8 @@ RAW_ENABLE = yes
 LTO_ENABLE = yes
 OLED_ENABLE = yes
 
-# The compiled fourth layer uses RGB Matrix controls. Other inherited lighting
-# and optional Vial surfaces are intentionally absent from the 0.4 image.
+# RGB Matrix is a world-owned surface. Compiled RGB controls are absent and
+# remapped RGB keycodes are ignored; other inherited lighting stays disabled.
 RGB_MATRIX_ENABLE = yes
 RGBLIGHT_ENABLE = no
 WPM_ENABLE = no
@@ -24,7 +24,19 @@ LDFLAGS += -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref
 SRC += sim/duel_draw.c sim/duel_sim.c sim/duel_incantation.c \
        sim/duel_view.c sim/duel_proto.c sim/duel_host.c \
        sim/duel_display.c sim/duel_resident.c sim/duel_courier.c \
-       sim/duel_event.c
+       sim/duel_event.c sim/duel_runtime.c sim/duel_rgb.c
+
+# Pico SDK's bounded get_rand_32() seeds the one-byte split session. QMK's
+# RP2040 make fragment does not link pico_rand by default, so add its source and
+# include path explicitly. RAM power-up state and the bus counter supply seed /
+# runtime entropy without the default ROSC sampling delay.
+SRC += $(TOP_DIR)/lib/pico-sdk/src/rp2_common/pico_rand/rand.c
+EXTRAINCDIRS += $(TOP_DIR)/lib/pico-sdk/src/rp2_common/pico_rand/include
+EXTRAINCDIRS += $(TOP_DIR)/lib/pico-sdk/src/rp2_common/pico_unique_id/include
+EXTRAINCDIRS += $(TOP_DIR)/lib/pico-sdk/src/common/pico_time/include
+OPT_DEFS += -DPICO_RAND_ENTROPY_SRC_ROSC=0 \
+            -DPICO_RAND_ENTROPY_SRC_TIME=0 \
+            -DPICO_RAND_SEED_ENTROPY_SRC_BOARD_ID=0
 
 # Instrumentation is compiled out of release images. Diagnostic firmware keeps
 # the identical packet layouts and adds bounded counters/timing responses.

@@ -143,7 +143,8 @@ inherit the earlier two-variant acceptance evidence.
   confirm secure Vial unlock requires the configured physical combo.
 - [ ] With `corne-arcane-host.service` active, launch `corne-arcane-vial`.
   Confirm the daemon stops before Vial opens and Vial receives no unsolicited
-  daemon traffic.
+  daemon traffic. On Vial close, confirm the launcher restarts the daemon. If
+  the daemon was inactive before launch, confirm it remains inactive afterward.
 - [ ] While Vial is open, confirm normal typing and the complete offline OLED
   animation continue; only host semantic enrichment pauses.
 - [ ] Change keys on each of the four layers, close Vial, and confirm the
@@ -159,3 +160,37 @@ inherit the earlier two-variant acceptance evidence.
 - [ ] Repeat release flashing with
   `artifacts/release/griffin_arcane-release.uf2`, then repeat handoff, one edit,
   daemon restoration, and power-cycle persistence.
+
+## M14 living-world physical acceptance — pending
+
+These checks apply to the M14 artifacts recorded in `acceptance.md`; they do
+not inherit the 2026-07-15 presentation evidence.
+
+- [ ] Flash the diagnostic artifact to both halves and exercise every RGB
+  priority on the correct half: city baseline, Observatory, prepared force /
+  ember / frost / void, ward shatter, impact, stale link, DIM, and SLEEP.
+- [ ] In Vial, map ordinary keys over the former eight layer-3 RGB positions
+  and verify they type normally. Map RGB control keycodes elsewhere and verify
+  they cannot toggle, recolor, animate, or change world brightness.
+- [ ] Verify Observatory Astral/Mechanical architecture and the stargazing
+  resident are legible at desk distance; combat, alerts, health, scry,
+  transitions, and aftermath remain legible while couriers/events stay absent.
+- [ ] Run or observe the complete 30-minute dawn/day/dusk/night cycle and its
+  exact 2:30, 22:30, 25:00, and 30:00 boundaries without added animation churn.
+- [ ] Type at distinct tempos independently on the two halves. Verify smoke,
+  motes, and work accents follow only the local wizard, settle on launch or
+  cancellation, and remain restrained in QUIET/Observatory.
+- [ ] Produce repeated left and right KOs until diplomatic events appear.
+  Verify bilateral proud/receiving/neutral poses reflect session advantage and
+  never change duel outcomes.
+- [ ] Let both displays sleep. Trigger host focus, Pomodoro, sky, world, and
+  timer changes and verify none wakes OLED or RGB; a physical key wakes them.
+- [ ] Interrupt split connectivity only while unpowered. Verify the stale half
+  runs a local sky, reconnect adopts the current master sky without replay, and
+  civic/combat state converges normally.
+- [ ] Measure diagnostic housekeeping after boot and under typing/split/RGB
+  stress. Confirm Pico session entropy initialization has not violated the
+  2 ms housekeeping limit and stack headroom remains nonzero.
+- [ ] Repeat the full Vial handoff/persistence section above, then flash the
+  release artifact and repeat the essential RGB, Observatory, reconnect,
+  sleep/non-wake, typing, and rollback smoke tests.

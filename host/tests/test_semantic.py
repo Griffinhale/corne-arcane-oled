@@ -89,10 +89,32 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
         self.assertEqual(resolver.state.civic.civic_byte(), 0x04)
         resolver.update(dnd=False)
-        # Pomodoro also quiets the floor.
+        # Pomodoro alone selects the quiet Observatory.
         resolver.update(pomodoro=True)
+        self.assertEqual(resolver.state.civic.floor, Floor.SPECIAL)
         self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
         resolver.update(pomodoro=False)
+        self.assertEqual(resolver.state.civic.floor, Floor.COMMONS)
+
+    def test_pomodoro_floor_precedence_focus_completion_and_dnd(self) -> None:
+        resolver = SemanticResolver()
+        resolver.update(focus_scene=Scene.ARCHIVE, focus_floor=Floor.RESEARCH)
+        resolver.update(dnd=True)
+        self.assertEqual(resolver.state.civic.floor, Floor.RESEARCH)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+
+        resolver.update(pomodoro=True)
+        self.assertEqual(resolver.state.civic.floor, Floor.SPECIAL)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        # Focus continues to settle behind the Observatory.
+        resolver.update(focus_scene=Scene.DUEL, focus_floor=Floor.WORKSHOP)
+        self.assertEqual(resolver.state.civic.floor, Floor.SPECIAL)
+        resolver.update(pomodoro=False)
+        self.assertEqual(resolver.state.civic.floor, Floor.WORKSHOP)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        resolver.update(dnd=False)
+        self.assertEqual(resolver.state.civic.floor, Floor.WORKSHOP)
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
 
         # MPRIS playing -> MEDIA secondary channel (secondary byte 0x01).
         self.assertTrue(resolver.update(media_playing=True))
@@ -143,6 +165,7 @@ class SemanticTests(unittest.TestCase):
         now[0] = 140.0
         self.assertTrue(adapters.poll(now[0]))
         self.assertEqual(resolver.state.scene, Scene.DUEL)
+        self.assertEqual(resolver.state.civic.floor, Floor.COMMONS)
         self.assertIsNone(adapters.next_deadline(now[0]))
 
     def test_all_adapter_mappings(self) -> None:

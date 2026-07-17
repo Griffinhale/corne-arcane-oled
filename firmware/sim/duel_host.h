@@ -208,11 +208,27 @@ enum {
 #define DUEL_CIVIC_FLOOR(value)     ((uint8_t)((value) & 3u))
 #define DUEL_CIVIC_MODE(value)      ((uint8_t)(((value) >> 2) & 3u))
 #define DUEL_CIVIC_INTENSITY(value) ((uint8_t)(((value) >> 4) & 3u))
+#define DUEL_CIVIC_RESERVED_MASK    0xC0u /* bits 6-7 must be clear on both protocols */
 
-// Secondary byte: bits0-2 secondary activity, bits3-7 reserved for later civic
-// semantics.
+// Secondary byte ledger: bits0-2 host activity; split v10 uses bits3-4 for the
+// master-owned sky phase. Raw HID v2 producers must leave bits3-7 clear. Bits
+// 5-7 remain reserved on both protocols. The two reserved masks below encode
+// that asymmetry — split snapshots may carry the sky phase, host packets not.
 #define DUEL_SECONDARY_PACK(activity)  ((uint8_t)((activity) & 7u))
 #define DUEL_SECONDARY_ACTIVITY(value) ((uint8_t)((value) & 7u))
+#define DUEL_SECONDARY_SKY_PACK(secondary, phase) \
+    ((uint8_t)(((secondary) & 7u) | (((phase) & 3u) << 3)))
+#define DUEL_SECONDARY_SKY_PHASE(value) ((uint8_t)(((value) >> 3) & 3u))
+#define DUEL_SECONDARY_SPLIT_RESERVED  0xE0u /* split v10: sky phase allowed in bits3-4 */
+#define DUEL_SECONDARY_HID_RESERVED    0xF8u /* Raw HID v2: bits3-7 must be clear */
+
+// Shared range check for the civic byte and the low activity bits of the
+// secondary byte — identical on both protocols (the reserved-mask checks
+// above differ and stay with each validator).
+static inline bool duel_civic_semantics_valid(uint8_t civic, uint8_t secondary) {
+    return (civic & DUEL_CIVIC_RESERVED_MASK) == 0 &&
+           DUEL_SECONDARY_ACTIVITY(secondary) <= DUEL_CIVIC_SECONDARY_CALENDAR;
+}
 
 // Raw HID v2 payload positions for the always-present civic bytes.
 #define DUEL_HOST_PAYLOAD_CIVIC     6

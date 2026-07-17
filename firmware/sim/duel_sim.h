@@ -79,7 +79,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS   12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#    define SIM_MAX_HP 12
+#define SIM_MAX_HP 12
 
 /* ---- combat (M4) ---------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
@@ -134,7 +134,7 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
 #define SIM_MEDIC_TICKS    25  /* ~1 s medic drags the body off */
 #define SIM_REPLACE_TICKS  20  /* ~0.8 s replacement walks in */
 /* total downtime 82 ticks = 3.28 s at 25 Hz — no dead ends: no input needed to progress */
-#    define SIM_REGEN_TICKS 750 /* exactly 30 s per regained pip below max */
+#define SIM_REGEN_TICKS 750 /* exactly 30 s per regained pip below max */
 #define SIM_ROSTER_N    4      /* cosmetic roster variants cycled per replacement */
 
 // fx kinds; the side names the DEFENDER (whose screen takes the hit/flash).
@@ -175,13 +175,22 @@ enum { AFTER_NONE = 0, AFTER_CHEER = 1, AFTER_COMPLAINT = 2,
 enum { RESIDENT_NORMAL = 0, RESIDENT_CHEER = 1, RESIDENT_COMPLAIN = 2,
        RESIDENT_PANIC = 3, RESIDENT_FIGHT_FIRE = 4,
        RESIDENT_INSPECT = 5, RESIDENT_REPAIR = 6,
-       RESIDENT_WATCH_CAST = 7 };
+       RESIDENT_WATCH_CAST = 7, RESIDENT_DIPLO_PROUD = 8,
+       RESIDENT_DIPLO_RECEIVING = 9, RESIDENT_DIPLO_NEUTRAL = 10 };
 enum { ROOM_CALM = 0, ROOM_ALERT = 1, ROOM_DISRUPTED = 2,
        ROOM_RECOVERY = 3 };
 enum { OBJECT_NONE = 0, OBJECT_FIRE = 1, OBJECT_RESIDUE = 2,
        OBJECT_DAMAGED = 4 };
 enum { WORLD_CALM = 0, WORLD_WONDER = 1, WORLD_CRISIS = 2,
        WORLD_RECOVERY = 3 };
+
+/* Authoritative aftermath durations per kind, in ticks. Phases are elapsed
+ * quarters of the kind's duration; tests derive their waits from these
+ * instead of reverse-engineering the (previously private) table. */
+#define SIM_AFTER_FIRE_TICKS     175u /* seven seconds: panic -> response -> recovery */
+#define SIM_AFTER_MAX_CAST_TICKS 150u /* six-second coordinated wonder arc */
+#define SIM_AFTER_REPAIR_TICKS   125u
+#define SIM_AFTER_DEFAULT_TICKS  100u
 
 typedef struct {
     uint8_t kind;
@@ -250,6 +259,14 @@ typedef struct {
 uint8_t incantation_complexity(const sim_incantation_t *inc);
 uint32_t incantation_compile(const sim_incantation_t *inc, uint8_t variant);
 
+/* Shared live/compiler classifier. Low bit is active, then tempo and trend. */
+#define INCANTATION_AMBIENCE_PACK(active, tempo, trend) \
+    ((uint8_t)(((active) ? 1u : 0u) | (((tempo) & 3u) << 1) | (((trend) & 3u) << 3)))
+#define INCANTATION_AMBIENCE_ACTIVE(v) ((uint8_t)((v) & 1u))
+#define INCANTATION_AMBIENCE_TEMPO(v)  ((uint8_t)(((v) >> 1) & 3u))
+#define INCANTATION_AMBIENCE_TREND(v)  ((uint8_t)(((v) >> 3) & 3u))
+uint8_t incantation_tempo_trend(const sim_incantation_t *inc);
+
 typedef struct {
     uint8_t pose;          /* POSE_* */
     uint8_t pose_ticks;    /* remaining in CAST/RECOVER */
@@ -283,6 +300,8 @@ typedef struct {
     uint8_t  status_ticks;
     uint8_t  status_burned;
 } sim_wizard_t;
+
+uint8_t incantation_local_ambience(const sim_wizard_t *wizard);
 
 typedef struct {
     uint8_t active; /* 0/1 — one slot per wizard */

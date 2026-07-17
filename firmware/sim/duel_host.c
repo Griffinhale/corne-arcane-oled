@@ -38,22 +38,26 @@ void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
     out->crc = duel_crc8(out, offsetof(duel_host_packet_t, crc));
 }
 
-bool duel_host_packet_valid(const duel_host_packet_t *packet) {
-    bool common = packet->magic0 == DUEL_HOST_MAGIC0 &&
+static bool envelope_valid(const duel_host_packet_t *packet) {
+    return packet->magic0 == DUEL_HOST_MAGIC0 &&
            packet->magic1 == DUEL_HOST_MAGIC1 &&
            type_valid(packet->type) &&
-           packet->payload[0] < DUEL_HOST_SCENE_COUNT &&
-           packet->payload[1] <= 15 &&
+           packet->version == DUEL_HOST_VERSION &&
+           packet->payload_len == DUEL_HOST_PAYLOAD_LEN &&
            packet->crc == duel_crc8(packet, offsetof(duel_host_packet_t, crc));
-    if (!common) return false;
-    if (packet->version != DUEL_HOST_VERSION) return false;
-    if (packet->payload_len != DUEL_HOST_PAYLOAD_LEN) return false;
-    if ((packet->payload[DUEL_HOST_PAYLOAD_CIVIC] & 0xC0u) != 0) return false;
-    if ((packet->payload[DUEL_HOST_PAYLOAD_SECONDARY] & 0xF8u) != 0) return false;
-    if (DUEL_SECONDARY_ACTIVITY(packet->payload[DUEL_HOST_PAYLOAD_SECONDARY]) >
-        DUEL_CIVIC_SECONDARY_CALENDAR) {
-        return false;
-    }
+}
+
+static bool civic_bytes_valid(const duel_host_packet_t *packet) {
+    return (packet->payload[DUEL_HOST_PAYLOAD_SECONDARY] & DUEL_SECONDARY_HID_RESERVED) == 0 &&
+           duel_civic_semantics_valid(packet->payload[DUEL_HOST_PAYLOAD_CIVIC],
+                                      packet->payload[DUEL_HOST_PAYLOAD_SECONDARY]);
+}
+
+// An empty notification summary must be canonical (all-zero detail); a
+// non-empty one must land inside every enum range, and only CRITICAL
+// notifications may be flagged persistent.
+static bool notification_valid(const duel_host_packet_t *packet) {
+    if (packet->payload[0] >= DUEL_HOST_SCENE_COUNT || packet->payload[1] > 15) return false;
     bool empty = packet->payload[1] == 0;
     bool canonical_empty = packet->payload[2] == DUEL_HOST_CATEGORY_NONE &&
                            packet->payload[3] == DUEL_HOST_PRIORITY_NONE &&
@@ -65,6 +69,11 @@ bool duel_host_packet_valid(const duel_host_packet_t *packet) {
                     packet->payload[4] <= 7 && packet->payload[5] <= 1 &&
                     (!packet->payload[5] || packet->payload[3] == DUEL_HOST_PRIORITY_CRITICAL);
     return empty ? canonical_empty : nonempty;
+}
+
+bool duel_host_packet_valid(const duel_host_packet_t *packet) {
+    return envelope_valid(packet) && civic_bytes_valid(packet) &&
+           notification_valid(packet);
 }
 
 static duel_host_result_t stale(duel_host_state_t *state) {

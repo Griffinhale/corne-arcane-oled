@@ -152,28 +152,51 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
                                    DUEL_CIVIC_INTENSITY_CALM);
     }
 
+    /* NOTE: these worlds are projected through the 19-byte canonical view
+     * before rendering, so only view-visible fields matter: a spell needs a
+     * nonzero descriptor + progress (pos/dir/kind are re-derived), and a ward
+     * needs ward_strength (the sim-side shield_ticks never reaches the wire). */
     if (strcmp(name, "duel-idle") == 0 || strcmp(name, "archive-idle") == 0) {
     } else if (strcmp(name, "pose-cast") == 0) {
         w.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        w.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
+        w.wiz[SIM_SIDE_L].windup_total = 10;
         w.wiz[SIM_SIDE_L].cast_windup = 5;
-        w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_MEDIUM;
-        w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+        w.wiz[SIM_SIDE_L].pending_desc = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE,
+            PAY_DAMAGE, TRAJ_MID, 2, STATUS_NONE, INTERACT_SOLID, TEMPO_FLOWING,
+            TREND_STEADY, 1);
+        w.wiz[SIM_SIDE_R].ward_strength = 2;
+        w.wiz[SIM_SIDE_R].ward_capacity = 2;
     } else if (strcmp(name, "pose-recover") == 0) {
         w.wiz[SIM_SIDE_L].pose = POSE_RECOVER;
-        w.wiz[SIM_SIDE_L].pose_ticks = 2;
         w.wiz[SIM_SIDE_L].variant = 1;
         w.wiz[SIM_SIDE_R].variant = 3;
     } else if (strncmp(name, "recipe-", 7) == 0) {
-        uint8_t kind = strcmp(name, "recipe-force-short") == 0 ? spell_kind(ELEM_FORCE, MOD_NONE, SPELL_TIER_SHORT)
-                     : strcmp(name, "recipe-ember-medium") == 0 ? spell_kind(ELEM_EMBER, MOD_NONE, SPELL_TIER_MEDIUM)
-                     : strcmp(name, "recipe-frost-long") == 0 ? spell_kind(ELEM_FROST, MOD_SWIFT, SPELL_TIER_LONG)
-                                                               : spell_kind(ELEM_VOID, MOD_HEAVY, SPELL_TIER_SATURATED);
-        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 55, .dir = 4, .kind = kind};
-        w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .pos = 200, .dir = -4, .kind = kind};
+        uint8_t elem = strcmp(name, "recipe-force-short") == 0 ? ELEM_FORCE
+                     : strcmp(name, "recipe-ember-medium") == 0 ? ELEM_EMBER
+                     : strcmp(name, "recipe-frost-long") == 0 ? ELEM_FROST : ELEM_VOID;
+        uint8_t mag = strcmp(name, "recipe-force-short") == 0 ? 1u
+                    : strcmp(name, "recipe-ember-medium") == 0 ? 2u
+                    : strcmp(name, "recipe-frost-long") == 0 ? 3u : 4u;
+        uint32_t desc = SPELL_DESC_PACK(SPELL_PROJECTILE, elem, PAY_DAMAGE, TRAJ_MID,
+                                        mag, STATUS_NONE, INTERACT_SOLID,
+                                        TEMPO_FLOWING, TREND_STEADY, mag - 1u);
+        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .progress = 55, .dir = 4,
+                                            .descriptor = desc};
+        w.spell[SIM_SIDE_R] = (sim_spell_t){.active = 1, .progress = 200, .dir = -4,
+                                            .descriptor = desc};
     } else if (strcmp(name, "short-cast") == 0 || strcmp(name, "long-cast") == 0) {
+        bool small = strcmp(name, "short-cast") == 0;
         w.wiz[SIM_SIDE_L].pose = POSE_CAST;
-        w.wiz[SIM_SIDE_L].cast_windup = 2;
-        w.wiz[SIM_SIDE_L].cast_tier = strcmp(name, "short-cast") == 0 ? SPELL_TIER_SHORT : SPELL_TIER_LONG;
+        w.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
+        w.wiz[SIM_SIDE_L].windup_total = 10;
+        w.wiz[SIM_SIDE_L].cast_windup = 8;
+        w.wiz[SIM_SIDE_L].pending_desc = SPELL_DESC_PACK(SPELL_PROJECTILE,
+            small ? ELEM_FORCE : ELEM_FROST, PAY_DAMAGE, TRAJ_MID, small ? 1 : 3,
+            STATUS_NONE, INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 1);
+        /* cast_tier rides the ward bits on the wire: strength - 1. */
+        w.wiz[SIM_SIDE_L].ward_strength = small ? 1u : 3u;
+        w.wiz[SIM_SIDE_L].ward_capacity = w.wiz[SIM_SIDE_L].ward_strength;
     } else if (strcmp(name, "impact") == 0 || strcmp(name, "archive-impact") == 0 || strcmp(name, "alert-impact") == 0) {
         w.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 1;
         r->flash_frames = 10; r->flash_kind = FX_IMPACT_R; r->flash_spell_kind = force;
@@ -186,9 +209,12 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         set_life(&w, LIFE_DOWNED, SIM_DOWNED_TICKS / 2);
         r->flash_frames = 7; r->flash_kind = FX_FIZZLE_R; r->flash_spell_kind = force;
     } else if (strcmp(name, "void-pierce") == 0) {
-        w.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
-        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .pos = 236, .dir = 4,
-            .kind = spell_kind(ELEM_VOID, MOD_NONE, SPELL_TIER_LONG)};
+        w.wiz[SIM_SIDE_R].ward_strength = 3;
+        w.wiz[SIM_SIDE_R].ward_capacity = 3;
+        w.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1, .progress = 236, .dir = 4,
+            .descriptor = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_VOID, PAY_DAMAGE,
+                                          TRAJ_MID, 3, STATUS_NONE, INTERACT_PHASE,
+                                          TEMPO_RAPID, TREND_STEADY, 2)};
     } else if (strcmp(name, "life-collapse") == 0) {
         set_life(&w, LIFE_COLLAPSE, SIM_COLLAPSE_TICKS / 2);
     } else if (strcmp(name, "life-downed") == 0) {
@@ -198,7 +224,8 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
     } else if (strcmp(name, "life-replace") == 0) {
         set_life(&w, LIFE_REPLACE, SIM_REPLACE_TICKS / 2);
     } else if (strcmp(name, "archive-pulse") == 0) {
-        w.wiz[0].shield_ticks = w.wiz[1].shield_ticks = SIM_SHIELD_TICKS / 2;
+        w.wiz[0].ward_strength = w.wiz[1].ward_strength = 2;
+        w.wiz[0].ward_capacity = w.wiz[1].ward_capacity = 2;
     } else if (strcmp(name, "archive-cast") == 0) {
         w.wiz[0].pose = POSE_CAST; w.wiz[0].cast_windup = 3;
         w.wiz[0].cast_tier = SPELL_TIER_LONG;
@@ -363,7 +390,8 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         // to exercise the real engine path.
         r->civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, DUEL_CIVIC_INTENSITY_CALM);
         r->seed = 50; r->civic_phase = 20;
-        r->revision = civic_event_revision(civic_event_derive(r->seed, r->civic_phase, false));
+        r->revision = civic_event_revision(civic_event_derive(r->seed, r->civic_phase,
+                                                               false, 0));
     } else {
         return false;
     }

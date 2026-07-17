@@ -10,20 +10,20 @@
  */
 #include "duel_event.h"
 
-
 #include "duel_host.h"
-#    include "duel_resident.h"
+#include "duel_resident.h"
 
 /* ------------------------------- deck -------------------------------------
  * One rare-event CYCLE spans CIVIC_EVENT_PERIOD civic phases. The family is
  * chosen once per cycle (keyed by seed + cycle index) with a back-to-back
  * cooldown so no family repeats in adjacent cycles; the sub-phase within the
- * cycle drives the ARMED->ACTIVE->RESOLVING->COOLDOWN progression. Weighting is
- * ~75% local / 25% shared (24 : 8 of 32 total weight). */
+ * cycle drives the ARMED->ACTIVE->RESOLVING->COOLDOWN progression. Weighting:
+ * at balance zero the deck is ~75% local / 25% shared (24 : 8); session
+ * imbalance raises only the diplomatic weight, by two per advantage point. */
 #define CIVIC_EVENT_PERIOD 8u
 
-// Deck weights in DUEL_CIVIC_EVENT_* order (NONE first). Locals 1-4 sum to 24
-// (75%); shareds 5-6 sum to 8 (25%); grand total 32.
+// Base weights in DUEL_CIVIC_EVENT_* order (NONE first). Locals 1-4 sum to 24;
+// shareds 5-6 sum to 8 before the diplomacy adjustment.
 static const uint8_t ev_weights[DUEL_CIVIC_EVENT_COUNT] = {
     0, /* NONE                        */
     6, /* RUNAWAY_SCROLL   (local)    */
@@ -47,14 +47,21 @@ static uint8_t ev_hash(uint8_t a, uint8_t b, uint8_t c) {
     return (uint8_t)h;
 }
 
-// Weighted family selection from a random byte. Never returns NONE.
-static uint8_t ev_pick_family(uint8_t rnd) {
+// Effective deck weight for one family after the diplomacy adjustment.
+static uint8_t ev_weight(uint8_t family, int8_t balance) {
+    uint8_t magnitude = (uint8_t)(balance < 0 ? -balance : balance);
+    return family == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER
+               ? (uint8_t)(4u + 2u * magnitude) : ev_weights[family];
+}
+
+static uint8_t ev_pick_family(uint8_t rnd, int8_t balance) {
     uint16_t total = 0;
-    for (int i = 1; i < DUEL_CIVIC_EVENT_COUNT; i++) total = (uint16_t)(total + ev_weights[i]);
+    for (int i = 1; i < DUEL_CIVIC_EVENT_COUNT; i++)
+        total = (uint16_t)(total + ev_weight((uint8_t)i, balance));
     uint8_t r = (uint8_t)(rnd % total);
     uint16_t acc = 0;
     for (int i = 1; i < DUEL_CIVIC_EVENT_COUNT; i++) {
-        acc = (uint16_t)(acc + ev_weights[i]);
+        acc = (uint16_t)(acc + ev_weight((uint8_t)i, balance));
         if (r < acc) return (uint8_t)i;
     }
     return DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
@@ -64,15 +71,15 @@ static uint8_t ev_pick_family(uint8_t rnd) {
 // cycle index is bounded (phase is a byte, PERIOD>=8 -> <=32 cycles), so the
 // forward walk that resolves the "no repeat" rule is a small bounded loop with
 // no recursion and no allocation.
-static uint8_t ev_family_for_cycle(uint8_t seed, uint8_t cycle) {
+static uint8_t ev_family_for_cycle(uint8_t seed, uint8_t cycle, int8_t balance) {
     uint8_t prev = DUEL_CIVIC_EVENT_NONE;
     uint8_t fam  = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
     for (uint16_t c = 0; c <= cycle; c++) {
-        fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x3Cu));
+        fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x3Cu), balance);
         if (fam == prev) {
             // Re-roll with a second salt, then linear-skip to guarantee the
             // family differs from the previous cycle (cooldown).
-            fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x7Eu));
+            fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x7Eu), balance);
             uint8_t guard = 0;
             while (fam == prev && guard < DUEL_CIVIC_EVENT_COUNT) {
                 fam = (uint8_t)(fam + 1u);
@@ -86,8 +93,14 @@ static uint8_t ev_family_for_cycle(uint8_t seed, uint8_t cycle) {
 }
 
 // Local families land in one city (seed/cycle-chosen); shared families straddle.
-static uint8_t ev_target_for(uint8_t family, uint8_t seed, uint8_t cycle) {
-    if (family >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER) return DUEL_CIVIC_EVENT_TARGET_SHARED;
+static uint8_t ev_target_for(uint8_t family, uint8_t seed, uint8_t cycle,
+                             int8_t balance) {
+    if (family == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+        return balance > 0 ? DUEL_CIVIC_EVENT_TARGET_LEFT :
+               balance < 0 ? DUEL_CIVIC_EVENT_TARGET_RIGHT :
+                             DUEL_CIVIC_EVENT_TARGET_SHARED;
+    if (family > DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+        return DUEL_CIVIC_EVENT_TARGET_SHARED;
     return (ev_hash(seed, cycle, 0x5Au) & 1u) ? DUEL_CIVIC_EVENT_TARGET_RIGHT
                                               : DUEL_CIVIC_EVENT_TARGET_LEFT;
 }
@@ -101,7 +114,10 @@ static uint8_t ev_pack_idtarget(uint8_t id, uint8_t target) {
     return (uint8_t)((id & 7u) | ((target & 3u) << 5));
 }
 
-civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligible) {
+civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligible,
+                                       int8_t session_balance) {
+    if (session_balance < -3) session_balance = -3;
+    if (session_balance > 3) session_balance = 3;
     uint8_t cycle = (uint8_t)(phase / CIVIC_EVENT_PERIOD);
     uint8_t sub   = (uint8_t)(phase % CIVIC_EVENT_PERIOD);
     civic_event_state_t st;
@@ -113,8 +129,8 @@ civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligibl
         st.id_target = ev_pack_idtarget(DUEL_CIVIC_EVENT_NONE, DUEL_CIVIC_EVENT_TARGET_LEFT);
         return st;
     }
-    uint8_t family = ev_family_for_cycle(seed, cycle);
-    uint8_t target = ev_target_for(family, seed, cycle);
+    uint8_t family = ev_family_for_cycle(seed, cycle, session_balance);
+    uint8_t target = ev_target_for(family, seed, cycle, session_balance);
     st.id_target = ev_pack_idtarget(family, target);
     return st;
 }
@@ -247,12 +263,14 @@ void draw_rare_event(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t id = DUEL_EVENT_ID(r->revision);
     if (id == DUEL_CIVIC_EVENT_NONE || id >= DUEL_CIVIC_EVENT_COUNT) return;
     uint8_t target = DUEL_EVENT_TARGET(r->revision);
-    if ((target == DUEL_CIVIC_EVENT_TARGET_LEFT && !is_left) ||
-        (target == DUEL_CIVIC_EVENT_TARGET_RIGHT && is_left)) return;
+    if (id != DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER &&
+        ((target == DUEL_CIVIC_EVENT_TARGET_LEFT && !is_left) ||
+         (target == DUEL_CIVIC_EVENT_TARGET_RIGHT && is_left))) return;
     uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
     if (INCANTATION_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
         INCANTATION_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
         floor = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
+    if (floor == DUEL_CIVIC_FLOOR_SPECIAL) return;
     if (floor >= INCANTATION_OCCUPATION_FLOORS) floor = DUEL_CIVIC_FLOOR_COMMONS;
     uint8_t phase = DUEL_EVENT_PHASE(r->revision);
     bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;

@@ -26,16 +26,10 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
     memset(view, 0, sizeof *view);
     for (uint8_t side = 0; side < 2; side++) {
         const sim_wizard_t *wz = &world->wiz[side];
-        view->wizard[side][0] = (uint8_t)((wz->hp & 0x0fu) |
-                                  ((wz->ward_strength & 7u) << 4) |
-                                  (wz->rearm_lock ? 0x80u : 0u));
-        view->wizard[side][1] = (uint8_t)((wz->life & 7u) |
-                                  ((wz->variant & 3u) << 3) |
-                                  ((wz->status & 7u) << 5));
-        view->wizard[side][2] = (uint8_t)((wz->pose & 3u) |
-                                  ((wz->inc_state & 7u) << 2) |
-                                  ((wz->ward_focus & 3u) << 5) |
-                                  (wz->prepared ? 0x80u : 0u));
+        view->wizard[side][0] = VIEW_W0_PACK(wz->hp, wz->ward_strength, wz->rearm_lock);
+        view->wizard[side][1] = VIEW_W1_PACK(wz->life, wz->variant, wz->status);
+        view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus,
+                                             wz->prepared);
         const sim_spell_t *sp = &world->spell[side];
         if (sp->active) {
             view->spell[side][0] = (uint8_t)sp->descriptor;
@@ -51,8 +45,8 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
             if (wz->inc_state == INC_WINDUP && wz->windup_total)
                 progress = (uint8_t)(((uint16_t)(wz->windup_total - wz->cast_windup) * 7u) /
                                      wz->windup_total);
-            view->phase[side] = (uint8_t)(SPELL_DESC_FORM(desc) |
-                                  (SPELL_DESC_ELEMENT(desc) << 3) | (progress << 5));
+            view->phase[side] = VIEW_PHASE_PACK(SPELL_DESC_FORM(desc),
+                                                SPELL_DESC_ELEMENT(desc), progress);
         } else if (wz->life != LIFE_ACTIVE) {
             uint8_t total = life_total(wz->life);
             view->phase[side] = (uint8_t)(255u - ((uint16_t)wz->life_ticks * 255u / total));
@@ -61,31 +55,30 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
                                   (duration_bucket(wz->status_ticks) << 2)) << (side * 4u));
     }
     view->fx_seq = world->fx_seq;
-    view->outcome_overlay = (uint8_t)((world->fx_kind & 0x0fu) |
-                              (scry_is_open(world) ? 0x10u : 0u) |
-                              ((world->scry.scene & 3u) << 5));
+    view->outcome_overlay = VIEW_OVERLAY_PACK(world->fx_kind, scry_is_open(world),
+                                              world->scry.scene);
 }
 
 duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
     uint8_t b0 = view->wizard[side][0], b1 = view->wizard[side][1], b2 = view->wizard[side][2];
     uint8_t nibble = (uint8_t)(view->status_visual >> (side * 4u));
     duel_view_wizard_t wz = {
-        .pose = b2 & 3u,
-        .hp = b0 & 0x0fu,
-        .shield_ticks = (b0 >> 4) & 7u,
-        .life = b1 & 7u,
-        .variant = (b1 >> 3) & 3u,
-        .status = (b1 >> 5) & 7u,
-        .inc_state = (b2 >> 2) & 7u,
-        .ward_strength = (b0 >> 4) & 7u,
-        .ward_focus = (b2 >> 5) & 3u,
-        .prepared = (b2 >> 7) & 1u,
-        .rearm_lock = (b0 >> 7) & 1u,
+        .pose = VIEW_W2_POSE(b2),
+        .hp = VIEW_W0_HP(b0),
+        .life = VIEW_W1_LIFE(b1),
+        .variant = VIEW_W1_VARIANT(b1),
+        .status = VIEW_W1_STATUS(b1),
+        .inc_state = VIEW_W2_INC(b2),
+        .ward_strength = VIEW_W0_WARD(b0),
+        .ward_focus = VIEW_W2_FOCUS(b2),
+        .prepared = VIEW_W2_PREPARED(b2),
+        .rearm_lock = VIEW_W0_REARM(b0),
         .status_intensity = nibble & 3u,
         .status_duration = (nibble >> 2) & 3u,
     };
     wz.cast_tier = wz.ward_strength ? (uint8_t)(wz.ward_strength - 1u) : 0u;
-    if (wz.inc_state == INC_WINDUP) wz.cast_windup = (uint8_t)(7u - (view->phase[side] >> 5));
+    if (wz.inc_state == INC_WINDUP)
+        wz.cast_windup = (uint8_t)(7u - VIEW_PHASE_PROGRESS(view->phase[side]));
     if (wz.life != LIFE_ACTIVE) {
         uint8_t total = life_total(wz.life);
         wz.life_ticks = (uint8_t)(((uint16_t)(255u - view->phase[side]) * total) / 255u);
@@ -135,30 +128,30 @@ void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world) {
         world->spell[side].progress = sp.progress;
     }
     world->fx_seq = view->fx_seq;
-    world->fx_kind = view->outcome_overlay & 0x0fu;
+    world->fx_kind = VIEW_OVERLAY_FX(view->outcome_overlay);
     world->scry.state = duel_view_scry_open(view) ? SCRY_ACTIVE : SCRY_IDLE;
-    world->scry.scene = (view->outcome_overlay >> 5) & 3u;
+    world->scry.scene = VIEW_OVERLAY_SCENE(view->outcome_overlay);
 }
 
 bool duel_view_valid(const duel_view_t *view) {
     if (view->outcome_overlay & 0x80u) return false;
-    if (((view->outcome_overlay >> 5) & 3u) >= SCRY_SCENES) return false;
+    if (VIEW_OVERLAY_SCENE(view->outcome_overlay) >= SCRY_SCENES) return false;
     for (uint8_t side = 0; side < 2; side++) {
         uint8_t b0 = view->wizard[side][0], b1 = view->wizard[side][1], b2 = view->wizard[side][2];
-        if ((b0 & 0x0fu) > SIM_MAX_HP || ((b0 >> 4) & 7u) > 4u) return false;
-        if ((b1 & 7u) > LIFE_REPLACE || ((b1 >> 3) & 3u) >= SIM_ROSTER_N ||
-            ((b1 >> 5) & 7u) > STATUS_MARKED) return false;
-        if ((b2 & 3u) > POSE_RECOVER || ((b2 >> 2) & 7u) > INC_REARM ||
-            ((b2 >> 5) & 3u) > 3u) return false;
-        uint8_t inc_state = (b2 >> 2) & 7u;
-        bool prepared = (b2 & 0x80u) != 0;
+        if (VIEW_W0_HP(b0) > SIM_MAX_HP || VIEW_W0_WARD(b0) > 4u) return false;
+        if (VIEW_W1_LIFE(b1) > LIFE_REPLACE || VIEW_W1_VARIANT(b1) >= SIM_ROSTER_N ||
+            VIEW_W1_STATUS(b1) > STATUS_MARKED) return false;
+        if (VIEW_W2_POSE(b2) > POSE_RECOVER || VIEW_W2_INC(b2) > INC_REARM) return false;
+        /* all four ward_focus values are legal; no range check needed */
+        uint8_t inc_state = VIEW_W2_INC(b2);
+        bool prepared = VIEW_W2_PREPARED(b2) != 0;
         if (prepared != (inc_state == INC_PREPARED)) return false;
-        uint8_t status = (b1 >> 5) & 7u;
+        uint8_t status = VIEW_W1_STATUS(b1);
         uint8_t status_nibble = (uint8_t)(view->status_visual >> (side * 4u)) & 0x0fu;
         if ((status == STATUS_NONE) != (status_nibble == 0u)) return false;
         if (status != STATUS_NONE && (!(status_nibble & 3u) || !(status_nibble & 0x0cu))) return false;
         if ((inc_state == INC_WINDUP || inc_state == INC_PREPARED) &&
-            (view->phase[side] & 7u) > SPELL_CONJURE) return false;
+            VIEW_PHASE_FORM(view->phase[side]) > SPELL_CONJURE) return false;
         uint32_t desc = (uint32_t)view->spell[side][0] |
                         ((uint32_t)view->spell[side][1] << 8) |
                         ((uint32_t)view->spell[side][2] << 16);
