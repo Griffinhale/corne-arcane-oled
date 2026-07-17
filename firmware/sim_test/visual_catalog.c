@@ -484,6 +484,22 @@ static void build_catalog(void) {
     world.wiz[0].prepared_desc = world.wiz[0].pending_desc; world.wiz[0].pending_desc = 0;
     add_case("prepared_beam", &world, 6, 0);
 
+    /* Forced-commit big cast (Change 3): rearm_lock spans the windup and the
+     * prepared hold, lifting the wizard onto the balcony and lighting the whole
+     * tower. Both halves ascend so the desk-space balcony art and lighting are
+     * pinned as mirror-safe, as the stance_*_balcony cases do. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].inc_state = INC_WINDUP; world.wiz[0].cast_windup = 6;
+    world.wiz[0].windup_total = 12; world.wiz[0].ward_strength = 3;
+    world.wiz[0].rearm_lock = 1;
+    world.wiz[0].pending_desc = descriptor(SPELL_BEAM, 3);
+    world.wiz[1] = world.wiz[0];
+    add_case("bigcast_windup_balcony", &world, 5, 0);
+    world.wiz[0].inc_state = INC_PREPARED; world.wiz[0].prepared = 1;
+    world.wiz[0].prepared_desc = world.wiz[0].pending_desc; world.wiz[0].pending_desc = 0;
+    world.wiz[1] = world.wiz[0];
+    add_case("bigcast_prepared_balcony", &world, 6, 0);
+
     for (uint8_t side = 0; side < 2u; side++) {
         for (uint8_t variant = 0; variant < 4; variant++) {
             for (uint8_t form = 0; form <= SPELL_CONJURE; form++) {
@@ -520,6 +536,10 @@ static void build_catalog(void) {
         {"ground_wave", SPELL_GROUND_WAVE, 88, TRAJ_GROUND, TEMPO_FLOWING, TREND_STEADY},
         {"chain_arc", SPELL_CHAIN, 176, TRAJ_HOMING, TEMPO_RAPID, TREND_IRREGULAR},
         {"trap_set", SPELL_CONJURE, (uint8_t)((3u << 5) | 16u), TRAJ_GROUND, TEMPO_DELIBERATE, TREND_STEADY},
+        /* Appended last so its index (and thus every prior case's frame) is
+         * unchanged: a TRAJ_LOW carrier exercising the low-lane glyph lift
+         * (Change 2) that no existing case covered. */
+        {"low_carrier", SPELL_PROJECTILE, 72, TRAJ_LOW, TEMPO_FLOWING, TREND_STEADY},
     };
     for (size_t i = 0; i < sizeof temporal / sizeof temporal[0]; i++) {
         sim_init(&world, SIMF_AUTHORITATIVE, 0);

@@ -755,15 +755,40 @@ static void medic_draw(duel_fb_t *fb, int x, int facing) {
     duel_fb_px(fb, x - facing + 1, 73 + DUEL_ROOF_DY, true);
 }
 
-/* Track B calm stances: MEDITATE and STUDY restage the wizard on the tower
- * balcony (slab desk x11-16 at y30-31 — the restage point authored into
- * draw_wizard_tower). Balcony art is architecture-side, so it is authored in
- * desk space and mirrors with the tower; FORTIFY and PACE/TAUNT stay with
- * the unmirrored combat cluster on the deck and never come here. */
-static void draw_stance_balcony(duel_fb_t *fb, bool is_left, uint8_t stance,
+/* Balcony postures. MEDITATE/STUDY are the Track B calm stances; BIGCAST is
+ * the forced-commit ascent (Change 3), authored from the STUDY standing body
+ * with the staff thrust up toward the peak. */
+enum { BALCONY_MEDITATE = 0, BALCONY_STUDY, BALCONY_BIGCAST };
+
+/* Balcony restaging: the wizard climbs onto the tower balcony (slab desk
+ * x11-16 at y30-31 — the restage point authored into draw_wizard_tower).
+ * Balcony art is architecture-side, so it is authored in desk space and
+ * mirrors with the tower; FORTIFY and PACE/TAUNT stay with the unmirrored
+ * combat cluster on the deck and never come here. */
+static void draw_stance_balcony(duel_fb_t *fb, bool is_left, uint8_t posture,
                                 uint32_t frame) {
 #define BX(x) incantation_desk_x(is_left, x)
-    if (stance == DUEL_STANCE_MEDITATE) {
+    if (posture == BALCONY_BIGCAST) {
+        // Forced-commit big cast: the STUDY standing body with both arms flung
+        // overhead and the staff thrust up the shaft toward the finial.
+        duel_fb_px(fb, BX(13), 19, true);                    // hat crown
+        incantation_civic_hline(fb, is_left, 12, 15, 20);    // hat brim
+        duel_fb_px(fb, BX(13), 21, true); duel_fb_px(fb, BX(14), 21, true); // head
+        duel_fb_px(fb, BX(13), 22, true); duel_fb_px(fb, BX(14), 22, true);
+        for (int y = 23; y <= 28; y++) {                     // robe
+            duel_fb_px(fb, BX(13), y, true);
+            duel_fb_px(fb, BX(14), y, true);
+        }
+        incantation_civic_hline(fb, is_left, 12, 15, 29);    // hem
+        // Both arms raised toward the peak.
+        duel_fb_px(fb, BX(12), 21, true); duel_fb_px(fb, BX(15), 21, true);
+        duel_fb_px(fb, BX(12), 20, true); duel_fb_px(fb, BX(15), 20, true);
+        // Staff thrust up the gap-side of the shaft toward the finial, tip
+        // sparking (render-frame cosmetic).
+        for (int y = 14; y <= 20; y++) duel_fb_px(fb, BX(12), y, true);
+        duel_fb_px(fb, BX(11), 15, true); duel_fb_px(fb, BX(13), 15, true); // orb head
+        duel_fb_px(fb, BX(12), 12 - (int)((frame >> 3) & 1u), true);        // spark
+    } else if (posture == BALCONY_MEDITATE) {
         // Seated figure folded onto the slab: hat, head, robe, crossed lap.
         duel_fb_px(fb, BX(13), 21, true);
         incantation_civic_hline(fb, is_left, 12, 15, 22);
@@ -832,9 +857,15 @@ static int spell_lane_y(uint8_t kind) {
     }
 }
 
-static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
+static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool lift) {
     int back    = dir > 0 ? -1 : +1;
     int tier    = DUEL_KIND_TIER(kind);
+
+    // Low/ground-lane carriers ride through the HP-window band. Lift the
+    // compact SHORT-tier glyphs one presentation tier (the same idiom
+    // draw_local_fx uses) so the silhouette carries enough mass to read over
+    // the windows redrawing beneath it.
+    if (lift && tier < SPELL_TIER_SATURATED) tier++;
 
     // Element identity stays primary while the capped recipe tier controls the
     // carrier's footprint. Short is deliberately compact; medium matches M6's
@@ -1083,6 +1114,10 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
     int facing = is_left ? 1 : -1;
     int local_cx = is_left ? 16 : 15;
     int travel_dir = caster_side == SIM_SIDE_L ? 1 : -1;
+    // Carriers in the low/ground lanes get a one-tier glyph lift (see
+    // spell_glyph) so they clear the HP windows they overfly.
+    bool low_lane = SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_LOW ||
+                    SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_GROUND;
     if (form == SPELL_SWARM) {
         uint8_t interval = draw_tempo_interval(spell->descriptor, 10u, 8u, 6u, 4u);
         flight = phase < 12u ? 8u : draw_trend_flight(spell->descriptor,
@@ -1170,7 +1205,7 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
         }
         if (phase < 12u || !count) return;
         if (!duel_battlefield_to_x(u, is_left, &x)) return;
-        spell_glyph(fb, x, y, spell->kind, travel_dir);
+        spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
         return;
     }
 
@@ -1197,7 +1232,7 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
     if (!duel_battlefield_to_x(u, is_left, &x)) return;
 
     if (form == SPELL_FIREBALL) {
-        spell_glyph(fb, x, y, spell->kind, travel_dir);
+        spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
         duel_fb_px(fb, x - travel_dir, y + 2, true);
         duel_fb_px(fb, x - 2 * travel_dir, y + 3, true);
     } else if (form == SPELL_SINGULARITY) {
@@ -1217,7 +1252,7 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
         for (int i = 0; i < 7; i++)
             duel_fb_px(fb, x - dir * i, y - (i & 1), true);
     } else {
-        spell_glyph(fb, x, y, spell->kind, travel_dir);
+        spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
     }
 
     // Fading trail (M15 weight pass): a solid 2-row stub hugs the head, then
@@ -1848,7 +1883,42 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
             // presented as 0 by the packer; STUDY's stored ward keeps
             // guarding the vacated deck below.
             if (wz->stance == DUEL_STANCE_MEDITATE || wz->stance == DUEL_STANCE_STUDY) {
-                draw_stance_balcony(fb, is_left, wz->stance, frame);
+                draw_stance_balcony(fb, is_left,
+                    wz->stance == DUEL_STANCE_MEDITATE ? BALCONY_MEDITATE : BALCONY_STUDY,
+                    frame);
+                if (wz->ward_strength)
+                    draw_ward(fb, facing, wz->ward_strength, wz->ward_focus,
+                              ward_punctured, ward_lane);
+                break;
+            }
+            // Forced-commit "civic-scale" big cast: rearm_lock spans the windup
+            // and the prepared hold (set on forced commit, cleared only on key
+            // release), so the wizard ascends to the balcony and the whole tower
+            // lights for the duration. rearm_lock flips false at launch (state ->
+            // INC_REARM), dropping the wizard back onto an empty deck exactly on
+            // cast. A normal prepared cast keeps rearm_lock == 0 and never climbs.
+            if (wz->rearm_lock &&
+                (wz->inc_state == INC_WINDUP || wz->inc_state == INC_PREPARED)) {
+                draw_stance_balcony(fb, is_left, BALCONY_BIGCAST, frame);
+                // Blinking halo re-centred on the balcony figure, motes rising
+                // past the shaft, and a peak flare — the civic-scale lighting
+                // that replaced the retired WORLD_WONDER ripple, now following
+                // the figure up the tower.
+                int hcx = incantation_desk_x(is_left, 13);
+                static const int8_t halo[5][2] = {
+                    {-4, -6}, {4, -8}, {5, 2}, {-5, 4}, {4, 7}};
+                for (int i = 0; i < 5; i++)
+                    if ((((frame >> 1) + (uint32_t)i) & 1u) == 0u)
+                        duel_fb_px(fb, hcx + halo[i][0], 24 + halo[i][1], true);
+                int shaft_lip = is_left ? 13 : 18;
+                for (int i = 0; i < 3; i++) {
+                    int my = 56 - (int)((frame * 2u + (uint32_t)i * 12u) % 36u);
+                    duel_fb_px(fb, shaft_lip, my, true);
+                }
+                int peak_x = is_left ? 6 : 25;
+                duel_fb_px(fb, peak_x - 2, 2, true);
+                duel_fb_px(fb, peak_x + 2, 2, true);
+                duel_fb_px(fb, peak_x, 0, true);
                 if (wz->ward_strength)
                     draw_ward(fb, facing, wz->ward_strength, wz->ward_focus,
                               ward_punctured, ward_lane);
@@ -1922,25 +1992,6 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
                 duel_fb_px(fb, px - 2, py, true); duel_fb_px(fb, px + 2, py, true);
             }
             draw_incantation_status(fb, wz, facing, frame);
-            if (wz->rearm_lock && wz->inc_state == INC_WINDUP) {
-                // Forced-commit "civic-scale" cast: the whole tower lights —
-                // blinking halo around the wizard, peak flare, motes rising
-                // past the shaft. Replaces the retired WORLD_WONDER ripple.
-                static const int8_t halo[5][2] = {
-                    {-7, -16}, {6, -18}, {8, -6}, {-8, -2}, {7, 4}};
-                for (int i = 0; i < 5; i++)
-                    if ((((frame >> 1) + (uint32_t)i) & 1u) == 0u)
-                        duel_fb_px(fb, 16 + halo[i][0], 44 + halo[i][1], true);
-                int shaft_lip = is_left ? 13 : 18;
-                for (int i = 0; i < 3; i++) {
-                    int my = 56 - (int)((frame * 2u + (uint32_t)i * 12u) % 36u);
-                    duel_fb_px(fb, shaft_lip, my, true);
-                }
-                int peak_x = is_left ? 6 : 25;
-                duel_fb_px(fb, peak_x - 2, 2, true);
-                duel_fb_px(fb, peak_x + 2, 2, true);
-                duel_fb_px(fb, peak_x, 0, true);
-            }
             break;
         }
 
@@ -1984,18 +2035,22 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
         }
     }
 
+    draw_incantation_reaction(fb, r->flash_kind, is_left, r->flash_frames);
+
+    // HP shaft windows for THIS half's wizard.
+    draw_hp_windows(fb, wz, is_left);
+
     // Spells in flight, wherever the battlefield axis lands on this canvas.
+    // Drawn AFTER the HP windows so low/ground-lane carriers (which cross the
+    // window band) win the contested pixels instead of being cleared-then-
+    // overwritten by the 2x2 cells; the trade-off — a low spell over its own
+    // HP columns briefly overpaints them — matches draw_local_fx, also post-HP.
     for (int s = 0; s < 2; s++) {
         duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s);
         if (!spell.active) continue;
         duel_view_wizard_t caster = duel_view_wizard(&r->view, (uint8_t)s);
         incantation_draw_spell(fb, &spell, (uint8_t)s, caster.variant, is_left, frame);
     }
-
-    draw_incantation_reaction(fb, r->flash_kind, is_left, r->flash_frames);
-
-    // HP shaft windows for THIS half's wizard.
-    draw_hp_windows(fb, wz, is_left);
 
     // One-shot outcomes use three deliberately different grammars.
     if (local_fx) draw_local_fx(fb, r, wz, facing, is_left);
@@ -2027,7 +2082,16 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     }
 
     if (debug_hud) {
-        duel_fb_px(fb, r->diag_tick, DUEL_CANVAS_H - 1, true);
+        // Diagnostics-only sync heartbeat: a 1 Hz pulse on this half's tower-top
+        // tip (astral finial / mechanical beacon), replacing the old bottom-row
+        // edge sweep. diag_tick runs 0..24 each second, so lighting its first
+        // half reads as one blink per second on the spire. Release builds leave
+        // debug_hud false, so this is absent from the shipped image.
+        if (r->diag_tick < 13) {
+            int peak_x = is_left ? 6 : 25;
+            duel_fb_px(fb, peak_x, 0, true);
+            duel_fb_px(fb, peak_x, 1, true);
+        }
         int dots = r->diag_overflow > 4 ? 4 : r->diag_overflow;
         for (int i = 0; i < dots; i++) duel_fb_px(fb, 1 + 2 * i, 0, true);
     }

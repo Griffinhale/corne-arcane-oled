@@ -116,7 +116,7 @@ event_quiet ab1f51a9ef88819f
 event_transition 5b00d9178c6285e6
 event_full_scry 2763406440f000c0
 cross_courier_combat_health_attune 076620476ab381f7
-cross_event_stale_diagnostics e126c7d32b6df4fa
+cross_event_stale_diagnostics c3fdee444d1f7afa
 health_0 b49b3783997dffd8
 health_1 2784e03a30a6bc30
 health_6 dc504a778838e618
@@ -147,6 +147,8 @@ collecting_short 87746f1ffab6dc82
 collecting_saturated eb7be0bfccce1363
 windup_beam 139623ade3d06391
 prepared_beam 1d37577dbb68685a
+bigcast_windup_balcony 8c00f90420c03fa4
+bigcast_prepared_balcony c6ff71e80778b12c
 side_0_voice_0_form_0 606a30725db996b8
 side_0_voice_0_form_1 5923fbb6c34a6f46
 side_0_voice_0_form_2 3bde8f5e3d899da3
@@ -225,6 +227,7 @@ homing_late 852b297eb9dfe161
 ground_wave a56ffc910b1dc631
 chain_arc be6865d8037a9f08
 trap_set 23f03a54baa2fc7f
+low_carrier 369a75389e1f0118
 gap_ordinary_l_departure 2a316573d9d0dc0c
 gap_ordinary_l_midpoint 4c4eee5a7f8a7e05
 gap_ordinary_l_arrival 774e0fcab8c60605
@@ -321,11 +324,11 @@ scenario_alert-calendar 8bc00b78d171655c
 scenario_alert-other 7fb2929af756e8e4
 scenario_scry d2ef345b6a39af4e
 scenario_stale-link 6608090663c596da
-scenario_diagnostics 2fd160a0c8cd3528
+scenario_diagnostics 8da1af104d73b828
 scenario_alert-impact 902168842ddeadab
 scenario_archive-alert 7722fbf6047e72ff
 scenario_alert-under-scry ef45e6bb8675caaa
-scenario_scry-stale-diagnostics 102db72573cd8ef0
+scenario_scry-stale-diagnostics 71ab3b77693533f0
 scenario_floor-commons 90c7c4deb8cfd744
 scenario_floor-research 46c360e28b1589f3
 scenario_floor-workshop 4dd217b2034d8be5

@@ -403,16 +403,25 @@ static void duel_session_init(void) {
 static duel_civic_shared_t duel_civic_shared;
 static duel_floor_policy_t duel_floor_policy;
 
+// The packed secondary byte carries the host-activity bits plus the sky
+// phase/sub-phase sampled from the shared sky clock. Both the wire tx and the
+// master's own-half render must use the same value, or the master half freezes
+// its sky at boot (dawn) while the slave draws the true arc — two suns. Built
+// once here so the two call sites cannot drift.
+static uint8_t duel_master_secondary(uint32_t now) {
+    return DUEL_SECONDARY_SKY_SUB_PACK(
+        DUEL_SECONDARY_SKY_PACK(
+            duel_host_secondary(&duel_host_state),
+            duel_sky_phase(now - duel_sky_started_ms)),
+        duel_sky_subphase(now - duel_sky_started_ms));
+}
+
 static void duel_master_tx(uint32_t now, bool urgent) {
     bool fx_changed = duel_world.fx_seq != duel_fx_sent;
     uint8_t external = duel_host_context(&duel_host_state);
     uint8_t alert = duel_host_alert(&duel_host_state);
     uint8_t civic = duel_host_civic(&duel_host_state);
-    uint8_t secondary = DUEL_SECONDARY_SKY_SUB_PACK(
-        DUEL_SECONDARY_SKY_PACK(
-            duel_host_secondary(&duel_host_state),
-            duel_sky_phase(now - duel_sky_started_ms)),
-        duel_sky_subphase(now - duel_sky_started_ms));
+    uint8_t secondary = duel_master_secondary(now);
     uint8_t flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(duel_display.phase);
     duel_view_t candidate_view;
     duel_view_from_world(&duel_world, &candidate_view);
@@ -534,7 +543,7 @@ static void duel_housekeeping_master(uint32_t now, bool ticked,
         duel_render_set_external(duel_host_context(&duel_host_state),
                                  duel_host_alert(&duel_host_state));
         duel_render_set_civic(now, duel_host_civic(&duel_host_state),
-                              duel_host_secondary(&duel_host_state),
+                              duel_master_secondary(now),
                               duel_civic_shared.shared_pres,
                               duel_civic_shared.revision);
     }

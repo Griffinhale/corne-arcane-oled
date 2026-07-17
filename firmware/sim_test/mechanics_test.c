@@ -2254,7 +2254,10 @@ static void test_diegetic_scry_instruments(void) {
     r.diag_tick = 7;
     duel_fb_t priority;
     incantation_render(&priority, &r, true, true);
-    EXPECT(duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 7, 127));
+    /* Stale-link box in the corner, and the diagnostics build's 1 Hz sync
+     * heartbeat on the left tower-top tip (diag_tick 7 < 13 -> lit at x6 y0),
+     * drawn last so it keeps its later-layer priority over the scene. */
+    EXPECT(duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 6, 0));
     CHECK(ok, "incantation_diegetic_scry_all_scenes_floors_host_alert_subset_mirror_exclusions_priority");
 }
 
