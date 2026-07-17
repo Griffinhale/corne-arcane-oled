@@ -213,6 +213,21 @@ static void build_catalog(void) {
         }
     }
 
+    /* v11 celestial arc probes: one non-zero sub-phase per sky phase pins the
+     * 16-step panorama (sub-phase 0 is covered by the matrix above). */
+    static const uint8_t arc_sub[4] = {3u, 2u, 2u, 2u};
+    for (uint8_t phase = DUEL_SKY_DAWN; phase <= DUEL_SKY_NIGHT; phase++) {
+        duel_render_t arc = {0}; duel_render_from_world(&arc, &world);
+        arc.seed = 0x5au; arc.civic_phase = 19u;
+        arc.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS,
+                                    DUEL_CIVIC_MODE_NORMAL, 0);
+        arc.secondary = DUEL_SECONDARY_SKY_SUB_PACK(
+            DUEL_SECONDARY_SKY_PACK(0, phase), arc_sub[phase]);
+        char name[48]; snprintf(name, sizeof name, "sky_arc_%s_sub%u",
+                                sky_name[phase], arc_sub[phase]);
+        add_render_case(name, &arc, 7u);
+    }
+
     static const uint8_t ambience_trend[] = {
         TREND_DECELERATING, TREND_STEADY,
         TREND_ACCELERATING, TREND_IRREGULAR

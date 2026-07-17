@@ -54,7 +54,9 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
         view->status_visual |= (uint8_t)(((wz->status_intensity & 3u) |
                                   (duration_bucket(wz->status_ticks) << 2)) << (side * 4u));
     }
-    view->fx_seq = world->fx_seq;
+    /* Stances are wired-but-zero until Track B adds the sim field; the fx
+     * sequence wears the low nibble (equality-compared, wrap at 16 is ample). */
+    view->fx_stance = VIEW_FX_PACK(world->fx_seq, DUEL_STANCE_NONE, DUEL_STANCE_NONE);
     view->outcome_overlay = VIEW_OVERLAY_PACK(world->fx_kind, scry_is_open(world),
                                               world->scry.scene);
 }
@@ -75,6 +77,7 @@ duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
         .rearm_lock = VIEW_W0_REARM(b0),
         .status_intensity = nibble & 3u,
         .status_duration = (nibble >> 2) & 3u,
+        .stance = VIEW_FX_STANCE(view->fx_stance, side),
     };
     wz.cast_tier = wz.ward_strength ? (uint8_t)(wz.ward_strength - 1u) : 0u;
     if (wz.inc_state == INC_WINDUP)
@@ -127,7 +130,7 @@ void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world) {
         world->spell[side].descriptor = sp.descriptor;
         world->spell[side].progress = sp.progress;
     }
-    world->fx_seq = view->fx_seq;
+    world->fx_seq = VIEW_FX_SEQ(view->fx_stance);
     world->fx_kind = VIEW_OVERLAY_FX(view->outcome_overlay);
     world->scry.state = duel_view_scry_open(view) ? SCRY_ACTIVE : SCRY_IDLE;
     world->scry.scene = VIEW_OVERLAY_SCENE(view->outcome_overlay);

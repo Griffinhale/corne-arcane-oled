@@ -7,12 +7,12 @@
 #include "duel_sim.h"
 
 
-/* Exactly 19 bytes: 2x3 wizard, 2x4 active spell, outcome sequence,
-   outcome/overlay, 2 phase bytes, and one status-visual byte. */
+/* Exactly 19 bytes: 2x3 wizard, 2x4 active spell, outcome-sequence/stance
+   byte, outcome/overlay, 2 phase bytes, and one status-visual byte. */
 typedef struct __attribute__((packed)) {
     uint8_t wizard[2][3];
     uint8_t spell[2][4];
-    uint8_t fx_seq;
+    uint8_t fx_stance; /* fx_seq[0:3] + per-side stance[4:5]/[6:7] (v11) */
     uint8_t outcome_overlay;
     uint8_t phase[2];
     uint8_t status_visual;
@@ -25,7 +25,24 @@ typedef struct __attribute__((packed)) {
  *   wizard[1]: life[0:2] variant[3:4] status[5:7]
  *   wizard[2]: pose[0:1] inc_state[2:4] ward_focus[5:6] prepared[7]
  *   outcome_overlay: fx_kind[0:3] scry_open[4] scry_scene[5:6] reserved[7]
- *   phase (during WINDUP/PREPARED): form[0:2] element[3:4] progress[5:7] */
+ *   phase (during WINDUP/PREPARED): form[0:2] element[3:4] progress[5:7]
+ *   fx_stance: fx_seq[0:3] stance_L[4:5] stance_R[6:7] — the outcome
+ *   sequence wraps at 16 and every consumer compares equality only, so the
+ *   v11 repack lends the high nibble to the Track B stance channel. */
+
+/* Non-casting stances (Track B). PACE/TAUNT derive locally from
+ * NONE + idle + seed and never ride the wire. */
+enum {
+    DUEL_STANCE_NONE = 0,
+    DUEL_STANCE_MEDITATE,
+    DUEL_STANCE_STUDY,
+    DUEL_STANCE_FORTIFY,
+};
+
+#define VIEW_FX_PACK(seq, stance_l, stance_r) \
+    ((uint8_t)(((seq) & 0x0fu) | (((stance_l) & 3u) << 4) | (((stance_r) & 3u) << 6)))
+#define VIEW_FX_SEQ(b)          ((uint8_t)((b) & 0x0fu))
+#define VIEW_FX_STANCE(b, side) ((uint8_t)(((b) >> (4u + 2u * (side))) & 3u))
 #define VIEW_W0_PACK(hp, ward, rearm) \
     ((uint8_t)(((hp) & 0x0fu) | (((ward) & 7u) << 4) | ((rearm) ? 0x80u : 0u)))
 #define VIEW_W0_HP(b)    ((uint8_t)((b) & 0x0fu))
@@ -74,6 +91,7 @@ typedef struct {
     uint8_t status;
     uint8_t status_intensity;
     uint8_t status_duration;
+    uint8_t stance; /* DUEL_STANCE_*, v11 placeholder until Track B renders it */
 } duel_view_wizard_t;
 
 typedef struct {

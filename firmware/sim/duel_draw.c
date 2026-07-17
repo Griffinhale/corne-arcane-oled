@@ -35,9 +35,10 @@ static uint8_t render_notif(const duel_render_t *render) {
 }
 
 /* Thirty-minute firmware sky, M15: ONE small celestial body arcs across the
- * desk instead of mirroring to both halves — dawn rises beside the left
- * tower, day rides high by the gap, dusk descends through the right half's
- * sky, and night hangs a moon there. The old dotted horizon rows are gone.
+ * desk instead of mirroring to both halves — the sun clears the left tower
+ * at dawn, peaks over the gap at midday, and sets behind the right tower at
+ * dusk; the moon drifts high through the right half's night sky. The v11
+ * sky sub-phase gives the arc 16 steps per cycle (4 phases x 4 quarters).
  * It is an underlay: every gameplay and instrument layer paints later and
  * therefore always wins. Tower windows (draw_wizard_tower) light from dusk
  * onward, so the phase also reads from the architecture itself. */
@@ -61,17 +62,25 @@ static void sky_moon(duel_fb_t *fb, int x, int y) {
 
 static void draw_sky(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
+    uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
     uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
-    if (phase == DUEL_SKY_DAWN) {
-        /* One row below/right of the scry lens tip: added scry instruments
-         * must stay off any asymmetric base cell (mirror-test contract). */
-        if (is_left) sky_sun(fb, 17, 15);
-    } else if (phase == DUEL_SKY_DAY) {
-        if (is_left) sky_sun(fb, 27, 6);
-    } else if (phase == DUEL_SKY_DUSK) {
-        if (!is_left) sky_sun(fb, 10, 14);
+    /* Arc positions in desk space (left canvas x0-31, right canvas x32-63).
+     * Each half draws its clipped portion, so a body crossing the gap shows
+     * a sliver on both panels and the pair reads as one panorama. Endpoints
+     * tuck the disc behind a tower's lit edge column (x11 / desk 51) so it
+     * rises and sets behind the architecture rather than popping. */
+    static const int8_t sky_arc[16][2] = {
+        {15, 18}, {16, 16}, {17, 15}, {19, 13}, /* dawn: clearing the left tower */
+        {22, 10}, {26, 7},  {31, 5},  {36, 7},  /* day: apex over the gap */
+        {41, 9},  {44, 12}, {46, 14}, {48, 16}, /* dusk: down to the right tower */
+        {44, 8},  {41, 7},  {38, 7},  {35, 8},  /* night: moon drifts gapward */
+    };
+    const int8_t *at = sky_arc[((phase & 3u) << 2) | sub];
+    int bx = is_left ? at[0] : at[0] - DUEL_CANVAS_W; /* duel_fb_px clips */
+    if (phase != DUEL_SKY_NIGHT) {
+        sky_sun(fb, bx, at[1]);
     } else {
-        if (!is_left) sky_moon(fb, 7, 9);
+        sky_moon(fb, bx, at[1]);
         uint8_t stars = floor == DUEL_CIVIC_FLOOR_SPECIAL ? 7u : 3u;
         for (uint8_t i = 0; i < stars; i++) {
             uint8_t h = (uint8_t)(r->seed * 29u + i * 47u + (is_left ? 11u : 83u));

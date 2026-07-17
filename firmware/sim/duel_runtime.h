@@ -122,6 +122,9 @@ enum {
 
 #define DUEL_SKY_CYCLE_MS 1800000u
 uint8_t duel_sky_phase(uint32_t session_elapsed_ms);
+// v11 celestial arc position within the current phase (0..3): 4 phases x 4
+// sub-phases = 16 arc steps per cycle, carried in secondary bits 5-6.
+uint8_t duel_sky_subphase(uint32_t session_elapsed_ms);
 
 enum {
     DUEL_DIPLOMACY_RIGHT_ADVANTAGE = 0,

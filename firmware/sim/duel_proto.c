@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "duel_proto.h"
+#include "duel_display.h"
 #include "duel_draw.h"
 #include "duel_host.h"
 
@@ -31,7 +32,11 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
     out->ver     = DUEL_VER;
     out->session = session;
     out->flags   = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(display_phase);
-    out->seq     = seq;
+    /* v11 seq is a wrapping byte (ample for stale detection at snapshot
+     * cadence); callers keep their wider counters and we truncate. The
+     * memset above is also the v11 residue/stance prefill: all zones empty
+     * (canonical) until Track A/B populate them. */
+    out->seq     = (uint8_t)seq;
     duel_view_from_world(w, &out->view);
     out->external = external;
     out->alert    = alert;
@@ -51,6 +56,48 @@ void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondar
     p->crc         = duel_crc8(p, offsetof(duel_snapshot_t, crc));
 }
 
+uint8_t duel_snapshot_residue_element(const duel_snapshot_t *p, uint8_t zone) {
+    switch (zone & 3u) {
+        case DUEL_RESIDUE_DOORSTEP_L: return (uint8_t)(p->residue & 3u);
+        case DUEL_RESIDUE_MID_L:      return (uint8_t)((p->residue >> 4) & 3u);
+        case DUEL_RESIDUE_MID_R:      return (uint8_t)((p->flags >> 3) & 3u);
+        default:                      return (uint8_t)((p->civic >> 6) & 3u);
+    }
+}
+
+uint8_t duel_snapshot_residue_intensity(const duel_snapshot_t *p, uint8_t zone) {
+    switch (zone & 3u) {
+        case DUEL_RESIDUE_DOORSTEP_L: return (uint8_t)((p->residue >> 2) & 3u);
+        case DUEL_RESIDUE_MID_L:      return (uint8_t)((p->residue >> 6) & 3u);
+        case DUEL_RESIDUE_MID_R:      return (uint8_t)((p->flags >> 5) & 3u);
+        default: /* straddles: flags.7 is the low bit, secondary.7 the high */
+            return (uint8_t)(((p->flags >> 7) & 1u) | (((p->secondary >> 7) & 1u) << 1));
+    }
+}
+
+void duel_snapshot_set_residue(duel_snapshot_t *p, uint8_t zone,
+                               uint8_t element, uint8_t intensity) {
+    element &= 3u;
+    intensity &= 3u;
+    switch (zone & 3u) {
+        case DUEL_RESIDUE_DOORSTEP_L:
+            p->residue = (uint8_t)((p->residue & 0xF0u) | element | (intensity << 2));
+            break;
+        case DUEL_RESIDUE_MID_L:
+            p->residue = (uint8_t)((p->residue & 0x0Fu) | (element << 4) | (intensity << 6));
+            break;
+        case DUEL_RESIDUE_MID_R:
+            p->flags = (uint8_t)((p->flags & 0x87u) | (element << 3) | (intensity << 5));
+            break;
+        default:
+            p->civic     = (uint8_t)((p->civic & 0x3Fu) | (element << 6));
+            p->flags     = (uint8_t)((p->flags & 0x7Fu) | ((intensity & 1u) << 7));
+            p->secondary = (uint8_t)((p->secondary & 0x7Fu) | ((intensity >> 1) << 7));
+            break;
+    }
+    p->crc = duel_crc8(p, offsetof(duel_snapshot_t, crc));
+}
+
 bool duel_decode_valid(const duel_snapshot_t *p) {
     bool shared_valid;
     if (p->revision & INCANTATION_AFTERMATH_WIRE) {
@@ -60,10 +107,19 @@ bool duel_decode_valid(const duel_snapshot_t *p) {
                        DUEL_EVENT_ID(p->revision) < DUEL_CIVIC_EVENT_COUNT &&
                        DUEL_EVENT_TARGET(p->revision) <= DUEL_CIVIC_EVENT_TARGET_SHARED;
     }
+    /* v11 has no reserved bits left; the range checks with teeth are the
+     * display-phase bound, the activity enum, and the residue canonical
+     * form (an empty zone must carry element 0). A v10 half fails the ver
+     * check and takes the established stale-link presentation. */
+    bool residue_canonical = true;
+    for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
+        if (duel_snapshot_residue_intensity(p, zone) == 0u &&
+            duel_snapshot_residue_element(p, zone) != 0u)
+            residue_canonical = false;
     return p->magic == DUEL_MAGIC && p->ver == DUEL_VER &&
-           (p->flags & DUEL_FLAGS_RESERVED_MASK) == 0 &&
-           (p->secondary & DUEL_SECONDARY_SPLIT_RESERVED) == 0 &&
-           duel_civic_semantics_valid(p->civic, p->secondary) &&
+           DUEL_FLAGS_DISPLAY(p->flags) <= DUEL_DISPLAY_SLEEP &&
+           DUEL_SECONDARY_ACTIVITY(p->secondary) <= DUEL_CIVIC_SECONDARY_CALENDAR &&
+           residue_canonical &&
            shared_valid &&
            duel_view_valid(&p->view) &&
            p->crc == duel_crc8(p, offsetof(duel_snapshot_t, crc));
@@ -80,7 +136,7 @@ bool duel_rx_accept(duel_rx_state_t *rx, const duel_snapshot_t *p, bool link_was
     } else if (p->session != rx->last.session) {
         accept = true; // new master session (serial can't reorder across a reboot)
     } else {
-        accept = (int16_t)(p->seq - rx->last.seq) > 0; // wrap-safe; stale/dup never win
+        accept = (int8_t)(p->seq - rx->last.seq) > 0; // wrap-safe; stale/dup never win
     }
 
     if (accept) {

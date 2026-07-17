@@ -24,7 +24,7 @@ and the former split production variants are not supported.
 | `host/` | Semantic daemon, diagnostics, safe Vial launcher, Nix package, D-Bus/KWin integration, and tests |
 | `docs/acceptance.md` | Current automated and physical acceptance record |
 | `docs/physical-checklist.md` | Two-half release, Vial handoff, persistence, and recovery procedure |
-| `docs/protocol-ledger.md` | Raw HID v2 and split v10 byte/bit allocations and overlay precedence |
+| `docs/protocol-ledger.md` | Raw HID v2 and split v11 byte/bit allocations and overlay precedence |
 | `docs/backlog.md` | Deferred product work |
 | `docs/archive/` | Superseded milestone plans, records, and original planning documents |
 | `corne.nix` | NixOS module for the toolchain, udev access, launcher, and user service |
@@ -63,7 +63,7 @@ qmk flash -kb crkbd/rev1 -km griffin_arcane \
 ```
 
 Reconnect TRRS only while unpowered, then connect USB to the normal left half.
-The split v10 packet is exactly 32 bytes; mixed firmware revisions safely fall
+The split v11 packet is exactly 32 bytes; mixed firmware revisions safely fall
 back to the stale-link presentation.
 
 ## Persistent Vial remapping

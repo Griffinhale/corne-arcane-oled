@@ -408,9 +408,11 @@ static void duel_master_tx(uint32_t now, bool urgent) {
     uint8_t external = duel_host_context(&duel_host_state);
     uint8_t alert = duel_host_alert(&duel_host_state);
     uint8_t civic = duel_host_civic(&duel_host_state);
-    uint8_t secondary = DUEL_SECONDARY_SKY_PACK(
-        duel_host_secondary(&duel_host_state),
-        duel_sky_phase(now - duel_sky_started_ms));
+    uint8_t secondary = DUEL_SECONDARY_SKY_SUB_PACK(
+        DUEL_SECONDARY_SKY_PACK(
+            duel_host_secondary(&duel_host_state),
+            duel_sky_phase(now - duel_sky_started_ms)),
+        duel_sky_subphase(now - duel_sky_started_ms));
     uint8_t flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(duel_display.phase);
     duel_view_t candidate_view;
     duel_view_from_world(&duel_world, &candidate_view);
@@ -568,8 +570,10 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked,
             duel_render_from_world(&duel_render, &duel_world);
             duel_render_set_external(0, 0);
             duel_render_set_civic(now, 0,
-                DUEL_SECONDARY_SKY_PACK(0,
-                    duel_sky_phase(now - duel_sky_started_ms)), 0, 0);
+                DUEL_SECONDARY_SKY_SUB_PACK(
+                    DUEL_SECONDARY_SKY_PACK(0,
+                        duel_sky_phase(now - duel_sky_started_ms)),
+                    duel_sky_subphase(now - duel_sky_started_ms)), 0, 0);
             if (decide.set_stale) duel_render.flags |= DUEL_RENDER_STALE;
             else duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
         }

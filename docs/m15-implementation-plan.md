@@ -342,6 +342,20 @@ feedback while the rest of M15 is in flight.
 
 ## 6. Track P — split snapshot v11
 
+**Status: complete** (landed 2026-07-17, after the Track G render audit):
+version bumped to 11, ledger updated, decode rejects v10/corrupt frames.
+The sky sub-phase is wired end-to-end — master derives the quarter of the
+current phase, the slave renders it, and the celestial arc has its 16
+steps (sun tucks behind the left tower at dawn, splits across the gap at
+midday, sets behind the right tower at dusk; moon drifts the night sky).
+Residue rides zones 0-1 in the freed seq byte, zone 2 in flags, zone 3
+scattered across civic/flags/secondary behind `duel_snapshot_residue_*`
+accessors; stances ride the view fx byte's high nibble (`fx_stance`).
+Residue/stance ship zeroed for Tracks A/B. Mechanics tests cover the
+round-trip, the zone-3 straddle boundary, fx-nibble wrap vs the flash
+policy, sub-phase quarter boundaries, and the v10 version gate; goldens
+re-baselined (350 scenes, +4 arc probes).
+
 v10 has zero spare bytes (`docs/protocol-ledger.md`). Inventory that funds
 v11 without growing past 32 bytes:
 

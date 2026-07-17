@@ -5,7 +5,7 @@ keymap. `host/install_firmware.sh` copies it into a Vial-QMK checkout as
 `keyboards/crkbd/keymaps/griffin_arcane`.
 
 The build is always the accepted current world: deterministic incantations and
-combat, Twin Cities civic rendering, v10 split snapshots, v2 host semantics,
+combat, Twin Cities civic rendering, v11 split snapshots, v2 host semantics,
 OLED power policy, RGB Matrix, secure Vial, and four persistent dynamic layers.
 There are no milestone feature switches or Vial-free production variant.
 

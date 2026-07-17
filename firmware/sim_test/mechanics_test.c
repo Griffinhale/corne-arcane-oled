@@ -86,7 +86,7 @@ static void test_layout_and_protocol(void) {
     duel_snapshot_set_civic(&packet, 1, 2, 3, 4);
     bool ok = true;
     EXPECT(sizeof(duel_view_t) == 19 && sizeof(duel_snapshot_t) == 32 &&
-              DUEL_VER == 10 && sizeof(duel_render_t) <= 40u &&
+              DUEL_VER == 11 && sizeof(duel_render_t) <= 40u &&
               sizeof(sim_world_t) <= 56u + 1024u &&
               duel_decode_valid(&packet));
     duel_snapshot_t bad = packet;
@@ -98,7 +98,12 @@ static void test_layout_and_protocol(void) {
     bad.ver = 9;
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&bad));
-    bad = packet; bad.secondary |= 0x20u;
+    /* Non-canonical residue (element set on an empty zone) and an
+     * out-of-range display phase are the v11 range checks with teeth. */
+    bad = packet; bad.residue = 0x01u;
+    bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&bad));
+    bad = packet; bad.flags |= DUEL_FLAGS_DISPLAY_PACK(3u);
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&bad));
     bad = packet; bad.shared_pres = DUEL_VISITOR_PACK(7u, 0u, 0u); bad.revision = 0u;
@@ -111,7 +116,111 @@ static void test_layout_and_protocol(void) {
     bad = packet; bad.revision = INCANTATION_AFTERMATH_WIRE | 0x10u;
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&bad));
-    CHECK(ok, "incantation_v10_exact_size_crc_and_version_rejection");
+    CHECK(ok, "incantation_v11_exact_size_crc_and_version_rejection");
+}
+
+static void test_v11_repack_and_sky_subphase(void) {
+    bool ok = true;
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_snapshot_t p;
+    w.fx_seq = 0x37u; /* only the low nibble reaches the wire */
+    duel_encode(&w, 5, 258u, &p); /* wide caller counter truncates to a byte */
+    EXPECT(p.seq == 2u && VIEW_FX_SEQ(p.view.fx_stance) == 7u &&
+           VIEW_FX_STANCE(p.view.fx_stance, SIM_SIDE_L) == DUEL_STANCE_NONE &&
+           VIEW_FX_STANCE(p.view.fx_stance, SIM_SIDE_R) == DUEL_STANCE_NONE &&
+           duel_decode_valid(&p));
+
+    /* Residue round-trip across every zone and value on top of loaded civic
+     * and secondary bytes, including zone 3's byte-straddling intensity;
+     * clearing back to empty stays canonical and decodable. */
+    duel_snapshot_set_civic(&p, DUEL_CIVIC_PACK(2u, 1u, 3u),
+        DUEL_SECONDARY_SKY_SUB_PACK(
+            DUEL_SECONDARY_SKY_PACK(DUEL_CIVIC_SECONDARY_MEDIA, DUEL_SKY_DUSK), 3u),
+        0u, 0u);
+    for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
+        for (uint8_t elem = 0; elem < 4u; elem++)
+            for (uint8_t inten = 1; inten < 4u; inten++) {
+                duel_snapshot_set_residue(&p, zone, elem, inten);
+                EXPECT(duel_snapshot_residue_element(&p, zone) == elem &&
+                       duel_snapshot_residue_intensity(&p, zone) == inten &&
+                       duel_decode_valid(&p));
+                duel_snapshot_set_residue(&p, zone, 0u, 0u);
+                EXPECT(duel_decode_valid(&p));
+            }
+    /* All four zones loaded at once: the scattered fields never alias. */
+    for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
+        duel_snapshot_set_residue(&p, zone, zone, (uint8_t)(3u - (zone & 1u)));
+    for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
+        EXPECT(duel_snapshot_residue_element(&p, zone) == zone &&
+               duel_snapshot_residue_intensity(&p, zone) == 3u - (zone & 1u));
+    /* The exact straddle boundary: zone 3 intensity 2 sets only the high
+     * bit (secondary.7), intensity 1 only the low bit (flags.7). */
+    duel_snapshot_set_residue(&p, DUEL_RESIDUE_DOORSTEP_R, ELEM_EMBER, 2u);
+    EXPECT((p.secondary & 0x80u) != 0u && (p.flags & 0x80u) == 0u);
+    duel_snapshot_set_residue(&p, DUEL_RESIDUE_DOORSTEP_R, ELEM_EMBER, 1u);
+    EXPECT((p.secondary & 0x80u) == 0u && (p.flags & 0x80u) != 0u);
+    /* Through all of it the neighboring fields kept their values. */
+    EXPECT(DUEL_CIVIC_FLOOR(p.civic) == 2u && DUEL_CIVIC_MODE(p.civic) == 1u &&
+           DUEL_CIVIC_INTENSITY(p.civic) == 3u &&
+           DUEL_SECONDARY_ACTIVITY(p.secondary) == DUEL_CIVIC_SECONDARY_MEDIA &&
+           DUEL_SECONDARY_SKY_PHASE(p.secondary) == DUEL_SKY_DUSK &&
+           DUEL_SECONDARY_SKY_SUBPHASE(p.secondary) == 3u &&
+           (p.flags & DUEL_FLAGS_WORLD_VALID) != 0u &&
+           duel_decode_valid(&p));
+
+    /* Stance round-trip through the view's shared fx byte. */
+    duel_view_t v = p.view;
+    v.fx_stance = VIEW_FX_PACK(9u, DUEL_STANCE_STUDY, DUEL_STANCE_FORTIFY);
+    EXPECT(VIEW_FX_SEQ(v.fx_stance) == 9u &&
+           duel_view_wizard(&v, SIM_SIDE_L).stance == DUEL_STANCE_STUDY &&
+           duel_view_wizard(&v, SIM_SIDE_R).stance == DUEL_STANCE_FORTIFY);
+
+    /* The fx nibble wrap still re-arms the flash policy (equality compare),
+     * and a later stance change alone must NOT re-arm it. */
+    duel_flash_policy_t flash = {0};
+    uint8_t last_kind[2] = {0, 0};
+    w.fx_kind = FX_IMPACT_R;
+    w.fx_seq = 15u;
+    duel_view_t fv;
+    duel_view_from_world(&w, &fv);
+    EXPECT(duel_flash_observe_view(&flash, last_kind, &fv, 100u));
+    w.fx_seq = 16u; /* nibble wraps to 0 */
+    duel_view_from_world(&w, &fv);
+    EXPECT(duel_flash_observe_view(&flash, last_kind, &fv, 200u));
+    fv.fx_stance = VIEW_FX_PACK(VIEW_FX_SEQ(fv.fx_stance),
+                                DUEL_STANCE_MEDITATE, DUEL_STANCE_NONE);
+    EXPECT(!duel_flash_observe_view(&flash, last_kind, &fv, 300u));
+
+    /* v10 (and future v12) frames are rejected outright: a mixed-revision
+     * pair takes the established stale-link presentation. */
+    duel_snapshot_t old = p;
+    old.ver = 10u;
+    old.crc = duel_crc8(&old, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&old));
+    old.ver = 12u;
+    old.crc = duel_crc8(&old, offsetof(duel_snapshot_t, crc));
+    EXPECT(!duel_decode_valid(&old));
+
+    /* Sky sub-phase: exact quarter boundaries inside every phase, wrap-safe
+     * across the cycle. Quarters are 37.5 s in dawn/dusk, 300 s in day,
+     * 75 s at night. */
+    EXPECT(duel_sky_subphase(0u) == 0u &&
+           duel_sky_subphase(37499u) == 0u &&
+           duel_sky_subphase(37500u) == 1u &&
+           duel_sky_subphase(149999u) == 3u &&
+           duel_sky_subphase(150000u) == 0u &&   /* day begins */
+           duel_sky_subphase(449999u) == 0u &&
+           duel_sky_subphase(450000u) == 1u &&
+           duel_sky_subphase(1349999u) == 3u &&
+           duel_sky_subphase(1350000u) == 0u &&  /* dusk begins */
+           duel_sky_subphase(1387500u) == 1u &&
+           duel_sky_subphase(1499999u) == 3u &&
+           duel_sky_subphase(1500000u) == 0u &&  /* night begins */
+           duel_sky_subphase(1575000u) == 1u &&
+           duel_sky_subphase(1799999u) == 3u &&
+           duel_sky_subphase(1800000u) == 0u);   /* wraps to dawn */
+    CHECK(ok, "v11_repack_residue_stance_fx_nibble_subphase_boundaries_and_version_gate");
 }
 
 static void test_host_protocol_current_payload_and_ordering(void) {
@@ -2333,6 +2442,7 @@ int main(void) {
     test_live_ambience_classifier();
     test_diplomatic_weight_target_and_combat_independence();
     test_layout_and_protocol();
+    test_v11_repack_and_sky_subphase();
     test_host_protocol_current_payload_and_ordering();
     test_view_validation();
     test_complexity_formula();

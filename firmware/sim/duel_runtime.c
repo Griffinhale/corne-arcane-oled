@@ -180,14 +180,15 @@ bool duel_flash_observe_view(duel_flash_policy_t *policy,
         duel_view_spell_t spell = duel_view_spell(view, s);
         if (spell.active) last_spell_kind[s] = spell.kind;
     }
-    if (view->fx_seq == policy->seen_fx_seq) return false;
+    uint8_t fx_seq = VIEW_FX_SEQ(view->fx_stance); /* v11: high nibble is stances */
+    if (fx_seq == policy->seen_fx_seq) return false;
     uint8_t flash_kind = VIEW_OVERLAY_FX(view->outcome_overlay);
     bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L ||
                          flash_kind == FX_FIZZLE_L || flash_kind == FX_HEAL_L ||
                          flash_kind == FX_WARD_SHATTER_L;
     // The defender flashes with the style of the spell that reached it — the
     // one cast from the OPPOSITE side's slot.
-    return duel_flash_note(policy, view->fx_seq, flash_kind,
+    return duel_flash_note(policy, fx_seq, flash_kind,
                            last_spell_kind[defender_left ? SIM_SIDE_R : SIM_SIDE_L],
                            now_ms);
 }
@@ -210,6 +211,19 @@ uint8_t duel_sky_phase(uint32_t session_elapsed_ms) {
     if (within < 1350000u) return DUEL_SKY_DAY;
     if (within < 1500000u) return DUEL_SKY_DUSK;
     return DUEL_SKY_NIGHT;
+}
+
+uint8_t duel_sky_subphase(uint32_t session_elapsed_ms) {
+    /* Quarter of the CURRENT phase, so each of the 16 celestial arc steps
+     * lasts a phase-proportional stretch (dawn/dusk quarters are short, the
+     * long day glides). Same clock as duel_sky_phase; pure and wrap-safe. */
+    uint32_t within = session_elapsed_ms % DUEL_SKY_CYCLE_MS;
+    uint32_t start = 0u, length = 150000u;               /* dawn */
+    if (within >= 1500000u)      { start = 1500000u; length = 300000u; }  /* night */
+    else if (within >= 1350000u) { start = 1350000u; length = 150000u; }  /* dusk */
+    else if (within >= 150000u)  { start = 150000u;  length = 1200000u; } /* day */
+    uint8_t sub = (uint8_t)((within - start) * 4u / length);
+    return sub > 3u ? 3u : sub;
 }
 
 void duel_diplomacy_init(duel_diplomacy_t *state) {
