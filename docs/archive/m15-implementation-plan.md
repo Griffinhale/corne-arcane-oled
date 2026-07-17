@@ -1,5 +1,10 @@
 # M15 Foundations & Spires — implementation plan (DRAFT)
 
+> Historical milestone record — superseded by the landed M15 build. This was
+> the pre-implementation design record; every track here (G, A, B, T, P) has
+> shipped and C was ejected to v12. The accepted state is `../acceptance.md`
+> and the wire contract is `../protocol-ledger.md` (v11).
+
 Grounded in a fresh read of the accepted 0.4 / M14 baseline. Every file:line
 anchor verified against the current tree. Nothing here is implemented yet;
 this document is the product/design record the backlog asked for before

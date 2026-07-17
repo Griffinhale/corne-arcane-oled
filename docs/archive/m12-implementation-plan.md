@@ -4,7 +4,7 @@ Grounded in the locked design spec and a fresh read of the codebase. Every file:
 
 > Historical implementation plan. M12 shipped and was incorporated into the
 > physically accepted M13 baseline. Planning language and open questions below
-> are retained for provenance; use `post-m13-backlog.md` for current future
+> are retained for provenance; use `../backlog.md` for current future
 > scope.
 
 ---
@@ -42,7 +42,7 @@ kind/city/lifecycle + 2 reserved bits used for count density), revision (event i
 **Physical disposition:** M12's current surfaces were exercised as part of the
 accepted M13 two-half run, including actual-size floor legibility, stress,
 power/reconnect behavior, and the preserved M12 rollback boot. This document is
-now a historical implementation plan; `m13-acceptance.md` is authoritative.
+now a historical implementation plan; `../acceptance.md` is authoritative.
 
 ---
 

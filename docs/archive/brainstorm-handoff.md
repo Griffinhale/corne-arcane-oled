@@ -1,5 +1,9 @@
 # Corne Arcane brainstorming handoff
 
+> Historical milestone record — superseded by the landed M15 build. This was a
+> brainstorming handoff prepared before M15; the direction it seeded now lives
+> in `../acceptance.md` (accepted M15 state) and `../backlog.md` (v12 seeds).
+
 Copy everything below into a new chat.
 
 ---

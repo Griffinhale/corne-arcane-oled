@@ -6,6 +6,6 @@ also landed in M13, including new spell families, outcome grammars, roster
 voices, and richer resident behavior.
 
 Current deferred and exploratory work is tracked in
-`docs/post-m13-backlog.md`. Do not use this file or the old v8 five-byte reserve
+`../backlog.md`. Do not use this file or the old v8 five-byte reserve
 as a current architecture constraint; M13 uses an exact 32-byte v10 split
 snapshot.

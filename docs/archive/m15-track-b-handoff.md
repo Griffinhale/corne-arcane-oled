@@ -1,5 +1,10 @@
 # M15 handoff — Track B, Track T, and the road to the C gate
 
+> Historical milestone record — superseded by the landed M15 build. Track B
+> stances, the Track T retune, and the C gate all closed on 2026-07-17; C was
+> ejected to v12. Current acceptance is `../acceptance.md` and the v12 seeds
+> are in `../backlog.md`.
+
 Written 2026-07-17 at commit `aa845a1`. Plan of record: `docs/m15-implementation-plan.md`
 (§4 Track B, §5 Track T, §7/§9 the C gate). Wire authority:
 `docs/protocol-ledger.md` (v11).

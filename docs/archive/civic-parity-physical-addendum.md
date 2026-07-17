@@ -1,5 +1,9 @@
 # Civic-layer parity physical addendum
 
+> Historical milestone record — superseded by the M15 physical checklist. The
+> civic-layer parity checks are folded into `../physical-checklist.md`; current
+> acceptance is `../acceptance.md`.
+
 Status: PENDING. This addendum covers the civic-layer parity pass only and does
 not alter the completed 2026-07-15 world/combat acceptance record.
 
