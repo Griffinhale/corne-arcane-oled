@@ -104,18 +104,24 @@ untouched.
 
 ## 2. Track G — full-height tower geography
 
-**Status: first implementation landed** (uncommitted working tree,
-2026-07-16): tower + peaks + windows + balcony, deck + crenellations,
-stone-course border, arcing celestial (4 coarse positions pending the v11
-sub-phase), alert banner on the shaft, scry alert summary relocated to the
-gap-side strip (the peak art is asymmetric and the scry mirror contract
-requires symmetric instrument cells), collection runes moved below the
-balcony (their old rows became the slab), wonder wave retired, big-cast
-tower glow in. `DUEL_ROOF_DY` was kept as the deck offset constant rather
-than rebasing 33 coordinate sites — the alert-band constraint on it is
-gone, which was the point. Full suite green; goldens re-baselined (346
-scenes). Remaining Track G items: §2.0's spell/ward/FX weight pass and the
-wizard mass pass.
+**Status: complete** (geography landed 2026-07-16, weight pass 2026-07-17):
+tower + peaks + windows + balcony, deck + crenellations, stone-course
+border, arcing celestial (4 coarse positions pending the v11 sub-phase),
+alert banner on the shaft, scry alert summary relocated to the gap-side
+strip (the peak art is asymmetric and the scry mirror contract requires
+symmetric instrument cells), collection runes moved below the balcony
+(their old rows became the slab), wonder wave retired, big-cast tower glow
+in. `DUEL_ROOF_DY` was kept as the deck offset constant rather than
+rebasing 33 coordinate sites — the alert-band constraint on it is gone,
+which was the point. The §2.0 weight pass followed: the wizard gained a
+head, a chunky bent-tip hat, a solid narrow-shouldered robe, and a 2-px
+staff with an orb finial (launch coordinates unchanged); frost carriers
+became solid-core stars, void a donut ring, ember a teardrop with a thick
+near tail; trails render as a solid stub plus fading tempo dots; the ward
+is a continuous parabolic double arc (2-3 px by strength) with end
+anchors and a focus notch, same strength/focus/puncture grammar; impact
+and detonate flourishes scale one presentation tier up. Full suite green;
+goldens re-baselined (346 scenes) with pairwise uniqueness intact.
 
 Each tower becomes one continuous structure from crown to foundation, in
 city character (astral = curved, domed; mechanical = squared, riveted —

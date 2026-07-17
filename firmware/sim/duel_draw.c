@@ -640,54 +640,72 @@ static void draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, int xo, int yo) {
     const int cx = DUEL_CANVAS_W / 2 + xo;   // 16 + xo
 
-    // Pointed hat: filled triangle apex -> base (max half-width 3).
-    const int hat_apex_y = 54 + yo + DUEL_ROOF_DY;
-    const int hat_base_y = 61 + yo + DUEL_ROOF_DY;
-    for (int y = hat_apex_y; y <= hat_base_y; y++) {
-        int hw = (y - hat_apex_y) * 3 / (hat_base_y - hat_apex_y); // 0..3
-        duel_fb_hline(fb, cx - hw, cx + hw, y);
-    }
-    // Hat brim.
-    duel_fb_hline(fb, cx - 4, cx + 4, hat_base_y + 1);
+    // Chunky hat: filled 3-row triangle over a wide brim, tip bent gapward.
+    const int brim_y = 43 + yo;
+    for (int y = brim_y - 3; y < brim_y; y++)
+        duel_fb_hline(fb, cx - (y - brim_y + 4), cx + (y - brim_y + 4), y); // hw 1..3
+    duel_fb_hline(fb, cx - 4, cx + 4, brim_y);
+    duel_fb_px(fb, cx + facing, brim_y - 4, true);
 
-    // Robe: trapezoid widening toward the base (half-width 2..4).
-    const int robe_top = hat_base_y + 2;   // 63 + yo
-    const int robe_bot = 75 + yo + DUEL_ROOF_DY;
+    // Head under the brim (the M14 figure was hat-on-robe with no face).
+    duel_fb_px(fb, cx - 1, 44 + yo, true); duel_fb_px(fb, cx, 44 + yo, true);
+    duel_fb_px(fb, cx - 1, 45 + yo, true); duel_fb_px(fb, cx, 45 + yo, true);
+
+    // Collar, then a solid robe: narrow shoulders flaring at the hem, with a
+    // gap-side arm reaching for the staff. The hem's half-width 3 keeps the
+    // figure clear of the tower shaft flare at x12 in every lifecycle offset.
+    duel_fb_hline(fb, cx - 2, cx + 2, 46 + yo);
+    const int robe_top = 47 + yo;
+    const int robe_bot = 58 + yo;
     for (int y = robe_top; y <= robe_bot; y++) {
-        int hw = 2 + (y - robe_top) * 2 / (robe_bot - robe_top); // 2..4
+        int i = y - robe_top;
+        int hw = i < 6 ? 1 : i < 10 ? 2 : 3;
         duel_fb_hline(fb, cx - hw, cx + hw, y);
     }
+    duel_fb_px(fb, cx + facing * 3, 47 + yo, true);
+    duel_fb_px(fb, cx + facing * 2, 48 + yo, true);
 
     // Roster variant masks (M5): pose-invariant hat/robe markings only, so a
-    // replacement is recognisably a new combatant in every pose. Variant 0 is
-    // the untouched base look — its bytes must match pre-M5 output exactly.
+    // replacement is recognisably a new combatant in every pose.
     switch (variant & 3) {
-        case 1: // hat band: a cleared 1-px stripe across the hat fill (hw=2 row)
-            for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, hat_apex_y + 5, false);
+        case 1: // hat band: a cleared 1-px stripe across the widest hat row
+            for (int x = cx - 2; x <= cx + 2; x++) duel_fb_px(fb, x, brim_y - 1, false);
             break;
         case 2: // robe hem fringe: 3 dots one row under the robe bottom
             duel_fb_px(fb, cx - 3, robe_bot + 1, true);
             duel_fb_px(fb, cx, robe_bot + 1, true);
             duel_fb_px(fb, cx + 3, robe_bot + 1, true);
             break;
-        case 3: // hat pompom: 2 px above the apex (clear of the cast burst at y~50)
-            duel_fb_px(fb, cx, hat_apex_y - 2, true);
-            duel_fb_px(fb, cx, hat_apex_y - 1, true);
+        case 3: // pompom riding the bent tip
+            duel_fb_px(fb, cx + facing, brim_y - 5, true);
+            duel_fb_px(fb, cx + facing, brim_y - 6, true);
             break;
     }
 
     // Staff along the facing side, just outside the robe.
-    int sx = cx + facing * 6;
     if (!casting) {
-        // Resting: vertical staff with an orb finial near the top.
-        for (int y = 64 + yo + DUEL_ROOF_DY; y <= robe_bot; y++) duel_fb_px(fb, sx, y, true);
-        duel_fb_px(fb, sx, 62 + yo + DUEL_ROOF_DY, true);
-        duel_fb_px(fb, sx - facing, 63 + yo + DUEL_ROOF_DY, true);
+        // Resting: a 2-px staff planted by the feet with a plus-shaped orb
+        // finial (the launch column at battlefield u=0 leaves from its top).
+        int sx = cx + facing * 5;
+        for (int y = 44 + yo; y <= robe_bot; y++) {
+            duel_fb_px(fb, sx, y, true);
+            duel_fb_px(fb, sx + facing, y, true);
+        }
+        duel_fb_px(fb, sx + facing, 43 + yo, true);        // neck
+        duel_fb_px(fb, sx + facing, 42 + yo, true);
+        duel_fb_px(fb, sx, 41 + yo, true);                 // orb
+        duel_fb_px(fb, sx + facing, 41 + yo, true);
+        duel_fb_px(fb, sx + facing * 2, 41 + yo, true);
+        duel_fb_px(fb, sx + facing, 40 + yo, true);
     } else {
-        // Casting: staff raised toward the hat. The progressive scry.5 charge is
-        // drawn separately from authoritative wind-up state in wiz_draw_scene.
-        wiz_line(fb, cx + facing * 2, 68 + yo + DUEL_ROOF_DY, cx + facing * 5, 56 + yo + DUEL_ROOF_DY);
-        duel_fb_px(fb, cx + facing * 5, 55 + yo + DUEL_ROOF_DY, true); // staff-tip focus
+        // Casting: 2-px staff raised toward the gap; tip focus keeps the M6
+        // launch coordinates so departing carriers still leave from the orb.
+        // The progressive scry.5 charge is drawn separately from
+        // authoritative wind-up state in wiz_draw_scene.
+        wiz_line(fb, cx + facing * 2, 51 + yo, cx + facing * 5, 39 + yo);
+        wiz_line(fb, cx + facing * 2, 52 + yo, cx + facing * 5, 40 + yo);
+        duel_fb_px(fb, cx + facing * 5, 38 + yo, true); // staff-tip focus
+        duel_fb_px(fb, cx + facing * 6, 38 + yo, true);
     }
 }
 
@@ -780,14 +798,26 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
             break;
         }
         case ELEM_FROST: {
-            int radius = tier == SPELL_TIER_SHORT ? 1 : (tier >= SPELL_TIER_LONG ? 3 : 2);
-            for (int d = -radius; d <= radius; d++) {
-                duel_fb_px(fb, x + d, y, true);
-                duel_fb_px(fb, x, y + d, true);
+            // M15 weight pass: a solid 3x3 core so the flake registers at desk
+            // distance; cross arms and diagonal spikes keep the star identity.
+            if (tier == SPELL_TIER_SHORT) {
+                for (int d = -1; d <= 1; d++) {
+                    duel_fb_px(fb, x + d, y, true);
+                    duel_fb_px(fb, x, y + d, true);
+                }
+                duel_fb_px(fb, x - 1, y - 1, true); duel_fb_px(fb, x + 1, y - 1, true);
+                duel_fb_px(fb, x - 1, y + 1, true); duel_fb_px(fb, x + 1, y + 1, true);
+                break;
             }
-            int diag = tier >= SPELL_TIER_LONG ? 2 : 1;
-            duel_fb_px(fb, x - diag, y - diag, true); duel_fb_px(fb, x + diag, y - diag, true);
-            duel_fb_px(fb, x - diag, y + diag, true); duel_fb_px(fb, x + diag, y + diag, true);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++) duel_fb_px(fb, x + dx, y + dy, true);
+            int arm = tier >= SPELL_TIER_LONG ? 3 : 2;
+            for (int d = 2; d <= arm; d++) {
+                duel_fb_px(fb, x - d, y, true); duel_fb_px(fb, x + d, y, true);
+                duel_fb_px(fb, x, y - d, true); duel_fb_px(fb, x, y + d, true);
+            }
+            duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y - 2, true);
+            duel_fb_px(fb, x - 2, y + 2, true); duel_fb_px(fb, x + 2, y + 2, true);
             if (tier == SPELL_TIER_SATURATED) {
                 duel_fb_px(fb, x - 3, y - 3, true); duel_fb_px(fb, x + 3, y - 3, true);
                 duel_fb_px(fb, x - 3, y + 3, true); duel_fb_px(fb, x + 3, y + 3, true);
@@ -795,27 +825,54 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir) {
             break;
         }
         case ELEM_VOID: {
-            int rx = tier == SPELL_TIER_SHORT ? 1 : (tier >= SPELL_TIER_LONG ? 2 + (tier == SPELL_TIER_SATURATED) : 1);
-            int ry = tier >= SPELL_TIER_LONG ? 2 : 1;
-            for (int dx = -rx; dx <= rx; dx++) {
-                duel_fb_px(fb, x + dx, y - ry, true);
-                duel_fb_px(fb, x + dx, y + ry, true);
+            // M15 weight pass: a solid ring (donut) instead of a 1-px outline;
+            // the dark centre stays the void signature at every tier.
+            if (tier == SPELL_TIER_SHORT) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    duel_fb_px(fb, x + dx, y - 1, true);
+                    duel_fb_px(fb, x + dx, y + 1, true);
+                }
+                duel_fb_px(fb, x - 1, y, true); duel_fb_px(fb, x + 1, y, true);
+                duel_fb_px(fb, x, y - 1, false); // diamond-like, hollow core
+                break;
             }
-            for (int dy = -ry + 1; dy < ry; dy++) {
-                duel_fb_px(fb, x - rx, y + dy, true);
-                duel_fb_px(fb, x + rx, y + dy, true);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    duel_fb_px(fb, x + dx, y + dy, dx || dy);
+            if (tier == SPELL_TIER_MEDIUM) {
+                duel_fb_px(fb, x - 2, y, true); duel_fb_px(fb, x + 2, y, true);
+                duel_fb_px(fb, x, y - 2, true); duel_fb_px(fb, x, y + 2, true);
+            } else {
+                int rx = 2 + (tier == SPELL_TIER_SATURATED);
+                for (int dx = -rx; dx <= rx; dx++) {
+                    duel_fb_px(fb, x + dx, y - 2, true);
+                    duel_fb_px(fb, x + dx, y + 2, true);
+                }
+                duel_fb_px(fb, x - rx, y - 1, true); duel_fb_px(fb, x + rx, y - 1, true);
+                duel_fb_px(fb, x - rx, y, true);     duel_fb_px(fb, x + rx, y, true);
+                duel_fb_px(fb, x - rx, y + 1, true); duel_fb_px(fb, x + rx, y + 1, true);
             }
-            if (tier == SPELL_TIER_SHORT) duel_fb_px(fb, x, y - 1, false); // diamond-like, hollow core
             break;
         }
         case ELEM_EMBER: {
-            int core = tier >= SPELL_TIER_LONG ? 2 : 1;
-            for (int d = -core; d <= core; d++) {
-                duel_fb_px(fb, x + d, y, true);
-                duel_fb_px(fb, x, y + d, true);
+            // M15 weight pass: a solid teardrop head (back corners clipped so
+            // the mass points forward) with a 2-row flame tail near the head.
+            if (tier == SPELL_TIER_SHORT) {
+                for (int d = -1; d <= 1; d++) {
+                    duel_fb_px(fb, x + d, y, true);
+                    duel_fb_px(fb, x, y + d, true);
+                }
+                duel_fb_px(fb, x + 2 * back, y - 1, true);
+                break;
             }
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    if (!(dx == back && dy)) duel_fb_px(fb, x + dx, y + dy, true);
+            duel_fb_px(fb, x - 2 * back, y, true); // nose
             int tail = 2 + tier * 2;
             for (int d = 2; d <= tail; d++) duel_fb_px(fb, x + d * back, y - (d & 1), true);
+            duel_fb_px(fb, x + 2 * back, y, true);
+            duel_fb_px(fb, x + 3 * back, y, true);
             if (tier >= SPELL_TIER_LONG) {
                 duel_fb_px(fb, x + 2 * back, y + 2, true);
                 duel_fb_px(fb, x + 4 * back, y + 1, true);
@@ -1109,9 +1166,16 @@ void incantation_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell,
         spell_glyph(fb, x, y, spell->kind, travel_dir);
     }
 
+    // Fading trail (M15 weight pass): a solid 2-row stub hugs the head, then
+    // tempo-counted dots thin out behind it — the length grammar is unchanged.
     uint8_t trail = SPELL_DESC_TEMPO(spell->descriptor);
     int back = caster_side == SIM_SIDE_L ? -1 : 1;
-    for (uint8_t i = 0; i < trail; i++)
+    if (trail) {
+        duel_fb_px(fb, x + back * 2, y, true);
+        duel_fb_px(fb, x + back * 3, y, true);
+        duel_fb_px(fb, x + back * 3, y - 1, true);
+    }
+    for (uint8_t i = 1; i < trail; i++)
         duel_fb_px(fb, x + back * (3 + i * 2), y + (i & 1u), true);
     if (SPELL_DESC_PAYLOAD(spell->descriptor) == PAY_HEAL) {
         duel_fb_px(fb, x - 2, y - 2, true); duel_fb_px(fb, x + 2, y - 2, true);
@@ -1161,12 +1225,17 @@ static void draw_incantation_reaction(duel_fb_t *fb, uint8_t outcome, bool is_le
         wiz_line(fb, x - 2, y, x + 1, y);
         duel_fb_px(fb, x + 2, y - 1, true);
     } else if (outcome == FX_DETONATE) { /* roof explosion */
+        // M15 weight pass: one tier bigger — longer rays, a doubled base
+        // line, and a smoke puff above the burst crown.
         x = is_left ? 27 : 4; y = SPELL_Y_BASE + 14;
-        for (int d = 1; d <= 5; d++) {
+        for (int d = 1; d <= 6; d++) {
             duel_fb_px(fb, x - d, y - d, true); duel_fb_px(fb, x + d, y - d, true);
             duel_fb_px(fb, x - d, y + (d & 1), true); duel_fb_px(fb, x + d, y + (d & 1), true);
         }
-        wiz_line(fb, x - 6, y, x + 6, y);
+        wiz_line(fb, x - 7, y, x + 7, y);
+        wiz_line(fb, x - 4, y + 1, x + 4, y + 1);
+        duel_fb_px(fb, x - 1, y - 7, true); duel_fb_px(fb, x + 1, y - 7, true);
+        duel_fb_px(fb, x, y - 8, true);
     } else if (outcome == FX_RESIDUE) {
         duel_fb_px(fb, x - 2, y, true); duel_fb_px(fb, x + 2, y, true);
         duel_fb_px(fb, x, y - 2, true); duel_fb_px(fb, x, y + 2, true);
@@ -1229,19 +1298,36 @@ static void draw_ward(duel_fb_t *fb, int facing, int strength, int focus,
                   focus == 3 ? SPELL_Y_BASE - 7 : SPELL_Y_BASE;
     int reach = 3 + strength * 3;
     int y0 = focus_y - reach, y1 = focus_y + reach;
-    if (strength >= 4) { y0 = SPELL_Y_BASE - 18; y1 = SPELL_Y_BASE + 12; }
-    for (int t = 0; t < strength; t++) {
-        int x = ax + facing * t;
-        for (int y = y0 + t; y <= y1 - t; y++) {
-            int d = y - puncture_y;
-            if (d < 0) d = -d;
-            if (punctured && d <= 2) continue;
-            duel_fb_px(fb, x, y, true);
-        }
-        duel_fb_px(fb, x - facing, y0 - 2 + t, true);
-        duel_fb_px(fb, x - facing, y0 - 1 + t, true);
-        duel_fb_px(fb, x - facing, y1 + 1 - t, true);
-        duel_fb_px(fb, x - facing, y1 + 2 - t, true);
+    int cy = focus_y;
+    if (strength >= 4) {
+        y0 = SPELL_Y_BASE - 18; y1 = SPELL_Y_BASE + 12;
+        cy = (y0 + y1) / 2; reach = (y1 - y0) / 2;
+    }
+    // M15 weight pass: a continuous parabolic arc bulging toward the gap,
+    // 2-3 px thick by strength, replaces the M6 straight dotted bars. The
+    // strength/focus/puncture grammar is unchanged.
+    int bulge = 2 + (strength >= 2) + (strength >= 4); // 2..4
+    int thick = strength >= 3 ? 3 : 2;
+    for (int y = y0; y <= y1; y++) {
+        int dy = y - cy;
+        int off = bulge * (reach * reach - dy * dy) / (reach * reach);
+        int d = y - puncture_y;
+        if (d < 0) d = -d;
+        if (punctured && d <= 2) continue;
+        for (int t = 0; t < thick; t++)
+            duel_fb_px(fb, ax + facing * (off - t), y, true);
+    }
+    // Anchor flares at both ends and a focus notch at the apex row, marking
+    // the lane the ward is concentrated on.
+    duel_fb_px(fb, ax - facing, y0 - 1, true);
+    duel_fb_px(fb, ax - facing * 2, y0 - 2, true);
+    duel_fb_px(fb, ax - facing, y1 + 1, true);
+    duel_fb_px(fb, ax - facing * 2, y1 + 2, true);
+    int notch_d = focus_y - puncture_y;
+    if (notch_d < 0) notch_d = -notch_d;
+    if (!punctured || notch_d > 2) {
+        duel_fb_px(fb, ax + facing * (bulge + 1), focus_y - 1, true);
+        duel_fb_px(fb, ax + facing * (bulge + 1), focus_y, true);
     }
     if (punctured) {
         // Split lips and inward cracks make the VOID interaction read as an
@@ -1498,6 +1584,8 @@ static void draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
         // Force enters from the gap: contact burst, inward shock line,
         // local debris, recoil above, and a flashing marker at the pip that
         // just disappeared. Only the defender's border corners twitch.
+        // M15 weight pass: the flourish scales one presentation tier up.
+        if (tier < SPELL_TIER_SATURATED) tier++;
         int hx    = 16 + facing * 5;
         int reach = 2 + tier + (r->flash_frames >= 8);
         for (int d = 0; d <= reach; d++) duel_fb_px(fb, hx + facing * d, fy, true);
