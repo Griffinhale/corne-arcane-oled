@@ -39,11 +39,11 @@
 #define DUEL_STONE_Y0     112 /* stone-course bottom border rails */
 #define DUEL_STONE_Y1     116
 // Wizard tower shaft: half-width, outer side of each canvas, from the deck
-// up into a full architectural peak. Canonical (left) columns; the right
-// half mirrors. The deck wizard at cx=16 keeps its robe (reaching x12)
-// clear of the shaft's gap edge.
-#define DUEL_TOWER_X0      0
-#define DUEL_TOWER_X1     12  /* shaft edges at x1 and x11, flare to x0/x12 */
+// up into a full architectural peak. Canonical (left) columns, mirrored on
+// the right half: shaft edges at x1/x11, base flare to x0/x12 (the deck
+// wizard at cx=16 keeps its robe, reaching x12, clear of the flare). The
+// full footprint x0-12 is what full-width sky layers must skirt.
+#define DUEL_TOWER_W      13  /* footprint columns 0..12 from the outer edge */
 #define DUEL_TOWER_PEAK_Y 14  /* shaft top; the peak owns y0..13 */
 
 // Twin Cities rooftop relocation (M12), kept as the deck offset: the combat

@@ -138,7 +138,8 @@ civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligibl
 /* ----------------------------- rendering ----------------------------------
  * All local families draw entirely inside the floor band (y61-110). Shared
  * families straddle the desk gap (courier, floor band near the gap edge) or the
- * sky band (civic sky, y18-24, above the champion and below the alert region).
+ * open-sky corridor between the wizard towers (civic sky, y18-24, above the
+ * champion).
  * draw_rare_event runs first in wiz_draw_scene, so the combat / health / alert
  * layers paint over it and can never be occluded. QUIET mode drops the motion
  * accents, calming the event without removing its identity. */
@@ -243,19 +244,31 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor,
         incantation_civic_vline(fb, is_left, at.x - 1, at.y - 1, at.y);
     } else {
         /* Civic sky keeps its shared horizon while its ribbon adopts the active
-         * room's dispatch, chart, or blueprint cadence. */
+         * room's dispatch, chart, or blueprint cadence. The ribbon lives in the
+         * open-sky corridor between the two wizard towers (M15): every column
+         * inside a shaft footprint is skipped so the aurora reads as passing
+         * BEHIND the architecture, not slicing through its windows. */
         int base = 22;
+        int t0 = is_left ? 0 : DUEL_CANVAS_W - DUEL_TOWER_W; /* this half's tower */
+        int t1 = t0 + DUEL_TOWER_W - 1;
         for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            if (x >= t0 && x <= t1) continue;
             int dy = floor == DUEL_CIVIC_FLOOR_COMMONS ? ((x / 4) & 1) :
                      floor == DUEL_CIVIC_FLOOR_RESEARCH ? ((x / 3) & 1) : ((x / 2) & 1);
             duel_fb_px(fb, x, base - dy, true);
         }
         int streamers = phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE ? 3 :
                         phase == DUEL_CIVIC_EVENT_PHASE_COOLDOWN ? 0 : 1;
-        for (int i = 0; i < streamers; i++)
-            incantation_civic_vline(fb, is_left, (at.x + i * 7) & 31, base - 4, base - 1);
+        for (int i = 0; i < streamers; i++) {
+            int sx = (at.x + i * 7) & 31;
+            if (sx < DUEL_TOWER_W) continue; /* desk-authored: tower is x0..12 */
+            incantation_civic_vline(fb, is_left, sx, base - 4, base - 1);
+        }
         if (!quiet && phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE)
-            for (int x = floor; x < DUEL_CANVAS_W; x += 3) duel_fb_px(fb, x, base + 2, true);
+            for (int x = floor; x < DUEL_CANVAS_W; x += 3) {
+                if (x >= t0 && x <= t1) continue;
+                duel_fb_px(fb, x, base + 2, true);
+            }
     }
 }
 

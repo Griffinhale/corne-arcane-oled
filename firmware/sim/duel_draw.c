@@ -1199,6 +1199,13 @@ static void draw_incantation_status(duel_fb_t *fb, const duel_view_wizard_t *wz,
     int cx = 16 - facing * 5;
     int cy = 55 + DUEL_ROOF_DY;
     int phase = (int)(frame & 3u);
+    // The glyph anchor sits on the tower shaft's inner edge column (x11 on
+    // the left half, one px off it on the right), which would swallow most
+    // of its pixels asymmetrically. Clear a small backdrop first so the
+    // status reads identically over the wall on both halves.
+    for (int y = cy - 6; y <= cy + 2; y++)
+        for (int x = cx - 3; x <= cx + 3; x++)
+            duel_fb_px(fb, x, y, false);
     if (wz->status == STATUS_BURNING) {
         for (int i = 0; i < wz->status_intensity; i++) duel_fb_px(fb, cx + i - 1, cy - phase - i, true);
     } else if (wz->status == STATUS_FROZEN) {
@@ -1305,10 +1312,12 @@ static void draw_ward(duel_fb_t *fb, int facing, int strength, int focus,
     }
     // M15 weight pass: a continuous parabolic arc bulging toward the gap,
     // 2-3 px thick by strength, replaces the M6 straight dotted bars. The
-    // strength/focus/puncture grammar is unchanged.
+    // strength/focus/puncture grammar is unchanged. Low-focus arcs used to
+    // overhang into the room below the beam; now that the deck is explicit
+    // architecture, the ward terminates on it instead of piercing it.
     int bulge = 2 + (strength >= 2) + (strength >= 4); // 2..4
     int thick = strength >= 3 ? 3 : 2;
-    for (int y = y0; y <= y1; y++) {
+    for (int y = y0; y <= y1 && y < DUEL_DECK_Y0; y++) {
         int dy = y - cy;
         int off = bulge * (reach * reach - dy * dy) / (reach * reach);
         int d = y - puncture_y;
@@ -1318,11 +1327,12 @@ static void draw_ward(duel_fb_t *fb, int facing, int strength, int focus,
             duel_fb_px(fb, ax + facing * (off - t), y, true);
     }
     // Anchor flares at both ends and a focus notch at the apex row, marking
-    // the lane the ward is concentrated on.
+    // the lane the ward is concentrated on. A deck-clipped arc plants its
+    // lower end in the deck and needs no flare there.
     duel_fb_px(fb, ax - facing, y0 - 1, true);
     duel_fb_px(fb, ax - facing * 2, y0 - 2, true);
-    duel_fb_px(fb, ax - facing, y1 + 1, true);
-    duel_fb_px(fb, ax - facing * 2, y1 + 2, true);
+    if (y1 + 1 < DUEL_DECK_Y0) duel_fb_px(fb, ax - facing, y1 + 1, true);
+    if (y1 + 2 < DUEL_DECK_Y0) duel_fb_px(fb, ax - facing * 2, y1 + 2, true);
     int notch_d = focus_y - puncture_y;
     if (notch_d < 0) notch_d = -notch_d;
     if (!punctured || notch_d > 2) {
@@ -1433,8 +1443,9 @@ static void draw_alert_sigil(duel_fb_t *fb, const duel_render_t *r, bool is_left
 }
 
 /* current scry is additive architecture rather than a panel: lens and motes in the
- * sky, layer runes on the away tower edge, link runes at the gap, alert in its
- * established corner, and scene sigils embedded in the ceiling beam. */
+ * sky, layer runes on the away tower wall, link runes at the gap, the alert
+ * summary in the gap-side top strip (the former outer corner belongs to the
+ * tower peak now), and scene sigils embedded in the ceiling beam. */
 static void draw_overlay(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 #define SCRY_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     int facing = is_left ? 1 : -1;
@@ -1459,7 +1470,10 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     for (int i = 0; i < notif; i++)
         duel_fb_px(fb, ex + mote_xy[i][0] * facing, ey + mote_xy[i][1], true);
 
-    /* Four global layer runes climb the away-side wall. */
+    /* Four global layer runes climb the away-side tower wall. The inactive
+     * dash sits at x2-3: the shaft's always-lit edge column (x1) would
+     * swallow an x1 dot on both halves, and x4 lands on the shaft window's
+     * asymmetric lintel row (mirror-test contract). */
     uint8_t active = DUEL_RENDER_GLOBAL_LAYER(r->layer);
     for (int i = 0; i < 4; i++) {
         int y0 = 18 + i * 5;
@@ -1467,7 +1481,7 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
             for (int y = y0; y < y0 + 3; y++)
                 for (int x = 1; x <= 3; x++) duel_fb_px(fb, SCRY_X(x), y, true);
         } else {
-            duel_fb_px(fb, SCRY_X(1), y0 + 1, true);
+            duel_fb_px(fb, SCRY_X(2), y0 + 1, true);
             duel_fb_px(fb, SCRY_X(3), y0 + 1, true);
         }
     }
@@ -1495,6 +1509,12 @@ static void draw_overlay(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
     uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
     uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
     if (category && priority) {
+        /* Backdrop first: the celestial arc crosses this strip by day, and
+         * an instrument summary must stay legible over it (same discipline
+         * as the shaft banner's cleared field). */
+        for (int y = 0; y <= 14; y++)
+            for (int x = 22; x <= 30; x++)
+                duel_fb_px(fb, SCRY_X(x), y, false);
         draw_alert_bitmap(fb, category, is_left ? 24 : 7, 3, !is_left);
         for (int i = 0; i < priority; i++)
             duel_fb_px(fb, SCRY_X(23 + i * 3), 1, true);
@@ -1828,8 +1848,14 @@ void wiz_draw_scene(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_
     }
 
     if (r->flags & DUEL_RENDER_STALE) {
-        // Two separated chain links in the top corner nearest the gap.
+        // Two separated chain links in the top corner nearest the gap. The
+        // celestial arc (and, under scry, the relocated alert summary) can
+        // occupy these cells, so the link-loss indicator clears its field
+        // first — it must stay legible over everything.
         int bx = is_left ? 23 : 2;
+        for (int y = 1; y <= 9; y++)
+            for (int x = bx - 1; x <= bx + 7; x++)
+                duel_fb_px(fb, x, y, false);
         draw_box3(fb, bx, 2);
         draw_box3(fb, bx + 4, 6);
     }
