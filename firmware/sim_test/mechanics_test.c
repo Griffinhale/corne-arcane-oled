@@ -1984,6 +1984,53 @@ static void test_resident_geometry_and_object_separation(void) {
     CHECK(ok, "incantation_resident_5x14_core_bounds_negative_space_and_object_mass");
 }
 
+/* v12 wire-compression canary: the planned descriptor repack drops the
+ * interaction bits by substituting SOLID for COMBINE on the slave, which is
+ * sound only while no renderer path draws COMBINE differently (the sole
+ * non-authoritative interaction read is the INTERACT_PHASE portal). This
+ * pins that spike result: it fails the moment anyone adds a COMBINE visual. */
+static void test_render_interaction_combine_solid_parity(void) {
+    bool ok = true;
+    static const uint8_t progresses[] = {60u, 200u};
+    for (uint8_t elem = 0; elem < 4u; elem++)
+        for (uint8_t form = 0; form < 8u; form++) {
+            bool spell_drawn = false;
+            for (size_t p = 0; p < sizeof progresses; p++)
+                for (uint8_t caster = 0; caster < 2u; caster++) {
+                    sim_world_t w;
+                    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+                    install_spell(&w, caster,
+                        SPELL_DESC_PACK(form, elem, PAY_DAMAGE, TRAJ_MID, 2,
+                                        STATUS_NONE, INTERACT_COMBINE,
+                                        TEMPO_RAPID, TREND_STEADY, 0),
+                        progresses[p]);
+                    duel_render_t combine = {0};
+                    duel_render_from_world(&combine, &w);
+                    w.spell[caster].descriptor =
+                        SPELL_DESC_PACK(form, elem, PAY_DAMAGE, TRAJ_MID, 2,
+                                        STATUS_NONE, INTERACT_SOLID,
+                                        TEMPO_RAPID, TREND_STEADY, 0);
+                    duel_render_t solid = {0};
+                    duel_render_from_world(&solid, &w);
+                    w.spell[caster].active = 0;
+                    duel_render_t none = {0};
+                    duel_render_from_world(&none, &w);
+                    for (uint8_t half = 0; half < 2u; half++) {
+                        duel_fb_t fc, fs, fn;
+                        incantation_render(&fc, &combine, half == 0u, false);
+                        incantation_render(&fs, &solid, half == 0u, false);
+                        incantation_render(&fn, &none, half == 0u, false);
+                        EXPECT(memcmp(&fc, &fs, sizeof fc) == 0);
+                        spell_drawn |= memcmp(&fc, &fn, sizeof fc) != 0;
+                    }
+                }
+            /* Guard against a vacuous pass: every combo must actually put
+             * carrier pixels on at least one canvas. */
+            EXPECT(spell_drawn);
+        }
+    CHECK(ok, "incantation_render_combine_solid_parity_all_elements_forms");
+}
+
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
     int canonical_x = (hp_index & 1) ? 4 : 7;
     int px = is_left ? canonical_x : DUEL_CANVAS_W - 2 - canonical_x;
@@ -2862,6 +2909,7 @@ int main(void) {
     test_productive_clashes();
     test_incantation_link_ordering();
     test_render_purity();
+    test_render_interaction_combine_solid_parity();
     test_real_input_reachability_and_timing_buckets();
     test_prose_typing_ko_window();
     test_max_cast_aftermath_and_wire();
