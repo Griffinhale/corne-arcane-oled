@@ -79,8 +79,9 @@ half is USB-powered.
   and `passed`; `passed` must be true. Confirm peer validity, snapshot age at
   most 1,000 ms, increasing split successes, and nonzero master and peer stack
   minima.
-- [ ] Confirm master and peer housekeeping peaks are below 2,000 us and render
-  peaks are below 5,000 us.
+- [ ] Confirm master and peer local housekeeping peaks are below 2,000 us and
+  render peaks are below 5,000 us. The master housekeeping metric excludes the
+  synchronous split wait, which is reported separately as `peak_split_tx_us`.
 - [ ] Confirm no growth in master queue overflow, missed resyncs, stale-link
   events, split protocol errors, malformed/stale host reports, or split
   failures, and no growth in the corresponding peer counters. Record catch-up

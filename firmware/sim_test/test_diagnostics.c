@@ -13,6 +13,15 @@ static duel_host_diag_packet_t request_for(uint8_t page) {
     return request;
 }
 
+static void test_housekeeping_excludes_split_transport(void) {
+    bool ok = true;
+    EXPECT(duel_diag_housekeeping_work_us(4325u, 3240u) == 1085u);
+    EXPECT(duel_diag_housekeeping_work_us(999u, 0u) == 999u);
+    EXPECT(duel_diag_housekeeping_work_us(100u, 100u) == 0u);
+    EXPECT(duel_diag_housekeeping_work_us(100u, 101u) == 0u);
+    CHECK(ok, "diagnostic_housekeeping_excludes_split_transport_safely");
+}
+
 static void test_diagnostic_request_crc_and_reserved_bytes(void) {
     bool ok = true;
     duel_host_diag_packet_t request = request_for(0);
@@ -95,6 +104,7 @@ static void test_diagnostic_response_pages(void) {
 }
 
 void run_diagnostics_tests(void) {
+    test_housekeeping_excludes_split_transport();
     test_diagnostic_request_crc_and_reserved_bytes();
     test_diagnostic_response_pages();
 }

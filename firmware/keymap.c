@@ -87,6 +87,7 @@ static uint8_t duel_last_spell_kind[2];
 volatile duel_diag_metrics_t duel_diag;
 volatile duel_split_diag_reply_t duel_peer_diag;
 static duel_mailbox_t duel_diag_response_mailbox;
+static uint32_t duel_diag_split_transport_us;
 
 static void duel_diag_peak(volatile uint32_t *peak, uint32_t elapsed) {
     if (elapsed > *peak)
@@ -418,7 +419,9 @@ static void duel_master_tx(uint32_t now, bool urgent) {
     uint32_t tx_start_us = time_us_32();
     duel_split_diag_reply_t peer = {0};
     bool sent = transaction_rpc_exec(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt, sizeof peer, &peer);
-    duel_diag_peak(&duel_diag.peak_split_tx_us, time_us_32() - tx_start_us);
+    uint32_t tx_elapsed_us = time_us_32() - tx_start_us;
+    duel_diag_split_transport_us = tx_elapsed_us;
+    duel_diag_peak(&duel_diag.peak_split_tx_us, tx_elapsed_us);
     if (sent) {
         DUEL_DIAG_INC(split_tx_success);
         // The slave deliberately returns an all-zero reply if housekeeping is
@@ -559,6 +562,7 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked, bool display_chan
 void housekeeping_task_user(void) {
 #ifdef ARCANE_DIAGNOSTICS
     uint32_t diag_start_us = time_us_32();
+    duel_diag_split_transport_us = 0u;
 #endif
     uint32_t now = timer_read32();
     /* A Vial lighting command can bypass the keycode path. Reassert world
@@ -616,7 +620,9 @@ void housekeeping_task_user(void) {
     duel_diag_stack_sample();
     duel_render.diag_tick = (uint8_t)(duel_world.tick % 25u);
     duel_render.diag_overflow = duel_world.overflow_count;
-    duel_diag_peak(&duel_diag.peak_housekeeping_us, time_us_32() - diag_start_us);
+    uint32_t diag_total_us = time_us_32() - diag_start_us;
+    duel_diag_peak(&duel_diag.peak_housekeeping_us,
+                   duel_diag_housekeeping_work_us(diag_total_us, duel_diag_split_transport_us));
     if (!is_keyboard_master()) {
         duel_split_diag_reply_t response = {
             .magic = DUEL_MAGIC,

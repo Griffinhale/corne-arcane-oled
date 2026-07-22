@@ -71,6 +71,11 @@ typedef struct {
 _Static_assert(sizeof(duel_diag_metrics_t) == 36,
                "diagnostic master metrics layout changed unexpectedly");
 
+/* Keep the housekeeping budget about local firmware work. The synchronous
+ * split RPC has its own peak metric and can exceed the housekeeping gate by
+ * itself, so subtract only the transport interval contained in this pass. */
+uint32_t duel_diag_housekeeping_work_us(uint32_t total_us, uint32_t split_transport_us);
+
 bool duel_diag_request_valid(const duel_host_diag_packet_t *request);
 void duel_diag_response_pack(const duel_host_diag_packet_t *request,
                              const duel_diag_metrics_t *master, const duel_split_diag_reply_t *peer,

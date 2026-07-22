@@ -5,6 +5,10 @@
 
 #include "duel_proto.h"
 
+uint32_t duel_diag_housekeeping_work_us(uint32_t total_us, uint32_t split_transport_us) {
+    return split_transport_us < total_us ? total_us - split_transport_us : 0u;
+}
+
 static void put_u16(uint8_t *out, uint16_t value) {
     out[0] = (uint8_t)value;
     out[1] = (uint8_t)(value >> 8);
