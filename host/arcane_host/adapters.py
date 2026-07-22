@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import secrets
 import time
+from dataclasses import dataclass
 from typing import Callable
 
 from .dbus_contract import RepositoryState
@@ -168,9 +168,7 @@ class SemanticAdapters:
             RepositoryState.CLEAN: Priority.LOW,
             RepositoryState.DIRTY: Priority.NORMAL,
             RepositoryState.OPERATION: Priority.NORMAL,
-            RepositoryState.COMPLETION: (
-                Priority.NORMAL if success else Priority.CRITICAL
-            ),
+            RepositoryState.COMPLETION: (Priority.NORMAL if success else Priority.CRITICAL),
         }[state]
         changed = self.policy.inject(
             Category.TRANSFER,
@@ -180,9 +178,7 @@ class SemanticAdapters:
             key="repository-state",
             replacement=True,
         )
-        secondary_changed = self.resolver.update(
-            transfer_active=state == RepositoryState.OPERATION
-        )
+        secondary_changed = self.resolver.update(transfer_active=state == RepositoryState.OPERATION)
         if changed or secondary_changed:
             self._changed(changed)
         return changed

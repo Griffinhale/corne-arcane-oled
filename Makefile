@@ -1,4 +1,9 @@
-.PHONY: test mechanics-test visual-test noalloc-check release-build release-budget hygiene
+.PHONY: test mechanics-test visual-test noalloc-check release-build release-budget hygiene \
+	format format-check lint
+
+PYTHON_SOURCES := $(shell find host/arcane_host host/tests tools -type f -name '*.py' | sort)
+C_SOURCES := $(shell find firmware -type f \( -name '*.c' -o -name '*.h' \) \
+	! -name 'corne_arcane_layout.h' | sort)
 
 test: mechanics-test visual-test noalloc-check
 	cd host && ./run_tests.sh
@@ -20,3 +25,15 @@ release-budget:
 
 hygiene:
 	sh ./scripts/hygiene.sh
+
+format:
+	ruff check --fix $(PYTHON_SOURCES)
+	ruff format $(PYTHON_SOURCES)
+	clang-format -i $(C_SOURCES)
+
+format-check:
+	ruff check $(PYTHON_SOURCES)
+	ruff format --check $(PYTHON_SOURCES)
+	clang-format --dry-run --Werror $(C_SOURCES)
+
+lint: format-check

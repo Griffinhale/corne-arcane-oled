@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 from typing import Callable
 
 from .adapters import SemanticAdapters
@@ -45,7 +45,9 @@ class FocusService:
             OBJECT_PATH, info.interfaces[0], self._method_call, None, None
         )
 
-    def _method_call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
+    def _method_call(
+        self, connection, sender, path, interface, method, parameters, invocation
+    ) -> None:
         del connection, sender, path, interface
         if method == REPORT_ACTIVE_WINDOW:
             resource_class, desktop_file_name = parameters.unpack()
@@ -94,9 +96,7 @@ class EventService:
             self.changed()
         return changed
 
-    def inject_synthetic(
-        self, category: Category, priority: Priority, persistent: bool
-    ) -> bool:
+    def inject_synthetic(self, category: Category, priority: Priority, persistent: bool) -> bool:
         changed = self.policy.inject(category, priority, persistent, self.clock())
         if changed:
             self.changed()
@@ -109,7 +109,9 @@ class EventService:
         self.policy.clear()
         self.changed()
 
-    def _method_call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
+    def _method_call(
+        self, connection, sender, path, interface, method, parameters, invocation
+    ) -> None:
         del connection, sender, path, interface
         if method == REPORT_TERMINAL_COMPLETION:
             self.report_terminal_completion(*parameters.unpack())

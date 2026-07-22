@@ -5,10 +5,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-from pathlib import Path
 import secrets
 import sys
 import time
+from pathlib import Path
 from typing import Callable
 
 from .adapters import SemanticAdapters
@@ -20,7 +20,7 @@ from .focus import FocusArbiter
 from .heartbeat import DryRunTransport, HidHeartbeat, HidTransport
 from .hidraw import Device, choose_device
 from .policy import NotificationPolicy
-from .protocol import Category, EMPTY_SUMMARY, NotificationSummary, Priority, Scene
+from .protocol import EMPTY_SUMMARY, Category, NotificationSummary, Priority, Scene
 from .runtime import DaemonRuntime
 from .semantic import SemanticResolver
 
@@ -49,8 +49,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("CORNE_ARCANE_POMODORO_UNIT"),
         help="optional systemd user timer unit to treat as a Pomodoro source",
     )
-    parser.add_argument("--once", action="store_true", help="send one heartbeat after HELLO and exit")
-    parser.add_argument("--dry-run", action="store_true", help="print reports instead of opening hidraw")
+    parser.add_argument(
+        "--once", action="store_true", help="send one heartbeat after HELLO and exit"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="print reports instead of opening hidraw"
+    )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--session", type=lambda value: int(value, 0), help=argparse.SUPPRESS)
     parser.add_argument("--kwin-script", type=Path, help=argparse.SUPPRESS)
@@ -96,6 +100,7 @@ def run(args: argparse.Namespace) -> int:
     if args.dry_run:
         device_factory: Callable[[], HidTransport] = DryRunTransport
     else:
+
         def device_factory() -> HidTransport:
             return Device(choose_device(args.device))
 
@@ -183,9 +188,7 @@ def run(args: argparse.Namespace) -> int:
                 flush=True,
             )
 
-    runtime.own(
-        DBusAdapterHub(Gio, connection, system_connection, adapters, args.pomodoro_unit)
-    )
+    runtime.own(DBusAdapterHub(Gio, connection, system_connection, adapters, args.pomodoro_unit))
 
     def name_acquired(bus_connection, name) -> None:
         del name

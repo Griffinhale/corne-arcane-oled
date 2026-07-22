@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from arcane_host.hidraw import Device, QMK_RAW_USAGE, discover
+from arcane_host.hidraw import QMK_RAW_USAGE, Device, discover
 
 
 class DiscoveryTests(unittest.TestCase):

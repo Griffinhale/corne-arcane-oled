@@ -46,16 +46,15 @@ typedef struct {
 } duel_mailbox_t;
 
 void duel_mailbox_publish(duel_mailbox_t *mailbox, const void *source, size_t size);
-bool duel_mailbox_consume(const duel_mailbox_t *mailbox, uint8_t *seen_version,
-                          void *destination, size_t size);
-bool duel_mailbox_read_latest(const duel_mailbox_t *mailbox, void *destination,
-                              size_t size);
+bool duel_mailbox_consume(const duel_mailbox_t *mailbox, uint8_t *seen_version, void *destination,
+                          size_t size);
+bool duel_mailbox_read_latest(const duel_mailbox_t *mailbox, void *destination, size_t size);
 
 #define DUEL_ACTIVE_TX_MS 80u
 #ifdef ARCANE_FIXED_SPLIT_CADENCE
-#    define DUEL_REPAIR_TX_MS DUEL_ACTIVE_TX_MS
+#define DUEL_REPAIR_TX_MS DUEL_ACTIVE_TX_MS
 #else
-#    define DUEL_REPAIR_TX_MS 250u
+#define DUEL_REPAIR_TX_MS 250u
 #endif
 
 typedef struct {
@@ -66,8 +65,8 @@ typedef struct {
 
 /* Each call is one attempted send and consumes a sequence number. False means
  * the caller must skip packet encoding, CRC, and transport entirely. */
-bool duel_tx_attempt(duel_tx_policy_t *policy, uint32_t now_ms, bool urgent,
-                     bool fx_changed, bool semantic_changed);
+bool duel_tx_attempt(duel_tx_policy_t *policy, uint32_t now_ms, bool urgent, bool fx_changed,
+                     bool semantic_changed);
 void duel_tx_commit(duel_tx_policy_t *policy, uint32_t started_ms);
 bool duel_tx_repair_due(const duel_tx_policy_t *policy, uint32_t now_ms);
 
@@ -82,8 +81,8 @@ typedef struct {
     bool active;
 } duel_floor_policy_t;
 
-bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic,
-                            uint32_t now_ms, duel_display_phase_t display_phase);
+bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic, uint32_t now_ms,
+                            duel_display_phase_t display_phase);
 uint8_t duel_floor_presentation(duel_floor_policy_t *policy, uint32_t now_ms);
 
 typedef struct {
@@ -94,24 +93,22 @@ typedef struct {
     uint16_t duration_ms;
 } duel_flash_policy_t;
 
-bool duel_flash_note(duel_flash_policy_t *policy, uint8_t fx_seq, uint8_t kind,
-                     uint8_t spell_kind, uint32_t now_ms);
+bool duel_flash_note(duel_flash_policy_t *policy, uint8_t fx_seq, uint8_t kind, uint8_t spell_kind,
+                     uint32_t now_ms);
 uint8_t duel_flash_remaining(const duel_flash_policy_t *policy, uint32_t now_ms);
 
 /* One render-side observation pass: caches the last visible style per spell
  * slot, then arms a flash deadline for a new one-shot outcome, scaling it
  * from the DEFENDER's cached spell style. Returns true when a new flash was
  * armed. */
-bool duel_flash_observe_view(duel_flash_policy_t *policy,
-                             uint8_t last_spell_kind[2],
+bool duel_flash_observe_view(duel_flash_policy_t *policy, uint8_t last_spell_kind[2],
                              const duel_view_t *view, uint32_t now_ms);
 
 /* Wake grace: a local keypress holds the panel awake (and vetoes following
  * the master into DIM/SLEEP) for this long. */
 #define DUEL_WAKE_GRACE_MS 120u
 bool duel_wake_grace_active(uint32_t *wake_until_ms, uint32_t now_ms);
-bool duel_display_should_follow(uint8_t remote_phase, uint32_t *wake_until_ms,
-                                uint32_t now_ms);
+bool duel_display_should_follow(uint8_t remote_phase, uint32_t *wake_until_ms, uint32_t now_ms);
 
 enum {
     DUEL_SKY_DAWN = 0,
@@ -139,8 +136,7 @@ typedef struct {
 } duel_diplomacy_t;
 
 void duel_diplomacy_init(duel_diplomacy_t *state);
-bool duel_diplomacy_update(duel_diplomacy_t *state, uint8_t left_life,
-                           uint8_t right_life);
+bool duel_diplomacy_update(duel_diplomacy_t *state, uint8_t left_life, uint8_t right_life);
 uint8_t duel_diplomacy_target(const duel_diplomacy_t *state);
 
 /* ---- master-derived shared civic presentation ----------------------------
@@ -162,8 +158,7 @@ typedef struct {
 
 duel_civic_shared_t duel_civic_shared_derive(uint8_t session, uint32_t now_ms,
                                              const duel_host_state_t *host,
-                                             const sim_world_t *world,
-                                             int8_t diplomacy_balance);
+                                             const sim_world_t *world, int8_t diplomacy_balance);
 
 /* ---- slave presenter ------------------------------------------------------
  * The remote-vs-local-fallback decision for the slave half: render the last
@@ -183,8 +178,6 @@ typedef struct {
     bool set_stale;       /* local path: mark the render stale */
 } duel_slave_decision_t;
 
-duel_slave_decision_t duel_slave_present(duel_slave_presenter_t *presenter,
-                                         bool accepted, bool have_any,
-                                         bool stale, bool ticked,
-                                         bool render_invalid,
-                                         bool render_stale_flag);
+duel_slave_decision_t duel_slave_present(duel_slave_presenter_t *presenter, bool accepted,
+                                         bool have_any, bool stale, bool ticked,
+                                         bool render_invalid, bool render_stale_flag);

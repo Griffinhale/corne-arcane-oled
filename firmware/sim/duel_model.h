@@ -29,9 +29,9 @@
  * remains queue metadata rather than consuming an event slot. */
 enum { SIM_EV_KEYDOWN = 1, SIM_EV_KEYUP = 2 };
 typedef uint8_t sim_event_t;
-#define SIM_EV_PACK(kind, side, row, col) \
-    ((sim_event_t)(((col) & 0x07u) | (((row) & 0x03u) << 3) | \
-                   (((side) & 0x01u) << 5) | (((kind) == SIM_EV_KEYDOWN) ? 0x40u : 0u)))
+#define SIM_EV_PACK(kind, side, row, col)                                                          \
+    ((sim_event_t)(((col) & 0x07u) | (((row) & 0x03u) << 3) | (((side) & 0x01u) << 5) |            \
+                   (((kind) == SIM_EV_KEYDOWN) ? 0x40u : 0u)))
 #define SIM_EV_KIND(event) (((event) & 0x40u) ? SIM_EV_KEYDOWN : SIM_EV_KEYUP)
 #define SIM_EV_SIDE(event) (((event) >> 5) & 0x01u)
 #define SIM_EV_ROW(event)  (((event) >> 3) & 0x03u)
@@ -54,7 +54,7 @@ typedef struct {
     /* Physical, privacy-preserving projection. Bits are row * 6 + column;
        no keycodes or emitted characters enter the simulation. */
     uint32_t held_pos[2];
-    uint8_t  layer[2];
+    uint8_t layer[2];
 } sim_inputs_t;
 
 /* ---- bounded event queue ------------------------------------------------
@@ -64,16 +64,16 @@ typedef struct {
 #define SIM_EVQ_CAP 16
 typedef struct {
     sim_event_t ev[SIM_EVQ_CAP];
-    uint8_t     n;
-    uint8_t     dropped; /* since last drain, saturating */
+    uint8_t n;
+    uint8_t dropped; /* since last drain, saturating */
 } sim_evq_t;
 
 /* ---- world state -------------------------------------------------------- */
 enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
-#define SIM_CAST_TICKS   12 /* tap pose stays raised through the 10-tick wind-up */
+#define SIM_CAST_TICKS    12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#define SIM_MAX_HP 8 /* M15 Track T retune: 12 -> 8 so KOs occur in ordinary typing days */
+#define SIM_MAX_HP        8 /* M15 Track T retune: 12 -> 8 so KOs occur in ordinary typing days */
 
 /* ---- combat (M4) ---------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
@@ -96,18 +96,22 @@ enum { MOD_NONE = 0, MOD_SWIFT = 1, MOD_HEAVY = 2 };
 enum { PAY_IMPACT = 0 };
 enum { SPELL_TIER_SHORT = 0, SPELL_TIER_MEDIUM = 1, SPELL_TIER_LONG = 2, SPELL_TIER_SATURATED = 3 };
 // kind byte: bits0-1 element, bits2-3 modifier, bits4-5 payload, bits6-7 presentation tier
-#define DUEL_KIND_PACK(elem, mod, pay) ((uint8_t)(((elem)&3) | (((mod)&3)<<2) | (((pay)&3)<<4)))
-#define DUEL_KIND_ELEMENT(k)  ((k) & 3)
-#define DUEL_KIND_MODIFIER(k) (((k) >> 2) & 3)
-#define DUEL_KIND_TIER(k)     (((k) >> 6) & 3)
+#define DUEL_KIND_PACK(elem, mod, pay)                                                             \
+    ((uint8_t)(((elem) & 3) | (((mod) & 3) << 2) | (((pay) & 3) << 4)))
+#define DUEL_KIND_ELEMENT(k)         ((k) & 3)
+#define DUEL_KIND_MODIFIER(k)        (((k) >> 2) & 3)
+#define DUEL_KIND_TIER(k)            (((k) >> 6) & 3)
 #define DUEL_KIND_WITH_TIER(k, tier) ((uint8_t)(((k) & 0x3F) | (((tier) & 3) << 6)))
-#define RECIPE_EXPIRE_TICKS 25   /* ~1s of inactivity closes an open recipe */
-#define RECIPE_N_MAX        15   /* recipe_n saturates here */
+#define RECIPE_EXPIRE_TICKS          25 /* ~1s of inactivity closes an open recipe */
+#define RECIPE_N_MAX                 15 /* recipe_n saturates here */
 
 static inline uint8_t duel_recipe_tier(uint8_t ingredient_count) {
-    if (ingredient_count <= 2) return SPELL_TIER_SHORT;
-    if (ingredient_count <= 4) return SPELL_TIER_MEDIUM;
-    if (ingredient_count <= 8) return SPELL_TIER_LONG;
+    if (ingredient_count <= 2)
+        return SPELL_TIER_SHORT;
+    if (ingredient_count <= 4)
+        return SPELL_TIER_MEDIUM;
+    if (ingredient_count <= 8)
+        return SPELL_TIER_LONG;
     return SPELL_TIER_SATURATED;
 }
 
@@ -116,13 +120,13 @@ static inline uint8_t duel_recipe_tier(uint8_t ingredient_count) {
  * REPLACE arc on fixed timers, then returns ACTIVE at full hp with the next
  * cosmetic roster variant. Only the authoritative sim advances the arc. */
 enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE_REPLACE = 4 };
-#define SIM_COLLAPSE_TICKS 12  /* ~0.48 s keel-over */
-#define SIM_DOWNED_TICKS   25  /* ~1 s protected on the ground */
-#define SIM_MEDIC_TICKS    25  /* ~1 s medic drags the body off */
-#define SIM_REPLACE_TICKS  20  /* ~0.8 s replacement walks in */
+#define SIM_COLLAPSE_TICKS 12 /* ~0.48 s keel-over */
+#define SIM_DOWNED_TICKS   25 /* ~1 s protected on the ground */
+#define SIM_MEDIC_TICKS    25 /* ~1 s medic drags the body off */
+#define SIM_REPLACE_TICKS  20 /* ~0.8 s replacement walks in */
 /* total downtime 82 ticks = 3.28 s at 25 Hz — no dead ends: no input needed to progress */
 #define SIM_REGEN_TICKS 500 /* exactly 20 s per regained pip below max (M15 Track T) */
-#define SIM_ROSTER_N    4      /* cosmetic roster variants cycled per replacement */
+#define SIM_ROSTER_N    4   /* cosmetic roster variants cycled per replacement */
 
 /* ---- non-casting stances & temperament (M15 Track B) ---------------------
  * `stance` is a sub-state of LIFE_ACTIVE: entry is evaluated by rule after
@@ -133,58 +137,100 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
  * the renderer derives them locally from NONE + idle + seed.
  * `temper` (0..7, starts SIM_TEMPER_NEUTRAL) drifts at resolve time: damage
  * taken +1, own spell stopped -1, KO one step back toward neutral. */
-enum { DUEL_STANCE_NONE = 0, DUEL_STANCE_MEDITATE, DUEL_STANCE_STUDY,
-       DUEL_STANCE_FORTIFY };
+enum { DUEL_STANCE_NONE = 0, DUEL_STANCE_MEDITATE, DUEL_STANCE_STUDY, DUEL_STANCE_FORTIFY };
 #define SIM_STANCE_ENTRY_TICKS        75 /* 3 s of INC_IDLE before a stance opens */
 #define SIM_STANCE_FORTIFY_HOLD_TICKS 50 /* held FORTIFY grants its ward pip once */
 #define SIM_TEMPER_NEUTRAL            4
 
 // fx kinds; the side names the DEFENDER (whose screen takes the hit/flash).
 // FIZZLE = a spell dissipating at a downed wizard's doorstep.
-enum { FX_NONE = 0, FX_IMPACT_L = 1, FX_IMPACT_R = 2,
-       FX_DEFLECT_L = 3, FX_DEFLECT_R = 4, FX_FIZZLE_L = 5,
-       FX_FIZZLE_R = 6 };
+enum {
+    FX_NONE = 0,
+    FX_IMPACT_L = 1,
+    FX_IMPACT_R = 2,
+    FX_DEFLECT_L = 3,
+    FX_DEFLECT_R = 4,
+    FX_FIZZLE_L = 5,
+    FX_FIZZLE_R = 6
+};
 
 /* current 24-bit compiled descriptor. The high byte must always remain zero. */
-enum { SPELL_PROJECTILE = 0, SPELL_SINGULARITY = 1, SPELL_FIREBALL = 2,
-       SPELL_BEAM = 3, SPELL_SWARM = 4, SPELL_GROUND_WAVE = 5,
-       SPELL_CHAIN = 6, SPELL_CONJURE = 7 };
+enum {
+    SPELL_PROJECTILE = 0,
+    SPELL_SINGULARITY = 1,
+    SPELL_FIREBALL = 2,
+    SPELL_BEAM = 3,
+    SPELL_SWARM = 4,
+    SPELL_GROUND_WAVE = 5,
+    SPELL_CHAIN = 6,
+    SPELL_CONJURE = 7
+};
 enum { PAY_DAMAGE = 0, PAY_HEAL = 1, PAY_STATUS = 2, PAY_HYBRID = 3 };
-enum { TRAJ_GROUND = 0, TRAJ_LOW = 1, TRAJ_MID = 2, TRAJ_HIGH = 3,
-       TRAJ_ROOF = 4, TRAJ_RETURNING = 5, TRAJ_AREA = 6, TRAJ_HOMING = 7 };
-enum { STATUS_NONE = 0, STATUS_BURNING = 1, STATUS_FROZEN = 2,
-       STATUS_DISRUPTED = 3, STATUS_MARKED = 4 };
-enum { INTERACT_SOLID = 0, INTERACT_PHASE = 1, INTERACT_ABSORB = 2,
-       INTERACT_COMBINE = 3 };
-enum { TEMPO_DELIBERATE = 0, TEMPO_FLOWING = 1, TEMPO_RAPID = 2,
-       TEMPO_FRANTIC = 3 };
-enum { TREND_DECELERATING = 0, TREND_STEADY = 1, TREND_ACCELERATING = 2,
-       TREND_IRREGULAR = 3 };
+enum {
+    TRAJ_GROUND = 0,
+    TRAJ_LOW = 1,
+    TRAJ_MID = 2,
+    TRAJ_HIGH = 3,
+    TRAJ_ROOF = 4,
+    TRAJ_RETURNING = 5,
+    TRAJ_AREA = 6,
+    TRAJ_HOMING = 7
+};
+enum {
+    STATUS_NONE = 0,
+    STATUS_BURNING = 1,
+    STATUS_FROZEN = 2,
+    STATUS_DISRUPTED = 3,
+    STATUS_MARKED = 4
+};
+enum { INTERACT_SOLID = 0, INTERACT_PHASE = 1, INTERACT_ABSORB = 2, INTERACT_COMBINE = 3 };
+enum { TEMPO_DELIBERATE = 0, TEMPO_FLOWING = 1, TEMPO_RAPID = 2, TEMPO_FRANTIC = 3 };
+enum { TREND_DECELERATING = 0, TREND_STEADY = 1, TREND_ACCELERATING = 2, TREND_IRREGULAR = 3 };
 
 /* current one-shot outcomes retain the legacy 0..6 values above. Values 7..15
  * are deliberately side-neutral aftermaths except for the two ward-shatter
  * outcomes, whose side must be explicit for the local fracture animation. */
-enum { FX_HEAL_L = 7, FX_HEAL_R = 8, FX_COMPLAINT = 9,
-       FX_DETONATE = 10, FX_RESIDUE = 11, FX_COMBINE = 12,
-       FX_COLLAPSE = 13, FX_WARD_SHATTER_L = 14, FX_WARD_SHATTER_R = 15 };
+enum {
+    FX_HEAL_L = 7,
+    FX_HEAL_R = 8,
+    FX_COMPLAINT = 9,
+    FX_DETONATE = 10,
+    FX_RESIDUE = 11,
+    FX_COMBINE = 12,
+    FX_COLLAPSE = 13,
+    FX_WARD_SHATTER_L = 14,
+    FX_WARD_SHATTER_R = 15
+};
 
 /* Bounded authoritative civic aftermath. The renderer derives movement,
  * task hats, room dressing, and phase from these fields; no actor list or
  * allocation is required. */
-enum { AFTER_NONE = 0, AFTER_CHEER = 1, AFTER_COMPLAINT = 2,
-       AFTER_PANIC = 3, AFTER_FIRE = 4, AFTER_INSPECT = 5,
-       AFTER_REPAIR = 6, AFTER_MAX_CAST = 7 };
-enum { RESIDENT_NORMAL = 0, RESIDENT_CHEER = 1, RESIDENT_COMPLAIN = 2,
-       RESIDENT_PANIC = 3, RESIDENT_FIGHT_FIRE = 4,
-       RESIDENT_INSPECT = 5, RESIDENT_REPAIR = 6,
-       RESIDENT_WATCH_CAST = 7, RESIDENT_DIPLO_PROUD = 8,
-       RESIDENT_DIPLO_RECEIVING = 9, RESIDENT_DIPLO_NEUTRAL = 10 };
-enum { ROOM_CALM = 0, ROOM_ALERT = 1, ROOM_DISRUPTED = 2,
-       ROOM_RECOVERY = 3 };
-enum { OBJECT_NONE = 0, OBJECT_FIRE = 1, OBJECT_RESIDUE = 2,
-       OBJECT_DAMAGED = 4 };
-enum { WORLD_CALM = 0, WORLD_WONDER = 1, WORLD_CRISIS = 2,
-       WORLD_RECOVERY = 3 };
+enum {
+    AFTER_NONE = 0,
+    AFTER_CHEER = 1,
+    AFTER_COMPLAINT = 2,
+    AFTER_PANIC = 3,
+    AFTER_FIRE = 4,
+    AFTER_INSPECT = 5,
+    AFTER_REPAIR = 6,
+    AFTER_MAX_CAST = 7
+};
+enum {
+    RESIDENT_NORMAL = 0,
+    RESIDENT_CHEER = 1,
+    RESIDENT_COMPLAIN = 2,
+    RESIDENT_PANIC = 3,
+    RESIDENT_FIGHT_FIRE = 4,
+    RESIDENT_INSPECT = 5,
+    RESIDENT_REPAIR = 6,
+    RESIDENT_WATCH_CAST = 7,
+    RESIDENT_DIPLO_PROUD = 8,
+    RESIDENT_DIPLO_RECEIVING = 9,
+    RESIDENT_DIPLO_NEUTRAL = 10
+};
+enum { ROOM_CALM = 0, ROOM_ALERT = 1, ROOM_DISRUPTED = 2, ROOM_RECOVERY = 3 };
+enum { OBJECT_NONE = 0, OBJECT_FIRE = 1, OBJECT_RESIDUE = 2, OBJECT_DAMAGED = 4 };
+enum { WORLD_CALM = 0, WORLD_WONDER = 1, WORLD_CRISIS = 2, WORLD_RECOVERY = 3 };
 
 /* Authoritative aftermath durations per kind, in ticks. Phases are elapsed
  * quarters of the kind's duration; tests derive their waits from these
@@ -226,8 +272,8 @@ typedef struct {
     uint8_t layer_transitions;
     uint8_t overlap_peak;
     uint8_t rhythm_changes;
-    int8_t  column_drift;
-    int8_t  last_direction;
+    int8_t column_drift;
+    int8_t last_direction;
     uint8_t gap_count;
     uint8_t newest_rank;
     uint8_t last_gap_bucket;
@@ -240,41 +286,41 @@ typedef struct {
     uint8_t shield_ticks;  /* decays per tick */
     uint8_t cast_cooldown; /* ticks until the next cast may start */
     uint8_t cast_windup;   /* rising edge -> spawn countdown */
-    uint8_t  life;          /* LIFE_*; only the authoritative sim transitions it */
-    uint8_t  life_ticks;    /* ticks remaining in the current non-ACTIVE phase */
-    uint8_t  variant;       /* roster cosmetic 0..SIM_ROSTER_N-1; ++ on entering REPLACE */
-    uint8_t  recipe_hist;   /* last-4 row classes, 2 bits each, newest in bits0-1; the
-                               modifier reads its repetition/alternation pattern */
-    uint8_t  recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
-    uint8_t  cast_tier;     /* scry.5 capped presentation tier while charging */
-    uint8_t  recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
-    uint8_t  temper;        /* 0..7 temperament, starts SIM_TEMPER_NEUTRAL (Track B) */
-    uint16_t regen_ticks;   /* countdown to next regen pip; local, never in snapshots */
+    uint8_t life;          /* LIFE_*; only the authoritative sim transitions it */
+    uint8_t life_ticks;    /* ticks remaining in the current non-ACTIVE phase */
+    uint8_t variant;       /* roster cosmetic 0..SIM_ROSTER_N-1; ++ on entering REPLACE */
+    uint8_t recipe_hist;   /* last-4 row classes, 2 bits each, newest in bits0-1; the
+                              modifier reads its repetition/alternation pattern */
+    uint8_t recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
+    uint8_t cast_tier;     /* scry.5 capped presentation tier while charging */
+    uint8_t recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
+    uint8_t temper;        /* 0..7 temperament, starts SIM_TEMPER_NEUTRAL (Track B) */
+    uint16_t regen_ticks;  /* countdown to next regen pip; local, never in snapshots */
     sim_incantation_t inc;
     uint32_t pending_desc;
     uint32_t prepared_desc;
     uint32_t prev_held;
-    uint8_t  inc_state;
-    uint8_t  ward_strength;
-    uint8_t  ward_capacity;
-    uint8_t  ward_focus;
-    uint8_t  windup_total;
-    uint8_t  prepared;
-    uint8_t  rearm_lock;
-    uint8_t  status;
-    uint8_t  status_intensity;
-    uint8_t  status_ticks;
-    uint8_t  status_burned;
-    uint8_t  stance;        /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE (Track B) */
-    uint8_t  stance_ticks;  /* idle ticks toward entry, then held ticks in-stance */
-    uint8_t  studied;       /* STUDY buff pending; consumed by the next inc_commit */
-    uint8_t  _pad[2];       /* explicit padding: keeps world hashing deterministic */
+    uint8_t inc_state;
+    uint8_t ward_strength;
+    uint8_t ward_capacity;
+    uint8_t ward_focus;
+    uint8_t windup_total;
+    uint8_t prepared;
+    uint8_t rearm_lock;
+    uint8_t status;
+    uint8_t status_intensity;
+    uint8_t status_ticks;
+    uint8_t status_burned;
+    uint8_t stance;       /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE (Track B) */
+    uint8_t stance_ticks; /* idle ticks toward entry, then held ticks in-stance */
+    uint8_t studied;      /* STUDY buff pending; consumed by the next inc_commit */
+    uint8_t _pad[2];      /* explicit padding: keeps world hashing deterministic */
 } sim_wizard_t;
 
 typedef struct {
     uint8_t active; /* 0/1 — one slot per wizard */
     uint8_t pos;    /* battlefield u: 0 = left wizard, 255 = right wizard */
-    int8_t  dir;    /* units per tick, + toward the right */
+    int8_t dir;     /* units per tick, + toward the right */
     uint8_t kind;   /* DUEL_KIND_PACK element/modifier/payload */
     uint32_t descriptor;
     uint8_t progress;
@@ -298,8 +344,13 @@ typedef struct {
  * SIM_RESIDUE_DECAY_PRESCALE-tick units so a u8 spans the ~45 s per
  * intensity step. Deposits and reactions run only behind the authoritative
  * gate (residue_step, between collision_step and spell_step). */
-enum { SIM_RESIDUE_DOORSTEP_L = 0, SIM_RESIDUE_MID_L, SIM_RESIDUE_MID_R,
-       SIM_RESIDUE_DOORSTEP_R, SIM_RESIDUE_ZONES };
+enum {
+    SIM_RESIDUE_DOORSTEP_L = 0,
+    SIM_RESIDUE_MID_L,
+    SIM_RESIDUE_MID_R,
+    SIM_RESIDUE_DOORSTEP_R,
+    SIM_RESIDUE_ZONES
+};
 #define SIM_RESIDUE_DECAY_PRESCALE 5u   /* decay counts once per 5 ticks */
 #define SIM_RESIDUE_DECAY_UNITS    225u /* x prescale = 1125 ticks = 45 s per step */
 #define SIM_RESIDUE_MAX_INTENSITY  3u
@@ -330,8 +381,14 @@ typedef struct {
  *              latched until a full release so it cannot flicker open
  * A release from ACTIVE/SELECT simply closes the overlay; the underlying
  * scene is never disturbed. */
-enum { SCRY_IDLE = 0, SCRY_FIRST_HELD = 1, SCRY_PENDING = 2,
-       SCRY_ACTIVE = 3, SCRY_SELECT = 4, SCRY_CANCELLED = 5 };
+enum {
+    SCRY_IDLE = 0,
+    SCRY_FIRST_HELD = 1,
+    SCRY_PENDING = 2,
+    SCRY_ACTIVE = 3,
+    SCRY_SELECT = 4,
+    SCRY_CANCELLED = 5
+};
 #define SCRY_PENDING_TICKS 10 /* ~0.4 s deliberate still-hold before the overlay opens */
 #define SCRY_SCENES        3  /* concise panels the selector cycles */
 
@@ -343,20 +400,20 @@ typedef struct {
 } sim_scry_t;
 
 typedef struct {
-    uint32_t     tick;
-    uint8_t      flags;          /* SIMF_* */
-    uint8_t      prev_down_mask; /* for rising-edge cast detection */
+    uint32_t tick;
+    uint8_t flags;          /* SIMF_* */
+    uint8_t prev_down_mask; /* for rising-edge cast detection */
     sim_wizard_t wiz[2];
-    sim_spell_t  spell[2];
-    uint8_t      fx_seq;         /* increments once per one-shot outcome (M4) */
-    uint8_t      fx_kind;        /* FX_*: none/impact/deflect/fizzle, L/R per defender */
-    uint16_t     overflow_count; /* lifetime dropped events, saturating */
-    uint16_t     _pad;           /* explicit padding: keeps world hashing deterministic */
-    sim_scry_t   scry;           /* scry layer-key overlay chord machine (authoritative-only) */
+    sim_spell_t spell[2];
+    uint8_t fx_seq;          /* increments once per one-shot outcome (M4) */
+    uint8_t fx_kind;         /* FX_*: none/impact/deflect/fizzle, L/R per defender */
+    uint16_t overflow_count; /* lifetime dropped events, saturating */
+    uint16_t _pad;           /* explicit padding: keeps world hashing deterministic */
+    sim_scry_t scry;         /* scry layer-key overlay chord machine (authoritative-only) */
     sim_aftermath_t aftermath[2];
-    uint8_t         world_state;
-    uint8_t         _incantation_pad;
-    sim_residue_t   residue[SIM_RESIDUE_ZONES]; /* authoritative-only (Track A) */
+    uint8_t world_state;
+    uint8_t _incantation_pad;
+    sim_residue_t residue[SIM_RESIDUE_ZONES]; /* authoritative-only (Track A) */
 } sim_world_t;
 
 /* These layouts are hashed by deterministic tests and projected onto the

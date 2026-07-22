@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
 import unittest
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,12 +14,26 @@ ROOT = Path(__file__).resolve().parents[2]
 class UnifiedFirmwareContractTests(unittest.TestCase):
     def test_vial_raw_hid_and_only_required_features(self) -> None:
         rules = (ROOT / "firmware" / "rules.mk").read_text()
-        for feature in ("VIA_ENABLE", "VIAL_ENABLE", "RAW_ENABLE", "OLED_ENABLE",
-                        "RGB_MATRIX_ENABLE", "LTO_ENABLE"):
+        for feature in (
+            "VIA_ENABLE",
+            "VIAL_ENABLE",
+            "RAW_ENABLE",
+            "OLED_ENABLE",
+            "RGB_MATRIX_ENABLE",
+            "LTO_ENABLE",
+        ):
             self.assertRegex(rules, rf"(?m)^{feature}\s*=\s*yes$")
-        for feature in ("QMK_SETTINGS", "DYNAMIC_MACRO_ENABLE", "TAP_DANCE_ENABLE",
-                        "COMBO_ENABLE", "KEY_OVERRIDE_ENABLE", "CAPS_WORD_ENABLE",
-                        "LAYER_LOCK_ENABLE", "REPEAT_KEY_ENABLE", "ENCODER_MAP_ENABLE"):
+        for feature in (
+            "QMK_SETTINGS",
+            "DYNAMIC_MACRO_ENABLE",
+            "TAP_DANCE_ENABLE",
+            "COMBO_ENABLE",
+            "KEY_OVERRIDE_ENABLE",
+            "CAPS_WORD_ENABLE",
+            "LAYER_LOCK_ENABLE",
+            "REPEAT_KEY_ENABLE",
+            "ENCODER_MAP_ENABLE",
+        ):
             self.assertRegex(rules, rf"(?m)^{feature}\s*=\s*no$")
 
     def test_secure_four_layer_eeprom_seed(self) -> None:
@@ -35,7 +48,9 @@ class UnifiedFirmwareContractTests(unittest.TestCase):
     def test_rgb_is_world_owned_not_keymap_or_eeprom_owned(self) -> None:
         layout = (ROOT / "firmware" / "corne_arcane_layout.h").read_text()
         keymap = (ROOT / "firmware" / "keymap.c").read_text()
-        self.assertNotRegex(layout, r"\bRM_(?:ON|OFF|TOGG|NEXT|PREV|HUEU|HUED|SATU|SATD|VALU|VALD|SPDU|SPDD)\b")
+        self.assertNotRegex(
+            layout, r"\bRM_(?:ON|OFF|TOGG|NEXT|PREV|HUEU|HUED|SATU|SATD|VALU|VALD|SPDU|SPDD)\b"
+        )
         self.assertIn("return !IS_RGB_MATRIX_KEYCODE(keycode);", keymap)
         self.assertIn("rgb_matrix_enable_noeeprom();", keymap)
         self.assertIn("rgb_matrix_indicators_advanced_user", keymap)

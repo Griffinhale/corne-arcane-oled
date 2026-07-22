@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Hashable
 
-from .protocol import Category, EMPTY_SUMMARY, NotificationSummary, Priority
+from .protocol import EMPTY_SUMMARY, Category, NotificationSummary, Priority
 
 NORMAL_LIFETIME = 6.0
 START_GAP = 10.0

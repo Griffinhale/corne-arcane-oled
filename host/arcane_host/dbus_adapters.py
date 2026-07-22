@@ -10,7 +10,9 @@ from .adapters import SemanticAdapters
 class DBusAdapterHub:
     """Subscribe to standard property signals; any missing service is isolated."""
 
-    def __init__(self, Gio, session, system, adapters: SemanticAdapters, timer_unit: str | None = None):
+    def __init__(
+        self, Gio, session, system, adapters: SemanticAdapters, timer_unit: str | None = None
+    ):
         self.Gio = Gio
         self.adapters = adapters
         self.timer_unit = timer_unit
@@ -61,7 +63,9 @@ class DBusAdapterHub:
     @staticmethod
     def _lookup(changed, key: str):
         try:
-            value = changed.get(key) if isinstance(changed, dict) else changed.lookup_value(key, None)
+            value = (
+                changed.get(key) if isinstance(changed, dict) else changed.lookup_value(key, None)
+            )
             if value is None:
                 return None
             if hasattr(value, "unpack"):
@@ -101,9 +105,7 @@ class DBusAdapterHub:
                 "/org/freedesktop/DBus",
                 "org.freedesktop.DBus",
             )
-            reply = bus.call_sync(
-                "ListNames", None, self.Gio.DBusCallFlags.NONE, 1000, None
-            )
+            reply = bus.call_sync("ListNames", None, self.Gio.DBusCallFlags.NONE, 1000, None)
             names = self._unpack(reply)
             names = names[0] if names else ()
             for name in names:
@@ -122,27 +124,22 @@ class DBusAdapterHub:
             path = f"/org/freedesktop/systemd1/unit/{self._unit_path_fragment(self.timer_unit)}"
             try:
                 unit = self._proxy(
-                    session, "org.freedesktop.systemd1", path,
-                    "org.freedesktop.systemd1.Unit"
+                    session, "org.freedesktop.systemd1", path, "org.freedesktop.systemd1.Unit"
                 )
                 timer = self._proxy(
-                    session, "org.freedesktop.systemd1", path,
-                    "org.freedesktop.systemd1.Timer"
+                    session, "org.freedesktop.systemd1", path, "org.freedesktop.systemd1.Timer"
                 )
                 active_state = self._unpack(unit.get_cached_property("ActiveState"))
-                next_elapse = self._unpack(
-                    timer.get_cached_property("NextElapseUSecMonotonic")
-                )
+                next_elapse = self._unpack(timer.get_cached_property("NextElapseUSecMonotonic"))
                 self._pomodoro_active = active_state == "active"
                 if next_elapse is not None:
                     self._pomodoro_deadline = float(next_elapse) / 1_000_000
                 remaining = (
                     max(0.0, self._pomodoro_deadline - self.adapters.clock())
-                    if self._pomodoro_deadline is not None else None
+                    if self._pomodoro_deadline is not None
+                    else None
                 )
-                self.adapters.pomodoro(
-                    self._pomodoro_active, remaining, active_state == "failed"
-                )
+                self.adapters.pomodoro(self._pomodoro_active, remaining, active_state == "failed")
             except Exception:
                 self.adapters.counters.errors += 1
 
@@ -155,8 +152,7 @@ class DBusAdapterHub:
     def _prime_player(self, session, name: str) -> None:
         try:
             player = self._proxy(
-                session, name, "/org/mpris/MediaPlayer2",
-                "org.mpris.MediaPlayer2.Player"
+                session, name, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player"
             )
             owner = player.get_name_owner() or name
             status = self._unpack(player.get_cached_property("PlaybackStatus"))
@@ -207,16 +203,13 @@ class DBusAdapterHub:
         connectivity = self._unpack(network.get_cached_property("Connectivity"))
         names = {0: "offline", 1: "offline", 2: "limited", 3: "limited", 4: "online"}
         self._connectivity = names.get(int(connectivity), "offline")
-        self._refresh_vpn(
-            system, self._unpack(network.get_cached_property("ActiveConnections"))
-        )
+        self._refresh_vpn(system, self._unpack(network.get_cached_property("ActiveConnections")))
         self.adapters.network(self._connectivity, bool(self._vpn_paths))
 
     @staticmethod
     def _unit_path_fragment(unit: str) -> str:
         return "".join(
-            character if character.isalnum() else f"_{ord(character):02x}"
-            for character in unit
+            character if character.isalnum() else f"_{ord(character):02x}" for character in unit
         )
 
     def _name_owner_changed(self, connection, sender, path, interface, signal, parameters) -> None:
@@ -268,9 +261,12 @@ class DBusAdapterHub:
                 inhibited = self._lookup(changed, "Inhibited")
                 if inhibited is not None:
                     self.adapters.dnd(bool(inhibited))
-            elif self.timer_unit and changed_interface in {
-                "org.freedesktop.systemd1.Timer", "org.freedesktop.systemd1.Unit"
-            } and self._unit_path_fragment(self.timer_unit) in path:
+            elif (
+                self.timer_unit
+                and changed_interface
+                in {"org.freedesktop.systemd1.Timer", "org.freedesktop.systemd1.Unit"}
+                and self._unit_path_fragment(self.timer_unit) in path
+            ):
                 active_state = self._lookup(changed, "ActiveState")
                 next_elapse = self._lookup(changed, "NextElapseUSecMonotonic")
                 if active_state is not None:

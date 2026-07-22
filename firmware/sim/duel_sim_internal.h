@@ -5,9 +5,8 @@
 
 uint8_t duel_incantation_affinity_element(uint8_t variant);
 
-void duel_combat_ingest_events(sim_world_t *world, sim_inputs_t inputs,
-                               const sim_event_t *events, uint8_t event_count,
-                               uint32_t event_down[2]);
+void duel_combat_ingest_events(sim_world_t *world, sim_inputs_t inputs, const sim_event_t *events,
+                               uint8_t event_count, uint32_t event_down[2]);
 void duel_combat_collect_side(sim_world_t *world, sim_inputs_t inputs, uint8_t side,
                               uint32_t event_down);
 void duel_combat_pose_step(sim_wizard_t *wizard, bool down, bool was_down);

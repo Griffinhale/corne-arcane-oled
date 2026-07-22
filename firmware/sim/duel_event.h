@@ -12,7 +12,6 @@
 #include "duel_framebuffer.h"
 #include "duel_render.h"
 
-
 // Derive the deck's state for one civic phase — a pure, stateless function of
 // (seed, phase); nothing advances. `eligible` folds the safety
 // gates (no critical visitor, no transition, no KO/replacement, family cooldown).

@@ -30,12 +30,12 @@
 #include "duel_view.h"
 
 #define DUEL_MAGIC 0xA7
-#define DUEL_VER 11
+#define DUEL_VER   11
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase;
 // bits3-4 residue zone2 element; bits5-6 residue zone2 intensity; bit7
 // residue zone3 intensity low bit. Each receiver rejects every other version.
-#define DUEL_FLAGS_WORLD_VALID 0x01u
+#define DUEL_FLAGS_WORLD_VALID         0x01u
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
 
@@ -62,15 +62,15 @@ enum {
 #define DUEL_SECONDARY_RESIDUE_BITS 0x80u
 
 typedef struct __attribute__((packed)) {
-    uint8_t  magic;        /* DUEL_MAGIC */
-    uint8_t  ver;          /* DUEL_VER */
-    uint8_t  session;      /* master boot nonce */
-    uint8_t  flags;        /* valid/display + residue bits, see above */
-    uint8_t  seq;          /* per-session, wrapping byte */
-    uint8_t  residue;      /* zone0: elem[0:1] int[2:3]; zone1: elem[4:5] int[6:7] */
-    duel_view_t view;      /* canonical transport/render projection */
-    uint8_t  external;     /* host: absolute disposable host context; see duel_host.h */
-    uint8_t  alert;        /* packed category, priority, and age */
+    uint8_t magic;    /* DUEL_MAGIC */
+    uint8_t ver;      /* DUEL_VER */
+    uint8_t session;  /* master boot nonce */
+    uint8_t flags;    /* valid/display + residue bits, see above */
+    uint8_t seq;      /* per-session, wrapping byte */
+    uint8_t residue;  /* zone0: elem[0:1] int[2:3]; zone1: elem[4:5] int[6:7] */
+    duel_view_t view; /* canonical transport/render projection */
+    uint8_t external; /* host: absolute disposable host context; see duel_host.h */
+    uint8_t alert;    /* packed category, priority, and age */
     /* Absolute civic presentation relayed master->slave. The current engine
      * temporarily reuses shared_pres/revision for bounded authoritative
      * aftermath while its marker bit is set. All
@@ -78,19 +78,20 @@ typedef struct __attribute__((packed)) {
      * corrupted civic byte is caught exactly like the combat view. See
      * duel_host.h for the DUEL_CIVIC / DUEL_SECONDARY bit layouts; the master
      * writes them via duel_snapshot_set_civic. */
-    uint8_t  civic;        /* DUEL_CIVIC_* : floor, mode, intensity; bits6-7 residue zone3 element */
-    uint8_t  secondary;    /* activity 0-2, sky phase 3-4, sky sub-phase 5-6, bit7 residue zone3 intensity high */
-    uint8_t  shared_pres;  /* visitor, or aftermath payload when revision.7=1 */
-    uint8_t  revision;     /* rare event, or marked aftermath phases */
-    uint8_t  crc;          /* duel_crc8 over the preceding bytes (offsetof(crc)) */
+    uint8_t civic;       /* DUEL_CIVIC_* : floor, mode, intensity; bits6-7 residue zone3 element */
+    uint8_t secondary;   /* activity 0-2, sky phase 3-4, sky sub-phase 5-6, bit7 residue zone3
+                            intensity high */
+    uint8_t shared_pres; /* visitor, or aftermath payload when revision.7=1 */
+    uint8_t revision;    /* rare event, or marked aftermath phases */
+    uint8_t crc;         /* duel_crc8 over the preceding bytes (offsetof(crc)) */
 } duel_snapshot_t;
 
 _Static_assert(sizeof(duel_snapshot_t) == 32,
                "current v11 snapshot must consume exactly one 32-byte RPC packet");
 
 typedef struct __attribute__((packed)) {
-    uint8_t  magic;
-    uint8_t  version;
+    uint8_t magic;
+    uint8_t version;
     uint16_t accepted_seq;
     uint16_t snapshot_age_ms;
     uint16_t peak_housekeeping_us;
@@ -107,9 +108,8 @@ uint8_t duel_crc8(const void *data, size_t len);
 
 // `external` is a packed, disposable presentation summary. The ordinary
 // runtime encoder writes the complete production packet and computes the CRC.
-void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
-                                        uint16_t seq, uint8_t external,
-                                        uint8_t alert, uint8_t display_phase,
+void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, uint16_t seq,
+                                        uint8_t external, uint8_t alert, uint8_t display_phase,
                                         duel_snapshot_t *out);
 
 // Convergence setter: overwrite the four civic bytes on an already
@@ -141,10 +141,10 @@ bool duel_decode_valid(const duel_snapshot_t *p);
 
 /* ---- slave-side acceptance ---------------------------------------------- */
 typedef struct {
-    bool            have_any;
-    duel_snapshot_t last;        /* last accepted packet */
+    bool have_any;
+    duel_snapshot_t last; /* last accepted packet */
 #ifdef ARCANE_DIAGNOSTICS
-    uint16_t        stale_drops; /* rejected as stale/duplicate, saturating */
+    uint16_t stale_drops; /* rejected as stale/duplicate, saturating */
 #endif
 } duel_rx_state_t;
 

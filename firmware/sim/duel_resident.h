@@ -17,15 +17,14 @@
 #include "duel_framebuffer.h"
 #include "duel_render.h"
 
-
 // Number of civic ticks one resident action occupies. A civic tick is
 // ~250-500 ms, so ~16 ticks holds each action in the spec's 3-10 s window.
 #define DUEL_CIVIC_ACTION_SLOT 16u
 
 /* Compact floor/action occupation key stored in the existing station byte. */
 #define INCANTATION_OCCUPATION_FLOORS 4u
-#define INCANTATION_OCCUPATION_KEY(floor, action) \
-        ((uint8_t)(((floor) * DUEL_CIVIC_ACTION_COUNT) + (action)))
+#define INCANTATION_OCCUPATION_KEY(floor, action)                                                  \
+    ((uint8_t)(((floor) * DUEL_CIVIC_ACTION_COUNT) + (action)))
 
 /* Canonical desk-space point shared by every current civic layer. Coordinates are
  * authored for the left/desk view; callers mirror x at the final draw site. */
@@ -57,15 +56,15 @@ uint8_t civic_resident_personality(uint8_t seed, bool is_left);
 
 // Derive the resident's full state for a floor at a given civic phase. `mode`
 // is DUEL_CIVIC_MODE_* (QUIET calms motion; see the draw routine).
-civic_resident_t civic_resident_derive(uint8_t seed, bool is_left, uint8_t floor,
-                                   uint8_t mode, uint8_t phase);
+civic_resident_t civic_resident_derive(uint8_t seed, bool is_left, uint8_t floor, uint8_t mode,
+                                       uint8_t phase);
 
 // Draw the resident into the floor band (y61-110), distinguishable from the
 // static occupation anchors and from the rooftop champion. All primary motion
 // keys off the resident's phase-derived state; `frame` only drives an optional
 // 1 px idle sub-motion that is suppressed in QUIET mode.
-void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_left,
-                       uint8_t mode, uint32_t frame);
+void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_left, uint8_t mode,
+                         uint32_t frame);
 
 /* Stable local-layer mark anchored through the same WORK descriptor that
  * drives the resident's ordinary interaction with the dominant floor object. */

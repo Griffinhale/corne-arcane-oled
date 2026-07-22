@@ -15,8 +15,9 @@ class DesktopTests(unittest.TestCase):
             self.policy, b"session salt", self.focused.__contains__
         )
 
-    def notify(self, serial=1, replaces=0, *, summary="secret", body="body", hints=None,
-               now=0, sender=""):
+    def notify(
+        self, serial=1, replaces=0, *, summary="secret", body="body", hints=None, now=0, sender=""
+    ):
         return self.adapter.handle_notify(
             serial, "org.example.App", replaces, summary, body, hints or {}, now, sender
         )
@@ -47,9 +48,7 @@ class DesktopTests(unittest.TestCase):
             self.adapter.digest_identifier("firefox"),
             self.adapter.digest_identifier("org.mozilla.firefox.desktop"),
         )
-        self.adapter.handle_notify(
-            1, "Slack", 0, "secret", "body", {}, 0, ""
-        )
+        self.adapter.handle_notify(1, "Slack", 0, "secret", "body", {}, 0, "")
         self.adapter.handle_reply(1, 10, 0)
         self.assertEqual(self.policy.summary(0).category, Category.COMMUNICATION)
 
@@ -91,8 +90,7 @@ class DesktopTests(unittest.TestCase):
     def test_replacement_can_promote_normal_to_persistent_without_increment(self) -> None:
         self.notify(serial=1)
         self.adapter.handle_reply(1, 8, 0)
-        self.notify(serial=2, replaces=8, summary="critical update",
-                    hints={"urgency": 2}, now=1)
+        self.notify(serial=2, replaces=8, summary="critical update", hints={"urgency": 2}, now=1)
         self.adapter.handle_reply(2, 8, 1)
         summary = self.policy.summary(1)
         self.assertEqual(summary.count, 1)
@@ -103,9 +101,11 @@ class DesktopTests(unittest.TestCase):
         class DeniedGio:
             class BusType:
                 SESSION = 0
+
             @staticmethod
             def dbus_address_get_for_bus_sync(*_args):
                 raise RuntimeError("denied")
+
         monitor = DesktopMonitor(DeniedGio, object(), self.adapter, lambda: 0)
         self.assertFalse(monitor.start())
         self.assertFalse(self.adapter.monitor_enabled)

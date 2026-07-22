@@ -6,8 +6,8 @@ import hashlib
 import secrets
 from typing import Callable
 
-from .protocol import Floor, Scene
 from .profiles import normalize_identifier, resolve_profile
+from .protocol import Floor, Scene
 
 
 class FocusArbiter:
@@ -23,10 +23,12 @@ class FocusArbiter:
         self.floor = Floor.COMMONS
         if identifier_digest is None:
             salt = secrets.token_bytes(16)
+
             def digest_identifier(value: str) -> bytes:
                 return hashlib.blake2s(
                     value.encode("utf-8", "surrogatepass"), key=salt, digest_size=16
                 ).digest()
+
             identifier_digest = digest_identifier
         self._identifier_digest = identifier_digest
         self.terminal_focused = False
@@ -45,7 +47,9 @@ class FocusArbiter:
         floor = profile.floor if profile is not None else Floor.COMMONS
         terminal = profile is not None and profile.identifier == "terminal"
         canonical = {
-            profile.identifier if profile is not None and identifier in profile.aliases else identifier
+            profile.identifier
+            if profile is not None and identifier in profile.aliases
+            else identifier
             for identifier in normalized
         }
         digests = frozenset(self._identifier_digest(identifier) for identifier in canonical)

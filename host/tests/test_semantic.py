@@ -9,8 +9,8 @@ from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import canonical_identifier, resolve_profile
 from arcane_host.protocol import (
-    Category,
     EMPTY_SUMMARY,
+    Category,
     Floor,
     Intensity,
     Mode,
@@ -196,8 +196,10 @@ class SemanticTests(unittest.TestCase):
         now[0] += 20
         adapters.network("offline")
         summary = policy.summary(now[0])
-        self.assertEqual((summary.category, summary.priority, summary.persistent),
-                         (Category.SYSTEM, Priority.CRITICAL, True))
+        self.assertEqual(
+            (summary.category, summary.priority, summary.persistent),
+            (Category.SYSTEM, Priority.CRITICAL, True),
+        )
         adapters.network("online", vpn=True)
         self.assertEqual(policy.summary(now[0]).category, Category.SECURITY)
 
@@ -277,7 +279,11 @@ class SemanticTests(unittest.TestCase):
         )
         self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
         hub._name_owner_changed(
-            None, None, None, None, None,
+            None,
+            None,
+            None,
+            None,
+            None,
             Variant(("org.mpris.MediaPlayer2.one", ":1.20", "")),
         )
         self.assertEqual(resolver.state.scene, Scene.DUEL)

@@ -8,8 +8,18 @@ from arcane_host.protocol import Category, Priority
 
 class PolicyTests(unittest.TestCase):
     def test_age_buckets(self) -> None:
-        samples = ((0, 0), (14.9, 0), (15, 1), (30, 2), (60, 3),
-                   (120, 4), (300, 5), (600, 6), (900, 7), (9999, 7))
+        samples = (
+            (0, 0),
+            (14.9, 0),
+            (15, 1),
+            (30, 2),
+            (60, 3),
+            (120, 4),
+            (300, 5),
+            (600, 6),
+            (900, 7),
+            (9999, 7),
+        )
         for seconds, expected in samples:
             self.assertEqual(age_bucket(seconds), expected)
 

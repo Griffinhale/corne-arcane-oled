@@ -4,7 +4,8 @@
 
 bool sim_evq_push(sim_evq_t *q, sim_event_t e) {
     if (q->n >= SIM_EVQ_CAP) {
-        if (q->dropped < 0xFF) q->dropped++;
+        if (q->dropped < 0xFF)
+            q->dropped++;
         return false;
     }
     q->ev[q->n++] = e;
@@ -12,14 +13,14 @@ bool sim_evq_push(sim_evq_t *q, sim_event_t e) {
 }
 
 void sim_evq_reset(sim_evq_t *q) {
-    q->n       = 0;
+    q->n = 0;
     q->dropped = 0;
 }
 
 void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick) {
     memset(w, 0, sizeof *w);
-    w->tick      = start_tick;
-    w->flags     = flags;
+    w->tick = start_tick;
+    w->flags = flags;
     w->wiz[0].hp = SIM_MAX_HP;
     w->wiz[1].hp = SIM_MAX_HP;
     w->wiz[0].regen_ticks = SIM_REGEN_TICKS;
@@ -28,8 +29,7 @@ void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick) {
     w->wiz[1].temper = SIM_TEMPER_NEUTRAL;
 }
 
-void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
-              uint8_t dropped) {
+void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n, uint8_t dropped) {
     if (dropped) {
         uint32_t sum = (uint32_t)w->overflow_count + dropped;
         w->overflow_count = sum > 0xffffu ? 0xffffu : (uint16_t)sum;
@@ -52,7 +52,8 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
     if (w->flags & SIMF_AUTHORITATIVE) {
         for (uint8_t side = 0; side < 2; side++)
             duel_combat_lifecycle_step(&w->wiz[side]);
-        for (uint8_t side = 0; side < 2; side++) duel_combat_stance_step(w, side);
+        for (uint8_t side = 0; side < 2; side++)
+            duel_combat_stance_step(w, side);
         duel_combat_regeneration_step(w);
         duel_combat_collision_step(w);
         duel_combat_residue_step(w);

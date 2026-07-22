@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import signal
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from arcane_host import vial_launcher
@@ -16,10 +16,16 @@ class HandoffTests(unittest.TestCase):
             patch.object(vial_launcher, "service_is_active", return_value=True),
             patch.object(vial_launcher, "service_main_pid", return_value=42),
             patch.object(vial_launcher, "stop_service", side_effect=lambda: order.append("stop")),
-            patch.object(vial_launcher, "wait_for_hidraw_release",
-                         side_effect=lambda pid: order.append(f"wait:{pid}")),
-            patch.object(vial_launcher, "run_vial",
-                         side_effect=lambda args: order.append(f"vial:{args[0]}") or 0),
+            patch.object(
+                vial_launcher,
+                "wait_for_hidraw_release",
+                side_effect=lambda pid: order.append(f"wait:{pid}"),
+            ),
+            patch.object(
+                vial_launcher,
+                "run_vial",
+                side_effect=lambda args: order.append(f"vial:{args[0]}") or 0,
+            ),
             patch.object(vial_launcher, "start_service", side_effect=lambda: order.append("start")),
         ):
             self.assertEqual(vial_launcher.main(["--verbose"]), 0)
@@ -54,8 +60,9 @@ class HandoffTests(unittest.TestCase):
             patch.object(vial_launcher, "service_main_pid", return_value=7),
             patch.object(vial_launcher, "stop_service"),
             patch.object(vial_launcher, "wait_for_hidraw_release"),
-            patch.object(vial_launcher, "run_vial",
-                         side_effect=vial_launcher.LauncherSignal(signal.SIGTERM)),
+            patch.object(
+                vial_launcher, "run_vial", side_effect=vial_launcher.LauncherSignal(signal.SIGTERM)
+            ),
             patch.object(vial_launcher, "start_service") as start,
         ):
             self.assertEqual(vial_launcher.main([]), 128 + signal.SIGTERM)

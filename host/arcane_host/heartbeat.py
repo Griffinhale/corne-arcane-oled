@@ -6,9 +6,9 @@ import time
 from typing import Callable, Protocol
 
 from .protocol import (
-    Category,
     DEFAULT_CIVIC,
     EMPTY_SUMMARY,
+    Category,
     CivicState,
     Message,
     NotificationSummary,
@@ -68,9 +68,11 @@ class HidHeartbeat:
         self.device_factory = device_factory
         self.session_factory = session_factory
         self.summary_provider = summary_provider or (
-            lambda: EMPTY_SUMMARY
-            if notification_count == 0
-            else NotificationSummary(notification_count, Category.OTHER, Priority.NORMAL)
+            lambda: (
+                EMPTY_SUMMARY
+                if notification_count == 0
+                else NotificationSummary(notification_count, Category.OTHER, Priority.NORMAL)
+            )
         )
         self.civic_provider = civic_provider or (lambda: DEFAULT_CIVIC)
         self.interval = interval

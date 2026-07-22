@@ -3,7 +3,8 @@
 
 #ifdef ARCANE_DIAGNOSTICS
 static void sat_inc(uint16_t *value) {
-    if (*value != UINT16_MAX) (*value)++;
+    if (*value != UINT16_MAX)
+        (*value)++;
 }
 #endif
 
@@ -13,10 +14,8 @@ static bool type_valid(uint8_t type) {
 }
 
 static bool envelope_valid(const duel_host_packet_t *packet) {
-    if (packet->magic0 != DUEL_HOST_MAGIC0 ||
-        packet->magic1 != DUEL_HOST_MAGIC1 ||
-        !type_valid(packet->type) ||
-        packet->version != DUEL_HOST_VERSION ||
+    if (packet->magic0 != DUEL_HOST_MAGIC0 || packet->magic1 != DUEL_HOST_MAGIC1 ||
+        !type_valid(packet->type) || packet->version != DUEL_HOST_VERSION ||
         packet->payload_len != DUEL_HOST_PAYLOAD_LEN ||
         packet->crc != duel_crc8(packet, offsetof(duel_host_packet_t, crc)))
         return false;
@@ -24,7 +23,8 @@ static bool envelope_valid(const duel_host_packet_t *packet) {
      * host encoder always zeroes them). Rejecting CRC-covered garbage here
      * keeps the reserved space genuinely available for future versions. */
     for (uint8_t i = DUEL_HOST_PAYLOAD_LEN; i < DUEL_HOST_PAYLOAD_SIZE; i++)
-        if (packet->payload[i] != 0) return false;
+        if (packet->payload[i] != 0)
+            return false;
     return true;
 }
 
@@ -38,7 +38,8 @@ static bool civic_bytes_valid(const duel_host_packet_t *packet) {
 // non-empty one must land inside every enum range, and only CRITICAL
 // notifications may be flagged persistent.
 static bool notification_valid(const duel_host_packet_t *packet) {
-    if (packet->payload[0] >= DUEL_HOST_SCENE_COUNT || packet->payload[1] > 15) return false;
+    if (packet->payload[0] >= DUEL_HOST_SCENE_COUNT || packet->payload[1] > 15)
+        return false;
     bool empty = packet->payload[1] == 0;
     bool canonical_empty = packet->payload[2] == DUEL_HOST_CATEGORY_NONE &&
                            packet->payload[3] == DUEL_HOST_PRIORITY_NONE &&
@@ -46,15 +47,14 @@ static bool notification_valid(const duel_host_packet_t *packet) {
     bool nonempty = packet->payload[2] > DUEL_HOST_CATEGORY_NONE &&
                     packet->payload[2] < DUEL_HOST_CATEGORY_COUNT &&
                     packet->payload[3] > DUEL_HOST_PRIORITY_NONE &&
-                    packet->payload[3] < DUEL_HOST_PRIORITY_COUNT &&
-                    packet->payload[4] <= 7 && packet->payload[5] <= 1 &&
+                    packet->payload[3] < DUEL_HOST_PRIORITY_COUNT && packet->payload[4] <= 7 &&
+                    packet->payload[5] <= 1 &&
                     (!packet->payload[5] || packet->payload[3] == DUEL_HOST_PRIORITY_CRITICAL);
     return empty ? canonical_empty : nonempty;
 }
 
 bool duel_host_packet_valid(const duel_host_packet_t *packet) {
-    return envelope_valid(packet) && civic_bytes_valid(packet) &&
-           notification_valid(packet);
+    return envelope_valid(packet) && civic_bytes_valid(packet) && notification_valid(packet);
 }
 
 static void stale(duel_host_state_t *state) {
@@ -65,14 +65,12 @@ static void stale(duel_host_state_t *state) {
 #endif
 }
 
-static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet,
-                          bool online) {
+static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet, bool online) {
     bool persistent = packet->payload[5] != 0;
-    state->external = DUEL_HOST_CONTEXT_PACK(online, packet->payload[0],
-                                             packet->payload[1], persistent);
-    state->alert = DUEL_HOST_ALERT_PACK(packet->payload[2], packet->payload[3],
-                                       packet->payload[4]);
-    state->civic     = packet->payload[DUEL_HOST_PAYLOAD_CIVIC];
+    state->external =
+        DUEL_HOST_CONTEXT_PACK(online, packet->payload[0], packet->payload[1], persistent);
+    state->alert = DUEL_HOST_ALERT_PACK(packet->payload[2], packet->payload[3], packet->payload[4]);
+    state->civic = packet->payload[DUEL_HOST_PAYLOAD_CIVIC];
     state->secondary = packet->payload[DUEL_HOST_PAYLOAD_SECONDARY];
 }
 
@@ -89,8 +87,10 @@ bool duel_host_accept(duel_host_state_t *state, const duel_host_packet_t *packet
         // greeting. Remembering the prior ID prevents a delayed old greeting
         // from rolling a freshly restarted daemon backward.
         if (packet->seq != 0 ||
-            ((state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) && packet->session == state->session) ||
-            ((state->state_flags & DUEL_HOST_STATE_HAVE_PREVIOUS) && packet->session == state->previous_session)) {
+            ((state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) &&
+             packet->session == state->session) ||
+            ((state->state_flags & DUEL_HOST_STATE_HAVE_PREVIOUS) &&
+             packet->session == state->previous_session)) {
             stale(state);
             return false;
         }
@@ -99,8 +99,8 @@ bool duel_host_accept(duel_host_state_t *state, const duel_host_packet_t *packet
             state->previous_session = state->session;
         }
         state->state_flags |= DUEL_HOST_STATE_HAVE_SESSION;
-        state->session      = packet->session;
-        state->last_seq     = 0;
+        state->session = packet->session;
+        state->last_seq = 0;
         apply_context(state, packet, true);
         return true;
     }
@@ -112,8 +112,8 @@ bool duel_host_accept(duel_host_state_t *state, const duel_host_packet_t *packet
     }
 
     state->last_seq = packet->seq;
-    bool online = packet->type == DUEL_HOST_MSG_HEARTBEAT ||
-                  DUEL_HOST_CONTEXT_ONLINE(state->external);
+    bool online =
+        packet->type == DUEL_HOST_MSG_HEARTBEAT || DUEL_HOST_CONTEXT_ONLINE(state->external);
     apply_context(state, packet, online);
     if (packet->type == DUEL_HOST_MSG_HEARTBEAT) {
         return true;

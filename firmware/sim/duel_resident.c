@@ -38,12 +38,16 @@ static const uint8_t action_weights[DUEL_CIVIC_PERSONALITY_COUNT][DUEL_CIVIC_ACT
 static uint8_t pick_action(uint8_t seed, bool is_left, uint8_t personality, uint8_t slot) {
     const uint8_t *w = action_weights[personality];
     uint16_t total = 0;
-    for (int i = 0; i < DUEL_CIVIC_ACTION_COUNT; i++) total = (uint16_t)(total + w[i]);
-    uint8_t rnd = (uint8_t)(resident_hash(seed, (uint8_t)(is_left ? 0x11u : 0x22u), (uint8_t)(slot + 1u)) % total);
+    for (int i = 0; i < DUEL_CIVIC_ACTION_COUNT; i++)
+        total = (uint16_t)(total + w[i]);
+    uint8_t rnd =
+        (uint8_t)(resident_hash(seed, (uint8_t)(is_left ? 0x11u : 0x22u), (uint8_t)(slot + 1u)) %
+                  total);
     uint16_t acc = 0;
     for (int i = 0; i < DUEL_CIVIC_ACTION_COUNT; i++) {
         acc = (uint16_t)(acc + w[i]);
-        if (rnd < acc) return (uint8_t)i;
+        if (rnd < acc)
+            return (uint8_t)i;
     }
     return DUEL_CIVIC_ACTION_WORK;
 }
@@ -52,27 +56,32 @@ static uint8_t pick_action(uint8_t seed, bool is_left, uint8_t personality, uint
 // motion visibly reduces without changing which floor is shown.
 static uint8_t quiet_remap(uint8_t action) {
     switch (action) {
-        case DUEL_CIVIC_ACTION_WALK:       return DUEL_CIVIC_ACTION_REST;
-        case DUEL_CIVIC_ACTION_REACT:      return DUEL_CIVIC_ACTION_INSPECT;
-        case DUEL_CIVIC_ACTION_WATCH_ROOF: return DUEL_CIVIC_ACTION_WORK;
-        default:                         return action;
+        case DUEL_CIVIC_ACTION_WALK:
+            return DUEL_CIVIC_ACTION_REST;
+        case DUEL_CIVIC_ACTION_REACT:
+            return DUEL_CIVIC_ACTION_INSPECT;
+        case DUEL_CIVIC_ACTION_WATCH_ROOF:
+            return DUEL_CIVIC_ACTION_WORK;
+        default:
+            return action;
     }
 }
 
-civic_resident_t civic_resident_derive(uint8_t seed, bool is_left, uint8_t floor,
-                                   uint8_t mode, uint8_t phase) {
+civic_resident_t civic_resident_derive(uint8_t seed, bool is_left, uint8_t floor, uint8_t mode,
+                                       uint8_t phase) {
     civic_resident_t res;
     res.personality = civic_resident_personality(seed, is_left);
     uint8_t slot = (uint8_t)(phase / DUEL_CIVIC_ACTION_SLOT);
-    res.action   = pick_action(seed, is_left, res.personality, slot);
-    if (mode == DUEL_CIVIC_MODE_QUIET) res.action = quiet_remap(res.action);
-    if (floor >= INCANTATION_OCCUPATION_FLOORS) floor = DUEL_CIVIC_FLOOR_COMMONS;
-    res.station  = INCANTATION_OCCUPATION_KEY(floor, res.action);
+    res.action = pick_action(seed, is_left, res.personality, slot);
+    if (mode == DUEL_CIVIC_MODE_QUIET)
+        res.action = quiet_remap(res.action);
+    if (floor >= INCANTATION_OCCUPATION_FLOORS)
+        floor = DUEL_CIVIC_FLOOR_COMMONS;
+    res.station = INCANTATION_OCCUPATION_KEY(floor, res.action);
     res.progress = (uint8_t)(phase % DUEL_CIVIC_ACTION_SLOT);
     res.task = RESIDENT_NORMAL;
     return res;
 }
-
 
 enum {
     INCANTATION_POSE_WORK = 0,
@@ -120,39 +129,39 @@ typedef struct {
 } incantation_occupation_desc_t;
 
 static const incantation_occupation_desc_t incantation_occupations[INCANTATION_OCCUPATION_FLOORS *
-                                                    DUEL_CIVIC_ACTION_COUNT] = {
+                                                                   DUEL_CIVIC_ACTION_COUNT] = {
     /* Commons: sort, carry dispatch, board, tea/table, clock, file, urgent. */
-    {18, INCANTATION_POSE_WORK,     INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_TABLE},
-    {16, INCANTATION_POSE_CARRY,    INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_TABLE},
-    {21, INCANTATION_POSE_INSPECT,  INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_BOARD},
-    {16, INCANTATION_POSE_SEATED,   INCANTATION_MARK_NONE,     INCANTATION_OBJECT_COMMONS_TABLE},
-    {18, INCANTATION_POSE_WATCH,    INCANTATION_MARK_NONE,     INCANTATION_OBJECT_COMMONS_CLOCK},
-    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL,   INCANTATION_OBJECT_COMMONS_BOARD},
-    {18, INCANTATION_POSE_REACT,    INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_BOARD},
+    {18, INCANTATION_POSE_WORK, INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_TABLE},
+    {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_TABLE},
+    {21, INCANTATION_POSE_INSPECT, INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_BOARD},
+    {16, INCANTATION_POSE_SEATED, INCANTATION_MARK_NONE, INCANTATION_OBJECT_COMMONS_TABLE},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_COMMONS_CLOCK},
+    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_COMMONS_BOARD},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_BOARD},
     /* Research: scope, notes/specimen, cabinet, log, reading, transfer, anomaly. */
-    {18, INCANTATION_POSE_WORK,     INCANTATION_MARK_NOTES,    INCANTATION_OBJECT_RESEARCH_SCOPE},
-    {16, INCANTATION_POSE_CARRY,    INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_LOG},
-    {21, INCANTATION_POSE_INSPECT,  INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_CABINET},
-    {17, INCANTATION_POSE_SEATED,   INCANTATION_MARK_LEDGER,   INCANTATION_OBJECT_RESEARCH_LOG},
-    {18, INCANTATION_POSE_WATCH,    INCANTATION_MARK_NONE,     INCANTATION_OBJECT_RESEARCH_SCOPE},
+    {18, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_RESEARCH_SCOPE},
+    {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_LOG},
+    {21, INCANTATION_POSE_INSPECT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_CABINET},
+    {17, INCANTATION_POSE_SEATED, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_RESEARCH_LOG},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_RESEARCH_SCOPE},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_CABINET},
-    {18, INCANTATION_POSE_REACT,    INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_SCOPE},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_SCOPE},
     /* Workshop: forge/press, parts, rack, bench, gauge, hoist, jam/spark. */
-    {18, INCANTATION_POSE_WORK,     INCANTATION_MARK_TOOL,      INCANTATION_OBJECT_WORKSHOP_FORGE},
-    {16, INCANTATION_POSE_CARRY,    INCANTATION_MARK_TOOL,      INCANTATION_OBJECT_WORKSHOP_GAUGE},
-    {21, INCANTATION_POSE_INSPECT,  INCANTATION_MARK_TOOL,      INCANTATION_OBJECT_WORKSHOP_RACK},
-    {17, INCANTATION_POSE_SEATED,   INCANTATION_MARK_NONE,      INCANTATION_OBJECT_WORKSHOP_FORGE},
-    {18, INCANTATION_POSE_WATCH,    INCANTATION_MARK_NONE,      INCANTATION_OBJECT_WORKSHOP_GAUGE},
-    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL,    INCANTATION_OBJECT_WORKSHOP_RACK},
-    {18, INCANTATION_POSE_REACT,    INCANTATION_MARK_TOOL,      INCANTATION_OBJECT_WORKSHOP_FORGE},
+    {18, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_FORGE},
+    {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_GAUGE},
+    {21, INCANTATION_POSE_INSPECT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_RACK},
+    {17, INCANTATION_POSE_SEATED, INCANTATION_MARK_NONE, INCANTATION_OBJECT_WORKSHOP_FORGE},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_WORKSHOP_GAUGE},
+    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_WORKSHOP_RACK},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_FORGE},
     /* Observatory: stargaze, carry chart, inspect scope, log, watch dome. */
-    {18, INCANTATION_POSE_WORK,     INCANTATION_MARK_NOTES,     INCANTATION_OBJECT_OBSERVATORY_SCOPE},
-    {16, INCANTATION_POSE_CARRY,    INCANTATION_MARK_LEDGER,    INCANTATION_OBJECT_OBSERVATORY_CHART},
-    {21, INCANTATION_POSE_INSPECT,  INCANTATION_MARK_SPECIMEN,  INCANTATION_OBJECT_OBSERVATORY_CHART},
-    {17, INCANTATION_POSE_SEATED,   INCANTATION_MARK_LEDGER,    INCANTATION_OBJECT_OBSERVATORY_SCOPE},
-    {18, INCANTATION_POSE_WATCH,    INCANTATION_MARK_NONE,      INCANTATION_OBJECT_OBSERVATORY_DOME},
-    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_NOTES,     INCANTATION_OBJECT_OBSERVATORY_CHART},
-    {18, INCANTATION_POSE_REACT,    INCANTATION_MARK_SPECIMEN,  INCANTATION_OBJECT_OBSERVATORY_DOME},
+    {18, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_OBSERVATORY_SCOPE},
+    {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_OBSERVATORY_CHART},
+    {21, INCANTATION_POSE_INSPECT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_OBSERVATORY_CHART},
+    {17, INCANTATION_POSE_SEATED, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_OBSERVATORY_SCOPE},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_OBSERVATORY_DOME},
+    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_OBSERVATORY_CHART},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_OBSERVATORY_DOME},
 };
 
 static const incantation_occupation_desc_t *incantation_occupation(uint8_t key) {
@@ -173,51 +182,52 @@ uint8_t incantation_effective_floor(const duel_render_t *r) {
  * The occupation anchor and the object-reaction sparkle both index this table,
  * keyed by the occupation's reaction object. */
 static const int8_t incantation_object_anchors[12][2] = {
-    {14, 95}, {24, 82}, {11, 88},
-    {14, 79}, {24, 88}, {13, 94},
-    {14, 91}, {24, 90}, {11, 82},
-    {13, 88}, {24, 84}, {16, 82},
+    {14, 95}, {24, 82}, {11, 88}, {14, 79}, {24, 88}, {13, 94},
+    {14, 91}, {24, 90}, {11, 82}, {13, 88}, {24, 84}, {16, 82},
 };
 
 incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action) {
-    if (floor >= INCANTATION_OCCUPATION_FLOORS) floor = DUEL_CIVIC_FLOOR_COMMONS;
-    if (action >= DUEL_CIVIC_ACTION_COUNT) action = DUEL_CIVIC_ACTION_WORK;
-    const incantation_occupation_desc_t *desc = incantation_occupation(INCANTATION_OCCUPATION_KEY(floor, action));
+    if (floor >= INCANTATION_OCCUPATION_FLOORS)
+        floor = DUEL_CIVIC_FLOOR_COMMONS;
+    if (action >= DUEL_CIVIC_ACTION_COUNT)
+        action = DUEL_CIVIC_ACTION_WORK;
+    const incantation_occupation_desc_t *desc =
+        incantation_occupation(INCANTATION_OCCUPATION_KEY(floor, action));
     return (incantation_point_t){incantation_object_anchors[desc->reaction][0],
                                  incantation_object_anchors[desc->reaction][1]};
 }
 
-static void incantation_draw_object_reaction(duel_fb_t *fb, uint8_t reaction,
-                                     bool is_left, uint8_t progress) {
+static void incantation_draw_object_reaction(duel_fb_t *fb, uint8_t reaction, bool is_left,
+                                             uint8_t progress) {
     static const int8_t phase_pixels[4][3][2] = {
-        {{ 0,  0}, { 0,  0}, { 0,  0}},
-        {{ 0,  0}, { 1, -1}, { 1, -1}},
-        {{ 0, -1}, { 0,  1}, { 0,  1}},
-        {{-1,  0}, { 1,  0}, { 0, -1}},
+        {{0, 0}, {0, 0}, {0, 0}},
+        {{0, 0}, {1, -1}, {1, -1}},
+        {{0, -1}, {0, 1}, {0, 1}},
+        {{-1, 0}, {1, 0}, {0, -1}},
     };
     /* The reaction IS the object index: anchor it directly (the old
      * reaction -> action -> occupation -> reaction round-trip was identity). */
     int x = duel_fb_desk_x(is_left, incantation_object_anchors[reaction % 12u][0]);
     int y = incantation_object_anchors[reaction % 12u][1];
     int toward_gap = is_left ? 1 : -1;
-    const int8_t (*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
+    const int8_t(*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
     for (int i = 0; i < 3; i++)
         duel_fb_px(fb, x + pixels[i][0] * toward_gap, y + pixels[i][1], true);
 }
 
-static void incantation_draw_carried(duel_fb_t *fb, uint8_t mark, int x, int y,
-                             int gapward) {
+static void incantation_draw_carried(duel_fb_t *fb, uint8_t mark, int x, int y, int gapward) {
     static const int8_t mark_pixels[6][4][2] = {
-        {{ 0,  0}, { 0, 1}, { 1,  0}, { 0, 0}}, /* dispatch */
-        {{ 0,  0}, { 0, 1}, { 1,  1}, { 0, 0}}, /* notes */
-        {{ 0, -1}, {-1, 0}, { 1,  0}, { 0, 1}}, /* specimen */
-        {{-1,  1}, { 0, 0}, { 1, -1}, { 0, 0}}, /* tool */
-        {{ 0,  0}, { 1, 0}, { 0,  1}, { 1, 1}}, /* parcel */
-        {{ 0,  0}, { 1, 0}, { 0,  2}, { 1, 2}}, /* ledger */
+        {{0, 0}, {0, 1}, {1, 0}, {0, 0}},   /* dispatch */
+        {{0, 0}, {0, 1}, {1, 1}, {0, 0}},   /* notes */
+        {{0, -1}, {-1, 0}, {1, 0}, {0, 1}}, /* specimen */
+        {{-1, 1}, {0, 0}, {1, -1}, {0, 0}}, /* tool */
+        {{0, 0}, {1, 0}, {0, 1}, {1, 1}},   /* parcel */
+        {{0, 0}, {1, 0}, {0, 2}, {1, 2}},   /* ledger */
     };
-    if (mark == INCANTATION_MARK_NONE) return;
+    if (mark == INCANTATION_MARK_NONE)
+        return;
     x += 3 * gapward;
-    const int8_t (*pixels)[2] = mark_pixels[mark - 1u];
+    const int8_t(*pixels)[2] = mark_pixels[mark - 1u];
     for (int i = 0; i < 4; i++)
         duel_fb_px(fb, x + pixels[i][0] * gapward, y + pixels[i][1], true);
 }
@@ -235,25 +245,31 @@ static void incantation_draw_core(duel_fb_t *fb, int cx, int fy, bool seated) {
     int hips = top + (seated ? 9 : 10);
     duel_fb_hline(fb, cx - 2, cx + 2, hips);
     if (seated) {
-        duel_fb_px(fb, cx - 2, top + 10, true); duel_fb_px(fb, cx + 2, top + 10, true);
-        duel_fb_px(fb, cx - 2, fy, true); duel_fb_px(fb, cx - 1, fy, true);
-        duel_fb_px(fb, cx + 1, fy, true); duel_fb_px(fb, cx + 2, fy, true);
+        duel_fb_px(fb, cx - 2, top + 10, true);
+        duel_fb_px(fb, cx + 2, top + 10, true);
+        duel_fb_px(fb, cx - 2, fy, true);
+        duel_fb_px(fb, cx - 1, fy, true);
+        duel_fb_px(fb, cx + 1, fy, true);
+        duel_fb_px(fb, cx + 2, fy, true);
     } else {
         for (int y = top + 11; y <= top + 12; y++) {
-            duel_fb_px(fb, cx - 1, y, true); duel_fb_px(fb, cx + 1, y, true);
+            duel_fb_px(fb, cx - 1, y, true);
+            duel_fb_px(fb, cx + 1, y, true);
         }
         duel_fb_hline(fb, cx - 2, cx + 2, fy);
     }
 }
 
-void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_left,
-                       uint8_t mode, uint32_t frame) {
-    (void)mode; (void)frame;
+void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_left, uint8_t mode,
+                         uint32_t frame) {
+    (void)mode;
+    (void)frame;
     const incantation_occupation_desc_t *desc = incantation_occupation(res->station);
     int gapward = is_left ? 1 : -1;
     int cx = duel_fb_desk_x(is_left, desc->station);
-    int fy = desc->pose == INCANTATION_POSE_CARRY ? 107 :
-             desc->pose == INCANTATION_POSE_SEATED ? 107 : 105;
+    int fy = desc->pose == INCANTATION_POSE_CARRY    ? 107
+             : desc->pose == INCANTATION_POSE_SEATED ? 107
+                                                     : 105;
     bool ordinary = res->task == RESIDENT_NORMAL;
     bool seated = ordinary && desc->pose == INCANTATION_POSE_SEATED;
     int top = fy - (seated ? 11 : 13);
@@ -331,7 +347,8 @@ void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_lef
             duel_fb_px(fb, cx + 3 * gapward, top - 2, true);
             break;
         case RESIDENT_PANIC:
-            duel_fb_px(fb, cx - 3, top + 2, true); duel_fb_px(fb, cx + 3, top + 2, true);
+            duel_fb_px(fb, cx - 3, top + 2, true);
+            duel_fb_px(fb, cx + 3, top + 2, true);
             duel_fb_px(fb, cx, top - 3, true);
             break;
         case RESIDENT_FIGHT_FIRE:
@@ -339,16 +356,20 @@ void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_lef
             duel_fb_px(fb, cx, top - 2, true);
             break;
         case RESIDENT_INSPECT:
-            duel_fb_px(fb, cx - 1, top - 1, true); duel_fb_px(fb, cx, top - 2, true);
-            duel_fb_px(fb, cx + 1, top - 1, true); duel_fb_px(fb, cx + 3 * gapward, top + 2, true);
+            duel_fb_px(fb, cx - 1, top - 1, true);
+            duel_fb_px(fb, cx, top - 2, true);
+            duel_fb_px(fb, cx + 1, top - 1, true);
+            duel_fb_px(fb, cx + 3 * gapward, top + 2, true);
             break;
         case RESIDENT_REPAIR:
             duel_fb_hline(fb, cx - 2, cx + 2, top - 1);
-            duel_fb_px(fb, cx - 1, top - 2, true); duel_fb_px(fb, cx + 1, top - 2, true);
+            duel_fb_px(fb, cx - 1, top - 2, true);
+            duel_fb_px(fb, cx + 1, top - 2, true);
             break;
         case RESIDENT_WATCH_CAST:
             duel_fb_px(fb, cx, top - 2, true);
-            duel_fb_px(fb, cx - 2, top - 3, true); duel_fb_px(fb, cx + 2, top - 3, true);
+            duel_fb_px(fb, cx - 2, top - 3, true);
+            duel_fb_px(fb, cx + 2, top - 3, true);
             break;
         case RESIDENT_DIPLO_PROUD:
             duel_fb_px(fb, cx - 2, top - 1, true);

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from arcane_host.adapters import SemanticAdapters
 from arcane_host.dbus_contract import (
@@ -15,8 +15,8 @@ from arcane_host.dbus_contract import (
     RepositoryState,
 )
 from arcane_host.dbus_services import EventService, KWinBridgeLoader
-from arcane_host.heartbeat import DryRunTransport, HidHeartbeat
 from arcane_host.focus import FocusArbiter
+from arcane_host.heartbeat import DryRunTransport, HidHeartbeat
 from arcane_host.policy import NotificationPolicy
 from arcane_host.protocol import (
     Category,
@@ -33,8 +33,9 @@ from arcane_host.semantic import SemanticResolver
 
 
 class FakeDevice:
-    def __init__(self, fail_after: int | None = None, *, reply: bytes | None = None,
-                 timeout: bool = False) -> None:
+    def __init__(
+        self, fail_after: int | None = None, *, reply: bytes | None = None, timeout: bool = False
+    ) -> None:
         self.reports: list[bytes] = []
         self.fail_after = fail_after
         self.reply = reply
@@ -91,7 +92,10 @@ class HeartbeatTests(unittest.TestCase):
         self.assertTrue(heartbeat.tick(0.1))
         self.assertFalse(heartbeat.tick(0.59))
         self.assertTrue(heartbeat.tick(0.6))
-        self.assertEqual([report[3] for report in device.reports], [Message.HELLO, Message.HEARTBEAT, Message.HEARTBEAT])
+        self.assertEqual(
+            [report[3] for report in device.reports],
+            [Message.HELLO, Message.HEARTBEAT, Message.HEARTBEAT],
+        )
 
     def test_absent_hid_retries_every_two_seconds(self) -> None:
         attempts = 0
@@ -112,11 +116,13 @@ class HeartbeatTests(unittest.TestCase):
         second = FakeDevice()
         devices = iter((first, second))
         sessions = iter((0x11111111, 0x22222222))
-        heartbeat = HidHeartbeat(lambda: Scene.ARCHIVE, lambda: next(devices), lambda: next(sessions))
-        heartbeat.tick(0.0)   # first HELLO
-        heartbeat.tick(0.1)   # failed heartbeat -> disconnected
+        heartbeat = HidHeartbeat(
+            lambda: Scene.ARCHIVE, lambda: next(devices), lambda: next(sessions)
+        )
+        heartbeat.tick(0.0)  # first HELLO
+        heartbeat.tick(0.1)  # failed heartbeat -> disconnected
         heartbeat.tick(2.09)  # not yet
-        heartbeat.tick(2.1)   # second HELLO
+        heartbeat.tick(2.1)  # second HELLO
         self.assertTrue(first.closed)
         self.assertEqual(second.reports[0][3], Message.HELLO)
         self.assertEqual(int.from_bytes(second.reports[0][4:8], "little"), 0x22222222)
@@ -215,11 +221,14 @@ class HeartbeatTests(unittest.TestCase):
     def test_reconnect_hello_carries_complete_summary(self) -> None:
         summary = NotificationSummary(2, Category.SECURITY, Priority.CRITICAL, 4, True)
         device = FakeDevice()
-        heartbeat = HidHeartbeat(lambda: Scene.FOCUS, lambda: device, lambda: 3,
-                                 summary_provider=lambda: summary)
+        heartbeat = HidHeartbeat(
+            lambda: Scene.FOCUS, lambda: device, lambda: 3, summary_provider=lambda: summary
+        )
         heartbeat.tick(0)
-        self.assertEqual(device.reports[0][11:17], bytes((Scene.FOCUS, 2, Category.SECURITY,
-                                                          Priority.CRITICAL, 4, 1)))
+        self.assertEqual(
+            device.reports[0][11:17],
+            bytes((Scene.FOCUS, 2, Category.SECURITY, Priority.CRITICAL, 4, 1)),
+        )
 
 
 class EventServiceTests(unittest.TestCase):
@@ -337,7 +346,9 @@ class FakeConnection:
         self.callback = args[-1]
         return 1
 
-    def call_sync(self, service, path, interface, method, parameters, result_type, flags, timeout, cancellable):
+    def call_sync(
+        self, service, path, interface, method, parameters, result_type, flags, timeout, cancellable
+    ):
         del result_type, flags, timeout, cancellable
         self.calls.append((service, path, interface, method, parameters))
         return FakeVariant((3,)) if method == "loadScript" else None
@@ -350,7 +361,9 @@ class KWinRestartTests(unittest.TestCase):
             script.write_text("// test")
             connection = FakeConnection()
             KWinBridgeLoader(FakeGio, FakeGLib, connection, script)
-            connection.callback(None, None, None, None, None, FakeVariant((KWIN_SERVICE, "old", "new")))
+            connection.callback(
+                None, None, None, None, None, FakeVariant((KWIN_SERVICE, "old", "new"))
+            )
             loads = [call for call in connection.calls if call[3] == "loadScript"]
             starts = [call for call in connection.calls if call[3] == "run"]
             self.assertEqual(len(loads), 2)

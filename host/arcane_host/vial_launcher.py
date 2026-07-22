@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 SERVICE = os.environ.get("CORNE_ARCANE_SERVICE", "corne-arcane-host.service")
 SYSTEMCTL = os.environ.get("CORNE_ARCANE_SYSTEMCTL", "systemctl")

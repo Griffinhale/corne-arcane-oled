@@ -12,7 +12,9 @@ enum {
     DUEL_RGB_LED_KEYLIGHT = 0x04u,
 };
 
-typedef struct { uint8_t r, g, b; } duel_rgb_t;
+typedef struct {
+    uint8_t r, g, b;
+} duel_rgb_t;
 
 typedef struct {
     duel_display_phase_t display_phase;
@@ -24,6 +26,4 @@ typedef struct {
     uint8_t prepared_element[2];
 } duel_rgb_world_t;
 
-duel_rgb_t duel_rgb_policy(const duel_rgb_world_t *world, uint8_t led_flags,
-                           bool led_is_left);
-
+duel_rgb_t duel_rgb_policy(const duel_rgb_world_t *world, uint8_t led_flags, bool led_is_left);

@@ -6,7 +6,6 @@
 
 #include "duel_sim.h"
 
-
 /* Exactly 19 bytes: 2x3 wizard, 2x4 active spell, outcome-sequence/stance
    byte, outcome/overlay, 2 phase bytes, and one status-visual byte. */
 typedef struct __attribute__((packed)) {
@@ -34,37 +33,37 @@ typedef struct __attribute__((packed)) {
  * made them sim state. PACE/TAUNT derive locally from NONE + idle + seed
  * and never ride the wire. */
 
-#define VIEW_FX_PACK(seq, stance_l, stance_r) \
+#define VIEW_FX_PACK(seq, stance_l, stance_r)                                                      \
     ((uint8_t)(((seq) & 0x0fu) | (((stance_l) & 3u) << 4) | (((stance_r) & 3u) << 6)))
 #define VIEW_FX_SEQ(b)          ((uint8_t)((b) & 0x0fu))
 #define VIEW_FX_STANCE(b, side) ((uint8_t)(((b) >> (4u + 2u * (side))) & 3u))
-#define VIEW_W0_PACK(hp, ward, rearm) \
+#define VIEW_W0_PACK(hp, ward, rearm)                                                              \
     ((uint8_t)(((hp) & 0x0fu) | (((ward) & 7u) << 4) | ((rearm) ? 0x80u : 0u)))
 #define VIEW_W0_HP(b)    ((uint8_t)((b) & 0x0fu))
 #define VIEW_W0_WARD(b)  ((uint8_t)(((b) >> 4) & 7u))
 #define VIEW_W0_REARM(b) ((uint8_t)(((b) >> 7) & 1u))
 
-#define VIEW_W1_PACK(life, variant, status) \
+#define VIEW_W1_PACK(life, variant, status)                                                        \
     ((uint8_t)(((life) & 7u) | (((variant) & 3u) << 3) | (((status) & 7u) << 5)))
 #define VIEW_W1_LIFE(b)    ((uint8_t)((b) & 7u))
 #define VIEW_W1_VARIANT(b) ((uint8_t)(((b) >> 3) & 3u))
 #define VIEW_W1_STATUS(b)  ((uint8_t)(((b) >> 5) & 7u))
 
-#define VIEW_W2_PACK(pose, inc_state, focus, prepared) \
-    ((uint8_t)(((pose) & 3u) | (((inc_state) & 7u) << 2) | \
-               (((focus) & 3u) << 5) | ((prepared) ? 0x80u : 0u)))
+#define VIEW_W2_PACK(pose, inc_state, focus, prepared)                                             \
+    ((uint8_t)(((pose) & 3u) | (((inc_state) & 7u) << 2) | (((focus) & 3u) << 5) |                 \
+               ((prepared) ? 0x80u : 0u)))
 #define VIEW_W2_POSE(b)     ((uint8_t)((b) & 3u))
 #define VIEW_W2_INC(b)      ((uint8_t)(((b) >> 2) & 7u))
 #define VIEW_W2_FOCUS(b)    ((uint8_t)(((b) >> 5) & 3u))
 #define VIEW_W2_PREPARED(b) ((uint8_t)(((b) >> 7) & 1u))
 
-#define VIEW_OVERLAY_PACK(fx, open, scene) \
+#define VIEW_OVERLAY_PACK(fx, open, scene)                                                         \
     ((uint8_t)(((fx) & 0x0fu) | ((open) ? 0x10u : 0u) | (((scene) & 3u) << 5)))
 #define VIEW_OVERLAY_FX(b)    ((uint8_t)((b) & 0x0fu))
 #define VIEW_OVERLAY_OPEN(b)  (((b) & 0x10u) != 0)
 #define VIEW_OVERLAY_SCENE(b) ((uint8_t)(((b) >> 5) & 3u))
 
-#define VIEW_PHASE_PACK(form, elem, progress) \
+#define VIEW_PHASE_PACK(form, elem, progress)                                                      \
     ((uint8_t)(((form) & 7u) | (((elem) & 3u) << 3) | (((progress) & 7u) << 5)))
 #define VIEW_PHASE_FORM(b)     ((uint8_t)((b) & 7u))
 #define VIEW_PHASE_ELEMENT(b)  ((uint8_t)(((b) >> 3) & 3u))
@@ -92,7 +91,7 @@ typedef struct {
 typedef struct {
     uint8_t active;
     uint8_t pos;
-    int8_t  dir;
+    int8_t dir;
     uint8_t kind;
     uint32_t descriptor;
     uint8_t progress;

@@ -29,7 +29,11 @@ class FocusTests(unittest.TestCase):
                 self.assertEqual(focus.poll(0), Scene.ARCHIVE)
 
     def test_empty_unknown_and_desktop_are_duel(self) -> None:
-        for pair in (("", ""), ("org.kde.kate", "org.kde.kate"), ("plasmashell", "org.kde.plasmashell")):
+        for pair in (
+            ("", ""),
+            ("org.kde.kate", "org.kde.kate"),
+            ("plasmashell", "org.kde.plasmashell"),
+        ):
             focus = FocusArbiter(settle_seconds=0)
             focus.report(*pair, 0)
             self.assertEqual(focus.poll(0), Scene.DUEL)

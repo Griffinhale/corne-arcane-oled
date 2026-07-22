@@ -23,7 +23,9 @@ class ProtocolTests(unittest.TestCase):
     def test_known_vector(self) -> None:
         report = build_packet(Message.HELLO, 0x11223344, 0, Scene.ARCHIVE, 2)
         self.assertEqual(len(report), 32)
-        self.assertEqual(report.hex(), "ca8e0201443322110000080102070200000000000000000000000000000000ba")
+        self.assertEqual(
+            report.hex(), "ca8e0201443322110000080102070200000000000000000000000000000000ba"
+        )
 
     def test_crc_covers_every_payload_byte(self) -> None:
         report = bytearray(build_packet(Message.HEARTBEAT, 9, 17, Scene.FOCUS, 3))
@@ -53,8 +55,9 @@ class ProtocolTests(unittest.TestCase):
     def test_complete_absolute_summary(self) -> None:
         summary = NotificationSummary(15, Category.SECURITY, Priority.CRITICAL, 7, True)
         report = build_packet(Message.NOTIFY, 4, 9, Scene.FOCUS, summary=summary)
-        self.assertEqual(report[10:17], bytes((8, Scene.FOCUS, 15, Category.SECURITY,
-                                              Priority.CRITICAL, 7, 1)))
+        self.assertEqual(
+            report[10:17], bytes((8, Scene.FOCUS, 15, Category.SECURITY, Priority.CRITICAL, 7, 1))
+        )
 
     def test_civic_pack_matches_duel_host_macros(self) -> None:
         # Mirrors DUEL_CIVIC_PACK / DUEL_SECONDARY_PACK bit-for-bit: floor bits
@@ -79,8 +82,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(report[17], 0x2A)
         self.assertEqual(report[18], 0x03)
         # The semantic summary remains in payload[0..5].
-        self.assertEqual(report[11:17], bytes((Scene.ARCHIVE, 2, Category.OTHER,
-                                              Priority.NORMAL, 0, 0)))
+        self.assertEqual(
+            report[11:17], bytes((Scene.ARCHIVE, 2, Category.OTHER, Priority.NORMAL, 0, 0))
+        )
         self.assertEqual(report[-1], crc8(report[:-1]))
         default = build_packet(Message.HEARTBEAT, 0x11223344, 0, Scene.ARCHIVE, 2)
         self.assertEqual(default[10], 8)

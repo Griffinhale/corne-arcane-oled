@@ -38,19 +38,18 @@ typedef struct {
     uint8_t residue[2];
 } duel_render_t;
 
-#define DUEL_RENDER_RESIDUE_ELEMENT(r, zone) \
+#define DUEL_RENDER_RESIDUE_ELEMENT(r, zone)                                                       \
     ((uint8_t)(((r)->residue[(zone) >> 1] >> (((zone) & 1u) * 4u)) & 3u))
-#define DUEL_RENDER_RESIDUE_INTENSITY(r, zone) \
+#define DUEL_RENDER_RESIDUE_INTENSITY(r, zone)                                                     \
     ((uint8_t)(((r)->residue[(zone) >> 1] >> (((zone) & 1u) * 4u + 2u)) & 3u))
-#define DUEL_RENDER_STALE 0x01u
+#define DUEL_RENDER_STALE           0x01u
 #define DUEL_RENDER_GLOBAL_LAYER(v) ((uint8_t)((v) & 0x03u))
-#define DUEL_RENDER_LOCAL_SHIFT 4u
-#define DUEL_RENDER_LOCAL_NONE  0u
-#define DUEL_RENDER_LOCAL_LEFT  1u
-#define DUEL_RENDER_LOCAL_RIGHT 2u
-#define DUEL_RENDER_LOCAL_LAYER(v) \
-    ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
-#define DUEL_RENDER_LAYER_PACK(global, local) \
+#define DUEL_RENDER_LOCAL_SHIFT     4u
+#define DUEL_RENDER_LOCAL_NONE      0u
+#define DUEL_RENDER_LOCAL_LEFT      1u
+#define DUEL_RENDER_LOCAL_RIGHT     2u
+#define DUEL_RENDER_LOCAL_LAYER(v)  ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
+#define DUEL_RENDER_LAYER_PACK(global, local)                                                      \
     ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
 
 _Static_assert(sizeof(duel_render_t) == 40, "render state layout changed");

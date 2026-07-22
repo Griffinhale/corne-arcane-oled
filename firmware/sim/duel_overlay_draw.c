@@ -25,9 +25,9 @@ static const uint8_t alert_glyphs[DUEL_HOST_CATEGORY_COUNT][7] = {
     {0x04, 0x0E, 0x1F, 0x1B, 0x1F, 0x0E, 0x04}, // other diamond
 };
 
-static void draw_alert_bitmap(duel_fb_t *fb, uint8_t category,
-                              int ox, int oy, bool mirror) {
-    if (category >= DUEL_HOST_CATEGORY_COUNT) return;
+static void draw_alert_bitmap(duel_fb_t *fb, uint8_t category, int ox, int oy, bool mirror) {
+    if (category >= DUEL_HOST_CATEGORY_COUNT)
+        return;
     for (int y = 0; y < 7; y++) {
         for (int x = 0; x < 5; x++) {
             if (alert_glyphs[category][y] & (1u << (4 - x))) {
@@ -45,8 +45,9 @@ void duel_overlay_draw_alert(duel_fb_t *fb, const duel_render_t *r, bool is_left
     uint8_t category = DUEL_HOST_ALERT_CATEGORY(r->alert);
     uint8_t priority = DUEL_HOST_ALERT_PRIORITY(r->alert);
     uint8_t age = DUEL_HOST_ALERT_AGE(r->alert);
-    if (!duel_render_host_online(r) || !duel_render_notification_count(r) || category == DUEL_HOST_CATEGORY_NONE ||
-        priority == DUEL_HOST_PRIORITY_NONE) return;
+    if (!duel_render_host_online(r) || !duel_render_notification_count(r) ||
+        category == DUEL_HOST_CATEGORY_NONE || priority == DUEL_HOST_PRIORITY_NONE)
+        return;
     // Clear the banner field on the shaft face so the glyph stays legible
     // over a lit window edge or a dragged body crossing the doorway.
     for (int y = 24; y <= 35; y++)
@@ -75,7 +76,8 @@ void duel_overlay_draw_alert(duel_fb_t *fb, const duel_render_t *r, bool is_left
         duel_fb_px(fb, is_left ? 2 + i * 2 : 29 - i * 2, 35, true);
     if (DUEL_HOST_CONTEXT_PERSISTENT(r->external)) {
         int ax = is_left ? 6 : 25;
-        duel_fb_px(fb, ax, 36, true); duel_fb_px(fb, ax, 37, true);
+        duel_fb_px(fb, ax, 36, true);
+        duel_fb_px(fb, ax, 37, true);
         duel_fb_px(fb, ax + (is_left ? -1 : 1), 38, true);
         duel_fb_px(fb, ax + (is_left ? 1 : -1), 38, true);
     }
@@ -118,7 +120,8 @@ void duel_overlay_draw_scry(duel_fb_t *fb, const duel_render_t *r, bool is_left)
         int y0 = 18 + i * 5;
         if (i == active) {
             for (int y = y0; y < y0 + 3; y++)
-                for (int x = 1; x <= 3; x++) duel_fb_px(fb, SCRY_X(x), y, true);
+                for (int x = 1; x <= 3; x++)
+                    duel_fb_px(fb, SCRY_X(x), y, true);
         } else {
             duel_fb_px(fb, SCRY_X(2), y0 + 1, true);
             duel_fb_px(fb, SCRY_X(3), y0 + 1, true);
@@ -134,7 +137,8 @@ void duel_overlay_draw_scry(duel_fb_t *fb, const duel_render_t *r, bool is_left)
         duel_fb_px(fb, SCRY_X(30), hy + y, true);
     }
     if (duel_render_host_online(r)) {
-        for (int x = 26; x <= 28; x++) duel_fb_px(fb, SCRY_X(x), hy + 1, true);
+        for (int x = 26; x <= 28; x++)
+            duel_fb_px(fb, SCRY_X(x), hy + 1, true);
     } else {
         duel_fb_px(fb, SCRY_X(27), hy, true);
         duel_fb_px(fb, SCRY_X(27), hy + 2, true);
@@ -166,8 +170,8 @@ void duel_overlay_draw_scry(duel_fb_t *fb, const duel_render_t *r, bool is_left)
     }
 
     /* Selector meaning is stable while every architectural position mirrors. */
-    uint8_t scene = duel_render_host_online(r) ? duel_render_scene(r) :
-        (uint8_t)((r->view.outcome_overlay >> 5) & 3u);
+    uint8_t scene = duel_render_host_online(r) ? duel_render_scene(r)
+                                               : (uint8_t)((r->view.outcome_overlay >> 5) & 3u);
     static const uint8_t selector_x[SCRY_SCENES] = {7, 14, 21};
     for (int i = 0; i < SCRY_SCENES; i++) {
         int x0 = selector_x[i];
@@ -188,7 +192,8 @@ void duel_overlay_draw_attunement(duel_fb_t *fb, const duel_render_t *r,
                                   const duel_view_wizard_t *wz, bool is_left) {
     uint8_t local = DUEL_RENDER_LOCAL_LAYER(r->layer);
     if ((is_left && local != DUEL_RENDER_LOCAL_LEFT) ||
-        (!is_left && local != DUEL_RENDER_LOCAL_RIGHT)) return;
+        (!is_left && local != DUEL_RENDER_LOCAL_RIGHT))
+        return;
     int facing = is_left ? 1 : -1;
     bool casting = wz->life == LIFE_ACTIVE && wz->pose == POSE_CAST;
     int tip_x = 16 + facing * (casting ? 5 : 6);
@@ -238,22 +243,24 @@ void duel_overlay_draw_health(duel_fb_t *fb, const duel_view_wizard_t *wz, bool 
 // One-shot local outcome flourishes (impact/fizzle/heal/shatter/deflect).
 // All render-frame state: losing it costs only the flourish, never health or
 // split convergence.
-void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
-                          const duel_view_wizard_t *wz, int facing, bool is_left) {
+void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const duel_view_wizard_t *wz,
+                                int facing, bool is_left) {
     bool is_impact = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R;
     bool is_fizzle = r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_FIZZLE_R;
-    int tier       = DUEL_KIND_TIER(r->flash_spell_kind);
-    int fy         = duel_combat_spell_lane_y(r->flash_spell_kind);
+    int tier = DUEL_KIND_TIER(r->flash_spell_kind);
+    int fy = duel_combat_spell_lane_y(r->flash_spell_kind);
 
     if (is_impact) {
         // Force enters from the gap: contact burst, inward shock line,
         // local debris, recoil above, and a flashing frame at the shaft
         // window that just went dark. Only the defender's border corners twitch.
         // M15 weight pass: the flourish scales one presentation tier up.
-        if (tier < SPELL_TIER_SATURATED) tier++;
-        int hx    = 16 + facing * 5;
+        if (tier < SPELL_TIER_SATURATED)
+            tier++;
+        int hx = 16 + facing * 5;
         int reach = 2 + tier + (r->flash_frames >= 8);
-        for (int d = 0; d <= reach; d++) duel_fb_px(fb, hx + facing * d, fy, true);
+        for (int d = 0; d <= reach; d++)
+            duel_fb_px(fb, hx + facing * d, fy, true);
         for (int d = 1; d <= reach; d++) {
             duel_fb_px(fb, hx, fy - d, true);
             duel_fb_px(fb, hx, fy + d, true);
@@ -268,7 +275,8 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
         }
         if (r->flash_frames >= 7) {
             for (int d = 0; d < 4; d++) {
-                duel_fb_px(fb, d, 0, true); duel_fb_px(fb, DUEL_CANVAS_W - 1 - d, 0, true);
+                duel_fb_px(fb, d, 0, true);
+                duel_fb_px(fb, DUEL_CANVAS_W - 1 - d, 0, true);
                 duel_fb_px(fb, d, DUEL_CANVAS_H - 1, true);
                 duel_fb_px(fb, DUEL_CANVAS_W - 1 - d, DUEL_CANVAS_H - 1, true);
             }
@@ -302,12 +310,13 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
     } else if (r->flash_kind == FX_HEAL_L || r->flash_kind == FX_HEAL_R) {
         int hx = 16 - facing * 5;
         int radius = 2 + (r->flash_frames > 4u);
-        duel_fb_px(fb, hx - radius, fy, true); duel_fb_px(fb, hx + radius, fy, true);
-        duel_fb_px(fb, hx, fy - radius, true); duel_fb_px(fb, hx, fy + radius, true);
+        duel_fb_px(fb, hx - radius, fy, true);
+        duel_fb_px(fb, hx + radius, fy, true);
+        duel_fb_px(fb, hx, fy - radius, true);
+        duel_fb_px(fb, hx, fy + radius, true);
         duel_fb_line(fb, hx - 1, fy, hx + 1, fy);
         duel_fb_line(fb, hx, fy - 1, hx, fy + 1);
-    } else if (r->flash_kind == FX_WARD_SHATTER_L ||
-               r->flash_kind == FX_WARD_SHATTER_R) {
+    } else if (r->flash_kind == FX_WARD_SHATTER_L || r->flash_kind == FX_WARD_SHATTER_R) {
         int ax = 16 + facing * 9;
         for (int i = 0; i < 4; i++) {
             int scatter = 2 + i * 2 + (8 - r->flash_frames) / 2;
@@ -319,7 +328,7 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
     } else {
         // Redirection: the ward is the dominant thick shape while the
         // carrier breaks into two streaks thrown back toward the gap.
-        int ax   = 16 + facing * 9;
+        int ax = 16 + facing * 9;
         int dist = 2 + (8 - r->flash_frames) / 2;
         duel_combat_draw_ward(fb, facing, 2, 2, false, fy);
         duel_fb_line(fb, ax + facing, fy, ax + facing * (dist + 2), fy - dist - tier);
@@ -345,12 +354,14 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r,
  * fx draw later and may transiently overlap — combat happens on top of its
  * own history. */
 void duel_overlay_draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
-    static const uint8_t zone_anchor_u[SIM_RESIDUE_ZONES] = { 13u, 48u, 207u, 242u };
+    static const uint8_t zone_anchor_u[SIM_RESIDUE_ZONES] = {13u, 48u, 207u, 242u};
     for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++) {
         uint8_t intensity = DUEL_RENDER_RESIDUE_INTENSITY(r, zone);
-        if (!intensity) continue;
+        if (!intensity)
+            continue;
         int x;
-        if (!duel_combat_battlefield_to_x(zone_anchor_u[zone], is_left, &x)) continue;
+        if (!duel_combat_battlefield_to_x(zone_anchor_u[zone], is_left, &x))
+            continue;
         int base = DUEL_DECK_Y0 - 1;
         switch (DUEL_RENDER_RESIDUE_ELEMENT(r, zone)) {
             case ELEM_FORCE: /* rubble mound spreading, then heaping */
@@ -359,12 +370,14 @@ void duel_overlay_draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_le
                     duel_fb_px(fb, x - 1, base, true);
                     duel_fb_px(fb, x + 1, base, true);
                 }
-                if (intensity >= 3) duel_fb_px(fb, x, base - 1, true);
+                if (intensity >= 3)
+                    duel_fb_px(fb, x, base - 1, true);
                 break;
             case ELEM_EMBER: /* flame column rising, then a glowing bed */
                 duel_fb_px(fb, x, base, true);
                 duel_fb_px(fb, x, base - 1, true);
-                if (intensity >= 2) duel_fb_px(fb, x, base - 2, true);
+                if (intensity >= 2)
+                    duel_fb_px(fb, x, base - 2, true);
                 if (intensity >= 3) {
                     duel_fb_px(fb, x - 1, base, true);
                     duel_fb_px(fb, x + 1, base, true);
@@ -377,7 +390,8 @@ void duel_overlay_draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_le
                     duel_fb_px(fb, x - 1, base - 1, true);
                     duel_fb_px(fb, x + 1, base - 1, true);
                 }
-                if (intensity >= 3) duel_fb_px(fb, x, base - 2, true);
+                if (intensity >= 3)
+                    duel_fb_px(fb, x, base - 2, true);
                 break;
             default: /* ELEM_VOID: a pit widening, then biting the beam */
                 duel_fb_px(fb, x, DUEL_DECK_Y0, false);
@@ -385,7 +399,8 @@ void duel_overlay_draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_le
                     duel_fb_px(fb, x - 1, DUEL_DECK_Y0, false);
                     duel_fb_px(fb, x + 1, DUEL_DECK_Y0, false);
                 }
-                if (intensity >= 3) duel_fb_px(fb, x, DUEL_FLOOR_BEAM_Y, false);
+                if (intensity >= 3)
+                    duel_fb_px(fb, x, DUEL_FLOOR_BEAM_Y, false);
                 break;
         }
     }

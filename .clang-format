@@ -1,0 +1,11 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 100
+AlignConsecutiveMacros: Consecutive
+BreakBeforeBraces: Attach
+PointerAlignment: Right
+DerivePointerAlignment: false
+IndentCaseLabels: true
+SortIncludes: Never
+UseTab: Never

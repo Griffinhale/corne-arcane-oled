@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from enum import IntEnum
-import struct
 
 REPORT_SIZE = 32
 MAGIC = (0xCA, 0x8E)
@@ -104,8 +104,8 @@ class CivicState:
 
     def civic_byte(self) -> int:
         """DUEL_CIVIC_PACK(floor, mode, intensity)."""
-        return (int(self.floor) & 3) | ((int(self.mode) & 3) << 2) | (
-            (int(self.intensity) & 3) << 4
+        return (
+            (int(self.floor) & 3) | ((int(self.mode) & 3) << 2) | ((int(self.intensity) & 3) << 4)
         )
 
     def secondary_byte(self) -> int:
@@ -135,7 +135,10 @@ class NotificationSummary:
             raise ValueError("age must be in 0..7")
         if self.count == 0:
             if (self.category, self.priority, self.age, self.persistent) != (
-                Category.NONE, Priority.NONE, 0, False
+                Category.NONE,
+                Priority.NONE,
+                0,
+                False,
             ):
                 raise ValueError("an empty summary must have canonical zero fields")
         elif self.category == Category.NONE or self.priority == Priority.NONE:

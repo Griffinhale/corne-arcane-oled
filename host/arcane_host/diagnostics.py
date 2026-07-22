@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 import json
 import secrets
 import struct
 import sys
 import time
+from dataclasses import asdict, dataclass
 
-from .hidraw import Device, choose_device
 from .heartbeat import HidTransport
+from .hidraw import Device, choose_device
 from .protocol import MAGIC, REPORT_SIZE, crc8
 
 DIAGNOSTIC_VERSION = 1
@@ -81,8 +81,8 @@ def build_request(page: int, nonce: int) -> bytes:
 def parse_response(report: bytes, *, page: int, nonce: int) -> bytes:
     if len(report) != REPORT_SIZE:
         raise ValueError(f"diagnostic response must be {REPORT_SIZE} bytes")
-    magic0, magic1, version, message, actual_page, page_count, actual_nonce = (
-        struct.unpack_from("<BBBBBBH", report)
+    magic0, magic1, version, message, actual_page, page_count, actual_nonce = struct.unpack_from(
+        "<BBBBBBH", report
     )
     if (magic0, magic1) != MAGIC:
         raise ValueError("diagnostic response has bad magic")
@@ -174,7 +174,9 @@ def _read_page(device: HidTransport, page: int, nonce: int, timeout: float) -> b
             last_error = error
 
 
-def query(device: HidTransport, *, timeout: float = 1.0, nonce: int | None = None) -> DiagnosticSnapshot:
+def query(
+    device: HidTransport, *, timeout: float = 1.0, nonce: int | None = None
+) -> DiagnosticSnapshot:
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     request_nonce = secrets.randbelow(0x10000) if nonce is None else nonce

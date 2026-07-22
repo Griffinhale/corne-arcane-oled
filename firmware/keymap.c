@@ -28,10 +28,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <string.h>
 
 #ifdef ARCANE_DIAGNOSTICS
-#    pragma push_macro("TIMER")
-#    undef TIMER
-#    include "hardware/timer.h"
-#    pragma pop_macro("TIMER")
+#pragma push_macro("TIMER")
+#undef TIMER
+#include "hardware/timer.h"
+#pragma pop_macro("TIMER")
 #endif
 
 #include "transactions.h"
@@ -69,8 +69,11 @@ static uint8_t duel_last_spell_kind[2];
 /* Saturating diagnostic counters compile to nothing in release builds, so
  * hot functions stay readable without interleaved #ifdef blocks. */
 #ifdef ARCANE_DIAGNOSTICS
-#define DUEL_DIAG_INC(field) \
-    do { if (duel_diag.field < UINT16_MAX) duel_diag.field++; } while (0)
+#define DUEL_DIAG_INC(field)                                                                       \
+    do {                                                                                           \
+        if (duel_diag.field < UINT16_MAX)                                                          \
+            duel_diag.field++;                                                                     \
+    } while (0)
 #else
 #define DUEL_DIAG_INC(field) ((void)0)
 #endif
@@ -99,7 +102,8 @@ volatile duel_split_diag_reply_t duel_peer_diag;
 static duel_mailbox_t duel_diag_response_mailbox;
 
 static void duel_diag_peak(volatile uint32_t *peak, uint32_t elapsed) {
-    if (elapsed > *peak) *peak = elapsed;
+    if (elapsed > *peak)
+        *peak = elapsed;
 }
 
 static uint16_t duel_diag_u16(uint32_t value) {
@@ -151,20 +155,23 @@ oled_rotation_t oled_init_user(oled_rotation_t rotation) {
  * already contains the slave's rows (merged in matrix_post_scan before
  * matrix_scan_kb fires — quantum/matrix_common.c), so the master captures
  * both halves; the slave captures only its own. */
-static sim_evq_t    duel_evq;
+static sim_evq_t duel_evq;
 static matrix_row_t duel_rows[MATRIX_ROWS];
 
 static void duel_scan_rows(uint8_t row_first, uint8_t row_last, uint8_t side) {
     for (uint8_t r = row_first; r <= row_last; r++) {
-        matrix_row_t cur  = matrix_get_row(r);
+        matrix_row_t cur = matrix_get_row(r);
         matrix_row_t diff = cur ^ duel_rows[r];
         duel_rows[r] = cur;
-        if (!diff) continue;
+        if (!diff)
+            continue;
         for (uint8_t c = 0; c < MATRIX_COLS; c++) {
-            if (!(diff & ((matrix_row_t)1 << c))) continue;
-            if (!(cur & ((matrix_row_t)1 << c))) continue;
-            sim_evq_push(&duel_evq, SIM_EV_PACK(SIM_EV_KEYDOWN, side,
-                                                (uint8_t)(r % DUEL_ROWS_PER_HAND), c));
+            if (!(diff & ((matrix_row_t)1 << c)))
+                continue;
+            if (!(cur & ((matrix_row_t)1 << c)))
+                continue;
+            sim_evq_push(&duel_evq,
+                         SIM_EV_PACK(SIM_EV_KEYDOWN, side, (uint8_t)(r % DUEL_ROWS_PER_HAND), c));
             duel_note_physical_key();
         }
     }
@@ -224,10 +231,9 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
         return;
     }
 #ifdef ARCANE_DIAGNOSTICS
-    if (data[1] == DUEL_HOST_MAGIC1 &&
-        data[2] == DUEL_HOST_DIAG_VERSION && data[3] == DUEL_HOST_MSG_DIAG_REQUEST) {
-        duel_mailbox_publish(&duel_diag_usb_rx_mailbox, data,
-                             sizeof(duel_host_diag_packet_t));
+    if (data[1] == DUEL_HOST_MAGIC1 && data[2] == DUEL_HOST_DIAG_VERSION &&
+        data[3] == DUEL_HOST_MSG_DIAG_REQUEST) {
+        duel_mailbox_publish(&duel_diag_usb_rx_mailbox, data, sizeof(duel_host_diag_packet_t));
         return;
     }
 #endif
@@ -236,10 +242,11 @@ void raw_hid_receive_kb(uint8_t *data, uint8_t length) {
 
 static bool duel_host_rx_consume(uint32_t now) {
     duel_host_packet_t packet;
-    if (!duel_mailbox_consume(&duel_host_rx_mailbox, &duel_host_rx_seen_ver,
-                              &packet, sizeof packet)) return false;
+    if (!duel_mailbox_consume(&duel_host_rx_mailbox, &duel_host_rx_seen_ver, &packet,
+                              sizeof packet))
+        return false;
     uint8_t before_context = duel_host_context(&duel_host_state);
-    uint8_t before_alert   = duel_host_alert(&duel_host_state);
+    uint8_t before_alert = duel_host_alert(&duel_host_state);
     if (duel_host_accept(&duel_host_state, &packet)) {
         duel_host_expire_ms = now + DUEL_HOST_TIMEOUT_MS;
     }
@@ -251,7 +258,7 @@ static bool duel_host_housekeeping(uint32_t now) {
     bool visible_changed = duel_host_rx_consume(now);
     if (duel_host_expire_ms && timer_expired32(now, duel_host_expire_ms)) {
         uint8_t before_context = duel_host_context(&duel_host_state);
-        uint8_t before_alert   = duel_host_alert(&duel_host_state);
+        uint8_t before_alert = duel_host_alert(&duel_host_state);
         duel_host_expire(&duel_host_state);
         duel_host_expire_ms = 0;
         visible_changed |= before_context != duel_host_context(&duel_host_state) ||
@@ -274,14 +281,12 @@ static void duel_diag_put_u32(uint8_t *out, uint32_t value) {
 }
 
 static bool duel_diag_usb_request_consume(duel_host_diag_packet_t *request) {
-    if (!duel_mailbox_consume(&duel_diag_usb_rx_mailbox,
-                              &duel_diag_usb_rx_seen_ver,
-                              request, sizeof *request)) return false;
-    return request->magic0 == DUEL_HOST_MAGIC0 &&
-           request->magic1 == DUEL_HOST_MAGIC1 &&
+    if (!duel_mailbox_consume(&duel_diag_usb_rx_mailbox, &duel_diag_usb_rx_seen_ver, request,
+                              sizeof *request))
+        return false;
+    return request->magic0 == DUEL_HOST_MAGIC0 && request->magic1 == DUEL_HOST_MAGIC1 &&
            request->version == DUEL_HOST_DIAG_VERSION &&
-           request->type == DUEL_HOST_MSG_DIAG_REQUEST &&
-           request->page < DUEL_HOST_DIAG_PAGES &&
+           request->type == DUEL_HOST_MSG_DIAG_REQUEST && request->page < DUEL_HOST_DIAG_PAGES &&
            request->page_count == 0 &&
            request->crc == duel_crc8(request, offsetof(duel_host_diag_packet_t, crc));
 }
@@ -329,10 +334,11 @@ static void duel_diag_usb_respond(const duel_host_diag_packet_t *request) {
 #endif
 
 static duel_mailbox_t duel_rx_mailbox;
-static uint32_t         duel_last_pkt_ms;
+static uint32_t duel_last_pkt_ms;
 
 static void duel_snapshot_rx(uint8_t in_len, const void *in, uint8_t out_len, void *out) {
-    if (in_len != sizeof(duel_snapshot_t)) return;
+    if (in_len != sizeof(duel_snapshot_t))
+        return;
     duel_mailbox_publish(&duel_rx_mailbox, in, sizeof(duel_snapshot_t));
 #ifdef ARCANE_DIAGNOSTICS
     if (out_len == sizeof(duel_split_diag_reply_t) && out != NULL) {
@@ -359,10 +365,10 @@ void keyboard_post_init_user(void) {
  * loop pass). Wall time never reaches the sim: it only decides HOW MANY
  * ticks to run. Render reads only the copied snapshot, so OLED cadence
  * cannot change outcomes. */
-static sim_world_t   duel_world;
+static sim_world_t duel_world;
 static duel_render_t duel_render; // presentation reads ONLY this
-static uint32_t      duel_next_tick_ms;
-static bool          duel_tick_armed;
+static uint32_t duel_next_tick_ms;
+static bool duel_tick_armed;
 
 /* ---- scry layer-key chord + input sampling: physical positions -------------
  * The chord is detected from raw matrix positions, NOT emitted keycodes or the
@@ -374,13 +380,14 @@ static bool          duel_tick_armed;
  * which is exactly why the chord machine is authoritative-only. */
 static sim_inputs_t duel_sample_inputs(void) {
     uint16_t rows[DUEL_INPUT_ROWS];
-    for (uint8_t r = 0; r < DUEL_INPUT_ROWS; r++) rows[r] = duel_rows[r];
+    for (uint8_t r = 0; r < DUEL_INPUT_ROWS; r++)
+        rows[r] = duel_rows[r];
     return duel_inputs_from_rows(rows);
 }
 
 // Master -> slave snapshot stream.
-static uint8_t  duel_session;
-static uint8_t  duel_fx_sent;
+static uint8_t duel_session;
+static uint8_t duel_fx_sent;
 static duel_snapshot_t duel_last_tx;
 static duel_tx_policy_t duel_tx_policy;
 static uint32_t duel_sky_started_ms;
@@ -389,8 +396,7 @@ static duel_diplomacy_t duel_diplomacy;
 // Called exactly once, from keyboard_post_init_user — always before any tx.
 static void duel_session_init(void) {
     uint32_t entropy = get_rand_32();
-    duel_session = (uint8_t)(entropy ^ (entropy >> 8) ^
-                             (entropy >> 16) ^ (entropy >> 24));
+    duel_session = (uint8_t)(entropy ^ (entropy >> 8) ^ (entropy >> 16) ^ (entropy >> 24));
     duel_sky_started_ms = timer_read32();
     duel_diplomacy_init(&duel_diplomacy);
 }
@@ -409,9 +415,8 @@ static duel_floor_policy_t duel_floor_policy;
 // once here so the two call sites cannot drift.
 static uint8_t duel_master_secondary(uint32_t now) {
     return DUEL_SECONDARY_SKY_SUB_PACK(
-        DUEL_SECONDARY_SKY_PACK(
-            duel_host_secondary(&duel_host_state),
-            duel_sky_phase(now - duel_sky_started_ms)),
+        DUEL_SECONDARY_SKY_PACK(duel_host_secondary(&duel_host_state),
+                                duel_sky_phase(now - duel_sky_started_ms)),
         duel_sky_subphase(now - duel_sky_started_ms));
 }
 
@@ -430,37 +435,33 @@ static void duel_master_tx(uint32_t now, bool urgent) {
     uint8_t residue_now[2], residue_sent[2];
     duel_residue_pack(&duel_world, residue_now);
     duel_snapshot_residue_render(&duel_last_tx, residue_sent);
-    bool semantic_changed = !duel_tx_policy.have_sent ||
-                            memcmp(&candidate_view, &duel_last_tx.view,
-                                   sizeof candidate_view) != 0 ||
-                            external != duel_last_tx.external ||
-                            alert != duel_last_tx.alert ||
-                            civic != (uint8_t)(duel_last_tx.civic & ~DUEL_CIVIC_RESIDUE_BITS) ||
-                            secondary != (uint8_t)(duel_last_tx.secondary & ~DUEL_SECONDARY_RESIDUE_BITS) ||
-                            duel_civic_shared.shared_pres != duel_last_tx.shared_pres ||
-                            duel_civic_shared.revision != duel_last_tx.revision ||
-                            flags != (uint8_t)(duel_last_tx.flags & ~DUEL_FLAGS_RESIDUE_BITS) ||
-                            residue_now[0] != residue_sent[0] ||
-                            residue_now[1] != residue_sent[1];
-    if (!duel_tx_attempt(&duel_tx_policy, now, urgent, fx_changed,
-                         semantic_changed)) return;
+    bool semantic_changed =
+        !duel_tx_policy.have_sent ||
+        memcmp(&candidate_view, &duel_last_tx.view, sizeof candidate_view) != 0 ||
+        external != duel_last_tx.external || alert != duel_last_tx.alert ||
+        civic != (uint8_t)(duel_last_tx.civic & ~DUEL_CIVIC_RESIDUE_BITS) ||
+        secondary != (uint8_t)(duel_last_tx.secondary & ~DUEL_SECONDARY_RESIDUE_BITS) ||
+        duel_civic_shared.shared_pres != duel_last_tx.shared_pres ||
+        duel_civic_shared.revision != duel_last_tx.revision ||
+        flags != (uint8_t)(duel_last_tx.flags & ~DUEL_FLAGS_RESIDUE_BITS) ||
+        residue_now[0] != residue_sent[0] || residue_now[1] != residue_sent[1];
+    if (!duel_tx_attempt(&duel_tx_policy, now, urgent, fx_changed, semantic_changed))
+        return;
 
     duel_snapshot_t pkt;
-    duel_encode_external_alert_display(&duel_world, duel_session,
-                                       duel_tx_policy.sequence, external, alert,
-                                       duel_display.phase, &pkt);
+    duel_encode_external_alert_display(&duel_world, duel_session, duel_tx_policy.sequence, external,
+                                       alert, duel_display.phase, &pkt);
     // Relay the host's civic semantics plus the master-derived visitor
     // (shared_pres) and rare-event (revision) coordination. set_civic writes the
     // four bytes and recomputes the CRC over the 31-byte snapshot; release builds
     // omit these bytes entirely.
-    duel_snapshot_set_civic(&pkt, civic, secondary,
-                            duel_civic_shared.shared_pres, duel_civic_shared.revision);
+    duel_snapshot_set_civic(&pkt, civic, secondary, duel_civic_shared.shared_pres,
+                            duel_civic_shared.revision);
 
 #ifdef ARCANE_DIAGNOSTICS
     uint32_t tx_start_us = time_us_32();
     duel_split_diag_reply_t peer = {0};
-    bool sent = transaction_rpc_exec(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt,
-                                     sizeof peer, &peer);
+    bool sent = transaction_rpc_exec(DUEL_SYNC_SNAPSHOT, sizeof pkt, &pkt, sizeof peer, &peer);
     duel_diag_peak(&duel_diag.peak_split_tx_us, time_us_32() - tx_start_us);
     if (sent) {
         DUEL_DIAG_INC(split_tx_success);
@@ -468,7 +469,8 @@ static void duel_master_tx(uint32_t now, bool urgent) {
         // updating its seqlock-protected metrics at this exact instant. Keep
         // the last coherent sample instead of making a diagnostic query
         // intermittently report an invalid/empty peer.
-        if (peer.magic == DUEL_MAGIC && peer.version == 1) duel_peer_diag = peer;
+        if (peer.magic == DUEL_MAGIC && peer.version == 1)
+            duel_peer_diag = peer;
     } else {
         DUEL_DIAG_INC(split_tx_failure);
     }
@@ -484,12 +486,12 @@ static void duel_master_tx(uint32_t now, bool urgent) {
 
 // Slave: consistent seqlock read of the latest packet, then accept/reject.
 static duel_rx_state_t duel_rx;
-static uint8_t         duel_rx_seen_ver;
+static uint8_t duel_rx_seen_ver;
 
 static bool duel_slave_rx_consume(void) {
     duel_snapshot_t pkt;
-    if (!duel_mailbox_consume(&duel_rx_mailbox, &duel_rx_seen_ver,
-                              &pkt, sizeof pkt)) return false;
+    if (!duel_mailbox_consume(&duel_rx_mailbox, &duel_rx_seen_ver, &pkt, sizeof pkt))
+        return false;
     if (!duel_decode_valid(&pkt)) {
 #ifdef ARCANE_DIAGNOSTICS
         DUEL_DIAG_INC(split_protocol_errors);
@@ -518,11 +520,9 @@ static void duel_render_set_civic(uint32_t now, uint8_t civic, uint8_t secondary
     duel_render.revision = revision;
 }
 
-static void duel_housekeeping_master(uint32_t now, bool ticked,
-                                     bool display_changed, bool host_changed,
-                                     bool render_invalid) {
-    duel_diplomacy_update(&duel_diplomacy,
-                          duel_world.wiz[SIM_SIDE_L].life,
+static void duel_housekeeping_master(uint32_t now, bool ticked, bool display_changed,
+                                     bool host_changed, bool render_invalid) {
+    duel_diplomacy_update(&duel_diplomacy, duel_world.wiz[SIM_SIDE_L].life,
                           duel_world.wiz[SIM_SIDE_R].life);
     // The 250 ms repair deadline is not an integer multiple of the 40 ms
     // sim tick. Check it directly so an idle link repairs at 250 ms rather
@@ -531,8 +531,7 @@ static void duel_housekeeping_master(uint32_t now, bool ticked,
     bool repair_due = duel_tx_repair_due(&duel_tx_policy, now);
     // Refresh the visitor + rare-event coordination before both the wire
     // packet and the master's own render read it, so they stay consistent.
-    duel_civic_shared = duel_civic_shared_derive(duel_session, now,
-                                                 &duel_host_state, &duel_world,
+    duel_civic_shared = duel_civic_shared_derive(duel_session, now, &duel_host_state, &duel_world,
                                                  duel_diplomacy.balance);
     if (ticked || display_changed || host_changed || repair_due)
         duel_master_tx(now, display_changed || host_changed);
@@ -541,32 +540,30 @@ static void duel_housekeeping_master(uint32_t now, bool ticked,
         duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
         duel_render_set_external(duel_host_context(&duel_host_state),
                                  duel_host_alert(&duel_host_state));
-        duel_render_set_civic(now, duel_host_civic(&duel_host_state),
-                              duel_master_secondary(now),
-                              duel_civic_shared.shared_pres,
-                              duel_civic_shared.revision);
+        duel_render_set_civic(now, duel_host_civic(&duel_host_state), duel_master_secondary(now),
+                              duel_civic_shared.shared_pres, duel_civic_shared.revision);
     }
 }
 
-static void duel_housekeeping_slave(uint32_t now, bool ticked,
-                                    bool display_changed, bool render_invalid) {
+static void duel_housekeeping_slave(uint32_t now, bool ticked, bool display_changed,
+                                    bool render_invalid) {
     static duel_slave_presenter_t presenter;
     bool accepted = duel_slave_rx_consume();
     bool stale = timer_elapsed32(duel_last_pkt_ms) > DUEL_STALE_MS;
 #ifdef ARCANE_DIAGNOSTICS
     static bool diag_was_stale;
-    if (stale && !diag_was_stale) DUEL_DIAG_INC(stale_split_events);
+    if (stale && !diag_was_stale)
+        DUEL_DIAG_INC(stale_split_events);
     diag_was_stale = stale;
 #endif
-    duel_slave_decision_t decide = duel_slave_present(
-        &presenter, accepted, duel_rx.have_any, stale, ticked, render_invalid,
-        (duel_render.flags & DUEL_RENDER_STALE) != 0);
+    duel_slave_decision_t decide =
+        duel_slave_present(&presenter, accepted, duel_rx.have_any, stale, ticked, render_invalid,
+                           (duel_render.flags & DUEL_RENDER_STALE) != 0);
     if (decide.use_remote) {
         if (decide.consider_follow) {
             duel_display_phase_t before_follow = duel_display.phase;
             uint8_t remote_phase = DUEL_FLAGS_DISPLAY(duel_rx.last.flags);
-            if (duel_display_should_follow(remote_phase,
-                                           &duel_local_wake_until_ms, now))
+            if (duel_display_should_follow(remote_phase, &duel_local_wake_until_ms, now))
                 duel_display_follow(&duel_display, (duel_display_phase_t)remote_phase, now);
             display_changed |= duel_display.phase != before_follow;
         }
@@ -575,8 +572,7 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked,
             duel_render_set_external(duel_rx.last.external, duel_rx.last.alert);
             // Residue borrows civic bits 6-7 / secondary bit 7 on the wire;
             // strip them so render civic semantics match the master's.
-            duel_render_set_civic(now,
-                                  (uint8_t)(duel_rx.last.civic & ~DUEL_CIVIC_RESIDUE_BITS),
+            duel_render_set_civic(now, (uint8_t)(duel_rx.last.civic & ~DUEL_CIVIC_RESIDUE_BITS),
                                   (uint8_t)(duel_rx.last.secondary & ~DUEL_SECONDARY_RESIDUE_BITS),
                                   duel_rx.last.shared_pres, duel_rx.last.revision);
             duel_snapshot_residue_render(&duel_rx.last, duel_render.residue);
@@ -590,13 +586,16 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked,
         if (decide.base_refresh || display_changed) {
             duel_render_from_world(&duel_render, &duel_world);
             duel_render_set_external(0, 0);
-            duel_render_set_civic(now, 0,
+            duel_render_set_civic(
+                now, 0,
                 DUEL_SECONDARY_SKY_SUB_PACK(
-                    DUEL_SECONDARY_SKY_PACK(0,
-                        duel_sky_phase(now - duel_sky_started_ms)),
-                    duel_sky_subphase(now - duel_sky_started_ms)), 0, 0);
-            if (decide.set_stale) duel_render.flags |= DUEL_RENDER_STALE;
-            else duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
+                    DUEL_SECONDARY_SKY_PACK(0, duel_sky_phase(now - duel_sky_started_ms)),
+                    duel_sky_subphase(now - duel_sky_started_ms)),
+                0, 0);
+            if (decide.set_stale)
+                duel_render.flags |= DUEL_RENDER_STALE;
+            else
+                duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
         }
     }
 }
@@ -608,23 +607,27 @@ void housekeeping_task_user(void) {
     uint32_t now = timer_read32();
     /* A Vial lighting command can bypass the keycode path. Reassert world
      * ownership without touching EEPROM; the indicators below set every LED. */
-    if (!rgb_matrix_is_enabled()) rgb_matrix_enable_noeeprom();
+    if (!rgb_matrix_is_enabled())
+        rgb_matrix_enable_noeeprom();
     bool host_changed = false;
-    if (is_keyboard_master()) host_changed = duel_host_housekeeping(now);
+    if (is_keyboard_master())
+        host_changed = duel_host_housekeeping(now);
     if (!duel_tick_armed) {
         sim_init(&duel_world, is_keyboard_master() ? SIMF_AUTHORITATIVE : 0, 0);
         duel_display_init(&duel_display, now);
         duel_next_tick_ms = now + SIM_TICK_MS;
-        duel_tick_armed   = true;
+        duel_tick_armed = true;
     }
     duel_display_phase_t prior_display = duel_display.phase;
-    if (is_keyboard_master()) duel_display_update(&duel_display, now);
+    if (is_keyboard_master())
+        duel_display_update(&duel_display, now);
     bool display_changed = duel_display.phase != prior_display;
 
     bool resynced = false;
     uint8_t budget = duel_tick_budget(&duel_next_tick_ms, now, &resynced);
     bool ticked = budget != 0;
-    if (resynced) DUEL_DIAG_INC(missed_tick_resyncs);
+    if (resynced)
+        DUEL_DIAG_INC(missed_tick_resyncs);
     if (ticked) {
         // Inputs are sampled once and replayed across catch-up ticks; queued
         // events apply to the first tick only.
@@ -638,7 +641,8 @@ void housekeeping_task_user(void) {
     if (budget > 1) {
         uint16_t add = (uint16_t)(budget - 1);
         duel_diag.catchup_ticks = UINT16_MAX - duel_diag.catchup_ticks < add
-                                      ? UINT16_MAX : (uint16_t)(duel_diag.catchup_ticks + add);
+                                      ? UINT16_MAX
+                                      : (uint16_t)(duel_diag.catchup_ticks + add);
     }
     duel_diag.queue_overflow = duel_world.overflow_count;
     duel_diag.host_malformed_errors = duel_host_state.malformed_packets;
@@ -648,8 +652,7 @@ void housekeeping_task_user(void) {
     bool render_invalid = duel_render_invalid;
     duel_render_invalid = false;
     if (is_keyboard_master()) {
-        duel_housekeeping_master(now, ticked, display_changed, host_changed,
-                                 render_invalid);
+        duel_housekeeping_master(now, ticked, display_changed, host_changed, render_invalid);
     } else {
         duel_housekeeping_slave(now, ticked, display_changed, render_invalid);
     }
@@ -670,12 +673,12 @@ void housekeeping_task_user(void) {
             .missed_tick_resyncs = duel_diag.missed_tick_resyncs,
             .stale_events = duel_diag.stale_split_events,
         };
-        duel_mailbox_publish(&duel_diag_response_mailbox, &response,
-                             sizeof response);
+        duel_mailbox_publish(&duel_diag_response_mailbox, &response, sizeof response);
     }
     if (is_keyboard_master()) {
         duel_host_diag_packet_t request;
-        if (duel_diag_usb_request_consume(&request)) duel_diag_usb_respond(&request);
+        if (duel_diag_usb_request_consume(&request))
+            duel_diag_usb_respond(&request);
     }
 #endif
 }
@@ -696,7 +699,8 @@ bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
     // g_led_config places both halves on one 0..224 x-axis; the split falls at
     // its midpoint.
 #define DUEL_LED_SPLIT_X 112u
-    if (led_max > RGB_MATRIX_LED_COUNT) led_max = RGB_MATRIX_LED_COUNT;
+    if (led_max > RGB_MATRIX_LED_COUNT)
+        led_max = RGB_MATRIX_LED_COUNT;
     for (uint8_t i = led_min; i < led_max; i++) {
         bool led_is_left = g_led_config.point[i].x < DUEL_LED_SPLIT_X;
         duel_rgb_t color = duel_rgb_policy(&world, g_led_config.flags[i], led_is_left);
@@ -710,10 +714,10 @@ bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
 // drawing the default layer/keylog + logo).
 bool oled_task_user(void) {
     static duel_fb_t fb;
-    static uint32_t  frame;
-    static uint8_t   applied_phase = 0xFF;
+    static uint32_t frame;
+    static uint8_t applied_phase = 0xFF;
     static duel_render_t composed;
-    static bool      have_composed;
+    static bool have_composed;
 #ifdef ARCANE_DIAGNOSTICS
     const bool hud = true;
 #else
@@ -734,7 +738,8 @@ bool oled_task_user(void) {
         }
         oled_on();
     }
-    if (duel_display.phase == DUEL_DISPLAY_SLEEP) return false;
+    if (duel_display.phase == DUEL_DISPLAY_SLEEP)
+        return false;
 
     oled_set_brightness(duel_display_brightness(&duel_display, now));
     // One-shot fx: cache each slot's last visible spell style and arm a
@@ -744,7 +749,7 @@ bool oled_task_user(void) {
     duel_flash_observe_view(&duel_flash, duel_last_spell_kind, &duel_render.view, now);
     uint8_t flash_frames = duel_flash_remaining(&duel_flash, now);
     duel_render.flash_frames = flash_frames;
-    duel_render.flash_kind   = duel_flash.kind;
+    duel_render.flash_kind = duel_flash.kind;
     duel_render.flash_spell_kind = duel_flash.spell_kind;
 
     // scry overlay content (presentation-only; drawn only while scry_is_open).
@@ -757,10 +762,9 @@ bool oled_task_user(void) {
     } else if (duel_rows[SCRY_KEY_R_ROW] & ((matrix_row_t)1u << SCRY_KEY_R_COL)) {
         local_layer = DUEL_RENDER_LOCAL_RIGHT;
     }
-    duel_render.layer = DUEL_RENDER_LAYER_PACK(get_highest_layer(layer_state),
-                                                local_layer);
-    duel_render.local_ambience = incantation_local_ambience(
-        &duel_world.wiz[is_keyboard_left() ? SIM_SIDE_L : SIM_SIDE_R]);
+    duel_render.layer = DUEL_RENDER_LAYER_PACK(get_highest_layer(layer_state), local_layer);
+    duel_render.local_ambience =
+        incantation_local_ambience(&duel_world.wiz[is_keyboard_left() ? SIM_SIDE_L : SIM_SIDE_R]);
 
     // Presentation seed (the shared 1-byte session) plus the bounded civic clock
     // that paces resident/floor motion. A SLEEP phase already returned above, so
@@ -771,9 +775,10 @@ bool oled_task_user(void) {
     duel_render.civic_phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);
     duel_render.floor_transition = duel_floor_presentation(&duel_floor_policy, now);
 
-    bool semantic_changed = !have_composed ||
-                            memcmp(&duel_render, &composed, sizeof duel_render) != 0;
-    if (!phase_changed && !semantic_changed) return false;
+    bool semantic_changed =
+        !have_composed || memcmp(&duel_render, &composed, sizeof duel_render) != 0;
+    if (!phase_changed && !semantic_changed)
+        return false;
 #ifdef ARCANE_DIAGNOSTICS
     uint32_t diag_render_start_us = time_us_32();
 #endif

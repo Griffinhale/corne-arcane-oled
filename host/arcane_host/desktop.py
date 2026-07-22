@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from .policy import NotificationPolicy
@@ -148,9 +148,7 @@ class DesktopNotificationAdapter:
         if priority != Priority.CRITICAL and suppress_focused and self._focused_match(app_digest):
             return False
         if len(self._pending) >= self.max_pending:
-            candidates = [
-                key for key, item in self._pending.items() if not item.persistent
-            ]
+            candidates = [key for key, item in self._pending.items() if not item.persistent]
             pool = candidates or list(self._pending)
             oldest_key = min(pool, key=lambda key: self._pending[key].created)
             del self._pending[oldest_key]
@@ -164,9 +162,7 @@ class DesktopNotificationAdapter:
             persistent,
             int(replaces_id),
         )
-        self.counters.pending_high_water = max(
-            self.counters.pending_high_water, len(self._pending)
-        )
+        self.counters.pending_high_water = max(self.counters.pending_high_water, len(self._pending))
         return True
 
     def handle_reply(
@@ -176,9 +172,7 @@ class DesktopNotificationAdapter:
         now: float,
         destination: str = "",
     ) -> bool:
-        pending = self._pending.pop(
-            (self._digest_peer(destination), int(reply_serial)), None
-        )
+        pending = self._pending.pop((self._digest_peer(destination), int(reply_serial)), None)
         if pending is None:
             self.counters.unmatched_replies += 1
             return False
@@ -221,7 +215,9 @@ class DesktopNotificationAdapter:
         if tracked is None:
             return False
         self.counters.closes += 1
-        still_referenced = any(item.policy_key == tracked.policy_key for item in self._tracked.values())
+        still_referenced = any(
+            item.policy_key == tracked.policy_key for item in self._tracked.values()
+        )
         if not still_referenced:
             self._digest_keys.pop(tracked.digest, None)
             if tracked.persistent:
@@ -261,8 +257,15 @@ class DesktopMonitor:
         "type='signal',interface='org.freedesktop.Notifications',member='NotificationClosed'",
     )
 
-    def __init__(self, Gio, GLib, adapter: DesktopNotificationAdapter, clock,
-                 verbose=False, changed=lambda: None) -> None:
+    def __init__(
+        self,
+        Gio,
+        GLib,
+        adapter: DesktopNotificationAdapter,
+        clock,
+        verbose=False,
+        changed=lambda: None,
+    ) -> None:
         self.Gio = Gio
         self.GLib = GLib
         self.adapter = adapter
@@ -279,9 +282,7 @@ class DesktopMonitor:
                 self.Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
                 | self.Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
             )
-            connection = self.Gio.DBusConnection.new_for_address_sync(
-                address, flags, None, None
-            )
+            connection = self.Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
             self.connection = connection
             connection.call_sync(
                 "org.freedesktop.DBus",
@@ -329,16 +330,24 @@ class DesktopMonitor:
                         if value is not None:
                             hints[key] = value.unpack()
                     self.adapter.handle_notify(
-                        message.get_serial(), app, replaces, summary, body, hints,
-                        self.clock(), message.get_sender() or ""
+                        message.get_serial(),
+                        app,
+                        replaces,
+                        summary,
+                        body,
+                        hints,
+                        self.clock(),
+                        message.get_sender() or "",
                     )
             elif message_type == self.Gio.DBusMessageType.METHOD_RETURN:
                 body = message.get_body()
                 values = body.unpack() if body is not None else ()
                 if len(values) == 1 and isinstance(values[0], int):
                     if self.adapter.handle_reply(
-                        message.get_reply_serial(), values[0], self.clock(),
-                        message.get_destination() or ""
+                        message.get_reply_serial(),
+                        values[0],
+                        self.clock(),
+                        message.get_destination() or "",
                     ):
                         self.changed()
             elif message_type == self.Gio.DBusMessageType.SIGNAL:

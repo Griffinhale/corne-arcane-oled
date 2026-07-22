@@ -13,6 +13,7 @@ review can sheet just the changed scenes.
 This is the committed home of the previously session-scratchpad dumper
 tooling (M15 handoff §6): rebuild recipe no longer required.
 """
+
 import argparse
 import math
 import sys
@@ -30,8 +31,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("frames_dir", type=Path)
     parser.add_argument("out_prefix")
-    parser.add_argument("--only", nargs="*", default=None,
-                        help="substring filters on case names")
+    parser.add_argument("--only", nargs="*", default=None, help="substring filters on case names")
     args = parser.parse_args()
 
     paths = sorted(args.frames_dir.glob("*.pgm"))
@@ -46,7 +46,7 @@ def main() -> int:
     per_sheet = COLS * ROWS
     sheets = math.ceil(len(paths) / per_sheet)
     for sheet in range(sheets):
-        batch = paths[sheet * per_sheet:(sheet + 1) * per_sheet]
+        batch = paths[sheet * per_sheet : (sheet + 1) * per_sheet]
         rows = math.ceil(len(batch) / COLS)
         img = Image.new("L", (COLS * cell_w, rows * cell_h), 40)
         drawer = ImageDraw.Draw(img)

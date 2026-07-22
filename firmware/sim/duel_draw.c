@@ -5,25 +5,26 @@
 #include "duel_host.h"
 #include "duel_resident.h"
 
-void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame, bool debug_hud) {
+void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32_t frame,
+                     bool debug_hud) {
     int side = is_left ? SIM_SIDE_L : SIM_SIDE_R;
     duel_view_wizard_t wizard = duel_view_wizard(&r->view, (uint8_t)side);
     const duel_view_wizard_t *wz = &wizard;
-    int                 facing = is_left ? +1 : -1; // toward the gap (see header)
+    int facing = is_left ? +1 : -1; // toward the gap (see header)
     bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L ||
                          r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_HEAL_L ||
                          r->flash_kind == FX_WARD_SHATTER_L;
-    bool side_outcome = r->flash_kind <= FX_FIZZLE_R ||
-                        r->flash_kind == FX_HEAL_L || r->flash_kind == FX_HEAL_R ||
-                        r->flash_kind == FX_WARD_SHATTER_L ||
+    bool side_outcome = r->flash_kind <= FX_FIZZLE_R || r->flash_kind == FX_HEAL_L ||
+                        r->flash_kind == FX_HEAL_R || r->flash_kind == FX_WARD_SHATTER_L ||
                         r->flash_kind == FX_WARD_SHATTER_R;
     bool local_fx = r->flash_frames && side_outcome && defender_left == is_left;
-    bool local_impact   = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
+    bool local_impact = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
     duel_view_spell_t piercer;
     bool have_piercer = duel_combat_incoming_void_at_ward(&r->view, side, &piercer);
-    bool ward_punctured = have_piercer ||
-                          (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
-    int ward_lane = have_piercer ? duel_combat_spell_lane_y(piercer.kind) : duel_combat_spell_lane_y(r->flash_spell_kind);
+    bool ward_punctured =
+        have_piercer || (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
+    int ward_lane = have_piercer ? duel_combat_spell_lane_y(piercer.kind)
+                                 : duel_combat_spell_lane_y(r->flash_spell_kind);
     // The raised rooftop owns the upper band (the old archive underlay is
     // retired); the archival occupation lives in the tower floor below, where
     // the courier (Wave 6) and rare event (Wave 7) layer in as well.
@@ -47,13 +48,13 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
             // presented as 0 by the packer; STUDY's stored ward keeps
             // guarding the vacated deck below.
             if (wz->stance == DUEL_STANCE_MEDITATE || wz->stance == DUEL_STANCE_STUDY) {
-                duel_combat_draw_stance_balcony(fb, is_left,
-                    wz->stance == DUEL_STANCE_MEDITATE ? DUEL_BALCONY_MEDITATE
-                                                      : DUEL_BALCONY_STUDY,
+                duel_combat_draw_stance_balcony(
+                    fb, is_left,
+                    wz->stance == DUEL_STANCE_MEDITATE ? DUEL_BALCONY_MEDITATE : DUEL_BALCONY_STUDY,
                     frame);
                 if (wz->ward_strength)
                     duel_combat_draw_ward(fb, facing, wz->ward_strength, wz->ward_focus,
-                              ward_punctured, ward_lane);
+                                          ward_punctured, ward_lane);
                 break;
             }
             // Forced-commit "civic-scale" big cast: rearm_lock spans the windup
@@ -62,16 +63,14 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
             // lights for the duration. rearm_lock flips false at launch (state ->
             // INC_REARM), dropping the wizard back onto an empty deck exactly on
             // cast. A normal prepared cast keeps rearm_lock == 0 and never climbs.
-            if (wz->rearm_lock &&
-                (wz->inc_state == INC_WINDUP || wz->inc_state == INC_PREPARED)) {
+            if (wz->rearm_lock && (wz->inc_state == INC_WINDUP || wz->inc_state == INC_PREPARED)) {
                 duel_combat_draw_stance_balcony(fb, is_left, DUEL_BALCONY_BIGCAST, frame);
                 // Blinking halo re-centred on the balcony figure, motes rising
                 // past the shaft, and a peak flare — the civic-scale lighting
                 // that replaced the retired WORLD_WONDER ripple, now following
                 // the figure up the tower.
                 int hcx = duel_fb_desk_x(is_left, 13);
-                static const int8_t halo[5][2] = {
-                    {-4, -6}, {4, -8}, {5, 2}, {-5, 4}, {4, 7}};
+                static const int8_t halo[5][2] = {{-4, -6}, {4, -8}, {5, 2}, {-5, 4}, {4, 7}};
                 for (int i = 0; i < 5; i++)
                     if ((((frame >> 1) + (uint32_t)i) & 1u) == 0u)
                         duel_fb_px(fb, hcx + halo[i][0], 24 + halo[i][1], true);
@@ -86,7 +85,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
                 duel_fb_px(fb, peak_x, 0, true);
                 if (wz->ward_strength)
                     duel_combat_draw_ward(fb, facing, wz->ward_strength, wz->ward_focus,
-                              ward_punctured, ward_lane);
+                                          ward_punctured, ward_lane);
                 break;
             }
             // PACE/TAUNT never ride the wire: a calm idle wizard (stance
@@ -102,15 +101,16 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
                 if ((((r->seed >> 2) ^ (frame >> 7)) & 1u) != 0u) {
                     taunt = ((frame >> 4) & 3u) == 0u;
                 } else {
-                    static const int8_t shuffle[8] = { 0, 1, 1, 0, 0, -1, -1, 0 };
+                    static const int8_t shuffle[8] = {0, 1, 1, 0, 0, -1, -1, 0};
                     idle_xo = shuffle[(frame >> 3) & 7u];
                 }
             }
             // A damaging hit pushes the defender away from the gap and briefly
             // compresses the silhouette. Deflect/fizzle leave it rock steady.
             duel_combat_draw_wizard(fb, wz->pose == POSE_CAST || taunt, facing, wz->variant,
-                     local_impact ? -facing * (r->flash_frames >= 8 ? 2 : 1) : idle_xo,
-                     local_impact && r->flash_frames >= 8 ? 1 : 0);
+                                    local_impact ? -facing * (r->flash_frames >= 8 ? 2 : 1)
+                                                 : idle_xo,
+                                    local_impact && r->flash_frames >= 8 ? 1 : 0);
             if (taunt) {
                 // Defiant sparks flicking off the raised orb.
                 duel_fb_px(fb, 16 + facing * 7, 36, true);
@@ -136,10 +136,8 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
 
             // Shield: a vertical ward arc on the gap side of this half's wizard.
             if (wz->ward_strength) {
-                duel_combat_draw_ward(fb, facing,
-                          wz->ward_strength,
-                          wz->ward_focus,
-                          ward_punctured, ward_lane);
+                duel_combat_draw_ward(fb, facing, wz->ward_strength, wz->ward_focus, ward_punctured,
+                                      ward_lane);
             }
             duel_combat_draw_charge(fb, wz, facing, frame);
             if (wz->inc_state == INC_COLLECTING) {
@@ -153,8 +151,10 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
                 }
             } else if (wz->prepared) {
                 int px = 16 + facing * 2, py = 43 + DUEL_ROOF_DY;
-                duel_fb_px(fb, px, py - 2, true); duel_fb_px(fb, px, py + 2, true);
-                duel_fb_px(fb, px - 2, py, true); duel_fb_px(fb, px + 2, py, true);
+                duel_fb_px(fb, px, py - 2, true);
+                duel_fb_px(fb, px, py + 2, true);
+                duel_fb_px(fb, px - 2, py, true);
+                duel_fb_px(fb, px + 2, py, true);
             }
             duel_combat_draw_status(fb, wz, facing, frame);
             break;
@@ -184,7 +184,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
         case LIFE_MEDIC: {
             // Medic drags the body toward the away-from-gap edge (-facing).
             int elapsed = SIM_MEDIC_TICKS - wz->life_ticks;
-            int dx      = elapsed * 16 / SIM_MEDIC_TICKS; // 0..16
+            int dx = elapsed * 16 / SIM_MEDIC_TICKS; // 0..16
             duel_combat_draw_downed(fb, facing, wz->variant, -facing * dx);
             duel_combat_draw_medic(fb, 16 - facing * (12 + dx), facing); // ~7 px past the head
             break;
@@ -194,8 +194,9 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
             // The next roster variant (sim already bumped wz->variant) walks
             // in from the away-from-gap edge with a 1-px render-frame bob.
             int elapsed = SIM_REPLACE_TICKS - wz->life_ticks;
-            int xo      = 16 - elapsed * 16 / SIM_REPLACE_TICKS; // 16 -> 0
-            duel_combat_draw_wizard(fb, false, facing, wz->variant, -facing * xo, (int)((frame >> 1) & 1));
+            int xo = 16 - elapsed * 16 / SIM_REPLACE_TICKS; // 16 -> 0
+            duel_combat_draw_wizard(fb, false, facing, wz->variant, -facing * xo,
+                                    (int)((frame >> 1) & 1));
             break;
         }
     }
@@ -212,19 +213,23 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     // HP columns briefly overpaints them — matches duel_overlay_draw_local_fx, also post-HP.
     for (int s = 0; s < 2; s++) {
         duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s);
-        if (!spell.active) continue;
+        if (!spell.active)
+            continue;
         duel_view_wizard_t caster = duel_view_wizard(&r->view, (uint8_t)s);
         duel_combat_draw_spell(fb, &spell, (uint8_t)s, caster.variant, is_left, frame);
     }
 
     // One-shot outcomes use three deliberately different grammars.
-    if (local_fx) duel_overlay_draw_local_fx(fb, r, wz, facing, is_left);
+    if (local_fx)
+        duel_overlay_draw_local_fx(fb, r, wz, facing, is_left);
 
     // normalized alert sigil sits above all scene/combat artwork, but an open scry
     // replaces it with the normalized in-panel summary.
-    if (!duel_view_scry_open(&r->view)) duel_overlay_draw_alert(fb, r, is_left);
+    if (!duel_view_scry_open(&r->view))
+        duel_overlay_draw_alert(fb, r, is_left);
 
-    if (!duel_view_scry_open(&r->view)) duel_overlay_draw_attunement(fb, r, wz, is_left);
+    if (!duel_view_scry_open(&r->view))
+        duel_overlay_draw_attunement(fb, r, wz, is_left);
 
     // scry scrying overlay, drawn above the world when the layer-key chord is
     // held. The stale-link and debug glyphs draw AFTER, so a broken link is
@@ -258,6 +263,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
             duel_fb_px(fb, peak_x, 1, true);
         }
         int dots = r->diag_overflow > 4 ? 4 : r->diag_overflow;
-        for (int i = 0; i < dots; i++) duel_fb_px(fb, 1 + 2 * i, 0, true);
+        for (int i = 0; i < dots; i++)
+            duel_fb_px(fb, 1 + 2 * i, 0, true);
     }
 }

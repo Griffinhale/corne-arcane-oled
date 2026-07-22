@@ -12,16 +12,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_HOST_REPORT_SIZE 32
-#define DUEL_HOST_MAGIC0      0xCA
-#define DUEL_HOST_MAGIC1      0x8E
-#define DUEL_HOST_VERSION     2
+#define DUEL_HOST_REPORT_SIZE  32
+#define DUEL_HOST_MAGIC0       0xCA
+#define DUEL_HOST_MAGIC1       0x8E
+#define DUEL_HOST_VERSION      2
 #define DUEL_HOST_PAYLOAD_SIZE 20
 
 enum {
-    DUEL_HOST_MSG_HELLO     = 1,
+    DUEL_HOST_MSG_HELLO = 1,
     DUEL_HOST_MSG_HEARTBEAT = 2,
-    DUEL_HOST_MSG_NOTIFY    = 3,
+    DUEL_HOST_MSG_NOTIFY = 3,
 };
 
 /*
@@ -34,7 +34,7 @@ enum {
 #define DUEL_HOST_DIAG_PAGES   2
 
 enum {
-    DUEL_HOST_MSG_DIAG_REQUEST  = 0x70,
+    DUEL_HOST_MSG_DIAG_REQUEST = 0x70,
     DUEL_HOST_MSG_DIAG_RESPONSE = 0x71,
 };
 
@@ -43,15 +43,15 @@ enum {
 };
 
 typedef struct __attribute__((packed)) {
-    uint8_t  magic0;
-    uint8_t  magic1;
-    uint8_t  version;
-    uint8_t  type;
-    uint8_t  page;
-    uint8_t  page_count;
+    uint8_t magic0;
+    uint8_t magic1;
+    uint8_t version;
+    uint8_t type;
+    uint8_t page;
+    uint8_t page_count;
     uint16_t nonce;
-    uint8_t  payload[23];
-    uint8_t  crc;
+    uint8_t payload[23];
+    uint8_t crc;
 } duel_host_diag_packet_t;
 
 _Static_assert(sizeof(duel_host_diag_packet_t) == DUEL_HOST_REPORT_SIZE,
@@ -78,10 +78,10 @@ enum {
 };
 
 enum {
-    DUEL_HOST_SCENE_DUEL    = 0,
+    DUEL_HOST_SCENE_DUEL = 0,
     DUEL_HOST_SCENE_ARCHIVE = 1,
-    DUEL_HOST_SCENE_FOCUS   = 2,
-    DUEL_HOST_SCENE_COUNT   = 3,
+    DUEL_HOST_SCENE_FOCUS = 2,
+    DUEL_HOST_SCENE_COUNT = 3,
 };
 
 /*
@@ -90,16 +90,16 @@ enum {
  * permanent state drift. Integers ship little-endian (RP2040 + Linux host).
  */
 typedef struct __attribute__((packed)) {
-    uint8_t  magic0;
-    uint8_t  magic1;
-    uint8_t  version;
-    uint8_t  type;
+    uint8_t magic0;
+    uint8_t magic1;
+    uint8_t version;
+    uint8_t type;
     uint32_t session;
     uint16_t seq;
-    uint8_t  payload_len;
+    uint8_t payload_len;
     /* scene/count/category/priority/age/persistent/civic/secondary */
-    uint8_t  payload[DUEL_HOST_PAYLOAD_SIZE];
-    uint8_t  crc;
+    uint8_t payload[DUEL_HOST_PAYLOAD_SIZE];
+    uint8_t crc;
 } duel_host_packet_t;
 
 _Static_assert(sizeof(duel_host_packet_t) == DUEL_HOST_REPORT_SIZE,
@@ -109,11 +109,11 @@ typedef struct {
     uint32_t session;
     uint32_t previous_session;
     uint16_t last_seq;
-    uint8_t  state_flags;
-    uint8_t  external;
-    uint8_t  alert;
-    uint8_t  civic;      /* last accepted DUEL_CIVIC_* byte (payload[6]) */
-    uint8_t  secondary;  /* last accepted DUEL_SECONDARY_* byte (payload[7]) */
+    uint8_t state_flags;
+    uint8_t external;
+    uint8_t alert;
+    uint8_t civic;     /* last accepted DUEL_CIVIC_* byte (payload[6]) */
+    uint8_t secondary; /* last accepted DUEL_SECONDARY_* byte (payload[7]) */
 #ifdef ARCANE_DIAGNOSTICS
     uint16_t malformed_packets;
     uint16_t stale_packets;
@@ -134,16 +134,16 @@ void duel_host_expire(duel_host_state_t *state);
 
 // Compact absolute context for the master->slave snapshot: bit0 online,
 // bits1-2 scene, bits3-6 notification count, bit7 persistent.
-#define DUEL_HOST_CONTEXT_PACK(online, scene, notif, persistent) \
-    ((uint8_t)(((online) ? 1u : 0u) | (((scene) & 3u) << 1) | \
-               (((notif) & 15u) << 3) | ((persistent) ? 0x80u : 0u)))
-#define DUEL_HOST_CONTEXT_ONLINE(value) ((uint8_t)((value) & 1u))
-#define DUEL_HOST_CONTEXT_SCENE(value)  ((uint8_t)(((value) >> 1) & 3u))
-#define DUEL_HOST_CONTEXT_NOTIF(value)  ((uint8_t)(((value) >> 3) & 15u))
+#define DUEL_HOST_CONTEXT_PACK(online, scene, notif, persistent)                                   \
+    ((uint8_t)(((online) ? 1u : 0u) | (((scene) & 3u) << 1) | (((notif) & 15u) << 3) |             \
+               ((persistent) ? 0x80u : 0u)))
+#define DUEL_HOST_CONTEXT_ONLINE(value)     ((uint8_t)((value) & 1u))
+#define DUEL_HOST_CONTEXT_SCENE(value)      ((uint8_t)(((value) >> 1) & 3u))
+#define DUEL_HOST_CONTEXT_NOTIF(value)      ((uint8_t)(((value) >> 3) & 15u))
 #define DUEL_HOST_CONTEXT_PERSISTENT(value) ((uint8_t)(((value) >> 7) & 1u))
 
 // Canonical split alert byte: bits0-2 category, bits3-4 priority, bits5-7 age.
-#define DUEL_HOST_ALERT_PACK(category, priority, age) \
+#define DUEL_HOST_ALERT_PACK(category, priority, age)                                              \
     ((uint8_t)(((category) & 7u) | (((priority) & 3u) << 3) | (((age) & 7u) << 5)))
 #define DUEL_HOST_ALERT_CATEGORY(value) ((uint8_t)((value) & 7u))
 #define DUEL_HOST_ALERT_PRIORITY(value) ((uint8_t)(((value) >> 3) & 3u))
@@ -157,34 +157,34 @@ void duel_host_expire(duel_host_state_t *state);
 
 // Active tower-floor occupation (civic byte bits 0-1). SPECIAL is reserved.
 enum {
-    DUEL_CIVIC_FLOOR_COMMONS  = 0,
+    DUEL_CIVIC_FLOOR_COMMONS = 0,
     DUEL_CIVIC_FLOOR_RESEARCH = 1,
     DUEL_CIVIC_FLOOR_WORKSHOP = 2,
-    DUEL_CIVIC_FLOOR_SPECIAL  = 3,
+    DUEL_CIVIC_FLOOR_SPECIAL = 3,
 };
 // Civic mode (civic byte bits 2-3): quiets or emphasises the current floor
 // without changing which floor is shown.
 enum {
-    DUEL_CIVIC_MODE_NORMAL   = 0,
-    DUEL_CIVIC_MODE_QUIET    = 1,
-    DUEL_CIVIC_MODE_URGENT   = 2,
+    DUEL_CIVIC_MODE_NORMAL = 0,
+    DUEL_CIVIC_MODE_QUIET = 1,
+    DUEL_CIVIC_MODE_URGENT = 2,
     DUEL_CIVIC_MODE_RESERVED = 3,
 };
 // Secondary host-activity intensity (civic byte bits 4-5): background host
 // workload; local typing intensity stays firmware-derived.
 enum {
-    DUEL_CIVIC_INTENSITY_CALM      = 0,
-    DUEL_CIVIC_INTENSITY_ACTIVE    = 1,
-    DUEL_CIVIC_INTENSITY_BUSY      = 2,
+    DUEL_CIVIC_INTENSITY_CALM = 0,
+    DUEL_CIVIC_INTENSITY_ACTIVE = 1,
+    DUEL_CIVIC_INTENSITY_BUSY = 2,
     DUEL_CIVIC_INTENSITY_SATURATED = 3,
 };
 // Secondary activity channel (secondary byte bits 0-2): activates one bounded
 // supporting object or ambience.
 enum {
-    DUEL_CIVIC_SECONDARY_NONE     = 0,
-    DUEL_CIVIC_SECONDARY_MEDIA    = 1,
+    DUEL_CIVIC_SECONDARY_NONE = 0,
+    DUEL_CIVIC_SECONDARY_MEDIA = 1,
     DUEL_CIVIC_SECONDARY_TRANSFER = 2,
-    DUEL_CIVIC_SECONDARY_SYSTEM   = 3,
+    DUEL_CIVIC_SECONDARY_SYSTEM = 3,
     DUEL_CIVIC_SECONDARY_CALENDAR = 4,
 };
 
@@ -192,7 +192,7 @@ enum {
 // must be clear on Raw HID v2; the split v11 snapshot allocates them to
 // residue zone3's element (duel_proto.h) — the master writes them after
 // relaying the host's civic bits.
-#define DUEL_CIVIC_PACK(floor, mode, intensity) \
+#define DUEL_CIVIC_PACK(floor, mode, intensity)                                                    \
     ((uint8_t)(((floor) & 3u) | (((mode) & 3u) << 2) | (((intensity) & 3u) << 4)))
 #define DUEL_CIVIC_FLOOR(value)     ((uint8_t)((value) & 3u))
 #define DUEL_CIVIC_MODE(value)      ((uint8_t)(((value) >> 2) & 3u))
@@ -206,13 +206,12 @@ enum {
 // never supplies sky or residue state.
 #define DUEL_SECONDARY_PACK(activity)  ((uint8_t)((activity) & 7u))
 #define DUEL_SECONDARY_ACTIVITY(value) ((uint8_t)((value) & 7u))
-#define DUEL_SECONDARY_SKY_PACK(secondary, phase) \
+#define DUEL_SECONDARY_SKY_PACK(secondary, phase)                                                  \
     ((uint8_t)(((secondary) & 7u) | (((phase) & 3u) << 3)))
-#define DUEL_SECONDARY_SKY_PHASE(value) ((uint8_t)(((value) >> 3) & 3u))
-#define DUEL_SECONDARY_SKY_SUB_PACK(value, sub) \
-    ((uint8_t)(((value) & 0x9Fu) | (((sub) & 3u) << 5)))
-#define DUEL_SECONDARY_SKY_SUBPHASE(value) ((uint8_t)(((value) >> 5) & 3u))
-#define DUEL_SECONDARY_HID_RESERVED    0xF8u /* Raw HID v2: bits3-7 must be clear */
+#define DUEL_SECONDARY_SKY_PHASE(value)         ((uint8_t)(((value) >> 3) & 3u))
+#define DUEL_SECONDARY_SKY_SUB_PACK(value, sub) ((uint8_t)(((value) & 0x9Fu) | (((sub) & 3u) << 5)))
+#define DUEL_SECONDARY_SKY_SUBPHASE(value)      ((uint8_t)(((value) >> 5) & 3u))
+#define DUEL_SECONDARY_HID_RESERVED             0xF8u /* Raw HID v2: bits3-7 must be clear */
 
 // Raw HID range check for the civic byte and the low activity bits of the
 // secondary byte. Split v11 no longer shares it: its civic bits 6-7 carry
