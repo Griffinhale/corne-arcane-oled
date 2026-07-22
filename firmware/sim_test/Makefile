@@ -12,6 +12,7 @@ SIM_SRC := ../sim/duel_framebuffer.c ../sim/duel_render.c \
            ../sim/duel_overlay_draw.c ../sim/duel_draw.c \
            ../sim/duel_sim.c ../sim/duel_incantation.c ../sim/duel_combat.c \
            ../sim/duel_view.c ../sim/duel_proto.c ../sim/duel_host.c \
+           ../sim/duel_diagnostics.c \
            ../sim/duel_display.c ../sim/duel_resident.c \
            ../sim/duel_courier.c ../sim/duel_event.c ../sim/duel_runtime.c \
            ../sim/duel_rgb.c
@@ -22,6 +23,7 @@ test: mechanics-test visual-test noalloc-check
 RUNNER_RECIPE = $(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
 MECHANICS_SRC := test_main.c test_harness.c test_protocol_view.c \
+                 test_diagnostics.c \
                  test_incantation_compiler.c test_combat_lifecycle.c \
                  test_civic_presentation.c test_rendering_geometry.c \
                  test_runtime_display_rgb.c test_support.c

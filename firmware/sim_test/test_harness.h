@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_diagnostics.h"
 #include "duel_combat_draw.h"
 #include "duel_courier.h"
 #include "duel_event.h"

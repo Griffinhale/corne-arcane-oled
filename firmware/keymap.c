@@ -37,6 +37,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "transactions.h"
 
 #include "sim/duel_display.h"
+#ifdef ARCANE_DIAGNOSTICS
+#include "sim/duel_diagnostics.h"
+#endif
 #include "sim/duel_draw.h"
 #include "sim/duel_host.h"
 #include "sim/duel_proto.h"
@@ -79,25 +82,9 @@ static uint8_t duel_last_spell_kind[2];
 #endif
 
 #ifdef ARCANE_DIAGNOSTICS
-typedef struct {
-    uint16_t queue_overflow;
-    uint16_t catchup_ticks;
-    uint16_t missed_tick_resyncs;
-    uint16_t stale_split_events;
-    uint16_t split_protocol_errors;
-    uint16_t host_malformed_errors;
-    uint16_t host_stale_errors;
-    uint32_t peak_housekeeping_us;
-    uint32_t peak_render_blit_us;
-    uint32_t peak_split_tx_us;
-    uint16_t split_tx_success;
-    uint16_t split_tx_failure;
-    uint16_t stack_min_free_bytes;
-} duel_diag_t;
-
 // Intentionally non-static: a debugger or map-file budget pass can inspect it
 // without adding release protocol traffic or changing presentation behavior.
-volatile duel_diag_t duel_diag;
+volatile duel_diag_metrics_t duel_diag;
 volatile duel_split_diag_reply_t duel_peer_diag;
 static duel_mailbox_t duel_diag_response_mailbox;
 
@@ -268,67 +255,36 @@ static bool duel_host_housekeeping(uint32_t now) {
 }
 
 #ifdef ARCANE_DIAGNOSTICS
-static void duel_diag_put_u16(uint8_t *out, uint16_t value) {
-    out[0] = (uint8_t)value;
-    out[1] = (uint8_t)(value >> 8);
-}
-
-static void duel_diag_put_u32(uint8_t *out, uint32_t value) {
-    out[0] = (uint8_t)value;
-    out[1] = (uint8_t)(value >> 8);
-    out[2] = (uint8_t)(value >> 16);
-    out[3] = (uint8_t)(value >> 24);
-}
-
 static bool duel_diag_usb_request_consume(duel_host_diag_packet_t *request) {
     if (!duel_mailbox_consume(&duel_diag_usb_rx_mailbox, &duel_diag_usb_rx_seen_ver, request,
                               sizeof *request))
         return false;
-    return request->magic0 == DUEL_HOST_MAGIC0 && request->magic1 == DUEL_HOST_MAGIC1 &&
-           request->version == DUEL_HOST_DIAG_VERSION &&
-           request->type == DUEL_HOST_MSG_DIAG_REQUEST && request->page < DUEL_HOST_DIAG_PAGES &&
-           request->page_count == 0 &&
-           request->crc == duel_crc8(request, offsetof(duel_host_diag_packet_t, crc));
+    return duel_diag_request_valid(request);
 }
 
 static void duel_diag_usb_respond(const duel_host_diag_packet_t *request) {
-    duel_host_diag_packet_t response = {0};
-    response.magic0 = DUEL_HOST_MAGIC0;
-    response.magic1 = DUEL_HOST_MAGIC1;
-    response.version = DUEL_HOST_DIAG_VERSION;
-    response.type = DUEL_HOST_MSG_DIAG_RESPONSE;
-    response.page = request->page;
-    response.page_count = DUEL_HOST_DIAG_PAGES;
-    response.nonce = request->nonce;
-
-    if (request->page == 0) {
-        duel_diag_put_u16(&response.payload[0], duel_diag.queue_overflow);
-        duel_diag_put_u16(&response.payload[2], duel_diag.catchup_ticks);
-        duel_diag_put_u16(&response.payload[4], duel_diag.missed_tick_resyncs);
-        duel_diag_put_u16(&response.payload[6], duel_diag.stale_split_events);
-        duel_diag_put_u16(&response.payload[8], duel_diag.split_protocol_errors);
-        duel_diag_put_u16(&response.payload[10], duel_diag.host_malformed_errors);
-        duel_diag_put_u16(&response.payload[12], duel_diag.host_stale_errors);
-        duel_diag_put_u32(&response.payload[14], duel_diag.peak_housekeeping_us);
-        duel_diag_put_u32(&response.payload[18], duel_diag.peak_render_blit_us);
+    duel_diag_metrics_t master = {
+        .queue_overflow = duel_diag.queue_overflow,
+        .catchup_ticks = duel_diag.catchup_ticks,
+        .missed_tick_resyncs = duel_diag.missed_tick_resyncs,
+        .stale_split_events = duel_diag.stale_split_events,
+        .split_protocol_errors = duel_diag.split_protocol_errors,
+        .host_malformed_errors = duel_diag.host_malformed_errors,
+        .host_stale_errors = duel_diag.host_stale_errors,
+        .peak_housekeeping_us = duel_diag.peak_housekeeping_us,
+        .peak_render_blit_us = duel_diag.peak_render_blit_us,
+        .peak_split_tx_us = duel_diag.peak_split_tx_us,
+        .split_tx_success = duel_diag.split_tx_success,
+        .split_tx_failure = duel_diag.split_tx_failure,
+        .stack_min_free_bytes = duel_diag.stack_min_free_bytes,
+    };
+    duel_split_diag_reply_t peer = duel_peer_diag;
+    bool fixed_split_cadence = false;
 #ifdef ARCANE_FIXED_SPLIT_CADENCE
-        response.payload[22] = DUEL_HOST_DIAG_FLAG_FIXED_SPLIT_CADENCE;
+    fixed_split_cadence = true;
 #endif
-    } else {
-        duel_split_diag_reply_t peer = duel_peer_diag;
-        duel_diag_put_u32(&response.payload[0], duel_diag.peak_split_tx_us);
-        duel_diag_put_u16(&response.payload[4], duel_diag.split_tx_success);
-        duel_diag_put_u16(&response.payload[6], duel_diag.split_tx_failure);
-        response.payload[8] = peer.magic == DUEL_MAGIC && peer.version == 1;
-        duel_diag_put_u16(&response.payload[9], peer.accepted_seq);
-        duel_diag_put_u16(&response.payload[11], peer.snapshot_age_ms);
-        duel_diag_put_u16(&response.payload[13], peer.peak_housekeeping_us);
-        duel_diag_put_u16(&response.payload[15], peer.peak_render_us);
-        duel_diag_put_u16(&response.payload[17], peer.queue_overflow);
-        duel_diag_put_u16(&response.payload[19], peer.missed_tick_resyncs);
-        duel_diag_put_u16(&response.payload[21], peer.stale_events);
-    }
-    response.crc = duel_crc8(&response, offsetof(duel_host_diag_packet_t, crc));
+    duel_host_diag_packet_t response;
+    duel_diag_response_pack(request, &master, &peer, fixed_split_cadence, &response);
     raw_hid_send((uint8_t *)&response, sizeof response);
 }
 #endif
@@ -469,7 +425,7 @@ static void duel_master_tx(uint32_t now, bool urgent) {
         // updating its seqlock-protected metrics at this exact instant. Keep
         // the last coherent sample instead of making a diagnostic query
         // intermittently report an invalid/empty peer.
-        if (peer.magic == DUEL_MAGIC && peer.version == 1)
+        if (peer.magic == DUEL_MAGIC && peer.version == DUEL_SPLIT_DIAG_VERSION)
             duel_peer_diag = peer;
     } else {
         DUEL_DIAG_INC(split_tx_failure);
@@ -664,7 +620,7 @@ void housekeeping_task_user(void) {
     if (!is_keyboard_master()) {
         duel_split_diag_reply_t response = {
             .magic = DUEL_MAGIC,
-            .version = 1,
+            .version = DUEL_SPLIT_DIAG_VERSION,
             .accepted_seq = duel_rx.have_any ? duel_rx.last.seq : 0,
             .snapshot_age_ms = duel_diag_u16(timer_elapsed32(duel_last_pkt_ms)),
             .peak_housekeeping_us = duel_diag_u16(duel_diag.peak_housekeeping_us),
@@ -672,6 +628,7 @@ void housekeeping_task_user(void) {
             .queue_overflow = duel_diag.queue_overflow,
             .missed_tick_resyncs = duel_diag.missed_tick_resyncs,
             .stale_events = duel_diag.stale_split_events,
+            .stack_min_free_bytes = duel_diag.stack_min_free_bytes,
         };
         duel_mailbox_publish(&duel_diag_response_mailbox, &response, sizeof response);
     }

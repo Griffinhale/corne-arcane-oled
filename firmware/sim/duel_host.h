@@ -24,39 +24,6 @@ enum {
     DUEL_HOST_MSG_NOTIFY = 3,
 };
 
-/*
- * Diagnostics use the same physical Raw HID endpoint but a deliberately
- * separate, diagnostics-build-only protocol.  The request/response envelope
- * stays fixed at one QMK report; two response pages expose the complete
- * master and reverse-RPC measurements without allocating release traffic.
- */
-#define DUEL_HOST_DIAG_VERSION 1
-#define DUEL_HOST_DIAG_PAGES   2
-
-enum {
-    DUEL_HOST_MSG_DIAG_REQUEST = 0x70,
-    DUEL_HOST_MSG_DIAG_RESPONSE = 0x71,
-};
-
-enum {
-    DUEL_HOST_DIAG_FLAG_FIXED_SPLIT_CADENCE = 0x01,
-};
-
-typedef struct __attribute__((packed)) {
-    uint8_t magic0;
-    uint8_t magic1;
-    uint8_t version;
-    uint8_t type;
-    uint8_t page;
-    uint8_t page_count;
-    uint16_t nonce;
-    uint8_t payload[23];
-    uint8_t crc;
-} duel_host_diag_packet_t;
-
-_Static_assert(sizeof(duel_host_diag_packet_t) == DUEL_HOST_REPORT_SIZE,
-               "diagnostic report must match QMK RAW_EPSIZE");
-
 enum {
     DUEL_HOST_CATEGORY_NONE = 0,
     DUEL_HOST_CATEGORY_TERMINAL,

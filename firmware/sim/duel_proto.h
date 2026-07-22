@@ -89,21 +89,6 @@ typedef struct __attribute__((packed)) {
 _Static_assert(sizeof(duel_snapshot_t) == 32,
                "current v11 snapshot must consume exactly one 32-byte RPC packet");
 
-typedef struct __attribute__((packed)) {
-    uint8_t magic;
-    uint8_t version;
-    uint16_t accepted_seq;
-    uint16_t snapshot_age_ms;
-    uint16_t peak_housekeeping_us;
-    uint16_t peak_render_us;
-    uint16_t queue_overflow;
-    uint16_t missed_tick_resyncs;
-    uint16_t stale_events;
-} duel_split_diag_reply_t;
-
-_Static_assert(sizeof(duel_split_diag_reply_t) == 16,
-               "diagnostic split response must remain fixed at 16 bytes");
-
 uint8_t duel_crc8(const void *data, size_t len);
 
 // `external` is a packed, disposable presentation summary. The ordinary

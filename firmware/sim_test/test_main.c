@@ -8,6 +8,7 @@ void run_incantation_compiler_tests(void);
 void run_combat_lifecycle_tests(void);
 void run_civic_presentation_tests(void);
 void run_rendering_geometry_tests(void);
+void run_diagnostics_tests(void);
 
 int main(void) {
     run_runtime_display_rgb_tests();
@@ -16,6 +17,7 @@ int main(void) {
     run_combat_lifecycle_tests();
     run_civic_presentation_tests();
     run_rendering_geometry_tests();
+    run_diagnostics_tests();
     if (test_failures) {
         printf("%d mechanics test(s) failed\n", test_failures);
         return 1;

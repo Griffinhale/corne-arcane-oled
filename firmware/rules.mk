@@ -44,6 +44,7 @@ OPT_DEFS += -DPICO_RAND_ENTROPY_SRC_ROSC=0 \
 # Instrumentation is compiled out of release images. Diagnostic firmware keeps
 # the identical packet layouts and adds bounded counters/timing responses.
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)
+    SRC += sim/duel_diagnostics.c
     OPT_DEFS += -DARCANE_DIAGNOSTICS \
                 -DCH_DBG_FILL_THREADS=TRUE \
                 -DCH_DBG_ENABLE_STACK_CHECK=TRUE
