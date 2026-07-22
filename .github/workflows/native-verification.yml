@@ -1,0 +1,35 @@
+name: Native verification
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential python3-gi python3-venv
+          python3 -m venv --system-site-packages .venv
+          .venv/bin/python -m pip install --requirement requirements-dev.txt
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Lint and formatting
+        run: make lint
+
+      - name: Native tests
+        run: make test
+
+      - name: Repository hygiene
+        run: make hygiene
+
+      - name: Whitespace errors
+        run: git diff --check

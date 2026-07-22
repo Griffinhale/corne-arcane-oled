@@ -1,0 +1,55 @@
+name: Firmware verification
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Read Vial-QMK pin
+        id: qmk-pin
+        run: echo "revision=$(tr -d '[:space:]' < VIAL_QMK_REVISION)" >> "$GITHUB_OUTPUT"
+
+      - name: Clone pinned Vial-QMK recursively
+        env:
+          QMK_REVISION: ${{ steps.qmk-pin.outputs.revision }}
+        run: |
+          git clone --recurse-submodules https://github.com/vial-kb/vial-qmk.git "$RUNNER_TEMP/vial-qmk"
+          git -C "$RUNNER_TEMP/vial-qmk" checkout --detach "$QMK_REVISION"
+          git -C "$RUNNER_TEMP/vial-qmk" submodule update --init --recursive
+
+      - name: Install Vial-QMK dependencies
+        run: |
+          "$RUNNER_TEMP/vial-qmk/util/qmk_install.sh" -y
+
+      - name: Build release and diagnostic firmware
+        env:
+          QMK_ROOT: ${{ runner.temp }}/vial-qmk
+        run: make release-build
+
+      - name: Enforce resource budgets and record hashes
+        run: |
+          make release-budget | tee artifacts/release/budget.txt
+          sha256sum artifacts/release/*.elf artifacts/release/*.uf2 > artifacts/release/SHA256SUMS
+
+      - name: Upload verification artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: corne-arcane-firmware-${{ steps.qmk-pin.outputs.revision }}
+          path: |
+            artifacts/release/*.elf
+            artifacts/release/*.uf2
+            artifacts/release/*.map
+            artifacts/release/SHA256SUMS
+            artifacts/release/budget.txt
+          if-no-files-found: error
+          retention-days: 14

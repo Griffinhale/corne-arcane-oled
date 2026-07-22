@@ -6,6 +6,21 @@ qmk_root=${QMK_ROOT:-"$HOME/src/vial-qmk"}
 keymap="$qmk_root/keyboards/crkbd/keymaps/griffin_arcane"
 build="$qmk_root/.build/crkbd_rev1_griffin_arcane_rp2040_ce"
 out="$root/artifacts/release"
+pin_file="$root/VIAL_QMK_REVISION"
+
+expected_revision=$(tr -d '[:space:]' < "$pin_file")
+actual_revision=$(git -C "$qmk_root" rev-parse HEAD 2>/dev/null) || {
+    echo "FAIL release-build: QMK_ROOT is not a readable git checkout: $qmk_root" >&2
+    exit 1
+}
+if [ "$actual_revision" != "$expected_revision" ] && [ "${ALLOW_UNPINNED_QMK:-0}" != 1 ]; then
+    echo "FAIL release-build: Vial-QMK revision mismatch" >&2
+    echo "  expected: $expected_revision (VIAL_QMK_REVISION)" >&2
+    echo "  actual:   $actual_revision ($qmk_root)" >&2
+    echo "Check out the pinned revision, intentionally update VIAL_QMK_REVISION, or use" >&2
+    echo "ALLOW_UNPINNED_QMK=1 make release-build for a non-acceptance development build." >&2
+    exit 1
+fi
 
 mkdir -p "$out"
 "$root/host/install_firmware.sh" "$keymap"

@@ -3,8 +3,9 @@
 ## Toolchain and builds
 
 Native tests require a C11 compiler with ASan/UBSan, Python 3.10 or newer,
-Ruff, and clang-format 19-compatible configuration. Firmware builds use the
-configured Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
+Ruff, and clang-format 19-compatible configuration. Exact development-tool
+versions are in `requirements-dev.txt`. Firmware builds use the configured
+Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 
 ```bash
 make lint            # Ruff plus Python/C formatting checks
@@ -42,6 +43,14 @@ budget change; do not raise a ceiling to make an unrelated refactor pass.
 The current measured values are recorded in `acceptance.md`. Generated ELF,
 UF2, and map files are ignored working artifacts, not acceptance evidence.
 Physical acceptance is separate and follows `physical-checklist.md`.
+
+`VIAL_QMK_REVISION` is the sole accepted Vial-QMK pin. `release-build` rejects
+a checkout at any other revision and prints the deliberate development
+override and pin-update options. The scheduled firmware workflow clones that
+revision recursively, builds both images, enforces the same budgets, and keeps
+ELF, UF2, map, hash, and budget evidence for 14 days. Workflow artifacts are
+build evidence only: they are never a GitHub release and never replace the
+signed physical checklist.
 
 ## Safe module extraction
 
