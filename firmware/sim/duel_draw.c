@@ -719,10 +719,6 @@ static void wiz_body(duel_fb_t *fb, bool casting, int facing, uint8_t variant, i
     }
 }
 
-void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant) {
-    wiz_body(fb, casting, facing, variant, 0, 0);
-}
-
 // M5 fallen wizard: horizontal body with the head AWAY from the gap (the
 // medic later drags it toward that edge), hat knocked off past the head,
 // staff dropped on the ground toward the gap. -facing is the away direction

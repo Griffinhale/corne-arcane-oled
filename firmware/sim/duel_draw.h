@@ -68,8 +68,6 @@ void duel_fb_hline(duel_fb_t *fb, int x0, int x1, int y);
 // chooses the side the staff rests on — both wizards face the centre gap.
 // `variant` is the M5 roster cosmetic (0..SIM_ROSTER_N-1): pose-invariant
 // hat/robe markings so a replacement wizard is visibly a new combatant.
-void wiz_draw(duel_fb_t *fb, bool casting, int facing, uint8_t variant);
-
 /* ------- Twin Cities presentation contract (shared cross-track) -----------
  * Enums and fixed-slot state the renderer derives locally on each half. Pure
  * declarations with zero release footprint. Track R owns the drawing that

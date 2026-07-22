@@ -70,9 +70,10 @@ typedef struct {
 
 // Returns false (and counts the drop) when the queue is full.
 bool sim_evq_push(sim_evq_t *q, sim_event_t e);
-// Copies queued events to out (capacity >= SIM_EVQ_CAP), returns the saturating
-// overflow count separately, and resets the queue.
-uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out, uint8_t *dropped);
+// The consumer reads ev/n/dropped in place, then resets metadata. Keeping the
+// storage caller-visible avoids a second SIM_EVQ_CAP event array on firmware's
+// constrained stack.
+void sim_evq_reset(sim_evq_t *q);
 
 /* ---- world state -------------------------------------------------------- */
 enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
@@ -84,21 +85,15 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 /* ---- combat (M4) ---------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
  * right. A cast winds up for SIM_CAST_WINDUP_TICKS after the rising edge,
- * then the spell flies SIM_SPELL_SPEED units per tick. Resolution is
+ * then the spell crosses the battlefield on its descriptor-derived path. Resolution is
  * rule-based at the defender's doorstep: shield up => deflect, else the
  * spell continues to the impact threshold. All spell spawn/motion/resolve
  * runs only when SIMF_AUTHORITATIVE is set (the master), so the slave
  * structurally cannot decide outcomes. */
-#define SIM_SPELL_SPEED       4  /* full flight 8 -> 248 in 60 ticks (2.4 s) */
 #define SIM_CAST_WINDUP_TICKS 10 /* 400 ms: shortest scry.5 hardware candidate */
-#define SIM_CAST_COOLDOWN     25 /* ~1 s between casts per wizard */
 #define SIM_SHIELD_TICKS      10 /* any keydown shields that side ~400 ms */
 #define SIM_SPAWN_L           8
 #define SIM_SPAWN_R           247
-#define SIM_DOORSTEP_R        240 /* just in front of the right wizard */
-#define SIM_IMPACT_R          248
-#define SIM_DOORSTEP_L        15
-#define SIM_IMPACT_L          7
 
 // M6 recipe vocabulary. A cast compiles the recent keydown burst into a kind
 // byte. scry.5 uses the two previously spare high bits for a capped presentation
@@ -111,7 +106,6 @@ enum { SPELL_TIER_SHORT = 0, SPELL_TIER_MEDIUM = 1, SPELL_TIER_LONG = 2, SPELL_T
 #define DUEL_KIND_PACK(elem, mod, pay) ((uint8_t)(((elem)&3) | (((mod)&3)<<2) | (((pay)&3)<<4)))
 #define DUEL_KIND_ELEMENT(k)  ((k) & 3)
 #define DUEL_KIND_MODIFIER(k) (((k) >> 2) & 3)
-#define DUEL_KIND_PAYLOAD(k)  (((k) >> 4) & 3)
 #define DUEL_KIND_TIER(k)     (((k) >> 6) & 3)
 #define DUEL_KIND_WITH_TIER(k, tier) ((uint8_t)(((k) & 0x3F) | (((tier) & 3) << 6)))
 #define RECIPE_EXPIRE_TICKS 25   /* ~1s of inactivity closes an open recipe */

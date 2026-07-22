@@ -120,37 +120,6 @@ duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side) {
     return spell;
 }
 
-void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world) {
-    memset(world, 0, sizeof *world);
-    for (uint8_t side = 0; side < 2; side++) {
-        duel_view_wizard_t wz = duel_view_wizard(view, side);
-        world->wiz[side].pose = wz.pose;
-        world->wiz[side].hp = wz.hp;
-        world->wiz[side].ward_strength = wz.ward_strength;
-        world->wiz[side].shield_ticks = wz.ward_strength;
-        world->wiz[side].life = wz.life;
-        world->wiz[side].variant = wz.variant;
-        world->wiz[side].inc_state = wz.inc_state;
-        world->wiz[side].ward_focus = wz.ward_focus;
-        world->wiz[side].prepared = wz.prepared;
-        world->wiz[side].rearm_lock = wz.rearm_lock;
-        world->wiz[side].status = wz.status;
-        world->wiz[side].status_intensity = wz.status_intensity;
-        world->wiz[side].stance = wz.stance;
-        duel_view_spell_t sp = duel_view_spell(view, side);
-        world->spell[side].active = sp.active;
-        world->spell[side].pos = sp.pos;
-        world->spell[side].dir = sp.dir;
-        world->spell[side].kind = sp.kind;
-        world->spell[side].descriptor = sp.descriptor;
-        world->spell[side].progress = sp.progress;
-    }
-    world->fx_seq = VIEW_FX_SEQ(view->fx_stance);
-    world->fx_kind = VIEW_OVERLAY_FX(view->outcome_overlay);
-    world->scry.state = duel_view_scry_open(view) ? SCRY_ACTIVE : SCRY_IDLE;
-    world->scry.scene = VIEW_OVERLAY_SCENE(view->outcome_overlay);
-}
-
 bool duel_view_valid(const duel_view_t *view) {
     if (view->outcome_overlay & 0x80u) return false;
     if (VIEW_OVERLAY_SCENE(view->outcome_overlay) >= SCRY_SCENES) return false;

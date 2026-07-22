@@ -13,6 +13,7 @@
 #include "duel_rgb.h"
 #include "duel_sim.h"
 #include "duel_view.h"
+#include "test_support.h"
 
 static int failures;
 static const char *expect_expr; /* first failing EXPECT of the current test */
@@ -126,40 +127,48 @@ static void test_v11_repack_and_sky_subphase(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_snapshot_t p;
     w.fx_seq = 0x37u; /* only the low nibble reaches the wire */
-    duel_encode(&w, 5, 258u, &p); /* wide caller counter truncates to a byte */
+    test_encode_snapshot(&w, 5, 258u, &p); /* wide caller counter truncates to a byte */
     EXPECT(p.seq == 2u && VIEW_FX_SEQ(p.view.fx_stance) == 7u &&
            VIEW_FX_STANCE(p.view.fx_stance, SIM_SIDE_L) == DUEL_STANCE_NONE &&
            VIEW_FX_STANCE(p.view.fx_stance, SIM_SIDE_R) == DUEL_STANCE_NONE &&
            duel_decode_valid(&p));
 
-    /* Residue round-trip across every zone and value on top of loaded civic
-     * and secondary bytes, including zone 3's byte-straddling intensity;
-     * clearing back to empty stays canonical and decodable. */
-    duel_snapshot_set_civic(&p, DUEL_CIVIC_PACK(2u, 1u, 3u),
-        DUEL_SECONDARY_SKY_SUB_PACK(
-            DUEL_SECONDARY_SKY_PACK(DUEL_CIVIC_SECONDARY_MEDIA, DUEL_SKY_DUSK), 3u),
-        0u, 0u);
+    /* Residue round-trip across every zone and value through the production
+     * world encoder, including zone 3's byte-straddling intensity. */
+    uint8_t civic = DUEL_CIVIC_PACK(2u, 1u, 3u);
+    uint8_t secondary = DUEL_SECONDARY_SKY_SUB_PACK(
+        DUEL_SECONDARY_SKY_PACK(DUEL_CIVIC_SECONDARY_MEDIA, DUEL_SKY_DUSK), 3u);
     for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
         for (uint8_t elem = 0; elem < 4u; elem++)
             for (uint8_t inten = 1; inten < 4u; inten++) {
-                duel_snapshot_set_residue(&p, zone, elem, inten);
+                w.residue[zone] = (sim_residue_t){elem, inten, 0u};
+                test_encode_snapshot(&w, 5u, 258u, &p);
+                duel_snapshot_set_civic(&p, civic, secondary, 0u, 0u);
                 EXPECT(duel_snapshot_residue_element(&p, zone) == elem &&
                        duel_snapshot_residue_intensity(&p, zone) == inten &&
                        duel_decode_valid(&p));
-                duel_snapshot_set_residue(&p, zone, 0u, 0u);
+                w.residue[zone] = (sim_residue_t){0};
+                test_encode_snapshot(&w, 5u, 258u, &p);
+                duel_snapshot_set_civic(&p, civic, secondary, 0u, 0u);
                 EXPECT(duel_decode_valid(&p));
             }
     /* All four zones loaded at once: the scattered fields never alias. */
     for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
-        duel_snapshot_set_residue(&p, zone, zone, (uint8_t)(3u - (zone & 1u)));
+        w.residue[zone] = (sim_residue_t){zone, (uint8_t)(3u - (zone & 1u)), 0u};
+    test_encode_snapshot(&w, 5u, 258u, &p);
+    duel_snapshot_set_civic(&p, civic, secondary, 0u, 0u);
     for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
         EXPECT(duel_snapshot_residue_element(&p, zone) == zone &&
                duel_snapshot_residue_intensity(&p, zone) == 3u - (zone & 1u));
     /* The exact straddle boundary: zone 3 intensity 2 sets only the high
      * bit (secondary.7), intensity 1 only the low bit (flags.7). */
-    duel_snapshot_set_residue(&p, DUEL_RESIDUE_DOORSTEP_R, ELEM_EMBER, 2u);
+    w.residue[DUEL_RESIDUE_DOORSTEP_R] = (sim_residue_t){ELEM_EMBER, 2u, 0u};
+    test_encode_snapshot(&w, 5u, 258u, &p);
+    duel_snapshot_set_civic(&p, civic, secondary, 0u, 0u);
     EXPECT((p.secondary & 0x80u) != 0u && (p.flags & 0x80u) == 0u);
-    duel_snapshot_set_residue(&p, DUEL_RESIDUE_DOORSTEP_R, ELEM_EMBER, 1u);
+    w.residue[DUEL_RESIDUE_DOORSTEP_R].intensity = 1u;
+    test_encode_snapshot(&w, 5u, 258u, &p);
+    duel_snapshot_set_civic(&p, civic, secondary, 0u, 0u);
     EXPECT((p.secondary & 0x80u) == 0u && (p.flags & 0x80u) != 0u);
     /* Through all of it the neighboring fields kept their values. */
     EXPECT(DUEL_CIVIC_FLOOR(p.civic) == 2u && DUEL_CIVIC_MODE(p.civic) == 1u &&
@@ -418,7 +427,7 @@ static void test_residue_transmutation_rows_and_wire(void) {
     w.residue[SIM_RESIDUE_MID_R]      = (sim_residue_t){ ELEM_FORCE, 3u, 10u };
     w.residue[SIM_RESIDUE_DOORSTEP_R] = (sim_residue_t){ ELEM_VOID,  3u, 10u };
     duel_snapshot_t p;
-    duel_encode(&w, 5u, 7u, &p);
+    test_encode_snapshot(&w, 5u, 7u, &p);
     EXPECT(duel_decode_valid(&p) &&
            duel_snapshot_residue_element(&p, DUEL_RESIDUE_DOORSTEP_L) == ELEM_EMBER &&
            duel_snapshot_residue_intensity(&p, DUEL_RESIDUE_DOORSTEP_L) == 1u &&
@@ -439,11 +448,11 @@ static void test_residue_transmutation_rows_and_wire(void) {
            duel_snapshot_residue_intensity(&p, DUEL_RESIDUE_DOORSTEP_R) == 3u &&
            DUEL_CIVIC_FLOOR(p.civic) == 2u &&
            (p.secondary & 0x7Fu) == sec); /* semantics kept, straddle intact */
-    sim_world_t decoded;
-    duel_decode_world(&p, &decoded);
+    /* Direct accessors are the packet contract; no reconstructed world API is
+     * needed by production or by this assertion. */
     for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++)
-        EXPECT(decoded.residue[zone].element == w.residue[zone].element &&
-               decoded.residue[zone].intensity == w.residue[zone].intensity);
+        EXPECT(duel_snapshot_residue_element(&p, zone) == w.residue[zone].element &&
+               duel_snapshot_residue_intensity(&p, zone) == w.residue[zone].intensity);
     uint8_t from_world[2], from_snapshot[2];
     duel_residue_pack(&w, from_world);
     duel_snapshot_residue_render(&p, from_snapshot);
@@ -460,7 +469,7 @@ static void test_residue_transmutation_rows_and_wire(void) {
 
 static void test_host_protocol_current_payload_and_ordering(void) {
     duel_host_packet_t hello;
-    duel_host_encode(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
+    test_build_host_packet(DUEL_HOST_MSG_HELLO, 0x11223344u, 0,
                      DUEL_HOST_SCENE_ARCHIVE, 2,
                      DUEL_HOST_CATEGORY_COMMUNICATION,
                      DUEL_HOST_PRIORITY_NORMAL, 3, false,
@@ -475,12 +484,12 @@ static void test_host_protocol_current_payload_and_ordering(void) {
               hello.version == DUEL_HOST_VERSION &&
               hello.payload_len == DUEL_HOST_PAYLOAD_LEN &&
               duel_host_packet_valid(&hello) &&
-              duel_host_accept(&state, &hello) == DUEL_HOST_APPLIED_HEARTBEAT &&
+              duel_host_accept(&state, &hello) &&
               DUEL_HOST_CONTEXT_SCENE(duel_host_context(&state)) == DUEL_HOST_SCENE_ARCHIVE &&
               DUEL_CIVIC_FLOOR(duel_host_civic(&state)) == DUEL_CIVIC_FLOOR_RESEARCH);
 
     duel_host_packet_t heartbeat;
-    duel_host_encode(DUEL_HOST_MSG_HEARTBEAT, 0x11223344u, 1,
+    test_build_host_packet(DUEL_HOST_MSG_HEARTBEAT, 0x11223344u, 1,
                      DUEL_HOST_SCENE_FOCUS, 0,
                      DUEL_HOST_CATEGORY_NONE, DUEL_HOST_PRIORITY_NONE, 0, false,
                      DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP,
@@ -488,8 +497,8 @@ static void test_host_protocol_current_payload_and_ordering(void) {
                                      DUEL_CIVIC_INTENSITY_CALM),
                      DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_NONE),
                      &heartbeat);
-    EXPECT(duel_host_accept(&state, &heartbeat) == DUEL_HOST_APPLIED_HEARTBEAT);
-    EXPECT(duel_host_accept(&state, &heartbeat) == DUEL_HOST_DROP_STALE);
+    EXPECT(duel_host_accept(&state, &heartbeat));
+    EXPECT(!duel_host_accept(&state, &heartbeat));
 
     duel_host_packet_t bad = heartbeat;
     bad.payload_len = 6;
@@ -1294,9 +1303,9 @@ static void test_incantation_link_ordering(void) {
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_snapshot_t a, b, old_session;
-    duel_encode(&w, 7, 0xffffu, &a);
-    duel_encode(&w, 7, 0u, &b);
-    duel_encode(&w, 6, 100u, &old_session);
+    test_encode_snapshot(&w, 7, 0xffffu, &a);
+    test_encode_snapshot(&w, 7, 0u, &b);
+    test_encode_snapshot(&w, 6, 100u, &old_session);
     duel_rx_state_t rx = {0};
     bool ok = true;
     EXPECT(duel_rx_accept(&rx, &a, false) && duel_rx_accept(&rx, &b, false) &&
@@ -1446,7 +1455,7 @@ static void test_max_cast_aftermath_and_wire(void) {
               INCANTATION_AFTER_KIND(shared, 1) == AFTER_MAX_CAST &&
               (revision & INCANTATION_AFTERMATH_WIRE));
     duel_snapshot_t packet;
-    duel_encode(&w, 4, 9, &packet);
+    test_encode_snapshot(&w, 4, 9, &packet);
     EXPECT(packet.shared_pres == shared && packet.revision == revision && duel_decode_valid(&packet));
     duel_render_t render = {0};
     duel_render_from_world(&render, &w);
@@ -1606,7 +1615,7 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
               !duel_fb_get(&ml, 0, beam_y) && !duel_fb_get(&mr, 31, beam_y));
 
     duel_snapshot_t packet;
-    duel_encode(&w, 8, 20, &packet);
+    test_encode_snapshot(&w, 8, 20, &packet);
     duel_rx_state_t rx = {0};
     EXPECT(duel_rx_accept(&rx, &packet, false) && duel_decode_valid(&rx.last));
     duel_render_t slave = master;
@@ -2358,19 +2367,19 @@ static void test_aftermath_split_loss_and_reconnect(void) {
                                        ROOM_DISRUPTED, OBJECT_FIRE};
     w.world_state = WORLD_CRISIS;
     duel_snapshot_t first, later, corrupt, restarted;
-    duel_encode(&w, 3, 10, &first);
+    test_encode_snapshot(&w, 3, 10, &first);
     duel_rx_state_t rx = {0};
     bool ok = true;
     EXPECT(duel_decode_valid(&first) && duel_rx_accept(&rx, &first, false));
     uint8_t old_revision = rx.last.revision;
     wait_ticks(&w, 50);
-    duel_encode(&w, 3, 11, &later);
+    test_encode_snapshot(&w, 3, 11, &later);
     EXPECT(later.revision != old_revision && rx.last.revision == old_revision); /* dropped update */
     corrupt = later; corrupt.shared_pres ^= 0x04u;
     EXPECT(!duel_decode_valid(&corrupt) && rx.last.revision == old_revision);
     EXPECT(duel_rx_accept(&rx, &later, false) && rx.last.revision == later.revision);
     wait_ticks(&w, 50);
-    duel_encode(&w, 4, 1, &restarted);
+    test_encode_snapshot(&w, 4, 1, &restarted);
     EXPECT(duel_rx_accept(&rx, &restarted, true) &&
           rx.last.session == 4u && rx.last.revision == restarted.revision &&
           INCANTATION_AFTER_KIND(rx.last.shared_pres, 0) == AFTER_FIRE);
@@ -2493,7 +2502,6 @@ static void test_display_power_policy(void) {
     EXPECT(mid_fade < DUEL_DISPLAY_ACTIVE_BRIGHTNESS && mid_fade > DUEL_DISPLAY_DIM_BRIGHTNESS);
     EXPECT(duel_display_brightness(&d, dim_at + DUEL_DISPLAY_FADE_MS) ==
            DUEL_DISPLAY_DIM_BRIGHTNESS);
-    EXPECT(duel_display_redraw_ms(&d) == DUEL_DISPLAY_DIM_REDRAW_MS);
     duel_display_update(&d, 2000000u + DUEL_DISPLAY_SLEEP_MS);
     EXPECT(duel_display_brightness(&d, 2000000u + DUEL_DISPLAY_SLEEP_MS + 5u) == 0u);
 
@@ -2504,8 +2512,7 @@ static void test_display_power_policy(void) {
     duel_display_follow(&d, (duel_display_phase_t)3, 3000001u);
     EXPECT(d.phase == DUEL_DISPLAY_ACTIVE);
     duel_display_follow(&d, DUEL_DISPLAY_SLEEP, 3000002u);
-    EXPECT(d.phase == DUEL_DISPLAY_SLEEP &&
-           duel_display_redraw_ms(&d) == DUEL_DISPLAY_ACTIVE_REDRAW_MS);
+    EXPECT(d.phase == DUEL_DISPLAY_SLEEP);
 
     /* ms-clock wrap: a key just before wrap keeps the panel awake across 0. */
     duel_display_note_key(&d, UINT32_MAX - 10u);
@@ -2696,7 +2703,7 @@ static void test_runtime_sky_and_diplomacy(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     duel_snapshot_t master;
-    duel_encode(&world, 7u, 500u, &master);
+    test_encode_snapshot(&world, 7u, 500u, &master);
     duel_snapshot_set_civic(&master, 0u,
         DUEL_SECONDARY_SKY_PACK(0u, DUEL_SKY_NIGHT), 0u, 0u);
     duel_rx_state_t rx = {0};

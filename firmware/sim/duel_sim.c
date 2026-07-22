@@ -11,13 +11,9 @@ bool sim_evq_push(sim_evq_t *q, sim_event_t e) {
     return true;
 }
 
-uint8_t sim_evq_drain(sim_evq_t *q, sim_event_t *out, uint8_t *dropped) {
-    uint8_t n = q->n;
-    memcpy(out, q->ev, (size_t)n * sizeof *out);
-    *dropped = q->dropped;
+void sim_evq_reset(sim_evq_t *q) {
     q->n       = 0;
     q->dropped = 0;
-    return n;
 }
 
 void sim_init(sim_world_t *w, uint8_t flags, uint32_t start_tick) {

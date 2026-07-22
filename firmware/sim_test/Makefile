@@ -18,7 +18,7 @@ test: mechanics-test visual-test noalloc-check
 
 RUNNER_RECIPE = $(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-mechanics_runner: mechanics_test.c $(SIM_SRC) $(HDRS)
+mechanics_runner: mechanics_test.c test_support.c test_support.h $(SIM_SRC) $(HDRS)
 	$(RUNNER_RECIPE)
 
 mechanics-test: mechanics_runner

@@ -35,7 +35,6 @@ enum {
 #define DUEL_VISITOR_STATE_KIND(s)       ((uint8_t)((s).kind_target & 7u))
 #define DUEL_VISITOR_STATE_CITY(s)       ((uint8_t)(((s).kind_target >> 3) & 1u))
 #define DUEL_VISITOR_STATE_DENSITY(s)    ((uint8_t)((s).progress_flags & 3u))
-#define DUEL_VISITOR_STATE_PERSISTENT(s) ((uint8_t)(((s).progress_flags >> 2) & 1u))
 
 // Derive the global visitor from the notification summary + session seed + civic
 // phase. Master-side, deterministic (keys off seed/phase, never w.tick). The

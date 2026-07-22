@@ -25,10 +25,6 @@
 #define INCANTATION_OCCUPATION_FLOORS 4u
 #define INCANTATION_OCCUPATION_KEY(floor, action) \
         ((uint8_t)(((floor) * DUEL_CIVIC_ACTION_COUNT) + (action)))
-#define INCANTATION_OCCUPATION_FLOOR(key) \
-        ((uint8_t)((key) / DUEL_CIVIC_ACTION_COUNT))
-#define INCANTATION_OCCUPATION_ACTION(key) \
-        ((uint8_t)((key) % DUEL_CIVIC_ACTION_COUNT))
 
 /* Canonical desk-space point shared by every current civic layer. Coordinates are
  * authored for the left/desk view; callers mirror x at the final draw site. */

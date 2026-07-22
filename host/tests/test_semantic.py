@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from arcane_host.adapters import DBusAdapterHub, SemanticAdapters
-from arcane_host.focus import FocusArbiter, classify_floor
+from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import canonical_identifier, resolve_profile
 from arcane_host.protocol import (
@@ -53,10 +53,15 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolve_profile("org.kde.konsole", None).floor, Floor.WORKSHOP)
         self.assertEqual(resolve_profile("slack", None).floor, Floor.COMMONS)
         self.assertEqual(resolve_profile("spotify", None).floor, Floor.COMMONS)
-        # classify_floor mirrors the arbiter's floor derivation, unknown -> COMMONS.
-        self.assertEqual(classify_floor("firefox", None), Floor.RESEARCH)
-        self.assertEqual(classify_floor("kitty", None), Floor.WORKSHOP)
-        self.assertEqual(classify_floor("unknown-app", None), Floor.COMMONS)
+        focus = FocusArbiter(settle_seconds=0)
+        for application, expected in (
+            ("firefox", Floor.RESEARCH),
+            ("kitty", Floor.WORKSHOP),
+            ("unknown-app", Floor.COMMONS),
+        ):
+            focus.report(application, None, 0)
+            focus.poll(0)
+            self.assertEqual(focus.floor, expected)
 
     def test_focus_arbiter_settles_floor_with_scene(self) -> None:
         arbiter = FocusArbiter(settle_seconds=0)

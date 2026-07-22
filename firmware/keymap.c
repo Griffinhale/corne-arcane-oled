@@ -240,8 +240,7 @@ static bool duel_host_rx_consume(uint32_t now) {
                               &packet, sizeof packet)) return false;
     uint8_t before_context = duel_host_context(&duel_host_state);
     uint8_t before_alert   = duel_host_alert(&duel_host_state);
-    duel_host_result_t result = duel_host_accept(&duel_host_state, &packet);
-    if (result == DUEL_HOST_APPLIED_HEARTBEAT) {
+    if (duel_host_accept(&duel_host_state, &packet)) {
         duel_host_expire_ms = now + DUEL_HOST_TIMEOUT_MS;
     }
     return before_context != duel_host_context(&duel_host_state) ||
@@ -631,8 +630,7 @@ void housekeeping_task_user(void) {
         // events apply to the first tick only.
         sim_inputs_t inputs = duel_sample_inputs();
         sim_tick(&duel_world, inputs, duel_evq.ev, duel_evq.n, duel_evq.dropped);
-        duel_evq.n = 0;
-        duel_evq.dropped = 0;
+        sim_evq_reset(&duel_evq);
         for (uint8_t t = 1; t < budget; t++)
             sim_tick(&duel_world, inputs, NULL, 0, 0);
     }

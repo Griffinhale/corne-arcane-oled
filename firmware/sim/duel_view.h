@@ -107,7 +107,6 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view);
  * encoder, the master's render fill, and the slave's snapshot unpack all
  * speak this one layout. */
 void duel_residue_pack(const sim_world_t *world, uint8_t out[2]);
-void duel_view_to_render_world(const duel_view_t *view, sim_world_t *world);
 bool duel_view_valid(const duel_view_t *view);
 duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side);
 duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side);

@@ -46,10 +46,6 @@ uint8_t duel_display_brightness(const duel_display_policy_t *policy, uint32_t no
                      (span * fade_ms) / DUEL_DISPLAY_FADE_MS);
 }
 
-uint16_t duel_display_redraw_ms(const duel_display_policy_t *policy) {
-    return policy->phase == DUEL_DISPLAY_DIM ? DUEL_DISPLAY_DIM_REDRAW_MS
-                                              : DUEL_DISPLAY_ACTIVE_REDRAW_MS;
-}
 
 uint8_t duel_presentation_remaining(uint32_t started_ms, uint16_t duration_ms,
                                     uint32_t now_ms) {

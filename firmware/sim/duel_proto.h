@@ -105,11 +105,8 @@ _Static_assert(sizeof(duel_split_diag_reply_t) == 16,
 
 uint8_t duel_crc8(const void *data, size_t len);
 
-// Encode the world into a wire packet (computes the CRC).
-void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snapshot_t *out);
-
 // `external` is a packed, disposable presentation summary. The ordinary
-// encoder writes zero for offline simulation and tests.
+// runtime encoder writes the complete production packet and computes the CRC.
 void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session,
                                         uint16_t seq, uint8_t external,
                                         uint8_t alert, uint8_t display_phase,
@@ -136,17 +133,11 @@ void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondar
  * duel_render_t grammar (see duel_residue_pack) for the slave's render fill. */
 uint8_t duel_snapshot_residue_element(const duel_snapshot_t *p, uint8_t zone);
 uint8_t duel_snapshot_residue_intensity(const duel_snapshot_t *p, uint8_t zone);
-void duel_snapshot_set_residue(duel_snapshot_t *p, uint8_t zone,
-                               uint8_t element, uint8_t intensity);
 void duel_snapshot_residue_render(const duel_snapshot_t *p, uint8_t out[2]);
 
 // Magic/version/CRC check. A false result means: drop silently, the next
 // packet lands within a couple of ticks.
 bool duel_decode_valid(const duel_snapshot_t *p);
-
-// Compatibility helper for simulator assertions. Runtime rendering consumes
-// the embedded canonical view directly.
-void duel_decode_world(const duel_snapshot_t *p, sim_world_t *out);
 
 /* ---- slave-side acceptance ---------------------------------------------- */
 typedef struct {

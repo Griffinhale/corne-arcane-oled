@@ -123,24 +123,10 @@ typedef struct {
 #define DUEL_HOST_STATE_HAVE_SESSION  0x01u
 #define DUEL_HOST_STATE_HAVE_PREVIOUS 0x02u
 
-typedef enum {
-    DUEL_HOST_DROP_MALFORMED = 0,
-    DUEL_HOST_DROP_STALE,
-    DUEL_HOST_APPLIED,
-    DUEL_HOST_APPLIED_HEARTBEAT,
-} duel_host_result_t;
-
-// Canonical encoder used by host tests; the daemon has an independent Python
-// implementation checked against the same known vector.
-void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
-                      uint8_t scene, uint8_t notification_count,
-                      uint8_t category, uint8_t priority, uint8_t age,
-                      bool persistent, uint8_t civic, uint8_t secondary,
-                      duel_host_packet_t *out);
-
 bool duel_host_packet_valid(const duel_host_packet_t *packet);
-duel_host_result_t duel_host_accept(duel_host_state_t *state,
-                                    const duel_host_packet_t *packet);
+// Accept a valid, fresh packet. Returns true only when the accepted packet
+// refreshes the heartbeat timeout; NOTIFY still updates absolute semantics.
+bool duel_host_accept(duel_host_state_t *state, const duel_host_packet_t *packet);
 
 // Called by the QMK glue after its monotonic heartbeat deadline. Session
 // ordering is retained, but all disposable context is cleared immediately.

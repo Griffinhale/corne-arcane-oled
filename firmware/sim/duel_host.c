@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include "duel_host.h"
 #include "duel_proto.h"
 
@@ -12,30 +10,6 @@ static void sat_inc(uint16_t *value) {
 static bool type_valid(uint8_t type) {
     return type == DUEL_HOST_MSG_HELLO || type == DUEL_HOST_MSG_HEARTBEAT ||
            type == DUEL_HOST_MSG_NOTIFY;
-}
-
-void duel_host_encode(uint8_t type, uint32_t session, uint16_t seq,
-                      uint8_t scene, uint8_t notification_count,
-                      uint8_t category, uint8_t priority, uint8_t age,
-                      bool persistent, uint8_t civic, uint8_t secondary,
-                      duel_host_packet_t *out) {
-    memset(out, 0, sizeof *out);
-    out->magic0      = DUEL_HOST_MAGIC0;
-    out->magic1      = DUEL_HOST_MAGIC1;
-    out->version     = DUEL_HOST_VERSION;
-    out->type        = type;
-    out->session     = session;
-    out->seq         = seq;
-    out->payload_len = DUEL_HOST_PAYLOAD_LEN;
-    out->payload[0]  = scene;
-    out->payload[1]  = notification_count;
-    out->payload[2]  = category;
-    out->payload[3]  = priority;
-    out->payload[4]  = age;
-    out->payload[5]  = persistent ? 1 : 0;
-    out->payload[DUEL_HOST_PAYLOAD_CIVIC]     = civic;
-    out->payload[DUEL_HOST_PAYLOAD_SECONDARY] = secondary;
-    out->crc = duel_crc8(out, offsetof(duel_host_packet_t, crc));
 }
 
 static bool envelope_valid(const duel_host_packet_t *packet) {
@@ -83,13 +57,12 @@ bool duel_host_packet_valid(const duel_host_packet_t *packet) {
            notification_valid(packet);
 }
 
-static duel_host_result_t stale(duel_host_state_t *state) {
+static void stale(duel_host_state_t *state) {
 #ifdef ARCANE_DIAGNOSTICS
     sat_inc(&state->stale_packets);
 #else
     (void)state;
 #endif
-    return DUEL_HOST_DROP_STALE;
 }
 
 static void apply_context(duel_host_state_t *state, const duel_host_packet_t *packet,
@@ -103,13 +76,12 @@ static void apply_context(duel_host_state_t *state, const duel_host_packet_t *pa
     state->secondary = packet->payload[DUEL_HOST_PAYLOAD_SECONDARY];
 }
 
-duel_host_result_t duel_host_accept(duel_host_state_t *state,
-                                    const duel_host_packet_t *packet) {
+bool duel_host_accept(duel_host_state_t *state, const duel_host_packet_t *packet) {
     if (!duel_host_packet_valid(packet)) {
 #ifdef ARCANE_DIAGNOSTICS
         sat_inc(&state->malformed_packets);
 #endif
-        return DUEL_HOST_DROP_MALFORMED;
+        return false;
     }
 
     if (packet->type == DUEL_HOST_MSG_HELLO) {
@@ -119,7 +91,8 @@ duel_host_result_t duel_host_accept(duel_host_state_t *state,
         if (packet->seq != 0 ||
             ((state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) && packet->session == state->session) ||
             ((state->state_flags & DUEL_HOST_STATE_HAVE_PREVIOUS) && packet->session == state->previous_session)) {
-            return stale(state);
+            stale(state);
+            return false;
         }
         if (state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) {
             state->state_flags |= DUEL_HOST_STATE_HAVE_PREVIOUS;
@@ -129,12 +102,13 @@ duel_host_result_t duel_host_accept(duel_host_state_t *state,
         state->session      = packet->session;
         state->last_seq     = 0;
         apply_context(state, packet, true);
-        return DUEL_HOST_APPLIED_HEARTBEAT;
+        return true;
     }
 
     if (!(state->state_flags & DUEL_HOST_STATE_HAVE_SESSION) || packet->session != state->session ||
         (int16_t)(packet->seq - state->last_seq) <= 0) {
-        return stale(state);
+        stale(state);
+        return false;
     }
 
     state->last_seq = packet->seq;
@@ -142,9 +116,9 @@ duel_host_result_t duel_host_accept(duel_host_state_t *state,
                   DUEL_HOST_CONTEXT_ONLINE(state->external);
     apply_context(state, packet, online);
     if (packet->type == DUEL_HOST_MSG_HEARTBEAT) {
-        return DUEL_HOST_APPLIED_HEARTBEAT;
+        return true;
     }
-    return DUEL_HOST_APPLIED;
+    return false;
 }
 
 void duel_host_expire(duel_host_state_t *state) {

@@ -7,36 +7,7 @@ import secrets
 from typing import Callable
 
 from .protocol import Floor, Scene
-from .profiles import PROFILES, canonical_identifier, normalize_identifier, resolve_profile
-
-
-BROWSER_ALIASES = next(profile.aliases for profile in PROFILES if profile.identifier == "browser")
-TERMINAL_ALIASES = next(profile.aliases for profile in PROFILES if profile.identifier == "terminal")
-
-
-def is_browser(resource_class: str | None, desktop_file_name: str | None) -> bool:
-    return any(
-        normalize_identifier(identifier) in BROWSER_ALIASES
-        for identifier in (resource_class, desktop_file_name)
-    )
-
-
-def is_terminal(resource_class: str | None, desktop_file_name: str | None) -> bool:
-    return any(
-        normalize_identifier(identifier) in TERMINAL_ALIASES
-        for identifier in (resource_class, desktop_file_name)
-    )
-
-
-def classify_window(resource_class: str | None, desktop_file_name: str | None) -> Scene:
-    profile = resolve_profile(resource_class, desktop_file_name)
-    return profile.scene if profile is not None else Scene.DUEL
-
-
-def classify_floor(resource_class: str | None, desktop_file_name: str | None) -> Floor:
-    """Twin Cities floor for the focused window; unknown apps live in COMMONS."""
-    profile = resolve_profile(resource_class, desktop_file_name)
-    return profile.floor if profile is not None else Floor.COMMONS
+from .profiles import normalize_identifier, resolve_profile
 
 
 class FocusArbiter:
@@ -64,15 +35,20 @@ class FocusArbiter:
         self._deadline = 0.0
 
     def report(self, resource_class: str | None, desktop_file_name: str | None, now: float) -> None:
-        target = classify_window(resource_class, desktop_file_name)
-        floor = classify_floor(resource_class, desktop_file_name)
-        terminal = is_terminal(resource_class, desktop_file_name)
-        normalized = {
-            canonical_identifier(identifier)
-            for identifier in (resource_class, desktop_file_name)
-            if canonical_identifier(identifier)
+        normalized = tuple(
+            identifier
+            for value in (resource_class, desktop_file_name)
+            if (identifier := normalize_identifier(value))
+        )
+        profile = resolve_profile(*normalized)
+        target = profile.scene if profile is not None else Scene.DUEL
+        floor = profile.floor if profile is not None else Floor.COMMONS
+        terminal = profile is not None and profile.identifier == "terminal"
+        canonical = {
+            profile.identifier if profile is not None and identifier in profile.aliases else identifier
+            for identifier in normalized
         }
-        digests = frozenset(self._identifier_digest(identifier) for identifier in normalized)
+        digests = frozenset(self._identifier_digest(identifier) for identifier in canonical)
         self._pending = (target, floor, terminal, digests)
         self._deadline = now + self.settle_seconds
 

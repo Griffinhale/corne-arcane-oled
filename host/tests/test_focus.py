@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from arcane_host.daemon import parse_args
-from arcane_host.focus import FocusArbiter, classify_window, is_terminal, normalize_identifier
+from arcane_host.focus import FocusArbiter, normalize_identifier
 from arcane_host.protocol import Scene
 
 
@@ -24,11 +24,15 @@ class FocusTests(unittest.TestCase):
         )
         for resource_class, desktop_file_name in aliases:
             with self.subTest(resource_class=resource_class, desktop=desktop_file_name):
-                self.assertEqual(classify_window(resource_class, desktop_file_name), Scene.ARCHIVE)
+                focus = FocusArbiter(settle_seconds=0)
+                focus.report(resource_class, desktop_file_name, 0)
+                self.assertEqual(focus.poll(0), Scene.ARCHIVE)
 
     def test_empty_unknown_and_desktop_are_duel(self) -> None:
         for pair in (("", ""), ("org.kde.kate", "org.kde.kate"), ("plasmashell", "org.kde.plasmashell")):
-            self.assertEqual(classify_window(*pair), Scene.DUEL)
+            focus = FocusArbiter(settle_seconds=0)
+            focus.report(*pair, 0)
+            self.assertEqual(focus.poll(0), Scene.DUEL)
 
     def test_settles_for_200_ms(self) -> None:
         focus = FocusArbiter()
@@ -49,7 +53,6 @@ class FocusTests(unittest.TestCase):
 
     def test_coarse_terminal_focus_and_digest_only_retention(self) -> None:
         focus = FocusArbiter(settle_seconds=0, identifier_digest=lambda value: value.encode())
-        self.assertTrue(is_terminal("org.kde.konsole", ""))
         focus.report("org.kde.konsole", "org.kde.konsole.desktop", 1)
         focus.poll(1)
         self.assertTrue(focus.terminal_focused)

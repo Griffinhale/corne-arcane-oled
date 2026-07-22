@@ -19,10 +19,6 @@ uint8_t duel_crc8(const void *data, size_t len) {
     return crc;
 }
 
-void duel_encode(const sim_world_t *w, uint8_t session, uint16_t seq, duel_snapshot_t *out) {
-    duel_encode_external_alert_display(w, session, seq, 0, 0, 0, out);
-}
-
 /* Scattered-bit writer shared by the encoder (no CRC yet) and the public
  * setter (which recomputes it). */
 static void snapshot_write_residue(duel_snapshot_t *p, uint8_t zone,
@@ -111,12 +107,6 @@ uint8_t duel_snapshot_residue_intensity(const duel_snapshot_t *p, uint8_t zone) 
     }
 }
 
-void duel_snapshot_set_residue(duel_snapshot_t *p, uint8_t zone,
-                               uint8_t element, uint8_t intensity) {
-    snapshot_write_residue(p, zone, element, intensity);
-    p->crc = duel_crc8(p, offsetof(duel_snapshot_t, crc));
-}
-
 void duel_snapshot_residue_render(const duel_snapshot_t *p, uint8_t out[2]) {
     out[0] = p->residue;
     out[1] = (uint8_t)(duel_snapshot_residue_element(p, DUEL_RESIDUE_MID_R) |
@@ -150,14 +140,6 @@ bool duel_decode_valid(const duel_snapshot_t *p) {
            shared_valid &&
            duel_view_valid(&p->view) &&
            p->crc == duel_crc8(p, offsetof(duel_snapshot_t, crc));
-}
-
-void duel_decode_world(const duel_snapshot_t *p, sim_world_t *out) {
-    duel_view_to_render_world(&p->view, out);
-    for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++) {
-        out->residue[zone].element   = duel_snapshot_residue_element(p, zone);
-        out->residue[zone].intensity = duel_snapshot_residue_intensity(p, zone);
-    }
 }
 
 _Static_assert((int)DUEL_RESIDUE_ZONES == (int)SIM_RESIDUE_ZONES &&
