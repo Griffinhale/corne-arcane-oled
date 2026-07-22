@@ -1,7 +1,7 @@
 #include <string.h>
 
-#include "duel_courier.h" // Wave 6 couriers
-#include "duel_event.h"   // Wave 7 rare events
+#include "duel_courier.h" // couriers
+#include "duel_event.h"   // rare events
 #include "duel_host.h"
 #include "duel_resident.h"
 #include "duel_sim.h"
@@ -61,7 +61,7 @@ static const duel_scenario_t scenarios[] = {
     SCENE("resident-distracted", "residents", "distracted resident", 0, false),
     SCENE("workshop-idle", "workshop", "forge and assembly residents at work", 0, false),
     SCENE("workshop-cast", "workshop", "combat over the workshop floor", 3, false),
-    // --- Wave 6 couriers ---
+    // --- couriers ---
     SCENE("courier-messenger", "couriers", "communication messenger bird (left)", 0, false),
     SCENE("courier-parcel", "couriers", "transfer parcel cart (right)", 0, false),
     SCENE("courier-beacon", "couriers", "system signal beacon (right)", 0, false),
@@ -71,7 +71,7 @@ static const duel_scenario_t scenarios[] = {
     SCENE("courier-resolving", "couriers", "messenger departing, resolved", 0, false),
     SCENE("courier-count-few", "couriers", "beacon, 2-4 count bucket", 0, false),
     SCENE("courier-count-many", "couriers", "beacon, 5+ count bucket", 0, false),
-    // --- Wave 7 rare events ---
+    // --- rare events ---
     // All six families across representative phases, a QUIET-calmed case, and a
     // safety-gate-suppressed case that draws nothing extra (floor only).
     SCENE("event-scroll", "rare_events", "runaway scroll unrolling (left city)", 0, false),
@@ -128,9 +128,9 @@ static uint8_t seed_for_personality(uint8_t want) {
     return 0;
 }
 
-// --- Wave 6 couriers ---
+// --- couriers ---
 // Drive the courier scenarios through the real derivation engine, then pack the
-// result into shared_pres exactly as the master would relay it (D1/§11.3).
+// result into shared_pres exactly as the master relays it.
 static void set_courier(duel_render_t *r, uint8_t category, uint8_t count, uint8_t age,
                         bool persistent) {
     r->shared_pres = civic_visitor_shared_pres(
@@ -355,7 +355,7 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         w.wiz[SIM_SIDE_L].pose = POSE_CAST;
         w.wiz[SIM_SIDE_L].cast_windup = 3;
         w.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
-        // --- Wave 6 couriers --- (all on a shared COMMONS/seed/phase base so the
+        // --- couriers --- (all on a shared COMMONS/seed/phase base so the
         // courier itself is the only difference between the pairs).
     } else if (strncmp(name, "courier-", 8) == 0) {
         r->civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL,
@@ -392,7 +392,7 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
         } else {
             return false;
         }
-        // --- Wave 7 rare events ---
+        // --- rare events ---
         // Each event scenario stands the floor up (so a suppressed slot still shows
         // the room) and drives the rare-event slot through r->revision. Distinct
         // seeds keep both the floor/resident and the event art unique per scenario.

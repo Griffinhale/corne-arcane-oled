@@ -11,11 +11,11 @@
  * care about) are little-endian, so the struct ships as raw bytes. The serial
  * protocol only checksums its own framing, hence our CRC over the payload.
  *
- * The v10 -> v11 repack (M15 Track P) funds 22 new payload bits without
+ * The v10 -> v11 repack funds 22 new payload bits without
  * growing the packet: seq narrows to a wrapping byte, the view's fx byte
  * shares its high nibble, and every formerly reserved bit is allocated.
- * New fields: four battlefield-residue zones (element + intensity each,
- * Track A), two wizard stances (Track B), and the live 2-bit sky sub-phase
+ * New fields: four battlefield-residue zones (element + intensity each), two
+ * wizard stances, and the live 2-bit sky sub-phase
  * that gives the celestial arc its 16 steps. Residue zone 3's intensity is
  * the one field that straddles bytes (flags.7 low / secondary.7 high); the
  * duel_snapshot_residue_* accessors below are its only sanctioned door.
@@ -39,7 +39,7 @@
 #define DUEL_FLAGS_DISPLAY_PACK(phase) ((uint8_t)(((phase) & 3u) << 1))
 #define DUEL_FLAGS_DISPLAY(flags)      ((uint8_t)(((flags) >> 1) & 3u))
 
-/* Battlefield residue zones on the duel u-axis, live since Track A (the
+/* Battlefield residue zones on the duel u-axis, encoded in the snapshot (the
  * encoder fills them from sim_world_t.residue). Zones 0-1 pack into the
  * dedicated residue byte, zone 2 into flags, zone 3 across the
  * civic/flags/secondary spare bits. Mirrors the SIM_RESIDUE_* enum
@@ -119,7 +119,7 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, u
 // (keymap.c) then overwrites all four bytes via this call to relay the
 // current civic state, including its own aftermath override.
 // v11: civic bits6-7 and secondary bit7 belong to residue zone 3, which the
-// encoder fills from the world (Track A). This call masks them out of the
+// encoder fills from the world. This call masks them out of the
 // incoming semantics and preserves the encoder's bits, so callers need no
 // ordering dance.
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,

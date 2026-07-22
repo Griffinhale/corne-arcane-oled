@@ -1,9 +1,9 @@
 # Corne Arcane 0.4 physical acceptance checklist
 
 Status: pending for the current unified release artifacts. Prior reported
-evidence and unchecked milestone-era records are preserved verbatim in
-`docs/archive/2026-07-17-m14-m15-physical-checklist.md`; they do not mark the
-checks below complete.
+evidence and unchecked historical records are preserved verbatim in the
+[dated acceptance archive](archive/2026-07-17-m14-m15-physical-checklist.md);
+they do not mark the checks below complete.
 
 Use `artifacts/release/griffin_arcane-diagnostic.uf2` on both halves for
 measurement, then repeat the final smoke test with

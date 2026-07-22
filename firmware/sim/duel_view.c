@@ -30,7 +30,7 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
     memset(view, 0, sizeof *view);
     for (uint8_t side = 0; side < 2; side++) {
         const sim_wizard_t *wz = &world->wiz[side];
-        /* Track B MEDITATE presents the ward as 0 (matching ward_covers'
+        /* MEDITATE presents the ward as 0 (matching ward_covers'
          * suppression gate) without touching the stored strength, so both
          * halves hide it and a keydown restores it instantly. */
         uint8_t ward = wz->stance == DUEL_STANCE_MEDITATE ? 0u : wz->ward_strength;
@@ -63,7 +63,7 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
                       << (side * 4u));
     }
     /* The fx sequence wears the low nibble (equality-compared, wrap at 16 is
-     * ample); the high nibble carries the Track B stances. */
+     * ample); the high nibble carries the stances. */
     view->fx_stance = VIEW_FX_PACK(world->fx_seq, world->wiz[0].stance, world->wiz[1].stance);
     view->outcome_overlay =
         VIEW_OVERLAY_PACK(world->fx_kind, scry_is_open(world), world->scry.scene);

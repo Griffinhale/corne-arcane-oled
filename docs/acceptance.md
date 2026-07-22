@@ -36,14 +36,14 @@ current physical procedure is authoritative in `physical-checklist.md`.
 
 ## Resource measurements
 
-Measured 2026-07-17 from clean builds in the configured Vial-QMK checkout with
+Measured 2026-07-22 from clean builds in the configured Vial-QMK checkout with
 `arm-none-eabi-gcc 14.2.1`. Flash is `.text + .data`; static RAM is
 `.data + .bss + .ram0…ram7`.
 
 | Build | Flash | Static RAM | Reserve below 96 KiB | Growth from image baseline |
 |---|---:|---:|---:|---:|
-| `griffin_arcane` release | 76,752 B | 13,504 B | 21,552 B | +7,108 B flash, +40 B RAM |
-| `griffin_arcane` diagnostic | 77,968 B | 13,624 B | 20,336 B | +6,868 B flash, +48 B RAM |
+| `griffin_arcane` release | 76,832 B | 13,504 B | 21,472 B | +7,188 B flash, +40 B RAM |
+| `griffin_arcane` diagnostic | 78,056 B | 13,624 B | 20,248 B | +6,956 B flash, +48 B RAM |
 
 Both images remain below the 81,896-byte flash ceiling, the 16,496-byte
 static-RAM ceiling, the 96 KiB hard stop, the per-image +8,192-byte flash and
@@ -75,7 +75,7 @@ The 363-scene golden catalog is
   with `CONVERT_TO=rp2040_ce`.
 - `make release-budget` enforces absolute flash/RAM ceilings, growth ceilings,
   the 96 KiB hard stop, and 16 KiB reserve.
-- `make hygiene` and `git diff --check` pass.
+- `make lint`, `make hygiene`, and `git diff --check` pass.
 
 Automated tests cannot claim physical flashing, desk-distance readability,
 real-device timing or stack headroom, secure unlock, power-cycle persistence,

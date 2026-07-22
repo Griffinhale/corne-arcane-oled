@@ -401,10 +401,10 @@ static void duel_session_init(void) {
     duel_diplomacy_init(&duel_diplomacy);
 }
 
-// Master-derived shared presentation coordination (Waves 6/7), recomputed each
-// housekeeping pass via duel_civic_shared_derive (tested, in duel_runtime) and
-// relayed in the snapshot's shared_pres / revision bytes so both halves render
-// the same courier and event.
+// Master-derived civic presentation is recomputed each housekeeping pass via
+// duel_civic_shared_derive (tested in duel_runtime) and relayed in the
+// snapshot's shared_pres/revision bytes so both halves render the same courier
+// and event.
 static duel_civic_shared_t duel_civic_shared;
 static duel_floor_policy_t duel_floor_policy;
 
@@ -429,7 +429,7 @@ static void duel_master_tx(uint32_t now, bool urgent) {
     uint8_t flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(duel_display.phase);
     duel_view_t candidate_view;
     duel_view_from_world(&duel_world, &candidate_view);
-    // The encoder scatters residue (Track A) into the flags/civic/secondary
+    // The encoder scatters residue into the flags/civic/secondary
     // spare bits, so those comparisons mask residue out and the residue
     // change check runs separately against the world's packed zones.
     uint8_t residue_now[2], residue_sent[2];
@@ -769,7 +769,7 @@ bool oled_task_user(void) {
     // Presentation seed (the shared 1-byte session) plus the bounded civic clock
     // that paces resident/floor motion. A SLEEP phase already returned above, so
     // advancing civic_phase here can trigger a redraw while awake but never
-    // re-lights or wakes the panel (plan §2 D3/D4). civic_phase is LOCAL — each
+    // re-lights or wakes the panel. civic_phase is LOCAL — each
     // half derives its own resident — so it is deliberately not on the wire.
     duel_render.seed = is_keyboard_master() ? duel_session : duel_rx.last.session;
     duel_render.civic_phase = (uint8_t)(now / DUEL_CIVIC_TICK_MS);

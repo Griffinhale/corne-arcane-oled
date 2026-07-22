@@ -301,7 +301,7 @@ duel_civic_shared_t duel_civic_shared_derive(uint8_t session, uint32_t now_ms,
     civic_visitor_state_t vis =
         civic_visitor_derive(session, phase, category, count, age, persistent);
     out.shared_pres = observatory ? 0u : civic_visitor_shared_pres(vis);
-    // Rare events are safety-gated (spec §14.1): suppressed while a critical
+    // Rare events are safety-gated: suppress them while a critical
     // (sentinel) visitor is stationed or a champion is not standing.
     bool eligible = DUEL_VISITOR_KIND(out.shared_pres) != DUEL_CIVIC_COURIER_SENTINEL &&
                     world->wiz[SIM_SIDE_L].life == LIFE_ACTIVE &&

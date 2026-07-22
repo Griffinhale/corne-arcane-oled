@@ -12,7 +12,7 @@
 static uint8_t sat_inc(uint8_t v) { return v == 0xffu ? v : (uint8_t)(v + 1u); }
 static uint8_t min_u8(uint8_t a, uint8_t b) { return a < b ? a : b; }
 
-/* ---- battlefield residue (M15 Track A) ----------------------------------
+/* ---- battlefield residue ------------------------------------------------
  * Deposits overwrite the zone's element (the newest event owns the mark),
  * saturate intensity at SIM_RESIDUE_MAX_INTENSITY, and restart the ~45 s
  * decay clock. Weakening (decay, repair, transmutation) steps intensity
@@ -148,7 +148,7 @@ static void aftermath_start(sim_world_t *w, uint8_t side, uint8_t kind, uint8_t 
     after->ticks = aftermath_duration(kind);
     after->intensity = min_u8(intensity ? intensity : 1u, 4u);
     aftermath_derive(after);
-    /* Track A: aftermaths that visibly change the battlefield mark it. A
+    /* Aftermaths that visibly change the battlefield mark it. A
      * fire scorches the side's doorstep; a repair crew also sweeps it. */
     if (kind == AFTER_FIRE)
         residue_deposit(w, residue_doorstep_zone(side), ELEM_EMBER, 1u);
@@ -207,7 +207,7 @@ static void wizard_clear_cast(sim_wizard_t *wz) {
 static void wizard_interrupt(sim_wizard_t *wz) {
     incantation_collection_reset(&wz->inc);
     wizard_clear_cast(wz);
-    /* Track B: an interruption (damage, KO) ends any stance and forfeits an
+    /* An interruption (damage, KO) ends any stance and forfeits an
      * unconsumed STUDY buff. */
     wz->stance = DUEL_STANCE_NONE;
     wz->stance_ticks = 0;
@@ -224,7 +224,7 @@ static void wizard_ko(sim_world_t *w, uint8_t side) {
     wz->status = STATUS_NONE;
     wz->status_intensity = 0;
     wz->status_ticks = 0;
-    /* Track B §4.1: a KO steps temper one back toward neutral, so the
+    /* KO recovery: a KO steps temper one back toward neutral, so the
      * replacement arrives calmer (or steadier) than the fallen wizard. */
     if (wz->temper > SIM_TEMPER_NEUTRAL)
         wz->temper--;
@@ -267,7 +267,7 @@ static uint8_t trajectory_lane(uint8_t trajectory) {
 }
 
 static bool ward_covers(const sim_wizard_t *wz, uint32_t desc) {
-    /* Track B MEDITATE suppresses the ward as a coverage/presentation gate:
+    /* MEDITATE suppresses the ward as a coverage/presentation gate:
      * stored strength survives, so any keydown restores it instantly. */
     if (wz->stance == DUEL_STANCE_MEDITATE)
         return false;
@@ -325,7 +325,7 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
 
     sim_wizard_t *def = &w->wiz[opponent];
     if (def->life != LIFE_ACTIVE) {
-        /* Track A: the spell dissipates at the downed wizard's doorstep and
+        /* The spell dissipates at the downed wizard's doorstep and
          * soaks into the stones. */
         residue_deposit(w, residue_doorstep_zone(opponent), SPELL_DESC_ELEMENT(desc), 1u);
         set_outcome(w, fx_for(FX_FIZZLE_L, opponent));
@@ -341,7 +341,7 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
         def->ward_strength = (uint8_t)(def->ward_strength - absorbed);
         shattered = def->ward_strength == 0u;
         if (absorbed >= contact_power) {
-            /* Track B: a fully stopped spell cools its caster one step. */
+            /* A fully stopped spell cools its caster one step. */
             if (w->wiz[caster].temper)
                 w->wiz[caster].temper--;
             set_outcome(w, fx_for(shattered ? FX_WARD_SHATTER_L : FX_DEFLECT_L, opponent));
@@ -355,10 +355,10 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
     if (direct) {
         def->hp = direct >= def->hp ? 0u : (uint8_t)(def->hp - direct);
         def->regen_ticks = SIM_REGEN_TICKS;
-        /* Track B: taking damage runs the defender one step hotter. */
+        /* Taking damage runs the defender one step hotter. */
         if (def->temper < 7u)
             def->temper++;
-        /* Track A: a landed hit stains the defender's doorstep. */
+        /* A landed hit stains the defender's doorstep. */
         residue_deposit(w, residue_doorstep_zone(opponent), SPELL_DESC_ELEMENT(desc), 1u);
     }
     if ((payload == PAY_STATUS || payload == PAY_HYBRID) && def->hp)
@@ -414,7 +414,7 @@ static void ward_grow_to(sim_wizard_t *wz, uint8_t capacity) {
 }
 
 static void inc_keydown(sim_wizard_t *wz, uint8_t pos, uint8_t layer) {
-    /* Track B: any own keydown ends a stance instantly — exit is this byte
+    /* Any own keydown ends a stance instantly — exit is this byte
      * write, before every gate below, so the typing path never carries
      * stance logic. (The STUDY buff deliberately survives into the commit.) */
     wz->stance = DUEL_STANCE_NONE;
@@ -441,7 +441,7 @@ static void inc_commit(sim_world_t *w, uint8_t side, bool forced) {
     sim_wizard_t *wz = &w->wiz[side];
     uint8_t complexity = incantation_complexity(&wz->inc);
     wz->pending_desc = incantation_compile(&wz->inc, wz->variant, wz->temper);
-    /* Track B STUDY: the pending buff shifts this cast's element to the
+    /* STUDY: the pending buff shifts this cast's element to the
      * doctrine affinity, or deepens the cast (+1 magnitude, cap 4) when the
      * element is already aligned. Consumed exactly once, here. */
     if (wz->studied) {
@@ -460,7 +460,7 @@ static void inc_commit(sim_world_t *w, uint8_t side, bool forced) {
         (uint16_t)INCANTATION_WINDUP_MIN_TICKS + ((uint16_t)complexity * 42u + 254u) / 255u;
     if (wz->status == STATUS_FROZEN)
         windup += (uint16_t)wz->status_intensity * 3u;
-    /* Track B temperament: hot wizards wind up 2 ticks faster, cool ones 2
+    /* Temperament: hot wizards wind up 2 ticks faster, cool ones 2
      * slower, always inside the existing clamps. */
     if (wz->temper >= 6u)
         windup = windup > INCANTATION_WINDUP_MIN_TICKS + 2u ? (uint16_t)(windup - 2u)
@@ -786,7 +786,7 @@ static void collide_clash(sim_world_t *w, sim_spell_t *a, sim_spell_t *b, uint32
         symmetric_area_pulse(w, da, db, FX_DETONATE);
         aftermath_start(w, 0, AFTER_FIRE, 1u);
         aftermath_start(w, 1, AFTER_FIRE, 1u);
-        /* Track A: the mid-gap detonation showers both mid zones, each with
+        /* The mid-gap detonation showers both mid zones, each with
          * its own caster's element. */
         residue_deposit(w, SIM_RESIDUE_MID_L, ea, 1u);
         residue_deposit(w, SIM_RESIDUE_MID_R, eb, 1u);
@@ -948,7 +948,7 @@ static void step_singularity(sim_world_t *w, uint8_t side, sim_spell_t *sp) {
                            : (uint8_t)(128u + (sp->age - SINGULARITY_GROW_TICKS) * 8u);
         if (sp->age >= SINGULARITY_COLLAPSE_TICKS) {
             spell_despawn(sp);
-            /* Track A: the collapse leaves a void scar where it hung. */
+            /* The collapse leaves a void scar where it hung. */
             residue_deposit(w, residue_mid_zone(side), ELEM_VOID, 2u);
             aftermath_start(w, side, AFTER_INSPECT, 2u);
             set_outcome(w, FX_COLLAPSE);
@@ -1102,13 +1102,13 @@ void duel_combat_lifecycle_step(sim_wizard_t *wz) {
     }
 }
 
-/* Track B stance machine (authoritative only, pinned after lifecycle and
+/* Stance machine (authoritative only, pinned after lifecycle and
  * before regen). Entry is evaluated on idle ticks — after
  * SIM_STANCE_ENTRY_TICKS of LIFE_ACTIVE + INC_IDLE — and keeps re-evaluating
  * each tick until a stance opens, so a later-appearing trigger (an opponent
  * windup) still catches. Every rule reads only authoritative fields already
  * on the wire's view, so the slave renders stance without ever deciding one.
- * Exit lives in inc_keydown; §4.3 table order: MEDITATE, STUDY, FORTIFY,
+ * Exit lives in inc_keydown. Entry priority is MEDITATE, STUDY, FORTIFY,
  * otherwise NONE (the renderer's PACE/TAUNT). */
 void duel_combat_stance_step(sim_world_t *w, uint8_t side) {
     sim_wizard_t *wz = &w->wiz[side];
@@ -1145,7 +1145,7 @@ void duel_combat_stance_step(sim_world_t *w, uint8_t side) {
     }
 }
 
-/* Battlefield residue tick (M15 Track A), pinned between collision_step and
+/* Battlefield residue tick, pinned between collision_step and
  * spell_step. First the transmutations: an active spell whose u sits in a
  * zone charged to intensity >= 2 reacts once per spell lifetime
  * (SPELL_RESOLVED_REACTED). Reaction table, first match wins:

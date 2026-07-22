@@ -10,8 +10,7 @@ canvas), scales them up, labels each with its case name, and writes one or
 more out_prefix_NN.png sheets. --only filters by substring so a re-baseline
 review can sheet just the changed scenes.
 
-This is the committed home of the previously session-scratchpad dumper
-tooling (M15 handoff §6): rebuild recipe no longer required.
+This is the reproducible visual-review tool for the committed scene catalog.
 """
 
 import argparse

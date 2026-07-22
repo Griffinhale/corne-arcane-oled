@@ -37,7 +37,7 @@ static void draw_alert_bitmap(duel_fb_t *fb, uint8_t category, int ox, int oy, b
     }
 }
 
-/* M15: the alert hangs as a banner on the wizard tower's shaft (between the
+/* The alert hangs as a banner on the wizard tower's shaft (between the
  * upper window and the balcony) instead of owning a reserved top corner.
  * Canonical coordinates describe the left shaft; the right half is its exact
  * desk mirror, so the pair still reads as one desk-space instrument. */
@@ -254,7 +254,7 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const due
         // Force enters from the gap: contact burst, inward shock line,
         // local debris, recoil above, and a flashing frame at the shaft
         // window that just went dark. Only the defender's border corners twitch.
-        // M15 weight pass: the flourish scales one presentation tier up.
+        // Presentation weight: the flourish scales one presentation tier up.
         if (tier < SPELL_TIER_SATURATED)
             tier++;
         int hx = 16 + facing * 5;
@@ -342,7 +342,7 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const due
     }
 }
 
-/* Battlefield residue marks (M15 Track A): the duel's session-scale history
+/* Battlefield residue marks: the duel's session-scale history
  * sits on the rooftop deck directly under the spell lanes, at each zone's
  * battlefield position. Each canvas shows its own two zones (the other two
  * live across the gap). Element picks the mark's shape, intensity its

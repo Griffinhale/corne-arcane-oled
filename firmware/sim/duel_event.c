@@ -257,7 +257,7 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_
     } else {
         /* Civic sky keeps its shared horizon while its ribbon adopts the active
          * room's dispatch, chart, or blueprint cadence. The ribbon lives in the
-         * open-sky corridor between the two wizard towers (M15): every column
+         * open-sky corridor between the two wizard towers: every column
          * inside a shaft footprint is skipped so the aurora reads as passing
          * BEHIND the architecture, not slicing through its windows. */
         int base = 22;

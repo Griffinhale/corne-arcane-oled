@@ -31,7 +31,7 @@ qmk compile -kb crkbd/rev1 -km griffin_arcane \
   -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
 ```
 
-There are no milestone feature variables. `griffin_arcane` always contains the
+There are no staged feature variables. `griffin_arcane` always contains the
 current v11 world, host semantics, secure Vial support, OLED, RGB Matrix, and
 four persistent dynamic keymap layers. `griffin` remains the recovery image.
 

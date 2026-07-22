@@ -141,9 +141,9 @@ uint8_t duel_diplomacy_target(const duel_diplomacy_t *state);
 
 /* ---- master-derived shared civic presentation ----------------------------
  * The visitor is a pure function of the notification summary; the rare-event
- * deck is deterministic from the session seed + civic phase and safety-gated
- * (spec §14.1): suppressed while a critical (sentinel) visitor is stationed
- * or a champion is not standing. A live aftermath temporarily owns both
+ * deck is deterministic from the session seed + civic phase and safety-gated:
+ * it is suppressed while a critical (sentinel) visitor is stationed or a
+ * champion is not standing. A live aftermath temporarily owns both
  * bytes (bit7 of revision discriminates). */
 
 // Wall-clock period of one civic tick: the bounded cadence at which the

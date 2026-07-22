@@ -237,7 +237,7 @@ static void build_catalog(void) {
         }
     }
 
-    /* Deliberately reviewed M14 surface: every floor under every sky phase.
+    /* Deliberately reviewed visual surface: every floor under every sky phase.
      * Observatory is always quiet, matching host semantic resolution. */
     static const char *sky_name[] = {"dawn", "day", "dusk", "night"};
     for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
@@ -275,7 +275,7 @@ static void build_catalog(void) {
         add_render_case(name, &arc, 7u);
     }
 
-    /* Track A battlefield residue: per-element deck marks with the full
+    /* Per-element deck marks with the full
      * intensity ramp spread across the four zones (1/2/3/2 along the
      * u-axis pins every density step of one element on both halves), plus a
      * mixed-history tableau with a different element in every zone. */
@@ -489,7 +489,7 @@ static void build_catalog(void) {
         add_case(names[status], &world, status, 0);
     }
 
-    /* Track B stances. MEDITATE/STUDY restage onto the balcony (MEDITATE's
+    /* Stances. MEDITATE/STUDY restage onto the balcony (MEDITATE's
      * ward suppressed on the wire, STUDY's still guarding the empty deck);
      * FORTIFY braces on deck; PACE/TAUNT are renderer-derived idle frames
      * (seed 0x5a phases frame<128 into the pace arm, >=128 into taunt). */
@@ -546,7 +546,7 @@ static void build_catalog(void) {
     world.wiz[0].pending_desc = 0;
     add_case("prepared_beam", &world, 6, 0);
 
-    /* Forced-commit big cast (Change 3): rearm_lock spans the windup and the
+    /* Forced-commit big cast: rearm_lock spans the windup and the
      * prepared hold, lifting the wizard onto the balcony and lighting the whole
      * tower. Both halves ascend so the desk-space balcony art and lighting are
      * pinned as mirror-safe, as the stance_*_balcony cases do. */
@@ -612,9 +612,7 @@ static void build_catalog(void) {
         {"chain_arc", SPELL_CHAIN, 176, TRAJ_HOMING, TEMPO_RAPID, TREND_IRREGULAR},
         {"trap_set", SPELL_CONJURE, (uint8_t)((3u << 5) | 16u), TRAJ_GROUND, TEMPO_DELIBERATE,
          TREND_STEADY},
-        /* Appended last so its index (and thus every prior case's frame) is
-         * unchanged: a TRAJ_LOW carrier exercising the low-lane glyph lift
-         * (Change 2) that no existing case covered. */
+        /* A TRAJ_LOW carrier exercising the low-lane glyph lift. */
         {"low_carrier", SPELL_PROJECTILE, 72, TRAJ_LOW, TEMPO_FLOWING, TREND_STEADY},
     };
     for (size_t i = 0; i < sizeof temporal / sizeof temporal[0]; i++) {
@@ -687,10 +685,8 @@ static void build_catalog(void) {
         add_case(reaction_name[i], &world, (uint32_t)i, reaction_kind[i]);
     }
 
-    /* Pin the ENTIRE scenario gallery under the golden determinism check —
-     * previously only two scenarios were exercised, leaving the rest of
-     * scenarios.c dead in the tracked tree. Each renders at its declared
-     * frame with its declared diagnostics flag. */
+    /* Pin the entire scenario gallery under the golden determinism check.
+     * Each renders at its declared frame with its declared diagnostics flag. */
     for (size_t i = 0; i < duel_scenario_count(); i++) {
         const duel_scenario_t *scenario = duel_scenario_at(i);
         duel_fb_t left, right;

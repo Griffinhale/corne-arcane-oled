@@ -20,7 +20,7 @@
 #define SIM_SIDE_L 0
 #define SIM_SIDE_R 1
 
-// World flags. Combat outcomes (M4) only resolve when authoritative — set on
+// World flags. Combat outcomes only resolve when authoritative — set on
 // the master half only, so the slave structurally cannot decide a duel.
 #define SIMF_AUTHORITATIVE 0x01
 
@@ -73,9 +73,9 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS    12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#define SIM_MAX_HP        8 /* M15 Track T retune: 12 -> 8 so KOs occur in ordinary typing days */
+#define SIM_MAX_HP        8 /* Allows KOs during ordinary typing sessions. */
 
-/* ---- combat (M4) ---------------------------------------------------------
+/* ---- combat -------------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
  * right. A cast winds up for SIM_CAST_WINDUP_TICKS after the rising edge,
  * then the spell crosses the battlefield on its descriptor-derived path. Resolution is
@@ -88,8 +88,8 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 #define SIM_SPAWN_L           8
 #define SIM_SPAWN_R           247
 
-// M6 recipe vocabulary. A cast compiles the recent keydown burst into a kind
-// byte. scry.5 uses the two previously spare high bits for a capped presentation
+// Descriptor recipe vocabulary. A cast compiles the recent keydown burst into a kind
+// byte. scry.5 uses the two high bits for a capped presentation
 // tier; it never changes damage or any other combat rule.
 enum { ELEM_FORCE = 0, ELEM_EMBER = 1, ELEM_FROST = 2, ELEM_VOID = 3 };
 enum { MOD_NONE = 0, MOD_SWIFT = 1, MOD_HEAVY = 2 };
@@ -115,7 +115,7 @@ static inline uint8_t duel_recipe_tier(uint8_t ingredient_count) {
     return SPELL_TIER_SATURATED;
 }
 
-/* ---- lifecycle & roster (M5) ---------------------------------------------
+/* ---- lifecycle & roster ------------------------------------------------
  * When a wizard's hp reaches 0 it walks the COLLAPSE -> DOWNED -> MEDIC ->
  * REPLACE arc on fixed timers, then returns ACTIVE at full hp with the next
  * cosmetic roster variant. Only the authoritative sim advances the arc. */
@@ -125,10 +125,10 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
 #define SIM_MEDIC_TICKS    25 /* ~1 s medic drags the body off */
 #define SIM_REPLACE_TICKS  20 /* ~0.8 s replacement walks in */
 /* total downtime 82 ticks = 3.28 s at 25 Hz — no dead ends: no input needed to progress */
-#define SIM_REGEN_TICKS 500 /* exactly 20 s per regained pip below max (M15 Track T) */
+#define SIM_REGEN_TICKS 500 /* Exactly 20 s per regained pip below max. */
 #define SIM_ROSTER_N    4   /* cosmetic roster variants cycled per replacement */
 
-/* ---- non-casting stances & temperament (M15 Track B) ---------------------
+/* ---- non-casting stances & temperament ---------------------------------
  * `stance` is a sub-state of LIFE_ACTIVE: entry is evaluated by rule after
  * SIM_STANCE_ENTRY_TICKS of INC_IDLE (stance_step, authoritative only) and
  * exit is any own keydown — a byte write in inc_keydown, so the typing path
@@ -234,7 +234,7 @@ enum { WORLD_CALM = 0, WORLD_WONDER = 1, WORLD_CRISIS = 2, WORLD_RECOVERY = 3 };
 
 /* Authoritative aftermath durations per kind, in ticks. Phases are elapsed
  * quarters of the kind's duration; tests derive their waits from these
- * instead of reverse-engineering the (previously private) table. */
+ * through one shared table. */
 #define SIM_AFTER_FIRE_TICKS     175u /* seven seconds: panic -> response -> recovery */
 #define SIM_AFTER_MAX_CAST_TICKS 150u /* six-second coordinated wonder arc */
 #define SIM_AFTER_REPAIR_TICKS   125u
@@ -294,7 +294,7 @@ typedef struct {
     uint8_t recipe_n;      /* ingredients since recipe start, saturating at RECIPE_N_MAX */
     uint8_t cast_tier;     /* scry.5 capped presentation tier while charging */
     uint8_t recipe_idle;   /* ticks since last ingredient; RECIPE_EXPIRE_TICKS -> clear */
-    uint8_t temper;        /* 0..7 temperament, starts SIM_TEMPER_NEUTRAL (Track B) */
+    uint8_t temper;        /* 0..7 temperament, starts SIM_TEMPER_NEUTRAL */
     uint16_t regen_ticks;  /* countdown to next regen pip; local, never in snapshots */
     sim_incantation_t inc;
     uint32_t pending_desc;
@@ -311,7 +311,7 @@ typedef struct {
     uint8_t status_intensity;
     uint8_t status_ticks;
     uint8_t status_burned;
-    uint8_t stance;       /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE (Track B) */
+    uint8_t stance;       /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE */
     uint8_t stance_ticks; /* idle ticks toward entry, then held ticks in-stance */
     uint8_t studied;      /* STUDY buff pending; consumed by the next inc_commit */
     uint8_t _pad[2];      /* explicit padding: keeps world hashing deterministic */
@@ -332,11 +332,11 @@ typedef struct {
 /* sim_spell_t.resolved bit map: bit0 marks the one-shot payload landed
  * (beam/chain); the low bits also count swarm pulses (hashed world state,
  * never read back). Bit7 marks the spell's single residue transmutation
- * (M15 Track A) — one reaction per spell lifetime. */
+ * — one reaction per spell lifetime. */
 #define SPELL_RESOLVED_PAYLOAD 0x01u
 #define SPELL_RESOLVED_REACTED 0x80u
 
-/* ---- battlefield residue (M15 Track A) ----------------------------------
+/* ---- battlefield residue ------------------------------------------------
  * Session-scale elemental residue in four fixed zones on the duel u-axis:
  * doorstep-L u 8-47, mid-L 48-127, mid-R 128-207, doorstep-R 208-248.
  * Element reuses ELEM_*; intensity 0 means empty and its canonical form is
@@ -405,7 +405,7 @@ typedef struct {
     uint8_t prev_down_mask; /* for rising-edge cast detection */
     sim_wizard_t wiz[2];
     sim_spell_t spell[2];
-    uint8_t fx_seq;          /* increments once per one-shot outcome (M4) */
+    uint8_t fx_seq;          /* increments once per one-shot outcome */
     uint8_t fx_kind;         /* FX_*: none/impact/deflect/fizzle, L/R per defender */
     uint16_t overflow_count; /* lifetime dropped events, saturating */
     uint16_t _pad;           /* explicit padding: keeps world hashing deterministic */
@@ -413,7 +413,7 @@ typedef struct {
     sim_aftermath_t aftermath[2];
     uint8_t world_state;
     uint8_t _incantation_pad;
-    sim_residue_t residue[SIM_RESIDUE_ZONES]; /* authoritative-only (Track A) */
+    sim_residue_t residue[SIM_RESIDUE_ZONES]; /* authoritative-only */
 } sim_world_t;
 
 /* These layouts are hashed by deterministic tests and projected onto the

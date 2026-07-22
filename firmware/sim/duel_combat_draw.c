@@ -12,7 +12,7 @@ void duel_combat_draw_wizard(duel_fb_t *fb, bool casting, int facing, uint8_t va
     duel_fb_hline(fb, cx - 4, cx + 4, brim_y);
     duel_fb_px(fb, cx + facing, brim_y - 4, true);
 
-    // Head under the brim (the M14 figure was hat-on-robe with no face).
+    // Head under the brim (the silhouette was hat-on-robe with no face).
     duel_fb_px(fb, cx - 1, 44 + yo, true);
     duel_fb_px(fb, cx, 44 + yo, true);
     duel_fb_px(fb, cx - 1, 45 + yo, true);
@@ -32,7 +32,7 @@ void duel_combat_draw_wizard(duel_fb_t *fb, bool casting, int facing, uint8_t va
     duel_fb_px(fb, cx + facing * 3, 47 + yo, true);
     duel_fb_px(fb, cx + facing * 2, 48 + yo, true);
 
-    // Roster variant masks (M5): pose-invariant hat/robe markings only, so a
+    // Roster variant masks: pose-invariant hat/robe markings only, so a
     // replacement is recognisably a new combatant in every pose.
     switch (variant & 3) {
         case 1: // hat band: a cleared 1-px stripe across the widest hat row
@@ -66,8 +66,8 @@ void duel_combat_draw_wizard(duel_fb_t *fb, bool casting, int facing, uint8_t va
         duel_fb_px(fb, sx + facing * 2, 41 + yo, true);
         duel_fb_px(fb, sx + facing, 40 + yo, true);
     } else {
-        // Casting: 2-px staff raised toward the gap; tip focus keeps the M6
-        // launch coordinates so departing carriers still leave from the orb.
+        // Casting: 2-px staff raised toward the gap; the focused tip preserves
+        // the launch coordinates so departing carriers still leave from the orb.
         // The progressive scry.5 charge is drawn separately from
         // authoritative wind-up state in duel_scene_draw.
         duel_fb_line(fb, cx + facing * 2, 51 + yo, cx + facing * 5, 39 + yo);
@@ -77,7 +77,7 @@ void duel_combat_draw_wizard(duel_fb_t *fb, bool casting, int facing, uint8_t va
     }
 }
 
-// M5 fallen wizard: horizontal body with the head AWAY from the gap (the
+// Fallen wizard: horizontal body with the head AWAY from the gap (the
 // medic later drags it toward that edge), hat knocked off past the head,
 // staff dropped on the ground toward the gap. -facing is the away direction
 // on both halves (left: gap at x=31, facing +1; right: gap at x=0, facing -1).
@@ -100,7 +100,7 @@ void duel_combat_draw_downed(duel_fb_t *fb, int facing, uint8_t variant, int xo)
         duel_fb_px(fb, cx + facing * i, 75 + DUEL_ROOF_DY, true);
 }
 
-// M5 medic: a short hatless figure (8 px, clearly not a wizard) leaning into
+// Medic: a short hatless figure (8 px, clearly not a wizard) leaning into
 // the drag — 2x2 head, torso kinked 1 px toward -facing, splayed legs.
 void duel_combat_draw_medic(duel_fb_t *fb, int x, int facing) {
     duel_fb_px(fb, x, 66 + DUEL_ROOF_DY, true);
@@ -115,8 +115,8 @@ void duel_combat_draw_medic(duel_fb_t *fb, int x, int facing) {
     duel_fb_px(fb, x - facing + 1, 73 + DUEL_ROOF_DY, true);
 }
 
-/* Balcony postures. MEDITATE/STUDY are the Track B calm stances; BIGCAST is
- * the forced-commit ascent (Change 3), authored from the STUDY standing body
+/* Balcony postures. MEDITATE/STUDY are the calm stances; BIGCAST is
+ * the forced-commit ascent, authored from the STUDY standing body
  * with the staff thrust up toward the peak. */
 /* Balcony restaging: the wizard climbs onto the tower balcony (slab desk
  * x11-16 at y30-31 — the restage point authored into duel_environment_draw_tower).
@@ -240,8 +240,8 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
         tier++;
 
     // Element identity stays primary while the capped recipe tier controls the
-    // carrier's footprint. Short is deliberately compact; medium matches M6's
-    // normal scale; long/saturated add bounded mass and trail complexity.
+    // carrier's footprint. Short is deliberately compact; medium is the
+    // standard scale; long/saturated add bounded mass and trail complexity.
     switch (DUEL_KIND_ELEMENT(kind)) {
         case ELEM_FORCE: {
             int rx = tier == SPELL_TIER_SHORT ? 0 : (tier >= SPELL_TIER_LONG ? 2 : 1);
@@ -256,7 +256,7 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
             break;
         }
         case ELEM_FROST: {
-            // M15 weight pass: a solid 3x3 core so the flake registers at desk
+            // Presentation weight: a solid 3x3 core so the flake registers at desk
             // distance; cross arms and diagonal spikes keep the star identity.
             if (tier == SPELL_TIER_SHORT) {
                 for (int d = -1; d <= 1; d++) {
@@ -292,7 +292,7 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
             break;
         }
         case ELEM_VOID: {
-            // M15 weight pass: a solid ring (donut) instead of a 1-px outline;
+            // Presentation weight: a solid ring (donut) instead of a 1-px outline;
             // the dark centre stays the void signature at every tier.
             if (tier == SPELL_TIER_SHORT) {
                 for (int dx = -1; dx <= 1; dx++) {
@@ -328,7 +328,7 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
             break;
         }
         case ELEM_EMBER: {
-            // M15 weight pass: a solid teardrop head (back corners clipped so
+            // Presentation weight: a solid teardrop head (back corners clipped so
             // the mass points forward) with a 2-row flame tail near the head.
             if (tier == SPELL_TIER_SHORT) {
                 for (int d = -1; d <= 1; d++) {
@@ -678,7 +678,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
     }
 
-    // Fading trail (M15 weight pass): a solid 2-row stub hugs the head, then
+    // Fading trail (Presentation weight): a solid 2-row stub hugs the head, then
     // tempo-counted dots thin out behind it — the length grammar is unchanged.
     uint8_t trail = SPELL_DESC_TEMPO(spell->descriptor);
     int back = caster_side == SIM_SIDE_L ? -1 : 1;
@@ -758,7 +758,7 @@ void duel_combat_draw_reaction(duel_fb_t *fb, uint8_t outcome, bool is_left, uin
         duel_fb_line(fb, x - 2, y, x + 1, y);
         duel_fb_px(fb, x + 2, y - 1, true);
     } else if (outcome == FX_DETONATE) { /* roof explosion */
-        // M15 weight pass: one tier bigger — longer rays, a doubled base
+        // Presentation weight: one tier bigger — longer rays, a doubled base
         // line, and a smoke puff above the burst crown.
         x = is_left ? 27 : 4;
         y = SPELL_Y_BASE + 14;
@@ -855,8 +855,8 @@ void duel_combat_draw_ward(duel_fb_t *fb, int facing, int strength, int focus, b
         cy = (y0 + y1) / 2;
         reach = (y1 - y0) / 2;
     }
-    // M15 weight pass: a continuous parabolic arc bulging toward the gap,
-    // 2-3 px thick by strength, replaces the M6 straight dotted bars. The
+    // Presentation weight: a continuous parabolic arc bulging toward the gap,
+    // 2-3 px thick by strength, replaces the straight dotted bars. The
     // strength/focus/puncture grammar is unchanged. Low-focus arcs used to
     // overhang into the room below the beam; now that the deck is explicit
     // architecture, the ward terminates on it instead of piercing it.

@@ -81,7 +81,7 @@ static void test_compiler_determinism_and_gates(void) {
     EXPECT(a == b && SPELL_DESC_FORM(a) == SPELL_PROJECTILE &&
            SPELL_DESC_ELEMENT(a) == ELEM_FROST && (a & 0xff000000u) == 0 && SPELL_DESC_VALID(a));
 
-    /* Track T ladder: complexity 64 opens the first four forms (ground wave
+    /* Complexity ladder: complexity 64 opens the first four forms (ground pulse
      * joined at the new 48 gate) but never beam/singularity. */
     memset(&inc, 0, sizeof inc);
     inc.key_count = 8;      /* 16 */
@@ -99,8 +99,7 @@ static void test_compiler_determinism_and_gates(void) {
     }
     EXPECT(saw_non_projectile);
 
-    /* Track T's headline promise: every form is reachable once complexity
-     * hits 160 (the old ladder held the full roster hostage above 224). */
+    /* Compiler contract: every form is reachable once complexity hits 160. */
     sim_incantation_t open = incantation_at_complexity(160u);
     uint32_t seen_forms = 0;
     for (uint32_t h = 1; h < 2000; h++) {

@@ -53,8 +53,8 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, u
     out->flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(display_phase);
     /* v11 seq is a wrapping byte (ample for stale detection at snapshot
      * cadence); callers keep their wider counters and we truncate. The
-     * memset above is the v11 stance prefill (Track B); residue is live
-     * (Track A) and filled from the world below. */
+     * memset above is the v11 stance prefill; residue is live
+     * and filled from the world below. */
     out->seq = (uint8_t)seq;
     duel_view_from_world(w, &out->view);
     out->external = external;
@@ -74,7 +74,7 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, u
 
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision) {
-    /* civic bits 6-7 and secondary bit 7 belong to residue zone 3 (Track A,
+    /* Civic bits 6-7 and secondary bit 7 belong to residue zone 3; they are
      * written by the encoder): mask them out of the incoming semantics and
      * preserve what the encoder wrote, so callers need no ordering dance. */
     p->civic = (uint8_t)((civic & (uint8_t)~DUEL_CIVIC_RESIDUE_BITS) |

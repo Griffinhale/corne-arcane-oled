@@ -12,7 +12,7 @@
 #include "duel_framebuffer.h"
 #include "duel_render.h"
 
-// Count-bucket density (spec §11: count buckets 1 / 2-4 / 5+). The notification
+// Count-bucket density uses buckets 1 / 2-4 / 5+. The notification
 // count scales the ONE visitor's object density (plumage / stacked parcels /
 // conduit rays), never the number of actors.
 enum {
@@ -28,7 +28,7 @@ enum {
 #define DUEL_VISITOR_DENSITY_PACK(d) ((uint8_t)(((d) & 3u) << 6))
 #define DUEL_VISITOR_DENSITY(v)      ((uint8_t)(((v) >> 6) & 3u))
 
-// civic_visitor_state_t field packing (Wave 6 owns it per the §16.1 note):
+// The courier subsystem owns civic_visitor_state_t field packing:
 //   kind_target     : bits0-2 courier kind (DUEL_CIVIC_COURIER_*), bit3 city (0 L / 1 R)
 //   lifecycle_phase : DUEL_CIVIC_VISIT_*
 //   progress_flags  : bits0-1 density bucket (DUEL_CIVIC_DENSITY_*), bit2 persistent

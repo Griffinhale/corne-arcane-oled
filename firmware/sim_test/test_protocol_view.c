@@ -149,7 +149,7 @@ static void test_v11_repack_and_sky_subphase(void) {
     CHECK(ok, "v11_repack_residue_stance_fx_nibble_subphase_boundaries_and_version_gate");
 }
 
-/* M15 Track A: battlefield residue. Deposits (impact, fizzle, ember/frost
+/* Battlefield residue deposits (impact, fizzle, ember/frost
  * clash, singularity collapse, fire/repair aftermath hooks), the ~45 s decay
  * clock, every transmutation row with its once-per-spell flag, ward
  * non-interaction, and the wire path (encode fill, set_civic preservation,

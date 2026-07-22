@@ -4,10 +4,10 @@
  * One resident per city lives in the active tower floor. Its identity, current
  * action, station, and pose are DERIVED LOCALLY and DETERMINISTICALLY from
  * (session seed, is_left, floor, personality, civic phase) — no coordinates or
- * sprites ever cross the split link (plan §2 D1). The resident advances on the
+ * sprites ever cross the split link. The resident advances on the
  * bounded civic tick (a coarse phase byte in duel_render_t), NOT per render
  * frame, so the render-skip memcmp gate only redraws when the phase advances
- * (plan §2 D3).
+ * to the next bounded civic tick.
  */
 #pragma once
 

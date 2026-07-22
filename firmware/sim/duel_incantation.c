@@ -125,7 +125,7 @@ static uint8_t row_element(uint8_t row) {
     return element[row & 3u];
 }
 
-/* Doctrine affinity (Track B §4.2): roster variant 0-3 -> force/ember/frost/
+/* Doctrine affinity: roster variant 0-3 -> force/ember/frost/
  * void. element_row is the inverse of row_element's {frost, force, ember,
  * void} row order — NOT the ELEM_* enum order. */
 uint8_t duel_incantation_affinity_element(uint8_t variant) {
@@ -138,7 +138,7 @@ static uint8_t element_row(uint8_t element) {
     return row[element & 3u];
 }
 
-/* Track B: exact-count ties break toward the caster's doctrine affinity row;
+/* Exact-count ties break toward the caster's doctrine affinity row;
  * recency still breaks ties among non-affinity rows. */
 static uint8_t dominant_row(const sim_incantation_t *inc, uint8_t affinity_row) {
     uint8_t best = 0, best_n = 0, best_recent = 0;
@@ -158,11 +158,11 @@ static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint8_t temper, 
     static const uint8_t forms[8] = {SPELL_PROJECTILE,  SPELL_FIREBALL, SPELL_SWARM,
                                      SPELL_GROUND_WAVE, SPELL_BEAM,     SPELL_CHAIN,
                                      SPELL_SINGULARITY, SPELL_CONJURE};
-    /* M15 Track T: SWARM/CHAIN/CONJURE raised from 2/2/1 so the exotic tail
+    /* Combat tuning: SWARM/CHAIN/CONJURE raised from 2/2/1 so the exotic tail
      * appears at prose complexity. */
     uint8_t weights[8] = {5, 2, 3, 2, 2, 3, 1, 2};
-    /* M15 Track T flattened ladder: 4 forms open by complexity 48, all 8 by
-     * 160 (the old ladder needed 224, which ordinary typing never reached). */
+    /* The flattened ladder opens 4 forms by complexity 48 and all 8 by 160,
+     * keeping the full vocabulary reachable through ordinary typing. */
     uint8_t eligible = complexity < 32u    ? 1u
                        : complexity < 48u  ? 3u
                        : complexity < 76u  ? 4u
@@ -178,7 +178,7 @@ static uint8_t choose_form(uint8_t complexity, uint8_t variant, uint8_t temper, 
             (variant == 3u && (forms[i] == SPELL_SINGULARITY || forms[i] == SPELL_CONJURE));
         if (preferred)
             weights[i] = (uint8_t)(weights[i] * 2u);
-        /* Track B temperament: a hot wizard doubles the aggressive forms, a
+        /* Temperament: a hot wizard doubles the aggressive forms, a
          * cool one the patient ones. */
         bool hot = temper >= 6u && (forms[i] == SPELL_FIREBALL || forms[i] == SPELL_CHAIN);
         bool cool = temper <= 2u && (forms[i] == SPELL_CONJURE || forms[i] == SPELL_SINGULARITY);

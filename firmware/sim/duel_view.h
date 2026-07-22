@@ -27,11 +27,10 @@ typedef struct __attribute__((packed)) {
  *   phase (during WINDUP/PREPARED): form[0:2] element[3:4] progress[5:7]
  *   fx_stance: fx_seq[0:3] stance_L[4:5] stance_R[6:7] — the outcome
  *   sequence wraps at 16 and every consumer compares equality only, so the
- *   v11 repack lends the high nibble to the Track B stance channel. */
+ *   v11 assigns the high nibble to the stance channel. */
 
-/* Non-casting stances: DUEL_STANCE_* live in duel_sim.h now that Track B
- * made them sim state. PACE/TAUNT derive locally from NONE + idle + seed
- * and never ride the wire. */
+/* Non-casting stances are simulation state. PACE/TAUNT derive locally from
+ * NONE + idle + seed and never ride the wire. */
 
 #define VIEW_FX_PACK(seq, stance_l, stance_r)                                                      \
     ((uint8_t)(((seq) & 0x0fu) | (((stance_l) & 3u) << 4) | (((stance_r) & 3u) << 6)))
@@ -85,7 +84,7 @@ typedef struct {
     uint8_t status;
     uint8_t status_intensity;
     uint8_t status_duration;
-    uint8_t stance; /* DUEL_STANCE_* (Track B) */
+    uint8_t stance; /* DUEL_STANCE_* */
 } duel_view_wizard_t;
 
 typedef struct {
@@ -100,7 +99,7 @@ typedef struct {
 _Static_assert(sizeof(duel_view_t) == 19, "current canonical view must be exactly 19 bytes");
 
 void duel_view_from_world(const sim_world_t *world, duel_view_t *view);
-/* Track A: pack the four residue zones as two nibble-pair bytes — zones 0-1
+/* Pack the four residue zones as two nibble-pair bytes — zones 0-1
  * into out[0] (exactly the v11 snapshot residue byte: elem[0:1] int[2:3] per
  * zone, low zone first) and zones 2-3 into out[1] in the same grammar. The
  * encoder, the master's render fill, and the slave's snapshot unpack all

@@ -25,9 +25,8 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
         have_piercer || (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
     int ward_lane = have_piercer ? duel_combat_spell_lane_y(piercer.kind)
                                  : duel_combat_spell_lane_y(r->flash_spell_kind);
-    // The raised rooftop owns the upper band (the old archive underlay is
-    // retired); the archival occupation lives in the tower floor below, where
-    // the courier (Wave 6) and rare event (Wave 7) layer in as well.
+    // The raised rooftop owns the upper band; the archival occupation lives in
+    // the tower floor below, where the courier and rare event layer in as well.
     duel_environment_draw_sky(fb, r, is_left);
     duel_environment_draw_tower(fb, r, is_left);
     duel_environment_draw_floor(fb, r, is_left);
@@ -38,12 +37,12 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
         draw_rare_event(fb, r, is_left);
     }
 
-    // Lifecycle (M5): each phase has its own tableau, derived purely from
+    // Lifecycle: each phase has its own tableau, derived purely from
     // (life, life_ticks, variant) so master and slave render identically.
     // Sparks and the shield arc only apply to a standing, active wizard.
     switch (wz->life) {
         case LIFE_ACTIVE: {
-            // Track B calm stances: MEDITATE/STUDY restage the wizard on the
+            // calm stances: MEDITATE/STUDY restage the wizard on the
             // balcony and leave the deck empty. MEDITATE's ward is already
             // presented as 0 by the packer; STUDY's stored ward keeps
             // guarding the vacated deck below.
@@ -67,8 +66,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
                 duel_combat_draw_stance_balcony(fb, is_left, DUEL_BALCONY_BIGCAST, frame);
                 // Blinking halo re-centred on the balcony figure, motes rising
                 // past the shaft, and a peak flare — the civic-scale lighting
-                // that replaced the retired WORLD_WONDER ripple, now following
-                // the figure up the tower.
+                // tied to the figure's position as it climbs the tower.
                 int hcx = duel_fb_desk_x(is_left, 13);
                 static const int8_t halo[5][2] = {{-4, -6}, {4, -8}, {5, 2}, {-5, 4}, {4, 7}};
                 for (int i = 0; i < 5; i++)

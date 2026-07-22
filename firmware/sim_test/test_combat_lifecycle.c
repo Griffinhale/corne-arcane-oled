@@ -154,7 +154,7 @@ static void test_regeneration_boundary_and_hit_reset(void) {
     CHECK(ok, "incantation_regeneration_exact_20_seconds_and_damage_reset");
 }
 
-/* M15 Track B: stance entry rules, exact timing, the STUDY buff's two arms,
+/* Stance entry rules, exact timing, the STUDY buff's two arms,
  * MEDITATE's regen/ward gates, FORTIFY's held grant and windup trigger, and
  * the stance wire path through the view's fx_stance nibble. */
 static void test_stance_entry_mechanics_and_exit(void) {
@@ -249,7 +249,7 @@ static void test_stance_entry_mechanics_and_exit(void) {
     CHECK(ok, "incantation_stance_entry_rules_buffs_gates_and_wire_nibble");
 }
 
-/* M15 Track B: temperament drift at resolve time, its windup and KO
+/* Temperament drift at resolve time, its windup and KO
  * consequences, all clamped and deterministic. */
 static void test_temper_drift_windup_and_ko_step(void) {
     sim_world_t w;
@@ -707,14 +707,12 @@ static uint32_t prose_workload_first_ko(uint8_t profile) {
 }
 
 static void test_prose_typing_ko_window(void) {
-    /* Re-measured after Track T (HP 12->8, regen 20 s) AND Track B: first
-     * KOs land at 398/1367/1044 ticks (~16/55/42 s). Profiles 1-2 sit at
-     * pre-B pacing (FORTIFY wards absorb what STUDY adds), but profile 0's
-     * steady phrases open with a STUDY-buffed magnitude-3 swarm — five
-     * 1-hp pulses — whose per-pulse temper drift then doubles the fireball
-     * weight: a deliberate escalation spiral, measured here so a future
-     * change that tightens it further trips the bound. Whether ~16 s to
-     * first blood feels restless on the desk is backlog Q4 (hardware). */
+    /* With HP 8 and 20-second regeneration, first KOs land at
+     * 398/1367/1044 ticks (~16/55/42 s). Profiles 1-2 stay slower because
+     * FORTIFY wards absorb what STUDY adds. Profile 0 opens with a
+     * STUDY-buffed magnitude-3 swarm whose per-pulse temper drift then
+     * doubles the fireball weight. Keep this measured escalation inside the
+     * accepted pacing window. */
     bool ok = true;
     for (uint8_t profile = 0; profile < 3u; profile++) {
         uint32_t ko = prose_workload_first_ko(profile);

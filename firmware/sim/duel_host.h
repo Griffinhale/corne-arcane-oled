@@ -149,11 +149,12 @@ void duel_host_expire(duel_host_state_t *state);
 #define DUEL_HOST_ALERT_PRIORITY(value) ((uint8_t)(((value) >> 3) & 3u))
 #define DUEL_HOST_ALERT_AGE(value)      ((uint8_t)(((value) >> 5) & 7u))
 
-/* ------- Twin Cities civic semantics (shared cross-track contract) ----------
+/* ------- Twin Cities civic semantics (shared contract) -----------------
  * The stable interface between the host daemon (produces civic bytes), the split
  * protocol (relays them), and the renderer (derives floors/residents). Pure
- * declarations with zero release footprint. Track P wires the encode/decode;
- * Track H produces them; Track R consumes them. Do not renumber these values. */
+ * declarations with zero release footprint. Snapshot packing wires the
+ * encode/decode; host adapters produce them; the renderer consumes them. Do
+ * not renumber these values. */
 
 // Active tower-floor occupation (civic byte bits 0-1). SPECIAL is reserved.
 enum {

@@ -82,7 +82,7 @@ static void test_runtime_presentation_policy(void) {
     CHECK(ok, "runtime_floor_restart_sleep_snap_flash_deadlines_wake_grace_and_follow");
 }
 
-// OLED power policy: the only sim module previously without a direct test.
+// OLED power policy.
 // Timer arithmetic is wrap-safe unsigned age, so a wrap boundary case is
 // included alongside the DIM/SLEEP thresholds, key wake, follow, and fade.
 static void test_display_power_policy(void) {
@@ -244,7 +244,7 @@ static void test_runtime_civic_shared_derive(void) {
     duel_civic_shared_t calm = duel_civic_shared_derive(0x5au, 1900u, &host, &world, 0);
     EXPECT(DUEL_VISITOR_KIND(calm.shared_pres) == DUEL_CIVIC_COURIER_NONE &&
            !(calm.revision & INCANTATION_AFTERMATH_WIRE));
-    /* Safety gate (spec §14.1): a downed champion empties the event slot at
+    /* Safety gate: a downed champion empties the event slot at
      * every civic phase. */
     world.wiz[SIM_SIDE_L].life = LIFE_DOWNED;
     for (uint32_t phase = 0; phase < 256u; phase++) {
@@ -368,7 +368,7 @@ static void test_observatory_sky_and_suppression(void) {
             EXPECT(memcmp(phase_fb[phase - 1].bits, phase_fb[phase].bits,
                           sizeof phase_fb[phase].bits) != 0);
     }
-    /* M15 contract: the sky may repaint the upper band (celestial arc, tower
+    /* Rendering contract: the sky may repaint the upper band (celestial arc, tower
      * window lighting), but the deck, the room interior, and everything
      * below — through the stone course to the canvas bottom — must be
      * bit-identical across phases. */

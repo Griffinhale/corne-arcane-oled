@@ -23,7 +23,7 @@ static void test_floor_occupations_and_transitions(void) {
         const duel_fb_t *reference =
             phase < 2u ? &floor[0][DUEL_CIVIC_FLOOR_COMMONS] : &floor[0][DUEL_CIVIC_FLOOR_WORKSHOP];
         EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y0, DUEL_FLOOR_Y1) > 0u);
-        /* Protection now includes the beam row itself (previously a one-row hole). */
+        /* Protection includes the beam row itself. */
         EXPECT(band_difference(&transitioned, reference, 0, DUEL_FLOOR_BEAM_Y) == 0u);
         EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y1 + 1, DUEL_CANVAS_H - 1) ==
                0u);

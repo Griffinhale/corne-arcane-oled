@@ -1,17 +1,17 @@
 /*
- * duel_courier.c — Twin Cities notification ecology (Wave 6).
+ * duel_courier.c — Twin Cities notification ecology.
  *
  * Presentation-only. The master derives one global visitor from the normalized
  * notification summary; both halves render it locally from the packed shared_pres
  * byte. Nothing here touches combat, host state, or notification policy, and no
- * field keys off w.tick (determinism gate, plan §2 D3).
+ * field keys off w.tick, preserving deterministic presentation.
  */
 #include "duel_courier.h"
 
 #include "duel_host.h"
 #include "duel_resident.h"
 
-// --- Wave 6 notification-ecology routing (spec §11.3) ------------------------
+// --- notification-ecology routing ----------------------------------------
 // Category -> courier kind and city, before the persistent / security override.
 // City 0 = left (astral) city, 1 = right (mechanical) city. communication and
 // calendar land left; transfer and system (and terminal/build) land right.

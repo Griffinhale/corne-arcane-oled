@@ -62,7 +62,7 @@ void duel_environment_draw_sky(duel_fb_t *fb, const duel_render_t *r, bool is_le
     }
 }
 
-/* M15 wizard tower: a half-width shaft on the outer side of each canvas
+/* Wizard tower: a half-width shaft on the outer side of each canvas
  * rising from the rooftop deck into a full architectural peak — astral
  * (left): taper, dome, and finial; mechanical (right): crenellated cap and
  * beacon mast. The gap-side balcony partway up is the future big-cast/
@@ -142,7 +142,7 @@ void duel_environment_draw_tower(duel_fb_t *fb, const duel_render_t *r, bool is_
             duel_fb_desk_hline(fb, is_left, 4, 8, 19);
     }
 
-    // Gap-side balcony: slab and corbel. Empty for now — the Track B calm
+    // Gap-side balcony: slab and corbel. Empty for now — the calm
     // stances and the big-cast ascent restage the wizard here.
     duel_fb_desk_hline(fb, is_left, 11, 16, 30);
     duel_fb_desk_hline(fb, is_left, 11, 16, 31);
@@ -252,10 +252,8 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor,
             duel_fb_px(fb, OX(9), 94, true);
             duel_fb_px(fb, OX(13), 93, true);
         } else {
-            /* Dispatch cubbies and clock. The shelf spans previously passed
-             * unordered mirrored coordinates straight to duel_fb_hline, whose
-             * loop draws nothing when x0 > x1 — so the right half never
-             * actually showed its cubby shelves. */
+            /* Dispatch cubbies and clock. OSPAN orders mirrored endpoints
+             * before drawing so both halves retain their cubby shelves. */
             for (int y = 75; y <= 87; y += 6)
                 OSPAN(25, 29, y);
             for (int x = 26; x <= 29; x += 3)
@@ -424,7 +422,7 @@ static void duel_environment_draw_floor_transition(duel_fb_t *fb, const duel_ren
 // beams, domes, orbs, buttresses); right is mechanical/squared (solid beams,
 // rivets, gears, tie-bars). One session-seeded resident lives in the floor,
 // derived and drawn locally (duel_resident.c). Authored in desk space (gap at
-// x=31) and mirrored on the right OLED like the retired draw_archive.
+// x=31) and mirrored on the right OLED.
 void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
 #define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     // The civic byte is authoritative for the occupation; during the first two
@@ -447,8 +445,8 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
     duel_fb_px(fb, tooth + 1, 59, true);
     if (r->revision & INCANTATION_AFTERMATH_WIRE) {
         uint8_t world = INCANTATION_AFTER_WORLD(r->shared_pres);
-        /* WORLD_WONDER's abstract ripple is retired (M15): wonder now reads
-         * from the big-cast tower glow and the residents watching the roof. */
+        /* WORLD_WONDER reads from the big-cast tower glow and the residents
+         * watching the roof. */
         if (world == WORLD_CRISIS) {
             duel_fb_line(fb, FLR_X(12), 61, FLR_X(15), 66);
             duel_fb_line(fb, FLR_X(15), 66, FLR_X(17), 63);
@@ -495,9 +493,8 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
 
     // Big fixtures that own the empty upper two-thirds of the room: a framed
     // window set into the outer wall and a fixture hanging in the centre void.
-    // Both are large, bold shapes chosen to read at desk distance (hardware
-    // feedback: the old furniture was too thin/low to register). Authored in
-    // desk space and mirrored per canvas.
+    // Both are large, bold shapes chosen to read at desk distance. They are
+    // authored in desk space and mirrored per canvas.
 
     // Ground line of the room.
     duel_fb_hline(fb, 0, DUEL_CANVAS_W - 1, DUEL_FLOOR_Y1);
@@ -627,9 +624,8 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
         duel_fb_px(fb, mx, my - 4 + after_phase, true);
     }
 
-    // M15 stone course: a single masonry border under the room floor (the
-    // former pavement/foundation texture is retired; rows below stay dark
-    // for the debug odometer). The 1-byte session seed staggers the joints,
+    // Stone course: a single masonry border under the room floor; rows below
+    // stay dark for the debug odometer. The 1-byte session seed staggers the joints,
     // and the two cities offset differently so the border never looks
     // stamped from one mold.
     uint8_t g = r->seed;
@@ -642,8 +638,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
 #undef FLR_X
 }
 
-// A compact standing wizard (~1/3 of the original M1 figure, hardware
-// feedback: full-size read as a blob at actual OLED scale). Centred at x=16
+// A compact standing wizard sized for legibility at actual OLED scale. Centred at x=16
 // with the staff hand at y~64 so bolts fly out at cast height. xo/yo shift
 // the whole figure (duel_fb_px clips, so off-canvas offsets are free); the
-// M5 lifecycle uses them to sink a collapsing wizard and walk in a fresh one.
+// Lifecycle uses them to sink a collapsing wizard and walk in a fresh one.
