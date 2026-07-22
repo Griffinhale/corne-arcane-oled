@@ -64,3 +64,5 @@ unsigned framebuffer_pixels(const duel_fb_t *framebuffer);
 void incantation_render(duel_fb_t *framebuffer, const duel_render_t *render, bool is_left,
                         bool diagnostics);
 void render_floor_scene(uint8_t floor, bool is_left, uint8_t transition, duel_fb_t *framebuffer);
+void render_district_scene(uint8_t district, bool is_left, uint8_t intensity, uint8_t transition,
+                           duel_fb_t *framebuffer);

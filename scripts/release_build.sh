@@ -44,4 +44,16 @@ qmk compile -kb crkbd/rev1 -km griffin_arcane \
     -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
 stage griffin_arcane-diagnostic
 
+# Unflashed HP pacing candidates. These differ only by SIM_MAX_HP and its
+# renderer geometry; physical A/B acceptance selects one later.
+qmk clean
+qmk compile -kb crkbd/rev1 -km griffin_arcane \
+    -e CONVERT_TO=rp2040_ce -e ARCANE_HP=8
+stage griffin_arcane-hp8-candidate
+
+qmk clean
+qmk compile -kb crkbd/rev1 -km griffin_arcane \
+    -e CONVERT_TO=rp2040_ce -e ARCANE_HP=10
+stage griffin_arcane-hp10-candidate
+
 sha256sum "$out"/griffin_arcane-*.elf "$out"/griffin_arcane-*.uf2

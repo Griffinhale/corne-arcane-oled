@@ -1,12 +1,16 @@
 # Corne Arcane 0.4 acceptance record
 
-Status: automated desktop, host, protocol, simulation, rendering, and firmware
-acceptance pass. A two-half world/combat run was reported passing on 2026-07-15.
-The current diagnostic candidate passed a five-minute two-half observation on
-2026-07-22, and the release candidate was subsequently flashed with the host
-service active. The unified Vial edge cases and persistence, current visual
-additions, full sky cycle, sleep/non-wake, stale-link, and recovery-image checks
-still require completion in `physical-checklist.md`.
+This is the frozen rollback record for 0.4. The working tree has moved to an
+unflashed beyond-0.4 candidate; nothing in that candidate replaces these hashes
+or this accepted baseline. Candidate evidence is tracked separately in
+[`beyond-0.4-candidate.md`](beyond-0.4-candidate.md).
+
+Status: **accepted** on 2026-07-22. Automated desktop, host, protocol,
+simulation, rendering, and firmware gates passed. The five-minute two-half
+diagnostic observation and every manual safety, typing, Vial, persistence,
+visual, sky-cycle, sleep/non-wake, stale-link, release-smoke, and recovery-image
+check passed. The signed record is
+[`archive/2026-07-22-0.4-physical-acceptance.md`](archive/2026-07-22-0.4-physical-acceptance.md).
 
 ## Current contract
 
@@ -53,22 +57,30 @@ Both images remain below the 81,896-byte flash ceiling, the 16,496-byte
 static-RAM ceiling, the 96 KiB hard stop, the per-image +8,192-byte flash and
 +512-byte RAM growth limits, and the required 16 KiB reserve.
 
-## Artifacts and hashes
+## Accepted artifacts and hashes
 
-Artifacts are under `artifacts/release/`. These are the previously recorded
-hashes and remain unchanged while physical acceptance is pending. Clean builds
-embed variable QMK metadata, so newly generated candidate hashes must be
-recorded from the exact files flashed and may replace this table only after the
-signed checklist passes.
+These are the exact 0.4 files physically verified and accepted on 2026-07-22.
+They remain the rollback authority throughout beyond-0.4 evaluation. Clean
+builds embed variable QMK metadata, so rebuilding is not a substitute for these
+preserved artifacts.
 
 | Artifact | SHA-256 |
+|---|---|
+| `griffin_arcane-release.uf2` | `4d5b2ffa6178e6ce14c6525cf29aa71f0ba84b8d559f5bb30f00c3038212552d` |
+| `griffin_arcane-release.elf` | `93b76daf6b57cfe4f35b5457d3788a5c27a4a431ee269aaf556863997ac6f1c6` |
+| `griffin_arcane-diagnostic.uf2` | `299eab9c282e3b4c378d1ba696adedf5b51f032cdf81c7f8a36d4f5c92fc7e30` |
+| `griffin_arcane-diagnostic.elf` | `2d956d2c082644a9e8d9580a25f01be479e89f585005953affa121e6a84b0e1d` |
+
+The previously recorded artifact set is retained for provenance:
+
+| Previous artifact | SHA-256 |
 |---|---|
 | `griffin_arcane-release.uf2` | `822a0e8b1ab6e598bd609f3358a4009f0ebcfadfc68bf0b417ce992017fe1d3f` |
 | `griffin_arcane-release.elf` | `013dd528eb0cf4910e424f5920f2c8e1e33c29f66dbc31a66e0213bdc45f20b0` |
 | `griffin_arcane-diagnostic.uf2` | `a0a360b296029e63dde0bb90955f9f49939ca36a55fd4809fc90098120243085` |
 | `griffin_arcane-diagnostic.elf` | `125282dd3c2d852565da2e8b4d65a44de3299443327cc0bf70bceaa253840f89` |
 
-## Current candidate evidence
+## Accepted physical evidence
 
 The candidate files flashed on 2026-07-22 are distinct from the accepted hashes
 above because QMK embeds variable build metadata. The five-minute diagnostic
@@ -78,13 +90,6 @@ peer snapshot age, 2,112 additional successful split transfers, and no growth
 in any failure or error counter. The complete run and the two pre-fix
 investigation runs are preserved in the
 [2026-07-22 diagnostic archive](archive/2026-07-22-diagnostic-0.4/README.md).
-
-| Candidate artifact | SHA-256 |
-|---|---|
-| `griffin_arcane-release.uf2` | `4d5b2ffa6178e6ce14c6525cf29aa71f0ba84b8d559f5bb30f00c3038212552d` |
-| `griffin_arcane-release.elf` | `93b76daf6b57cfe4f35b5457d3788a5c27a4a431ee269aaf556863997ac6f1c6` |
-| `griffin_arcane-diagnostic.uf2` | `299eab9c282e3b4c378d1ba696adedf5b51f032cdf81c7f8a36d4f5c92fc7e30` |
-| `griffin_arcane-diagnostic.elf` | `2d956d2c082644a9e8d9580a25f01be479e89f585005953affa121e6a84b0e1d` |
 
 The 363-scene golden catalog is
 `firmware/sim_test/golden/visual_current.hashes`, SHA-256
@@ -107,7 +112,7 @@ The 363-scene golden catalog is
   and retains build artifacts for 14 days without publishing or accepting
   them.
 
-Automated tests cannot claim physical flashing, desk-distance readability,
-real-device timing or stack headroom, secure unlock, power-cycle persistence,
-or visible offline animation during a real GUI handoff. Those remain explicitly
-unchecked in `physical-checklist.md`.
+The physical claims that automation cannot establish—flashing, desk-distance
+readability, real-device timing and stack headroom, secure unlock, power-cycle
+persistence, and visible offline animation during GUI handoff—are signed off in
+[`physical-checklist.md`](physical-checklist.md).

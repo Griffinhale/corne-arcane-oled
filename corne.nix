@@ -25,6 +25,11 @@ in
       default = null;
       description = "Optional systemd user timer unit used for Focus/Pomodoro semantics.";
     };
+    pomodoroDuration = lib.mkOption {
+      type = lib.types.ints.positive;
+      default = 1500;
+      description = "Pomodoro duration in seconds used for Observatory quarter stages.";
+    };
   };
 
   config = {
@@ -52,7 +57,7 @@ in
       serviceConfig = {
         Type = "dbus";
         BusName = "io.github.Griffinhale.CorneArcane";
-        ExecStart = "${lib.getExe corneArcaneHost}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}${lib.optionalString (cfg.pomodoroUnit != null) " --pomodoro-unit ${lib.escapeShellArg cfg.pomodoroUnit}"}";
+        ExecStart = "${lib.getExe corneArcaneHost} --pomodoro-duration ${toString cfg.pomodoroDuration}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}${lib.optionalString (cfg.pomodoroUnit != null) " --pomodoro-unit ${lib.escapeShellArg cfg.pomodoroUnit}"}";
         Restart = "always";
         RestartSec = 2;
       };

@@ -154,7 +154,7 @@ bool duel_scenario_build(const duel_scenario_t *scenario, duel_render_t *r) {
                                    DUEL_CIVIC_INTENSITY_CALM);
     }
 
-    /* NOTE: these worlds are projected through the 19-byte canonical view
+    /* NOTE: these worlds are projected through the 18-byte canonical view
      * before rendering, so only view-visible fields matter: a spell needs a
      * nonzero descriptor + progress (pos/dir/kind are re-derived), and a ward
      * needs ward_strength (the sim-side shield_ticks never reaches the wire). */

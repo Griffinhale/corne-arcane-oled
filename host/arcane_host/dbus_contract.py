@@ -11,6 +11,7 @@ KWIN_SERVICE = "org.kde.KWin"
 REPORT_ACTIVE_WINDOW = "ReportActiveWindow"
 REPORT_TERMINAL_COMPLETION = "ReportTerminalCompletion"
 REPORT_REPOSITORY_STATE = "ReportRepositoryState"
+REPORT_BROWSER_ACTIVITY = "ReportBrowserActivity"
 INJECT_SYNTHETIC = "InjectSynthetic"
 CLEAR_NOTIFICATIONS = "ClearNotifications"
 
@@ -43,6 +44,10 @@ EVENTS_XML = f"""
     <method name='{REPORT_REPOSITORY_STATE}'>
       <arg type='y' name='state' direction='in'/>
       <arg type='b' name='success' direction='in'/>
+    </method>
+    <method name='{REPORT_BROWSER_ACTIVITY}'>
+      <arg type='y' name='kind' direction='in'/>
+      <arg type='y' name='intensity' direction='in'/>
     </method>
     <method name='{INJECT_SYNTHETIC}'>
       <arg type='y' name='category' direction='in'/>

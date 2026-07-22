@@ -41,6 +41,12 @@ OPT_DEFS += -DPICO_RAND_ENTROPY_SRC_ROSC=0 \
             -DPICO_RAND_ENTROPY_SRC_TIME=0 \
             -DPICO_RAND_SEED_ENTROPY_SRC_BOARD_ID=0
 
+# HP pacing A/B candidates are otherwise identical. Production keeps the
+# source-selected constant unless ARCANE_HP=8 or 10 is supplied explicitly.
+ifneq ($(filter 8 10,$(strip $(ARCANE_HP))),)
+    OPT_DEFS += -DSIM_MAX_HP=$(strip $(ARCANE_HP))
+endif
+
 # Instrumentation is compiled out of release images. Diagnostic firmware keeps
 # the identical packet layouts and adds bounded counters/timing responses.
 ifeq ($(strip $(ARCANE_DIAGNOSTICS)),yes)

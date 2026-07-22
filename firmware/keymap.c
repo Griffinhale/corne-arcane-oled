@@ -101,7 +101,7 @@ static uint16_t duel_diag_u16(uint32_t value) {
 /* ChibiOS diagnostic builds fill each working area with 0x55. Sampling the
  * untouched prefix of the current main-thread stack records a true high-water
  * minimum without adding any release work or relying on a large stack local.
- * The non-static field is debugger/map-visible; Raw HID v2 remains unchanged. */
+ * The non-static field is debugger/map-visible; Raw HID v3 remains unchanged. */
 static void duel_diag_stack_sample(void) {
     thread_t *thread = chThdGetSelfX();
     uint8_t *scan = (uint8_t *)chThdGetWorkingAreaX(thread) + sizeof(thread_t);
@@ -117,10 +117,12 @@ static void duel_diag_stack_sample(void) {
 }
 #endif
 
-static void duel_note_physical_key(void) {
-    uint32_t now = timer_read32();
-    duel_display_note_key(&duel_display, now);
-    duel_local_wake_until_ms = now + DUEL_WAKE_GRACE_MS;
+static void duel_note_physical_key(uint8_t row, uint8_t column) {
+    if (duel_physical_key_wakes_display(row, column)) {
+        uint32_t now = timer_read32();
+        duel_display_note_key(&duel_display, now);
+        duel_local_wake_until_ms = now + DUEL_WAKE_GRACE_MS;
+    }
     duel_render_invalid = true;
 }
 
@@ -160,7 +162,7 @@ static void duel_scan_rows(uint8_t row_first, uint8_t row_last, uint8_t side) {
                 continue;
             sim_evq_push(&duel_evq,
                          SIM_EV_PACK(SIM_EV_KEYDOWN, side, (uint8_t)(r % DUEL_ROWS_PER_HAND), c));
-            duel_note_physical_key();
+            duel_note_physical_key(r, c);
         }
     }
 }
@@ -472,7 +474,8 @@ static void duel_render_set_external(uint8_t external, uint8_t alert) {
 
 static void duel_render_set_civic(uint32_t now, uint8_t civic, uint8_t secondary,
                                   uint8_t shared_pres, uint8_t revision) {
-    duel_floor_note_target(&duel_floor_policy, civic, now, duel_display.phase);
+    duel_floor_note_target(&duel_floor_policy, civic, duel_render.external, now,
+                           duel_display.phase);
     duel_render.civic = civic;
     duel_render.secondary = secondary;
     duel_render.shared_pres = shared_pres;
@@ -535,6 +538,7 @@ static void duel_housekeeping_slave(uint32_t now, bool ticked, bool display_chan
                                   (uint8_t)(duel_rx.last.secondary & ~DUEL_SECONDARY_RESIDUE_BITS),
                                   duel_rx.last.shared_pres, duel_rx.last.revision);
             duel_snapshot_residue_render(&duel_rx.last, duel_render.residue);
+            memcpy(duel_render.field, duel_rx.last.field, sizeof duel_render.field);
             duel_render.flags &= (uint8_t)~DUEL_RENDER_STALE;
         }
     } else {
@@ -680,6 +684,7 @@ bool oled_task_user(void) {
     static uint32_t frame;
     static uint8_t applied_phase = 0xFF;
     static duel_render_t composed;
+    static duel_scry_policy_t scry_policy;
     static bool have_composed;
 #ifdef ARCANE_DIAGNOSTICS
     const bool hud = true;
@@ -694,6 +699,7 @@ bool oled_task_user(void) {
             // Stop animation first, then explicitly commit a black framebuffer
             // before removing panel power. The ordinary OLED task sees no new
             // dirty blocks while asleep.
+            duel_scry_presentation_reset(&scry_policy);
             oled_clear();
             oled_render_dirty(true);
             oled_off();
@@ -709,13 +715,14 @@ bool oled_task_user(void) {
     // presentation deadline for each new world outcome (tested policy in
     // duel_runtime). The renderer still receives its historical 50 ms phases,
     // but dim OLED cadence merely samples them instead of stretching them.
-    duel_flash_observe_view(&duel_flash, duel_last_spell_kind, &duel_render.view, now);
+    duel_flash_observe_view(&duel_flash, duel_last_spell_kind, &duel_render.view, duel_render.seed,
+                            now);
     uint8_t flash_frames = duel_flash_remaining(&duel_flash, now);
     duel_render.flash_frames = flash_frames;
     duel_render.flash_kind = duel_flash.kind;
     duel_render.flash_spell_kind = duel_flash.spell_kind;
 
-    // scry overlay content (presentation-only; drawn only while scry_is_open).
+    // Scry scroll content and its local unroll/reroll presentation cache.
     // The layer is the emitted QMK layer — fine to READ for display; the chord
     // that opens the overlay is detected from physical positions, not this.
     uint8_t local_layer = DUEL_RENDER_LOCAL_NONE;
@@ -728,6 +735,10 @@ bool oled_task_user(void) {
     duel_render.layer = DUEL_RENDER_LAYER_PACK(get_highest_layer(layer_state), local_layer);
     duel_render.local_ambience =
         incantation_local_ambience(&duel_world.wiz[is_keyboard_left() ? SIM_SIDE_L : SIM_SIDE_R]);
+    duel_scry_frame_t scry_frame =
+        duel_scry_presentation(&scry_policy, duel_view_scry_open(&duel_render.view), now);
+    duel_render.scry_motion = scry_frame.motion;
+    duel_render.scry_scroll = scry_frame.scroll;
 
     // Presentation seed (the shared 1-byte session) plus the bounded civic clock
     // that paces resident/floor motion. A SLEEP phase already returned above, so

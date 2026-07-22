@@ -308,9 +308,9 @@ static void test_damage_heal_ward_and_status(void) {
 
     uint32_t heal = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_HEAL, TRAJ_RETURNING, 4,
                                     STATUS_NONE, INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0);
-    w.wiz[0].hp = 5;
+    w.wiz[0].hp = SIM_MAX_HP - 3u;
     land_spell(&w, 0, heal);
-    EXPECT(w.wiz[0].hp == SIM_MAX_HP); /* 5 + 4 clamps at the retuned max */
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP); /* max-3 + 4 clamps for both candidates */
 
     uint32_t burn = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 3,
                                     STATUS_BURNING, INTERACT_SOLID, TEMPO_RAPID, TREND_STEADY, 0);
@@ -432,7 +432,8 @@ static void test_collision_precedence(void) {
     w.spell[0].age = 10;
     install_spell(&w, 1, solid, 207);
     step(&w, 0, 0, 0, 0, NULL, 0);
-    EXPECT(w.spell[0].active && w.spell[0].aux == 4 && !w.spell[1].active);
+    EXPECT(!w.spell[0].active && !w.spell[1].active && w.field[0].kind == FIELD_SINGULARITY &&
+           w.field[0].aux == 4u);
 
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     uint32_t ember = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 2,
@@ -839,8 +840,10 @@ static void test_ground_chain_summon_and_trap(void) {
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     install_spell(&w, 0, summon, 0);
     w.spell[0].aux = 2;
-    wait_ticks(&w, 22);
-    EXPECT(!w.spell[0].active && w.wiz[1].hp == SIM_MAX_HP - 2u);
+    wait_ticks(&w, 10);
+    EXPECT(!w.spell[0].active && w.field[0].kind == FIELD_FAMILIAR && w.wiz[1].hp == SIM_MAX_HP);
+    wait_ticks(&w, 60);
+    EXPECT(w.field[0].kind == FIELD_NONE && w.wiz[1].hp == SIM_MAX_HP - 1u);
     CHECK(ok, "incantation_ground_chain_summon_and_trap_lifecycles");
 }
 

@@ -1,8 +1,14 @@
-# Corne Arcane OLED 0.4
+# Corne Arcane OLED beyond-0.4 candidate
 
 Corne Arcane is a deterministic spell-duel world for a Corne v3 RP2040 split
 keyboard. The keyboard is complete offline; an optional Linux daemon adds
 privacy-redacted focus, notification, terminal, and repository semantics.
+
+The source tree contains the unflashed split-v12/Raw-HID-v3 candidate. The
+accepted 0.4 artifacts and `griffin` recovery image remain the rollback
+authority; see
+[`docs/beyond-0.4-candidate.md`](docs/beyond-0.4-candidate.md) before hardware
+work.
 
 ## Start here
 
@@ -22,6 +28,8 @@ recovery image. `firmware/` is the source of truth, and
 ```bash
 make lint
 make test
+make hp-gate
+make mechanics-hp-candidates
 make release-build
 make release-budget
 make hygiene

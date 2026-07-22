@@ -1,4 +1,4 @@
-# Corne Arcane 0.4 on NixOS
+# Corne Arcane beyond-0.4 candidate on NixOS
 
 Import `./corne.nix` directly from this checkout. It supplies QMK tooling, the
 `corne-arcane-host` service and commands, udev access for the keyboard's Raw HID
@@ -12,6 +12,7 @@ services.corne-arcane-host = {
   enable = true;
   desktopNotifications = true;
   # pomodoroUnit = "pomodoro.timer";
+  pomodoroDuration = 1500;
 };
 ```
 
@@ -29,14 +30,20 @@ cd ~/src/vial-qmk
 qmk compile -kb crkbd/rev1 -km griffin_arcane -e CONVERT_TO=rp2040_ce
 qmk compile -kb crkbd/rev1 -km griffin_arcane \
   -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
+qmk compile -kb crkbd/rev1 -km griffin_arcane \
+  -e CONVERT_TO=rp2040_ce -e ARCANE_HP=8
+qmk compile -kb crkbd/rev1 -km griffin_arcane \
+  -e CONVERT_TO=rp2040_ce -e ARCANE_HP=10
 ```
 
-There are no staged feature variables. `griffin_arcane` always contains the
-current v11 world, host semantics, secure Vial support, OLED, RGB Matrix, and
-four persistent dynamic keymap layers. `griffin` remains the recovery image.
+`griffin_arcane` contains the current v12 world, host semantics, secure Vial
+support, OLED, RGB Matrix, and four persistent dynamic keymap layers.
+`ARCANE_HP` exists only for the 8/10 physical pacing gate. `griffin` remains
+the recovery image.
 
 Use `make release-build` to produce neutral files under `artifacts/release/`
-and `make release-budget` to enforce the accepted resource ceilings.
+and `make release-budget` to enforce the candidate resource ceilings. Do not
+flash either HP candidate before the 0.4 checklist is accepted or superseded.
 
 ## Host service and Vial handoff
 
@@ -55,7 +62,7 @@ active, and the older-generation caveat are in the top-level `README.md`
 while the daemon is paused.
 
 The service retains its D-Bus, event-client, diagnostics, udev, and command
-identities. Package metadata is `0.4.0`.
+identities. Package metadata is `0.5.0`.
 
 ## Flashing
 

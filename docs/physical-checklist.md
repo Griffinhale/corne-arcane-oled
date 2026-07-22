@@ -1,7 +1,13 @@
 # Corne Arcane 0.4 physical acceptance checklist
 
-Status: pending for the current unified release artifacts. Prior reported
-evidence and unchecked historical records are preserved verbatim in the
+This checklist must be accepted or explicitly superseded before any
+beyond-0.4 candidate is flashed. The split-v12/Raw-HID-v3 candidate procedure
+is deliberately gated in [`beyond-0.4-candidate.md`](beyond-0.4-candidate.md).
+
+Status: accepted on 2026-07-22 for the current unified release artifacts.
+The completed signed snapshot is archived at
+[`archive/2026-07-22-0.4-physical-acceptance.md`](archive/2026-07-22-0.4-physical-acceptance.md).
+Prior reported evidence and unchecked historical records are preserved verbatim in the
 [dated acceptance archive](archive/2026-07-17-m14-m15-physical-checklist.md);
 they do not mark the checks below complete.
 
@@ -12,56 +18,56 @@ half is USB-powered.
 
 ## Safety and flashing
 
-- [ ] Export the current four-layer Vial mapping and preserve the accepted
+- [x] Export the current four-layer Vial mapping and preserve the accepted
   recovery image before changing either half.
 - [x] Disconnect USB, disconnect TRRS, flash the diagnostic artifact to the
   left controller, remove USB, and repeat with the identical artifact on the
   right controller.
 - [x] Reconnect TRRS only while unpowered, power the normal USB half, and
   confirm both displays leave stale-link mode and remain synchronized.
-- [ ] Exercise every physical key on all four layers, thumb holds, rolls,
+- [x] Exercise every physical key on all four layers, thumb holds, rolls,
   chords, alternation, and long holds. Confirm every host key event arrives
   once and spell logic never consumes or rewrites typing.
 
 ## Vial handoff and persistence
 
-- [ ] Confirm secure Vial unlock requires the configured physical combo.
-- [ ] With `corne-arcane-host.service` active, launch `corne-arcane-vial`.
+- [x] Confirm secure Vial unlock requires the configured physical combo.
+- [x] With `corne-arcane-host.service` active, launch `corne-arcane-vial`.
   Confirm the daemon stops before Vial opens, sends no competing traffic, and
   restarts after every normal, crash, and signal exit.
-- [ ] Repeat with the daemon inactive and confirm the launcher leaves it
+- [x] Repeat with the daemon inactive and confirm the launcher leaves it
   inactive afterward.
-- [ ] While Vial is open, confirm typing and the complete offline OLED/RGB
+- [x] While Vial is open, confirm typing and the complete offline OLED/RGB
   world continue while only host semantic enrichment pauses.
-- [ ] Edit keys on all four layers, close Vial, confirm a fresh daemon session,
+- [x] Edit keys on all four layers, close Vial, confirm a fresh daemon session,
   power-cycle the keyboard, and confirm all edits persist.
-- [ ] Remap a layer/scry key and confirm the QMK gesture can become unavailable
+- [x] Remap a layer/scry key and confirm the QMK gesture can become unavailable
   without changing physical-position incantation recognition. Reset the
   dynamic keymap and confirm the compiled default returns.
 
 ## Visual and mechanical verification
 
-- [ ] Verify the four floors, Astral/Mechanical tower silhouettes, diegetic HP
+- [x] Verify the four floors, Astral/Mechanical tower silhouettes, diegetic HP
   windows at 8/6/3/1/0, alerts, scry, transitions, aftermath, couriers, rare
   events, and gap cues remain legible at desk distance.
-- [ ] Exercise every RGB priority on the correct half: city baseline,
+- [x] Exercise every RGB priority on the correct half: city baseline,
   Observatory, prepared elements, ward shatter, impact, stale link, DIM, and
   SLEEP. Confirm remapped RGB keycodes cannot override world ownership.
-- [ ] Observe the full 30-minute sky cycle and 16-step celestial arc at the
+- [x] Observe the full 30-minute sky cycle and 16-step celestial arc at the
   2:30, 22:30, 25:00, and 30:00 boundaries without added animation churn.
-- [ ] Type at different tempos on each half. Confirm ambience stays local,
+- [x] Type at different tempos on each half. Confirm ambience stays local,
   settles on launch/cancellation, and remains restrained in QUIET/Observatory.
-- [ ] Verify residue marks build during ordinary dueling and decay on the
+- [x] Verify residue marks build during ordinary dueling and decay on the
   approximately 45-second-per-step clock.
-- [ ] Verify STUDY, MEDITATE, FORTIFY, PACE, and TAUNT presentation and the
+- [x] Verify STUDY, MEDITATE, FORTIFY, PACE, and TAUNT presentation and the
   temperament/doctrine differences between replacement wizards.
-- [ ] Time damaged-wizard regeneration: no HP returns before 20 seconds, one
+- [x] Time damaged-wizard regeneration: no HP returns before 20 seconds, one
   HP returns at the boundary, and intervening damage restarts the timer.
-- [ ] Exercise normal typing-day combat and judge the current 8 HP KO cadence
+- [x] Exercise normal typing-day combat and judge the current 8 HP KO cadence
   without changing tuning as part of this acceptance run.
-- [ ] Let both displays sleep; confirm focus, Pomodoro, sky, world, and timer
+- [x] Let both displays sleep; confirm focus, Pomodoro, sky, world, and timer
   changes do not wake OLED or RGB, then wake both with a physical key.
-- [ ] Interrupt split connectivity only while unpowered. Confirm stale local
+- [x] Interrupt split connectivity only while unpowered. Confirm stale local
   sky behavior and convergence to current master state without replay.
 
 ## Diagnostics and rollback
@@ -86,12 +92,12 @@ half is USB-powered.
   events, split protocol errors, malformed/stale host reports, or split
   failures, and no growth in the corresponding peer counters. Record catch-up
   growth for context; it does not fail acceptance.
-- [ ] Flash `griffin_arcane-release.uf2` to both halves using the same safety
+- [x] Flash `griffin_arcane-release.uf2` to both halves using the same safety
   sequence. Repeat typing, Vial handoff/persistence, maximal aftermath,
   sleep/non-wake, and reconnect smoke tests.
-- [ ] Verify the artifact hashes in `acceptance.md`, boot the preserved
+- [x] Verify the artifact hashes in `acceptance.md`, boot the preserved
   recovery image on both halves, then restore the accepted release.
-- [ ] Only after every item passes, copy this signed checklist and the unchanged
+- [x] Only after every item passes, copy this signed checklist and the unchanged
   diagnostic JSON under a dated `docs/archive/` record, mark this active
   checklist complete, and update `acceptance.md` with the exact hashes,
   resources, measurements, sign-off date, tester, and archive links. If any
@@ -115,4 +121,4 @@ Candidate diagnostic UF2 SHA-256:
 Diagnostic JSON archive path:
 `docs/archive/2026-07-22-diagnostic-0.4/physical-0.4-diagnostics.json`
 
-Sign-off date: __________  Tester: __________  Result: __________
+Sign-off date: 2026-07-22  Tester: griffin (completion reported in session)  Result: PASS

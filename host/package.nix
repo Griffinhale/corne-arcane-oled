@@ -5,7 +5,7 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "corne-arcane-host";
-  version = "0.4.0";
+  version = "0.5.0";
   src = lib.cleanSource ./.;
 
   nativeBuildInputs = [ makeWrapper ];
@@ -26,6 +26,11 @@ stdenvNoCC.mkDerivation {
       "$out/lib/corne-arcane-host" \
       "$out/bin" \
       "$out/share/corne-arcane/zsh" \
+      "$out/share/corne-arcane/bash" \
+      "$out/share/corne-arcane/fish/conf.d" \
+      "$out/share/corne-arcane/firefox" \
+      "$out/share/gnome-shell/extensions/corne-arcane-focus@griffinhale.github.io" \
+      "$out/share/mozilla/native-messaging-hosts" \
       "$out/share/systemd/user" \
       "$out/share/applications"
     cp -r arcane_host "$out/lib/corne-arcane-host/"
@@ -33,6 +38,15 @@ stdenvNoCC.mkDerivation {
     mkdir -p "$out/share/kwin/scripts/cornearcane"
     cp -r kwin/contents kwin/metadata.json "$out/share/kwin/scripts/cornearcane/"
     cp zsh/corne-arcane.zsh "$out/share/corne-arcane/zsh/"
+    cp bash/corne-arcane.bash "$out/share/corne-arcane/bash/"
+    cp fish/conf.d/corne-arcane.fish "$out/share/corne-arcane/fish/conf.d/"
+    cp firefox/manifest.json firefox/background.js firefox/scroll.js \
+      "$out/share/corne-arcane/firefox/"
+    cp gnome/metadata.json gnome/extension.js \
+      "$out/share/gnome-shell/extensions/corne-arcane-focus@griffinhale.github.io/"
+    substitute firefox/io.github.griffinhale.corne_arcane.json.in \
+      "$out/share/mozilla/native-messaging-hosts/io.github.griffinhale.corne_arcane.json" \
+      --replace-fail '@out@' "$out"
     cp desktop/corne-arcane-vial.desktop "$out/share/applications/"
     substitute systemd/corne-arcane-host.service \
       "$out/share/systemd/user/corne-arcane-host.service" \
@@ -48,6 +62,9 @@ stdenvNoCC.mkDerivation {
       --set PYTHONPATH "$out/lib/corne-arcane-host"
     makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-diagnostics" \
       --add-flags "-m arcane_host.diagnostics" \
+      --set PYTHONPATH "$out/lib/corne-arcane-host"
+    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-browser-bridge" \
+      --add-flags "-m arcane_host.browser_bridge" \
       --set PYTHONPATH "$out/lib/corne-arcane-host"
     makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-vial" \
       --add-flags "-m arcane_host.vial_launcher" \

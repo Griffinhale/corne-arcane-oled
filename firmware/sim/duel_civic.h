@@ -80,13 +80,13 @@ enum {
 #define DUEL_EVENT_PHASE(v)  ((uint8_t)(((v) >> 3) & 3u))
 #define DUEL_EVENT_TARGET(v) ((uint8_t)(((v) >> 5) & 3u))
 
-#define INCANTATION_AFTERMATH_WIRE         0x80u
-#define INCANTATION_AFTERMATH_REV_RESERVED 0x70u
-#define INCANTATION_AFTER_KIND(v, side)    ((uint8_t)(((v) >> ((side) * 3u)) & 7u))
-#define INCANTATION_AFTER_WORLD(v)         ((uint8_t)(((v) >> 6) & 3u))
-#define INCANTATION_AFTER_PHASE(v, side)   ((uint8_t)(((v) >> ((side) * 2u)) & 3u))
+#define INCANTATION_AFTERMATH_WIRE       0x80u
+#define INCANTATION_AFTERMATH_FLAVOR(v)  ((uint8_t)(((v) >> 4) & 7u))
+#define INCANTATION_AFTER_KIND(v, side)  ((uint8_t)(((v) >> ((side) * 3u)) & 7u))
+#define INCANTATION_AFTER_WORLD(v)       ((uint8_t)(((v) >> 6) & 3u))
+#define INCANTATION_AFTER_PHASE(v, side) ((uint8_t)(((v) >> ((side) * 2u)) & 3u))
 #define INCANTATION_FLOOR_TRANSITION_PACK(source, phase, active)                                   \
-    ((uint8_t)(((source) & 3u) | (((phase) & 3u) << 2) | ((active) ? 0x10u : 0u)))
-#define INCANTATION_FLOOR_TRANSITION_SOURCE(v) ((uint8_t)((v) & 3u))
-#define INCANTATION_FLOOR_TRANSITION_PHASE(v)  ((uint8_t)(((v) >> 2) & 3u))
-#define INCANTATION_FLOOR_TRANSITION_ACTIVE(v) (((v) & 0x10u) != 0u)
+    ((uint8_t)(((source) & 7u) | (((phase) & 3u) << 3) | ((active) ? 0x20u : 0u)))
+#define INCANTATION_FLOOR_TRANSITION_SOURCE(v) ((uint8_t)((v) & 7u))
+#define INCANTATION_FLOOR_TRANSITION_PHASE(v)  ((uint8_t)(((v) >> 3) & 3u))
+#define INCANTATION_FLOOR_TRANSITION_ACTIVE(v) (((v) & 0x20u) != 0u)

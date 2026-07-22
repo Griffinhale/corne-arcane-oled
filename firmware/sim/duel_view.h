@@ -6,12 +6,12 @@
 
 #include "duel_sim.h"
 
-/* Exactly 19 bytes: 2x3 wizard, 2x4 active spell, outcome-sequence/stance
-   byte, outcome/overlay, 2 phase bytes, and one status-visual byte. */
+/* Exactly 18 bytes. The two active spells share a seven-byte v12 stream:
+ * 20 observable descriptor bits plus one progress byte per side. */
 typedef struct __attribute__((packed)) {
     uint8_t wizard[2][3];
-    uint8_t spell[2][4];
-    uint8_t fx_stance; /* fx_seq[0:3] + per-side stance[4:5]/[6:7] (v11) */
+    uint8_t spell[7];
+    uint8_t fx_stance; /* fx_seq[0:3] + per-side stance[4:5]/[6:7] */
     uint8_t outcome_overlay;
     uint8_t phase[2];
     uint8_t status_visual;
@@ -27,7 +27,7 @@ typedef struct __attribute__((packed)) {
  *   phase (during WINDUP/PREPARED): form[0:2] element[3:4] progress[5:7]
  *   fx_stance: fx_seq[0:3] stance_L[4:5] stance_R[6:7] — the outcome
  *   sequence wraps at 16 and every consumer compares equality only, so the
- *   v11 assigns the high nibble to the stance channel. */
+ *   the high nibble belongs to the stance channel. */
 
 /* Non-casting stances are simulation state. PACE/TAUNT derive locally from
  * NONE + idle + seed and never ride the wire. */
@@ -96,18 +96,20 @@ typedef struct {
     uint8_t progress;
 } duel_view_spell_t;
 
-_Static_assert(sizeof(duel_view_t) == 19, "current canonical view must be exactly 19 bytes");
+_Static_assert(sizeof(duel_view_t) == 18, "v12 canonical view must be exactly 18 bytes");
 
 void duel_view_from_world(const sim_world_t *world, duel_view_t *view);
 /* Pack the four residue zones as two nibble-pair bytes — zones 0-1
- * into out[0] (exactly the v11 snapshot residue byte: elem[0:1] int[2:3] per
+ * into out[0] (exactly the v12 snapshot residue byte: elem[0:1] int[2:3] per
  * zone, low zone first) and zones 2-3 into out[1] in the same grammar. The
  * encoder, the master's render fill, and the slave's snapshot unpack all
  * speak this one layout. */
 void duel_residue_pack(const sim_world_t *world, uint8_t out[2]);
 bool duel_view_valid(const duel_view_t *view);
 duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side);
-duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side);
+uint32_t duel_spell_descriptor_compress(uint32_t descriptor);
+uint32_t duel_spell_descriptor_expand(uint32_t compressed, uint8_t session, uint8_t side);
+duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side, uint8_t session);
 
 static inline bool duel_view_scry_open(const duel_view_t *view) {
     return VIEW_OVERLAY_OPEN(view->outcome_overlay);

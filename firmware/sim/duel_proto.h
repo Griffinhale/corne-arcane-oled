@@ -6,19 +6,14 @@
  * state backward. Hardware-agnostic (no QMK includes) so the host harness
  * replays loss/duplication/reordering with exactly the firmware's code.
  *
- * Wire format: v11 uses the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves
+ * Wire format: v12 uses the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves
  * (and the test hosts we
  * care about) are little-endian, so the struct ships as raw bytes. The serial
  * protocol only checksums its own framing, hence our CRC over the payload.
  *
- * The v10 -> v11 repack funds 22 new payload bits without
- * growing the packet: seq narrows to a wrapping byte, the view's fx byte
- * shares its high nibble, and every formerly reserved bit is allocated.
- * New fields: four battlefield-residue zones (element + intensity each), two
- * wizard stances, and the live 2-bit sky sub-phase
- * that gives the celestial arc its 16 steps. Residue zone 3's intensity is
- * the one field that straddles bytes (flags.7 low / secondary.7 high); the
- * duel_snapshot_residue_* accessors below are its only sanctioned door.
+ * v12 combines the old magic/version bytes as 0xAC and compresses the two
+ * active spell projections to seven bytes. The recovered bytes carry the two
+ * global field projections while every trailing host/civic offset stays fixed.
  * Full byte/bit map: docs/protocol-ledger.md.
  */
 #pragma once
@@ -29,8 +24,9 @@
 
 #include "duel_view.h"
 
-#define DUEL_MAGIC 0xA7
-#define DUEL_VER   11
+#define DUEL_MAGIC             0xA7 /* diagnostics-only identity remains stable */
+#define DUEL_VER               12
+#define DUEL_SIGNATURE_VERSION 0xAC
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase;
 // bits3-4 residue zone2 element; bits5-6 residue zone2 intensity; bit7
@@ -62,15 +58,15 @@ enum {
 #define DUEL_SECONDARY_RESIDUE_BITS 0x80u
 
 typedef struct __attribute__((packed)) {
-    uint8_t magic;    /* DUEL_MAGIC */
-    uint8_t ver;      /* DUEL_VER */
-    uint8_t session;  /* master boot nonce */
-    uint8_t flags;    /* valid/display + residue bits, see above */
-    uint8_t seq;      /* per-session, wrapping byte */
-    uint8_t residue;  /* zone0: elem[0:1] int[2:3]; zone1: elem[4:5] int[6:7] */
-    duel_view_t view; /* canonical transport/render projection */
-    uint8_t external; /* host: absolute disposable host context; see duel_host.h */
-    uint8_t alert;    /* packed category, priority, and age */
+    uint8_t signature_version;      /* high nibble 0xA, low nibble DUEL_VER */
+    uint8_t session;                /* master boot nonce */
+    uint8_t flags;                  /* valid/display + residue bits, see above */
+    uint8_t seq;                    /* per-session, wrapping byte */
+    uint8_t residue;                /* zone0: elem[0:1] int[2:3]; zone1: elem[4:5] int[6:7] */
+    duel_view_t view;               /* canonical transport/render projection */
+    uint8_t field[SIM_FIELD_SLOTS]; /* kind[0:2], zone[3:4], age[5:6], owner[7] */
+    uint8_t external;               /* host: absolute disposable host context; see duel_host.h */
+    uint8_t alert;                  /* packed category, priority, and age */
     /* Absolute civic presentation relayed master->slave. The current engine
      * temporarily reuses shared_pres/revision for bounded authoritative
      * aftermath while its marker bit is set. All
@@ -87,9 +83,22 @@ typedef struct __attribute__((packed)) {
 } duel_snapshot_t;
 
 _Static_assert(sizeof(duel_snapshot_t) == 32,
-               "current v11 snapshot must consume exactly one 32-byte RPC packet");
+               "v12 snapshot must consume exactly one 32-byte RPC packet");
+_Static_assert(offsetof(duel_snapshot_t, external) == 25 &&
+                   offsetof(duel_snapshot_t, alert) == 26 &&
+                   offsetof(duel_snapshot_t, civic) == 27 &&
+                   offsetof(duel_snapshot_t, secondary) == 28 &&
+                   offsetof(duel_snapshot_t, shared_pres) == 29 &&
+                   offsetof(duel_snapshot_t, revision) == 30,
+               "v12 must preserve all trailing split offsets");
+
+#define DUEL_FIELD_KIND(value)  ((uint8_t)((value) & 7u))
+#define DUEL_FIELD_ZONE(value)  ((uint8_t)(((value) >> 3) & 3u))
+#define DUEL_FIELD_AGE(value)   ((uint8_t)(((value) >> 5) & 3u))
+#define DUEL_FIELD_OWNER(value) ((uint8_t)(((value) >> 7) & 1u))
 
 uint8_t duel_crc8(const void *data, size_t len);
+uint8_t duel_field_projection(const sim_field_t *field);
 
 // `external` is a packed, disposable presentation summary. The ordinary
 // runtime encoder writes the complete production packet and computes the CRC.
@@ -103,14 +112,14 @@ void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, u
 // tests rely on that prefill — do not "simplify" it away); the master glue
 // (keymap.c) then overwrites all four bytes via this call to relay the
 // current civic state, including its own aftermath override.
-// v11: civic bits6-7 and secondary bit7 belong to residue zone 3, which the
+// Civic bits6-7 and secondary bit7 belong to residue zone 3, which the
 // encoder fills from the world. This call masks them out of the
 // incoming semantics and preserves the encoder's bits, so callers need no
 // ordering dance.
 void duel_snapshot_set_civic(duel_snapshot_t *p, uint8_t civic, uint8_t secondary,
                              uint8_t shared_pres, uint8_t revision);
 
-/* v11 residue accessors — the only sanctioned door to the scattered zone
+/* v12 residue accessors — the only sanctioned door to the scattered zone
  * bits (zone 3 straddles civic/flags/secondary). The setter recomputes the
  * CRC. Elements reuse ELEM_*; intensity 0 means empty and its canonical
  * form requires element 0 (the validator rejects non-canonical zones).

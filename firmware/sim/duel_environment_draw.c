@@ -3,6 +3,8 @@
 #include "duel_resident.h"
 #include "duel_runtime.h"
 
+_Static_assert(DUEL_CROWD_MAX_VISIBLE == 3u, "crowd silhouette ceiling changed");
+
 static void sky_sun(duel_fb_t *fb, int x, int y) {
     for (int dy = -1; dy <= 1; dy++)
         for (int dx = -1; dx <= 1; dx++)
@@ -172,6 +174,70 @@ static void draw_typing_ambience(duel_fb_t *fb, const duel_render_t *r, bool is_
     }
 }
 
+/* Privacy-bounded browser reports become transient motions on the Research
+ * analyzer. The host supplies only kind and intensity, so these marks cannot
+ * reveal page identity. Quiet mode suppresses them with the rest of the
+ * ambient workload. */
+static void draw_browser_activity(duel_fb_t *fb, const duel_render_t *r, bool is_left,
+                                  uint8_t district, uint8_t mode) {
+    uint8_t activity = DUEL_SECONDARY_ACTIVITY(r->secondary);
+    if (district != DUEL_DISTRICT_RESEARCH || mode == DUEL_CIVIC_MODE_QUIET ||
+        activity < DUEL_CIVIC_SECONDARY_SCROLL)
+        return;
+
+#define BROWSE_X(x) duel_fb_desk_x(is_left, (x))
+    uint8_t intensity = DUEL_CIVIC_INTENSITY(r->civic);
+    uint8_t count = (uint8_t)(intensity + 1u);
+    if (activity == DUEL_CIVIC_SECONDARY_SCROLL) {
+        /* A tall analyzer aperture with a moving bead-chain reads as travel. */
+        for (int y = 70; y <= 90; y++)
+            for (int x = 17; x <= 25; x++)
+                duel_fb_px(fb, BROWSE_X(x), y, false);
+        duel_fb_line(fb, BROWSE_X(21), 72, BROWSE_X(21), 88);
+        duel_fb_line(fb, BROWSE_X(22), 72, BROWSE_X(22), 88);
+        for (uint8_t i = 0; i < count; i++) {
+            int y = 73 + (int)((r->civic_phase + i * 4u) % 13u);
+            duel_fb_px(fb, BROWSE_X(19), y - 1, true);
+            duel_fb_px(fb, BROWSE_X(20), y, true);
+            duel_fb_px(fb, BROWSE_X(23), y, true);
+            duel_fb_px(fb, BROWSE_X(24), y - 1, true);
+        }
+    } else if (activity == DUEL_CIVIC_SECONDARY_TAB) {
+        /* Three adjacent index drawers make selection lateral, not vertical. */
+        for (int y = 69; y <= 82; y++)
+            for (int x = 16; x <= 30; x++)
+                duel_fb_px(fb, BROWSE_X(x), y, false);
+        for (uint8_t tab = 0; tab < 3u; tab++) {
+            int x0 = 17 + tab * 5;
+            duel_fb_desk_hline(fb, is_left, x0, x0 + 3, 72);
+            duel_fb_desk_hline(fb, is_left, x0, x0 + 3, 79);
+            for (int y = 73; y < 79; y++) {
+                duel_fb_px(fb, BROWSE_X(x0), y, true);
+                duel_fb_px(fb, BROWSE_X(x0 + 3), y, true);
+            }
+        }
+        for (uint8_t i = 0; i < count; i++)
+            duel_fb_px(fb, BROWSE_X(18 + (i % 3u) * 5u), 75 + (i / 3u) * 2u, true);
+    } else { /* PAGE: a bounded page-turn aperture on the analyzer. */
+        for (int y = 70; y <= 90; y++)
+            for (int x = 17; x <= 29; x++)
+                duel_fb_px(fb, BROWSE_X(x), y, false);
+        int left = BROWSE_X(19), right = BROWSE_X(27);
+        int lo = left < right ? left : right;
+        int hi = left < right ? right : left;
+        duel_fb_hline(fb, lo, hi, 72);
+        duel_fb_hline(fb, lo, hi, 88);
+        for (int y = 73; y < 88; y++) {
+            duel_fb_px(fb, lo, y, true);
+            duel_fb_px(fb, hi, y, true);
+        }
+        duel_fb_line(fb, BROWSE_X(23), 72, BROWSE_X(27), 76);
+        for (uint8_t i = 0; i < count; i++)
+            duel_fb_desk_hline(fb, is_left, 21, 25 + i, 79 + i * 2);
+    }
+#undef BROWSE_X
+}
+
 static void archive_rect(duel_fb_t *fb, int x0, int y0, int x1, int y1) {
     for (int x = x0; x <= x1; x++) {
         duel_fb_px(fb, x, y0, true);
@@ -222,7 +288,8 @@ static void floor_dome(duel_fb_t *fb, int lo, int hi, int top_y) {
 /* Occupation-first current furniture. Each floor owns two large silhouettes and
  * uses the same work/inspect/rest anchors as the resident engine: x~6 for the
  * dominant work object, x~21 for its supporting station, and x~4 for rest. */
-static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor, bool is_left) {
+static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t district, bool is_left,
+                                                   uint8_t intensity) {
 #define OX(x)            duel_fb_desk_x(is_left, x)
 #define OSPAN(x0, x1, y) duel_fb_desk_hline(fb, is_left, (x0), (x1), (y))
 #define ORECT(x0, y0, x1, y1)                                                                      \
@@ -230,7 +297,7 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor,
         int a_ = OX(x0), b_ = OX(x1);                                                              \
         archive_rect(fb, a_ < b_ ? a_ : b_, (y0), a_ < b_ ? b_ : a_, (y1));                        \
     } while (0)
-    if (floor == DUEL_CIVIC_FLOOR_COMMONS) {
+    if (district == DUEL_DISTRICT_COMMONS) {
         /* Communal table / dispatch desk: the broadest horizontal mass. */
         OSPAN(3, 14, 96);
         OSPAN(3, 14, 97);
@@ -266,7 +333,7 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor,
                 for (int y = 99; y <= 103; y++)
                     duel_fb_px(fb, OX(x), y, true);
         }
-    } else if (floor == DUEL_CIVIC_FLOOR_RESEARCH) {
+    } else if (district == DUEL_DISTRICT_RESEARCH) {
         /* Dominant telescope/analyzer, an unmistakable rising diagonal. */
         duel_fb_line(fb, OX(4), 98, OX(15), 76);
         duel_fb_line(fb, OX(5), 100, OX(16), 78);
@@ -302,7 +369,7 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor,
             duel_fb_px(fb, OX(27), 94, true);
             duel_fb_px(fb, OX(26), 96, true);
         }
-    } else if (floor == DUEL_CIVIC_FLOOR_WORKSHOP) {
+    } else if (district == DUEL_DISTRICT_WORKSHOP) {
         /* Dominant forge: cauldron on astral, anvil/gear press on mechanical. */
         if (is_left) {
             floor_dome(fb, OX(3), OX(14), 90);
@@ -341,29 +408,75 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t floor,
             duel_fb_px(fb, OX(26), 81, true);
             floor_gear(fb, OX(27), 94, 2);
         }
-    } else { /* Observatory: quiet instrument under a city-specific dome. */
+    } else if (district == DUEL_DISTRICT_SCRIPTORIUM) {
+        /* Shared occupation, different city voices: astral lectern/quill and
+         * scroll rack; mechanical typesetter, copy desk, and index drawers. */
+        ORECT(4, 84, 15, 104);
+        OSPAN(3, 16, 105);
+        ORECT(23, 70, 30, 104);
+        for (int y = 78; y <= 98; y += 7)
+            OSPAN(24, 29, y);
+        if (is_left) {
+            floor_dome(fb, OX(4), OX(15), 80);
+            duel_fb_line(fb, OX(9), 82, OX(16), 69); /* quill */
+            for (int y = 74; y <= 100; y += 6)
+                duel_fb_px(fb, OX(27), y, true); /* scroll spines */
+        } else {
+            for (int x = 6; x <= 14; x += 3)
+                duel_fb_px(fb, OX(x), 89, true); /* type bars */
+            ORECT(6, 76, 14, 82);
+            for (int x = 24; x <= 29; x += 3)
+                for (int y = 72; y <= 102; y += 7)
+                    duel_fb_px(fb, OX(x), y, true);
+        }
+    } else if (district == DUEL_DISTRICT_STUDIO) {
+        /* Resonance harp/prism stage on the astral half; mixer/projector/reel
+         * on the mechanical half. */
+        OSPAN(3, 18, 103);
+        ORECT(22, 76, 30, 104);
+        if (is_left) {
+            duel_fb_line(fb, OX(5), 100, OX(12), 73);
+            duel_fb_line(fb, OX(17), 100, OX(12), 73);
+            for (int x = 8; x <= 15; x += 2)
+                duel_fb_line(fb, OX(x), 96, OX(12), 76); /* harp strings */
+            floor_dome(fb, OX(22), OX(30), 71);          /* prism stage */
+        } else {
+            for (int x = 5; x <= 17; x += 3) {
+                duel_fb_px(fb, OX(x), 92, true);
+                duel_fb_px(fb, OX(x), 97, true);
+            }
+            floor_gear(fb, OX(26), 84, 4);            /* reel */
+            duel_fb_line(fb, OX(22), 72, OX(30), 78); /* projector */
+        }
+    } else { /* Observatory: four quarter-boundary instrument states. */
+        uint8_t stage = intensity & 3u;
         if (is_left) {
             floor_dome(fb, OX(2), OX(30), 66);
             floor_dome(fb, OX(5), OX(27), 70);
-            duel_fb_line(fb, OX(7), 101, OX(18), 76);
-            duel_fb_line(fb, OX(8), 102, OX(19), 77);
-            ORECT(16, 73, 22, 80);
-            duel_fb_px(fb, OX(9), 67, true);
-            duel_fb_px(fb, OX(14), 72, true);
-            duel_fb_px(fb, OX(24), 68, true);
+            duel_fb_line(fb, OX(7), 101, OX(15 + stage * 2), 80 - stage * 3);
+            duel_fb_line(fb, OX(8), 102, OX(16 + stage * 2), 81 - stage * 3);
+            ORECT(14 + stage * 2, 77 - stage * 3, 20 + stage * 2, 84 - stage * 3);
         } else {
             ORECT(2, 65, 30, 69);
             for (int x = 4; x <= 28; x += 4)
                 duel_fb_px(fb, OX(x), 67, true);
-            floor_gear(fb, OX(16), 79, 7);
-            duel_fb_line(fb, OX(7), 101, OX(16), 79);
-            duel_fb_line(fb, OX(25), 101, OX(16), 79);
+            floor_gear(fb, OX(16), 79, 4 + stage);
+            duel_fb_line(fb, OX(7), 101, OX(14 + stage), 82 - stage);
+            duel_fb_line(fb, OX(25), 101, OX(18 - stage), 82 - stage);
             for (int y = 87; y <= 104; y++)
                 duel_fb_px(fb, OX(16), y, true);
         }
         ORECT(23, 83, 30, 104);
         duel_fb_line(fb, OX(24), 89, OX(29), 96);
         duel_fb_line(fb, OX(24), 96, OX(29), 89);
+        for (uint8_t star = 0; star <= stage; star++) {
+            int sx = OX(6 + star * 6);
+            int sy = 72 + ((star + stage) & 3u);
+            duel_fb_px(fb, sx, sy, true);
+            if (star)
+                duel_fb_line(fb, OX(6 + (star - 1u) * 6), 72 + (((star - 1u) + stage) & 3u), sx,
+                             sy);
+        }
     }
 #undef OSPAN
 #undef ORECT
@@ -415,6 +528,36 @@ static void duel_environment_draw_floor_transition(duel_fb_t *fb, const duel_ren
     }
 }
 
+static void draw_crowd_moments(duel_fb_t *fb, const duel_render_t *r, bool is_left,
+                               uint8_t district, uint8_t mode, uint8_t after_kind,
+                               uint8_t after_phase) {
+    if (mode == DUEL_CIVIC_MODE_QUIET || district == DUEL_DISTRICT_OBSERVATORY)
+        return;
+    bool arrival = !(r->revision & INCANTATION_AFTERMATH_WIRE) &&
+                   DUEL_VISITOR_KIND(r->shared_pres) != DUEL_CIVIC_COURIER_NONE &&
+                   DUEL_VISITOR_LIFECYCLE(r->shared_pres) == DUEL_CIVIC_VISIT_ARRIVING &&
+                   ((r->civic_phase + r->seed) & 63u) < DUEL_CROWD_ARRIVAL_PHASES;
+    bool celebration =
+        (after_kind == AFTER_CHEER || after_kind == AFTER_MAX_CAST) && after_phase < 2u;
+    bool crisis = (after_kind == AFTER_PANIC || after_kind == AFTER_FIRE) && after_phase < 2u;
+    if (!arrival && !celebration && !crisis)
+        return;
+    /* The ordinary resident plus these two derived bystanders is the hard
+     * three-silhouette maximum. No crowd record or actor pool exists. */
+    for (uint8_t i = 0; i < DUEL_CROWD_BYSTANDERS; i++) {
+        int desk_x = 6 + i * 20 + ((r->seed + district + i) & 1u);
+        int x = duel_fb_desk_x(is_left, desk_x);
+        int feet = 108 - (int)((r->seed + i + district) & 1u);
+        duel_fb_hline(fb, x - 1, x + 1, feet - 5);
+        for (int y = feet - 4; y <= feet - 1; y++)
+            duel_fb_px(fb, x, y, true);
+        duel_fb_px(fb, x - 1, feet, true);
+        duel_fb_px(fb, x + 1, feet, true);
+        int gesture = celebration ? -2 : crisis ? 2 : (i ? -1 : 1);
+        duel_fb_px(fb, x + gesture, feet - 3, true);
+    }
+}
+
 // Twin Cities tower floor beneath the raised rooftop. A schematic cutaway room whose
 // OCCUPATION is chosen by the civic byte (DUEL_CIVIC_FLOOR): Commons/post,
 // Archive/Research, or Workshop/Forge. The two cities render the same room in
@@ -427,7 +570,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
 #define FLR_X(x) (is_left ? (x) : (DUEL_CANVAS_W - 1 - (x)))
     // The civic byte is authoritative for the occupation; during the first two
     // transition phases the outgoing (source) floor is still the one shown.
-    uint8_t floor = incantation_effective_floor(r);
+    uint8_t district = incantation_effective_district(r);
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
 
     // Rooftop deck: the ceiling beam thickened one row upward (both cities),
@@ -500,12 +643,18 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
     duel_fb_hline(fb, 0, DUEL_CANVAS_W - 1, DUEL_FLOOR_Y1);
 
     // Occupation furniture, then the session-seeded resident living among it.
-    duel_environment_draw_floor_occupation(fb, floor, is_left);
-    draw_typing_ambience(fb, r, is_left, floor, mode);
-    civic_resident_t res = civic_resident_derive(r->seed, is_left, floor, mode, r->civic_phase);
-    if (floor == DUEL_CIVIC_FLOOR_SPECIAL) {
-        res.action = DUEL_CIVIC_ACTION_WATCH_ROOF;
-        res.station = INCANTATION_OCCUPATION_KEY(floor, res.action);
+    duel_environment_draw_floor_occupation(fb, district, is_left, DUEL_CIVIC_INTENSITY(r->civic));
+    draw_typing_ambience(fb, r, is_left, district, mode);
+    draw_browser_activity(fb, r, is_left, district, mode);
+    civic_resident_t res = civic_resident_derive(r->seed, is_left, district, mode, r->civic_phase);
+    if (district == DUEL_DISTRICT_OBSERVATORY) {
+        static const uint8_t ritual_action[4] = {DUEL_CIVIC_ACTION_WORK, DUEL_CIVIC_ACTION_INSPECT,
+                                                 DUEL_CIVIC_ACTION_WATCH_ROOF,
+                                                 DUEL_CIVIC_ACTION_REST};
+        uint8_t stage = DUEL_CIVIC_INTENSITY(r->civic);
+        res.action = ritual_action[stage];
+        res.progress = (uint8_t)(stage * 4u);
+        res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
     }
     uint8_t after_kind = AFTER_NONE, after_phase = 0;
     if (r->revision & INCANTATION_AFTERMATH_WIRE) {
@@ -555,12 +704,12 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
                 break;
         }
         if (after_kind != AFTER_NONE)
-            res.station = INCANTATION_OCCUPATION_KEY(floor, res.action);
-    } else if (floor != DUEL_CIVIC_FLOOR_SPECIAL &&
+            res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
+    } else if (district != DUEL_DISTRICT_OBSERVATORY &&
                DUEL_EVENT_ID(r->revision) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER) {
         uint8_t target = DUEL_EVENT_TARGET(r->revision);
         res.action = DUEL_CIVIC_ACTION_HANDLE_DELIVERY;
-        res.station = INCANTATION_OCCUPATION_KEY(floor, res.action);
+        res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
         res.task =
             target == DUEL_CIVIC_EVENT_TARGET_SHARED
                 ? RESIDENT_DIPLO_NEUTRAL
@@ -568,6 +717,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
                                                                        : RESIDENT_DIPLO_RECEIVING);
     }
     civic_resident_draw(fb, &res, is_left, mode, 0);
+    draw_crowd_moments(fb, r, is_left, district, mode, after_kind, after_phase);
 
     /* Lasting room/object consequences. They share the authoritative aftermath
      * phase with the resident task, so reconnecting halves resume mid-arc. All
@@ -578,7 +728,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
                           : after_kind == AFTER_MAX_CAST  ? DUEL_CIVIC_ACTION_WATCH_ROOF
                           : after_kind == AFTER_CHEER     ? DUEL_CIVIC_ACTION_REACT
                                                           : DUEL_CIVIC_ACTION_WORK;
-    incantation_point_t mark = incantation_occupation_anchor(floor, mark_action);
+    incantation_point_t mark = incantation_occupation_anchor(district, mark_action);
     int mx = FLR_X(mark.x), my = mark.y;
     if (after_kind == AFTER_FIRE) {
         if (after_phase < 3u) {
@@ -622,6 +772,26 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
     } else if (after_kind == AFTER_CHEER) {
         duel_fb_px(fb, FLR_X(mark.x - 2), my - 2 - after_phase, true);
         duel_fb_px(fb, mx, my - 4 + after_phase, true);
+    }
+    uint8_t flavor = INCANTATION_AFTERMATH_FLAVOR(r->revision);
+    if (after_kind != AFTER_NONE && flavor != AFTER_FLAVOR_BASE) {
+        int fy = my - 8;
+        if (flavor == AFTER_FLAVOR_RUNE || flavor == AFTER_FLAVOR_BLOOM) {
+            duel_fb_px(fb, mx, fy - 2, true);
+            duel_fb_px(fb, mx - 2, fy, true);
+            duel_fb_px(fb, mx + 2, fy, true);
+            duel_fb_px(fb, mx, fy + 2, true);
+        } else if (flavor == AFTER_FLAVOR_FAMILIAR || flavor == AFTER_FLAVOR_ECHO) {
+            duel_fb_line(fb, mx - 3, fy, mx, fy + 2);
+            duel_fb_line(fb, mx, fy + 2, mx + 3, fy);
+        } else if (flavor == AFTER_FLAVOR_WALL) {
+            duel_fb_line(fb, mx, fy - 3, mx, fy + 3);
+            duel_fb_px(fb, mx + (is_left ? 1 : -1), fy, true);
+        } else if (flavor == AFTER_FLAVOR_VORTEX) {
+            duel_fb_line(fb, mx - 2, fy - 2, mx + 2, fy - 2);
+            duel_fb_line(fb, mx + 2, fy - 2, mx + 2, fy + 2);
+            duel_fb_line(fb, mx + 2, fy + 2, mx - 1, fy + 2);
+        }
     }
 
     // Stone course: a single masonry border under the room floor; rows below

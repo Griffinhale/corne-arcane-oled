@@ -42,6 +42,7 @@ void incantation_collection_tick(sim_incantation_t *incantation, uint32_t held_p
 #define INCANTATION_AMBIENCE_TREND(v)  ((uint8_t)(((v) >> 3) & 3u))
 
 uint8_t incantation_tempo_trend(const sim_incantation_t *inc);
+uint8_t incantation_signature(uint32_t descriptor);
 uint8_t incantation_local_ambience(const sim_wizard_t *wizard);
 uint8_t incantation_aftermath_shared(const sim_world_t *world);
 uint8_t incantation_aftermath_revision(const sim_world_t *world);

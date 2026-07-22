@@ -10,7 +10,7 @@ from typing import Callable
 
 from .dbus_contract import RepositoryState
 from .policy import NotificationPolicy
-from .protocol import Category, Priority
+from .protocol import Category, Intensity, Priority, Secondary
 from .semantic import SemanticResolver
 
 
@@ -31,6 +31,7 @@ class SemanticAdapters:
         changed: Callable[[], None],
         clock: Callable[[], float] = time.monotonic,
         token_key: bytes | None = None,
+        pomodoro_duration: float = 1500.0,
     ) -> None:
         self.resolver = resolver
         self.policy = policy
@@ -42,6 +43,11 @@ class SemanticAdapters:
         self._pomodoro_warning = False
         self._pomodoro_active = False
         self._pomodoro_deadline: float | None = None
+        self._pomodoro_duration = max(1.0, pomodoro_duration)
+        self._pomodoro_stage = Intensity.CALM
+        self._browser_pending: tuple[Secondary, Intensity] | None = None
+        self._browser_expiry: float | None = None
+        self._browser_next_emit = 0.0
         self._network_offline = False
         self._network_status: str | None = None
         self._vpn = False
@@ -83,7 +89,13 @@ class SemanticAdapters:
         now = self.clock()
         if active and remaining_seconds is not None:
             self._pomodoro_deadline = now + max(0.0, remaining_seconds)
-        changed = self.resolver.update(pomodoro=bool(active))
+            elapsed = max(
+                0.0, min(self._pomodoro_duration, self._pomodoro_duration - remaining_seconds)
+            )
+            self._pomodoro_stage = Intensity(min(3, int(elapsed * 4.0 / self._pomodoro_duration)))
+        elif not active:
+            self._pomodoro_stage = Intensity.CALM
+        changed = self.resolver.update(pomodoro=bool(active), pomodoro_stage=self._pomodoro_stage)
         event_changed = False
         if failed:
             event_changed = self.policy.inject(
@@ -110,25 +122,70 @@ class SemanticAdapters:
             self._changed(event_changed)
 
     def next_deadline(self, now: float) -> float | None:
-        if not self._pomodoro_active or self._pomodoro_deadline is None:
-            return None
-        if not self._pomodoro_warning:
-            warning = self._pomodoro_deadline - 60.0
-            if warning > now:
-                return warning
-        return max(now, self._pomodoro_deadline)
+        deadlines: list[float] = []
+        if self._pomodoro_active and self._pomodoro_deadline is not None:
+            if not self._pomodoro_warning:
+                warning = self._pomodoro_deadline - 60.0
+                if warning > now:
+                    deadlines.append(warning)
+            start = self._pomodoro_deadline - self._pomodoro_duration
+            next_stage = int(self._pomodoro_stage) + 1
+            if next_stage < 4:
+                deadlines.append(max(now, start + self._pomodoro_duration * next_stage / 4.0))
+            deadlines.append(max(now, self._pomodoro_deadline))
+        if self._browser_pending is not None:
+            deadlines.append(max(now, self._browser_next_emit))
+        if self._browser_expiry is not None:
+            deadlines.append(max(now, self._browser_expiry))
+        return min(deadlines) if deadlines else None
 
     def poll(self, now: float) -> bool:
         """Advance deadline-only semantics without introducing a polling loop."""
-        if not self._pomodoro_active or self._pomodoro_deadline is None:
-            return False
         before = (self.resolver.state.revision, self.counters.events)
-        remaining = self._pomodoro_deadline - now
-        if remaining <= 0:
-            self.pomodoro(False, 0)
-        elif remaining <= 60 and not self._pomodoro_warning:
-            self.pomodoro(True, remaining)
+        if self._browser_expiry is not None and now >= self._browser_expiry:
+            self._browser_pending = None
+            self._browser_expiry = None
+            if self.resolver.update(
+                browser_activity=Secondary.NONE, browser_intensity=Intensity.CALM
+            ):
+                self._changed()
+        elif self._browser_pending is not None and now >= self._browser_next_emit:
+            kind, intensity = self._browser_pending
+            self._browser_pending = None
+            self._browser_next_emit = now + 0.25
+            if self.resolver.update(browser_activity=kind, browser_intensity=intensity):
+                self._changed()
+        if self._pomodoro_active and self._pomodoro_deadline is not None:
+            remaining = self._pomodoro_deadline - now
+            if remaining <= 0:
+                self.pomodoro(False, 0)
+            else:
+                elapsed = max(
+                    0.0, min(self._pomodoro_duration, self._pomodoro_duration - remaining)
+                )
+                stage = Intensity(min(3, int(elapsed * 4.0 / self._pomodoro_duration)))
+                if stage != self._pomodoro_stage or (
+                    remaining <= 60 and not self._pomodoro_warning
+                ):
+                    self.pomodoro(True, remaining)
         return before != (self.resolver.state.revision, self.counters.events)
+
+    def browser(self, kind: Secondary, intensity: Intensity) -> None:
+        if kind not in {Secondary.SCROLL, Secondary.TAB, Secondary.PAGE}:
+            raise ValueError("invalid browser activity kind")
+        if not 0 <= int(intensity) <= 3:
+            raise ValueError("invalid browser activity intensity")
+        now = self.clock()
+        self._browser_expiry = now + 1.5
+        if now >= self._browser_next_emit:
+            self._browser_pending = None
+            self._browser_next_emit = now + 0.25
+            if self.resolver.update(browser_activity=kind, browser_intensity=intensity):
+                self._changed()
+        else:
+            self._browser_pending = (kind, intensity)
+            # Wake the runtime so it can reschedule for the coalescing boundary.
+            self.changed()
 
     def network(self, connectivity: str, vpn: bool = False) -> None:
         now = self.clock()

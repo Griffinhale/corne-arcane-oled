@@ -11,11 +11,12 @@ from .dbus_contract import (
     EVENTS_INTERFACE,
     INJECT_SYNTHETIC,
     OBJECT_PATH,
+    REPORT_BROWSER_ACTIVITY,
     REPORT_REPOSITORY_STATE,
     REPORT_TERMINAL_COMPLETION,
     RepositoryState,
 )
-from .protocol import Category, Priority
+from .protocol import Category, Intensity, Priority, Secondary
 
 CATEGORIES = {item.name.lower(): item for item in Category if item != Category.NONE}
 PRIORITIES = {item.name.lower(): item for item in Priority if item != Priority.NONE}
@@ -34,6 +35,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     repository = commands.add_parser("git", help="report a redacted repository state")
     repository.add_argument("state", choices=("clean", "dirty", "operation", "completion"))
     repository.add_argument("--failed", action="store_true")
+    browser = commands.add_parser("browser", help="report bounded browser activity")
+    browser.add_argument("kind", choices=("scroll", "tab", "page"))
+    browser.add_argument("intensity", type=int, choices=range(4))
     commands.add_parser("clear", help="clear transient and persistent alerts")
     return parser.parse_args(argv)
 
@@ -73,6 +77,14 @@ def run(args: argparse.Namespace) -> int:
             "completion": RepositoryState.COMPLETION,
         }[args.state]
         parameters = GLib.Variant("(yb)", (state, not args.failed))
+    elif args.command == "browser":
+        method = REPORT_BROWSER_ACTIVITY
+        kind = {
+            "scroll": Secondary.SCROLL,
+            "tab": Secondary.TAB,
+            "page": Secondary.PAGE,
+        }[args.kind]
+        parameters = GLib.Variant("(yy)", (int(kind), int(Intensity(args.intensity))))
     else:
         method = CLEAR_NOTIFICATIONS
         parameters = None

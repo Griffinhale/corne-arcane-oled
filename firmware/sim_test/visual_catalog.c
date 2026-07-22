@@ -17,7 +17,7 @@ typedef struct {
     char name[48];
     uint64_t hash;
 } visual_case_t;
-static visual_case_t cases[384];
+static visual_case_t cases[640];
 static size_t ncases;
 
 static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
@@ -87,6 +87,24 @@ static void record_render(const char *name, const duel_render_t *render, uint32_
     record_case(name, &left, &right);
 }
 
+static void set_district_context(duel_render_t *render, uint8_t district, uint8_t mode,
+                                 uint8_t intensity) {
+    static const uint8_t floor[DUEL_DISTRICT_COUNT] = {
+        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_WORKSHOP,
+        DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_COMMONS,
+    };
+    static const uint8_t scene[DUEL_DISTRICT_COUNT] = {
+        DUEL_HOST_SCENE_DUEL,  DUEL_HOST_SCENE_ARCHIVE, DUEL_HOST_SCENE_DUEL,
+        DUEL_HOST_SCENE_FOCUS, DUEL_HOST_SCENE_DUEL,    DUEL_HOST_SCENE_ARCHIVE,
+    };
+    if (district >= DUEL_DISTRICT_COUNT)
+        district = DUEL_DISTRICT_COMMONS;
+    render->civic = DUEL_CIVIC_PACK(floor[district], mode, intensity);
+    render->external =
+        DUEL_HOST_CONTEXT_PACK(true, scene[district], DUEL_HOST_CONTEXT_NOTIF(render->external),
+                               DUEL_HOST_CONTEXT_PERSISTENT(render->external));
+}
+
 static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame, uint8_t flash_kind,
                            uint8_t civic, uint8_t transition) {
     duel_render_t render = {0};
@@ -96,6 +114,11 @@ static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame,
     render.flash_kind = flash_kind;
     render.flash_frames = flash_kind ? 8u : 0u;
     render.civic = civic;
+    uint8_t floor = DUEL_CIVIC_FLOOR(civic);
+    uint8_t scene = floor == DUEL_CIVIC_FLOOR_RESEARCH  ? DUEL_HOST_SCENE_ARCHIVE
+                    : floor == DUEL_CIVIC_FLOOR_SPECIAL ? DUEL_HOST_SCENE_FOCUS
+                                                        : DUEL_HOST_SCENE_DUEL;
+    render.external = DUEL_HOST_CONTEXT_PACK(true, scene, 0u, false);
     render.floor_transition = transition;
     record_render(name, &render, frame, false);
 }
@@ -103,6 +126,16 @@ static void add_case_civic(const char *name, sim_world_t *world, uint32_t frame,
 static void add_case(const char *name, sim_world_t *world, uint32_t frame, uint8_t flash_kind) {
     add_case_civic(name, world, frame, flash_kind,
                    DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0), 0u);
+}
+
+static void add_case_district(const char *name, sim_world_t *world, uint32_t frame,
+                              uint8_t district, uint8_t mode, uint8_t intensity) {
+    duel_render_t render = {0};
+    duel_render_from_world(&render, world);
+    render.seed = 0x5au;
+    render.civic_phase = 19u;
+    set_district_context(&render, district, mode, intensity);
+    record_render(name, &render, frame, false);
 }
 
 static void add_occupation_case(const char *name, sim_world_t *world, uint8_t floor, uint8_t action,
@@ -125,7 +158,7 @@ static void add_occupation_case(const char *name, sim_world_t *world, uint8_t fl
     }
     if (!found)
         abort();
-    render.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+    set_district_context(&render, floor, DUEL_CIVIC_MODE_NORMAL, 0u);
     /* Only the requested half is drawn; the other framebuffer stays blank. */
     duel_fb_t left, right;
     duel_fb_clear(&left);
@@ -185,12 +218,196 @@ static void build_catalog(void) {
      * Commons/dawn review frame. */
     add_case("sky_commons_dawn_idle_8hp", &world, 0, 0);
 
-    static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {"commons", "research",
-                                                                    "workshop", "observatory"};
+    static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {
+        "commons", "research", "workshop", "observatory", "scriptorium", "studio"};
+    static const char *mode_name[] = {"normal", "quiet", "urgent"};
+    static const char *intensity_name[] = {"calm", "active", "busy", "saturated"};
+
+    /* The physical-review matrix: every renderer-level district in both city
+     * voices, every supported mode, and every activity magnitude. The City
+     * scroll is deliberately open so otherwise presentation-only mode/intensity
+     * values remain visible without replacing the living room underneath. */
+    for (uint8_t district = 0; district < DUEL_DISTRICT_COUNT; district++) {
+        for (uint8_t mode = DUEL_CIVIC_MODE_NORMAL; mode <= DUEL_CIVIC_MODE_URGENT; mode++) {
+            for (uint8_t intensity = DUEL_CIVIC_INTENSITY_CALM;
+                 intensity <= DUEL_CIVIC_INTENSITY_SATURATED; intensity++) {
+                duel_render_t district_render = {0};
+                duel_render_from_world(&district_render, &world);
+                district_render.seed = (uint8_t)(0x40u + district * 5u);
+                district_render.civic_phase = 35u;
+                district_render.view.outcome_overlay = VIEW_OVERLAY_PACK(0u, true, 0u);
+                set_district_context(&district_render, district, mode, intensity);
+                char name[48];
+                snprintf(name, sizeof name, "district_%s_%s_%s", floor_name[district],
+                         mode_name[mode], intensity_name[intensity]);
+                add_render_case(name, &district_render, 7u);
+            }
+        }
+    }
+
+    /* Observatory's ritual changes only at quarter boundaries. A night sky
+     * and a separate seed keep all four review frames distinct from the broad
+     * district matrix above. */
+    for (uint8_t stage = 0; stage < 4u; stage++) {
+        duel_render_t observatory = {0};
+        duel_render_from_world(&observatory, &world);
+        observatory.seed = 0x81u;
+        observatory.civic_phase = 77u;
+        observatory.secondary = DUEL_SECONDARY_SKY_PACK(0u, DUEL_SKY_NIGHT);
+        set_district_context(&observatory, DUEL_DISTRICT_OBSERVATORY, DUEL_CIVIC_MODE_QUIET, stage);
+        char name[48];
+        snprintf(name, sizeof name, "observatory_stage_%u", stage);
+        add_render_case(name, &observatory, 11u);
+    }
+
+    /* Raw HID v3's three browser events have separate, privacy-bounded
+     * Research instruments at every accepted intensity. */
+    static const char *browser_name[] = {"scroll", "tab", "page"};
+    for (uint8_t activity = DUEL_CIVIC_SECONDARY_SCROLL; activity <= DUEL_CIVIC_SECONDARY_PAGE;
+         activity++) {
+        for (uint8_t intensity = DUEL_CIVIC_INTENSITY_CALM;
+             intensity <= DUEL_CIVIC_INTENSITY_SATURATED; intensity++) {
+            duel_render_t browser = {0};
+            duel_render_from_world(&browser, &world);
+            browser.seed = 0x74u;
+            browser.civic_phase = 37u;
+            browser.secondary = DUEL_SECONDARY_PACK(activity);
+            set_district_context(&browser, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_NORMAL,
+                                 intensity);
+            char name[48];
+            snprintf(name, sizeof name, "browser_%s_%s",
+                     browser_name[activity - DUEL_CIVIC_SECONDARY_SCROLL],
+                     intensity_name[intensity]);
+            add_render_case(name, &browser, 7u);
+        }
+    }
+
+    /* Seven stationary field silhouettes at every canonical battlefield
+     * zone. Slot, age and owner are varied without changing the kind/zone
+     * identity under review. */
+    static const char *field_name[] = {"none", "trap",     "singularity", "steam",
+                                       "rune", "familiar", "wall",        "vortex"};
+    for (uint8_t kind = FIELD_TRAP; kind < FIELD_KIND_COUNT; kind++) {
+        for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++) {
+            duel_render_t field = {0};
+            duel_render_from_world(&field, &world);
+            field.seed = 0x35u;
+            field.civic_phase = 21u;
+            field.field[zone & 1u] =
+                (uint8_t)(kind | (zone << 3) | (((kind + zone) & 3u) << 5) | ((zone & 1u) << 7));
+            char name[48];
+            snprintf(name, sizeof name, "field_%s_zone_%u", field_name[kind], zone);
+            add_render_case(name, &field, 9u);
+        }
+    }
+
+    /* Rich, labelled World Almanac scrolls. Page selection comes solely from
+     * outcome_overlay; the deliberately conflicting host scene proves that
+     * host context supplies content without overriding the selector. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[0].hp = 5u;
+    world.wiz[0].ward_strength = 3u;
+    world.wiz[0].status = STATUS_MARKED;
+    world.wiz[0].status_intensity = 2u;
+    world.wiz[0].prepared = 1u;
+    world.wiz[0].prepared_desc = descriptor(SPELL_BEAM, 3u);
+    world.wiz[1].hp = 3u;
+    world.wiz[1].ward_strength = 2u;
+    world.residue[0].element = ELEM_EMBER;
+    world.residue[0].intensity = 2u;
+    world.residue[2].element = ELEM_VOID;
+    world.residue[2].intensity = 3u;
+    world.field[0] = (sim_field_t){
+        .kind = FIELD_RUNE, .zone = SIM_RESIDUE_MID_L, .owner = SIM_SIDE_L, .timer = 90u};
+    world.field[1] = (sim_field_t){.kind = FIELD_WALL,
+                                   .zone = SIM_RESIDUE_MID_R,
+                                   .owner = SIM_SIDE_R,
+                                   .timer = 75u,
+                                   .aux = 3u};
+    static const char *almanac_name[SCRY_SCENES] = {"city", "duel", "host"};
+    for (uint8_t page = 0; page < SCRY_SCENES; page++) {
+        duel_render_t almanac = {0};
+        duel_render_from_world(&almanac, &world);
+        almanac.seed = 0x92u;
+        almanac.civic_phase = 9u;
+        almanac.view.outcome_overlay = VIEW_OVERLAY_PACK(3u, true, page);
+        almanac.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 4u, true);
+        almanac.alert =
+            DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_CALENDAR, DUEL_HOST_PRIORITY_CRITICAL, 2u);
+        almanac.secondary = DUEL_SECONDARY_PACK(DUEL_CIVIC_SECONDARY_PAGE);
+        almanac.shared_pres =
+            DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_PARCEL, SIM_SIDE_R, DUEL_CIVIC_VISIT_WAITING);
+        almanac.revision =
+            DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_CIVIC_SKY, DUEL_CIVIC_EVENT_PHASE_ACTIVE,
+                            DUEL_CIVIC_EVENT_TARGET_SHARED);
+        set_district_context(&almanac, DUEL_DISTRICT_OBSERVATORY, DUEL_CIVIC_MODE_QUIET, 2u);
+        char name[48];
+        snprintf(name, sizeof name, "almanac_%s", almanac_name[page]);
+        add_render_case(name, &almanac, 13u);
+    }
+
+    /* The per-OLED parchment opens from its centre in seven bounded extents;
+     * the full seventh extent is already represented by almanac_duel above.
+     * Held content advances upward, and release reuses the same extents in
+     * reverse with the final reading frozen. */
+    duel_render_t moving_scroll = {0};
+    duel_render_from_world(&moving_scroll, &world);
+    moving_scroll.seed = 0x92u;
+    moving_scroll.civic_phase = 9u;
+    moving_scroll.view.outcome_overlay = VIEW_OVERLAY_PACK(3u, true, 1u);
+    moving_scroll.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 4u, true);
+    moving_scroll.alert =
+        DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_CALENDAR, DUEL_HOST_PRIORITY_CRITICAL, 2u);
+    set_district_context(&moving_scroll, DUEL_DISTRICT_OBSERVATORY, DUEL_CIVIC_MODE_QUIET, 2u);
+    for (uint8_t extent = 1u; extent < DUEL_SCRY_EXTENT_FULL; extent++) {
+        moving_scroll.scry_motion = DUEL_SCRY_MOTION_PACK(extent, false);
+        moving_scroll.scry_scroll = 0u;
+        char name[48];
+        snprintf(name, sizeof name, "scroll_unroll_%u", extent);
+        add_render_case(name, &moving_scroll, 13u);
+    }
+    static const uint8_t held_scroll[] = {9u, 18u, 27u};
+    for (uint8_t i = 0; i < sizeof held_scroll / sizeof held_scroll[0]; i++) {
+        moving_scroll.scry_motion = DUEL_SCRY_MOTION_PACK(DUEL_SCRY_EXTENT_FULL, false);
+        moving_scroll.scry_scroll = held_scroll[i];
+        char name[48];
+        snprintf(name, sizeof name, "scroll_held_%u", held_scroll[i]);
+        add_render_case(name, &moving_scroll, 13u);
+    }
+    static const uint8_t reroll_extent[] = {6u, 3u};
+    for (uint8_t i = 0; i < sizeof reroll_extent / sizeof reroll_extent[0]; i++) {
+        moving_scroll.scry_motion = DUEL_SCRY_MOTION_PACK(reroll_extent[i], true);
+        moving_scroll.scry_scroll = 33u;
+        char name[48];
+        snprintf(name, sizeof name, "scroll_reroll_%u", reroll_extent[i]);
+        add_render_case(name, &moving_scroll, 13u);
+    }
+
+    /* Maximum crowd tableaux: one resident plus two derived bystanders. */
+    duel_render_t crowd = {0};
+    duel_render_from_world(&crowd, &world);
+    crowd.seed = 0u;
+    crowd.civic_phase = 0u;
+    set_district_context(&crowd, DUEL_DISTRICT_COMMONS, DUEL_CIVIC_MODE_NORMAL, 2u);
+    crowd.shared_pres =
+        DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, SIM_SIDE_L, DUEL_CIVIC_VISIT_ARRIVING);
+    add_render_case("crowd_max_arrival", &crowd, 0u);
+    crowd.shared_pres = (uint8_t)(AFTER_CHEER | (AFTER_CHEER << 3) | (WORLD_RECOVERY << 6));
+    crowd.revision = INCANTATION_AFTERMATH_WIRE;
+    add_render_case("crowd_max_celebration", &crowd, 0u);
+    crowd.shared_pres = (uint8_t)(AFTER_FIRE | (AFTER_FIRE << 3) | (WORLD_CRISIS << 6));
+    crowd.revision = INCANTATION_AFTERMATH_WIRE;
+    add_render_case("crowd_max_crisis", &crowd, 0u);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
     static const char *action_name[DUEL_CIVIC_ACTION_COUNT] = {
         "work", "walk", "inspect", "rest", "watch", "delivery", "react"};
-    for (uint8_t floor = 0; floor < 3u; floor++) {
+    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
         for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++) {
+            /* Observatory occupation is ritual-stage authoritative, so its
+             * one stage-zero occupation replaces the ambient action roster. */
+            if (floor == DUEL_DISTRICT_OBSERVATORY && action != DUEL_CIVIC_ACTION_WORK)
+                continue;
             char name[48];
             snprintf(name, sizeof name, "occupation_astral_%s_%s", floor_name[floor],
                      action_name[action]);
@@ -211,7 +428,7 @@ static void build_catalog(void) {
             duel_render_from_world(&civic, &world);
             civic.seed = 0x5au;
             civic.civic_phase = 19u;
-            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            set_district_context(&civic, floor, DUEL_CIVIC_MODE_NORMAL, 0u);
             civic.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(kind, 0, DUEL_CIVIC_VISIT_WAITING) |
                                           DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_SINGLE));
             char name[48];
@@ -223,7 +440,7 @@ static void build_catalog(void) {
             duel_render_from_world(&civic, &world);
             civic.seed = 0x5au;
             civic.civic_phase = 19u;
-            civic.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            set_district_context(&civic, floor, DUEL_CIVIC_MODE_NORMAL, 0u);
             uint8_t target = id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER
                                  ? DUEL_CIVIC_EVENT_TARGET_SHARED
                                  : DUEL_CIVIC_EVENT_TARGET_LEFT;
@@ -248,10 +465,10 @@ static void build_catalog(void) {
             duel_render_from_world(&sky, &world);
             sky.seed = 0x5au;
             sky.civic_phase = 19u;
-            sky.civic = DUEL_CIVIC_PACK(floor,
-                                        floor == DUEL_CIVIC_FLOOR_SPECIAL ? DUEL_CIVIC_MODE_QUIET
-                                                                          : DUEL_CIVIC_MODE_NORMAL,
-                                        0);
+            set_district_context(&sky, floor,
+                                 floor == DUEL_DISTRICT_OBSERVATORY ? DUEL_CIVIC_MODE_QUIET
+                                                                    : DUEL_CIVIC_MODE_NORMAL,
+                                 0u);
             sky.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
             char name[48];
             snprintf(name, sizeof name, "sky_%s_%s", floor_name[floor], sky_name[phase]);
@@ -259,7 +476,7 @@ static void build_catalog(void) {
         }
     }
 
-    /* v11 celestial arc probes: one non-zero sub-phase per sky phase pins the
+    /* v12 celestial arc probes: one non-zero sub-phase per sky phase pins the
      * 16-step panorama (sub-phase 0 is covered by the matrix above). */
     static const uint8_t arc_sub[4] = {3u, 2u, 2u, 2u};
     for (uint8_t phase = DUEL_SKY_DAWN; phase <= DUEL_SKY_NIGHT; phase++) {
@@ -337,7 +554,7 @@ static void build_catalog(void) {
     duel_render_from_world(&variant, &world);
     variant.seed = 0x6bu;
     variant.civic_phase = 23u;
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
+    set_district_context(&variant, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0u);
     for (uint8_t life = DUEL_CIVIC_VISIT_ARRIVING; life <= DUEL_CIVIC_VISIT_RESOLVING; life++) {
         if (life == DUEL_CIVIC_VISIT_WAITING)
             continue;
@@ -354,7 +571,7 @@ static void build_catalog(void) {
         (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_BEACON, 0, DUEL_CIVIC_VISIT_WAITING) |
                   DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_MANY));
     add_render_case("courier_density_many", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0);
+    set_district_context(&variant, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0u);
     variant.shared_pres =
         DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, 0, DUEL_CIVIC_VISIT_ARRIVING);
     add_render_case("courier_quiet_arrival", &variant, 7u);
@@ -367,7 +584,7 @@ static void build_catalog(void) {
 
     variant.view.outcome_overlay &= (uint8_t)~0x10u;
     variant.shared_pres = 0;
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
+    set_district_context(&variant, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0u);
     for (uint8_t phase = DUEL_CIVIC_EVENT_PHASE_ARMED; phase <= DUEL_CIVIC_EVENT_PHASE_COOLDOWN;
          phase++) {
         if (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE)
@@ -378,7 +595,7 @@ static void build_catalog(void) {
             DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL, phase, DUEL_CIVIC_EVENT_TARGET_LEFT);
         add_render_case(name, &variant, 7u);
     }
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0);
+    set_district_context(&variant, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_QUIET, 0u);
     variant.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL,
                                        DUEL_CIVIC_EVENT_PHASE_ACTIVE, DUEL_CIVIC_EVENT_TARGET_LEFT);
     add_render_case("event_quiet", &variant, 7u);
@@ -440,7 +657,7 @@ static void build_catalog(void) {
     duel_render_from_world(&local, &world);
     local.seed = 0x5au;
     local.civic_phase = 23u;
-    local.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0);
+    set_district_context(&local, DUEL_DISTRICT_RESEARCH, DUEL_CIVIC_MODE_NORMAL, 0u);
     local.layer = DUEL_RENDER_LAYER_PACK(1, DUEL_RENDER_LOCAL_LEFT);
     add_render_case("attunement_left", &local, 7u);
     local.layer = DUEL_RENDER_LAYER_PACK(2, DUEL_RENDER_LOCAL_RIGHT);
@@ -673,8 +890,8 @@ static void build_catalog(void) {
             world.world_state = aftermath_kind[i] == AFTER_FIRE ? WORLD_CRISIS : WORLD_RECOVERY;
             char name[48];
             snprintf(name, sizeof name, "after_%s_%s", floor_name[floor], aftermath_name[i]);
-            add_case_civic(name, &world, (uint32_t)(floor * 11u + i), 0,
-                           DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0), 0);
+            add_case_district(name, &world, (uint32_t)(floor * 11u + i), floor,
+                              DUEL_CIVIC_MODE_NORMAL, 0u);
         }
 
     static const char *reaction_name[] = {"heal",         "complaint",      "roof_panic",

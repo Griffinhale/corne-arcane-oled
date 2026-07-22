@@ -17,7 +17,7 @@ physical matrix
              v
        master sim_tick (25 Hz)
              │
-             ├─> model -> view -> split snapshot v11 -> slave presentation
+             ├─> model -> view -> split snapshot v12 -> slave presentation
              │
              ├─> render projection -> scene compositor -> local OLED
              │
@@ -29,8 +29,8 @@ OLED/RGB hooks. It supplies physical positions—not keycodes or text—to
 `duel_sim.c`. The simulation orchestrator preserves the fixed phase order
 declared in `duel_sim_internal.h`. `duel_incantation.c` owns collection and
 descriptor compilation; `duel_combat.c` owns damage, wards, collision, motion,
-status, residue, stance, aftermath, and lifecycle mechanics. Stable layouts and
-enum values live in `duel_model.h`.
+status, residue, fields, derived magic signatures, echo/bloom, aftermath, and
+lifecycle mechanics. Stable layouts and enum values live in `duel_model.h`.
 
 `duel_view.c` creates the canonical presentation projection. `duel_proto.c`
 packs that view plus synchronized presentation state into the split snapshot.
@@ -52,13 +52,13 @@ desktop adapters + explicit event command
        privacy-bounded semantic state
                  │
                  v
-         Raw HID v2 heartbeat
+         Raw HID v3 heartbeat
                  │
                  v
         master disposable context
                  │
                  v
-          split v11 propagation
+          split v12 propagation
 ```
 
 `dbus_contract.py` owns public names, paths, interfaces, XML, methods, and
@@ -75,8 +75,15 @@ device error closes the transport and begins rediscovery with a fresh session.
 Vial shares that endpoint, so `corne-arcane-vial` performs an exclusive,
 state-preserving service handoff. Diagnostics use the same ownership guard for
 single reads and observation windows, restoring only a service that was active
-beforehand. Their separate diagnostics-only v2 protocol does not alter
-production Raw HID v2.
+beforehand. Their separate diagnostics-only v2 protocol does not accept or
+provide compatibility with the prior production Raw HID v2.
+
+Zsh, Bash, and Fish hooks emit only monotonic duration, integer exit status,
+and normalized repository state. KWin and the opt-in GNOME extension report
+only application/desktop identifiers. The optional Firefox bridge carries only
+browser event kind and intensity; it has no URL, title, history, content, form,
+referrer, or typed-text channel. Missing buses, extensions, permissions, or
+native hosts disable only their adapter.
 
 ## Invariants
 
@@ -91,7 +98,7 @@ production Raw HID v2.
   not enter retained semantic state or either wire protocol.
 - Timing: host state expires after 1.5 seconds; heartbeat and reconnect timing,
   display sleep, 25 Hz simulation, and 20-second HP regeneration are contracts.
-- Protocols: production Raw HID v2 and split v11 are exactly 32 bytes. The
+- Protocols: production Raw HID v3 and split v12 are exactly 32 bytes. The
   diagnostics-only v2 reports are three 32-byte pages with an 18-byte reverse
   split reply. Versions, enum values, packing, reserved bits, CRC coverage, and
   stale fallback are stable.

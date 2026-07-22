@@ -25,7 +25,7 @@ void duel_combat_draw_charge(duel_fb_t *fb, const duel_view_wizard_t *wz, int fa
                              uint32_t frame);
 void duel_combat_draw_ward(duel_fb_t *fb, int facing, int strength, int focus, bool punctured,
                            int puncture_y);
-bool duel_combat_incoming_void_at_ward(const duel_view_t *view, int defender,
+bool duel_combat_incoming_void_at_ward(const duel_view_t *view, int defender, uint8_t session,
                                        duel_view_spell_t *found);
 
 void duel_overlay_draw_box3(duel_fb_t *fb, int x, int y);
@@ -37,3 +37,4 @@ void duel_overlay_draw_health(duel_fb_t *fb, const duel_view_wizard_t *wz, bool 
 void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const duel_view_wizard_t *wz,
                                 int facing, bool is_left);
 void duel_overlay_draw_residue(duel_fb_t *fb, const duel_render_t *r, bool is_left);
+void duel_overlay_draw_fields(duel_fb_t *fb, const duel_render_t *r, bool is_left);

@@ -4,17 +4,20 @@
 #include <stdint.h>
 
 #include "duel_civic.h"
+#include "duel_host.h"
 #include "duel_view.h"
 
-#define DUEL_DECK_Y0      60
-#define DUEL_FLOOR_BEAM_Y 61
-#define DUEL_FLOOR_Y0     62
-#define DUEL_FLOOR_Y1     110
-#define DUEL_STONE_Y0     112
-#define DUEL_STONE_Y1     116
-#define DUEL_TOWER_W      13
-#define DUEL_TOWER_PEAK_Y 14
-#define DUEL_ROOF_DY      (-17)
+#define DUEL_DECK_Y0           60
+#define DUEL_FLOOR_BEAM_Y      61
+#define DUEL_FLOOR_Y0          62
+#define DUEL_FLOOR_Y1          110
+#define DUEL_STONE_Y0          112
+#define DUEL_STONE_Y1          116
+#define DUEL_TOWER_W           13
+#define DUEL_TOWER_PEAK_Y      14
+#define DUEL_ROOF_DY           (-17)
+#define DUEL_CROWD_BYSTANDERS  2u
+#define DUEL_CROWD_MAX_VISIBLE (1u + DUEL_CROWD_BYSTANDERS)
 
 typedef struct {
     duel_view_t view;
@@ -35,7 +38,10 @@ typedef struct {
     uint8_t civic_phase;
     uint8_t floor_transition;
     uint8_t local_ambience;
+    uint8_t scry_motion;
+    uint8_t scry_scroll;
     uint8_t residue[2];
+    uint8_t field[SIM_FIELD_SLOTS];
 } duel_render_t;
 
 #define DUEL_RENDER_RESIDUE_ELEMENT(r, zone)                                                       \
@@ -51,10 +57,21 @@ typedef struct {
 #define DUEL_RENDER_LOCAL_LAYER(v)  ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
 #define DUEL_RENDER_LAYER_PACK(global, local)                                                      \
     ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
+#define DUEL_SCRY_EXTENT_MASK   0x07u
+#define DUEL_SCRY_REROLL        0x08u
+#define DUEL_SCRY_EXTENT_FULL   7u
+#define DUEL_SCRY_STREAM_PIXELS 108u
+#define DUEL_SCRY_MOTION_PACK(extent, reroll)                                                      \
+    ((uint8_t)(((extent) & DUEL_SCRY_EXTENT_MASK) | ((reroll) ? DUEL_SCRY_REROLL : 0u)))
+#define DUEL_SCRY_MOTION_EXTENT(value) ((uint8_t)((value) & DUEL_SCRY_EXTENT_MASK))
 
-_Static_assert(sizeof(duel_render_t) == 40, "render state layout changed");
+_Static_assert(sizeof(duel_render_t) == 44, "render state layout changed");
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 uint8_t duel_render_host_online(const duel_render_t *render);
 uint8_t duel_render_scene(const duel_render_t *render);
 uint8_t duel_render_notification_count(const duel_render_t *render);
+uint8_t duel_render_district(const duel_render_t *render);
+static inline bool duel_render_scry_visible(const duel_render_t *render) {
+    return DUEL_SCRY_MOTION_EXTENT(render->scry_motion) != 0u || duel_view_scry_open(&render->view);
+}

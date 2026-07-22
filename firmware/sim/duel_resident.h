@@ -22,7 +22,7 @@
 #define DUEL_CIVIC_ACTION_SLOT 16u
 
 /* Compact floor/action occupation key stored in the existing station byte. */
-#define INCANTATION_OCCUPATION_FLOORS 4u
+#define INCANTATION_OCCUPATION_FLOORS DUEL_DISTRICT_COUNT
 #define INCANTATION_OCCUPATION_KEY(floor, action)                                                  \
     ((uint8_t)(((floor) * DUEL_CIVIC_ACTION_COUNT) + (action)))
 
@@ -40,6 +40,7 @@ incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action)
 // the floor (scenery, courier, marks) must use this one derivation so the
 // layers cannot desync mid-transition.
 uint8_t incantation_effective_floor(const duel_render_t *r);
+uint8_t incantation_effective_district(const duel_render_t *r);
 
 // Fully-derived resident record for one city at one civic phase. No stored
 // coordinates: the station index maps to a fixed spot in the floor band.

@@ -71,6 +71,16 @@ static uint32_t desc_set_element(uint32_t desc, uint8_t element) {
     return (desc & ~((uint32_t)3u << 3)) | ((uint32_t)(element & 3u) << 3);
 }
 
+static bool desc_is_echo(uint32_t desc) {
+    return SPELL_DESC_TREND(desc) == TREND_IRREGULAR &&
+           SPELL_DESC_INTERACTION(desc) == INTERACT_COMBINE && SPELL_DESC_MAGNITUDE(desc) >= 2u;
+}
+
+static bool desc_is_bloom(uint32_t desc) {
+    return SPELL_DESC_TRAJECTORY(desc) == TRAJ_AREA && SPELL_DESC_PAYLOAD(desc) == PAY_HYBRID &&
+           SPELL_DESC_MAGNITUDE(desc) >= 2u;
+}
+
 static uint8_t aftermath_duration(uint8_t kind) {
     switch (kind) {
         case AFTER_FIRE:
@@ -173,6 +183,8 @@ void duel_combat_aftermath_step(sim_world_t *w) {
                      : wonder ? WORLD_WONDER
                      : any    ? WORLD_RECOVERY
                               : WORLD_CALM;
+    if (!any)
+        w->aftermath_flavor = AFTER_FLAVOR_BASE;
 }
 
 uint8_t incantation_aftermath_shared(const sim_world_t *w) {
@@ -186,7 +198,7 @@ uint8_t incantation_aftermath_revision(const sim_world_t *w) {
     if (!w->aftermath[0].kind && !w->aftermath[1].kind)
         return 0;
     return (uint8_t)(0x80u | aftermath_phase(&w->aftermath[0]) |
-                     (aftermath_phase(&w->aftermath[1]) << 2));
+                     (aftermath_phase(&w->aftermath[1]) << 2) | ((w->aftermath_flavor & 7u) << 4));
 }
 
 /* Tear down any in-flight cast: pending/prepared descriptors, windup, and
@@ -212,6 +224,8 @@ static void wizard_interrupt(sim_wizard_t *wz) {
     wz->stance = DUEL_STANCE_NONE;
     wz->stance_ticks = 0;
     wz->studied = 0;
+    wz->echo_desc = 0;
+    wz->echo_ticks = 0;
 }
 
 static void wizard_ko(sim_world_t *w, uint8_t side) {
@@ -374,7 +388,7 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
         wizard_ko(w, opponent);
 }
 
-static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
+static void spell_spawn(sim_world_t *w, uint8_t side, uint32_t desc) {
     sim_wizard_t *wz = &w->wiz[side];
     if (wz->status == STATUS_DISRUPTED) {
         uint8_t mag = SPELL_DESC_MAGNITUDE(desc);
@@ -398,6 +412,15 @@ static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
         sp->aux = (uint8_t)(1u + SPELL_DESC_MAGNITUDE(desc));
         sp->progress = (uint8_t)(sp->aux << 5);
     }
+}
+
+static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
+    sim_wizard_t *wz = &w->wiz[side];
+    if (desc_is_echo(desc) && !wz->echo_desc) {
+        wz->echo_desc = desc_set_magnitude(desc, (uint8_t)(SPELL_DESC_MAGNITUDE(desc) - 1u));
+        wz->echo_ticks = 25u;
+    }
+    spell_spawn(w, side, desc);
     wizard_clear_cast(wz);
 }
 
@@ -618,6 +641,180 @@ static void spell_despawn(sim_spell_t *sp) {
     sp->descriptor = 0;
 }
 
+static uint16_t field_duration(uint8_t kind) {
+    switch (kind) {
+        case FIELD_TRAP:
+            return SIM_FIELD_TRAP_TICKS;
+        case FIELD_SINGULARITY:
+            return SIM_FIELD_SINGULARITY_TICKS;
+        case FIELD_STEAM:
+            return SIM_FIELD_STEAM_TICKS;
+        case FIELD_RUNE:
+            return SIM_FIELD_RUNE_TICKS;
+        case FIELD_FAMILIAR:
+            return SIM_FIELD_FAMILIAR_TICKS;
+        case FIELD_WALL:
+            return SIM_FIELD_WALL_TICKS;
+        case FIELD_VORTEX:
+            return SIM_FIELD_VORTEX_TICKS;
+        default:
+            return 0;
+    }
+}
+
+static uint8_t field_flavor(uint8_t kind) {
+    switch (kind) {
+        case FIELD_RUNE:
+            return AFTER_FLAVOR_RUNE;
+        case FIELD_FAMILIAR:
+            return AFTER_FLAVOR_FAMILIAR;
+        case FIELD_WALL:
+            return AFTER_FLAVOR_WALL;
+        case FIELD_VORTEX:
+            return AFTER_FLAVOR_VORTEX;
+        default:
+            return AFTER_FLAVOR_BASE;
+    }
+}
+
+static void field_clear(sim_field_t *field) { memset(field, 0, sizeof *field); }
+
+static bool field_add(sim_world_t *w, uint8_t kind, uint8_t zone, uint8_t owner, uint32_t desc,
+                      uint8_t aux) {
+    for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++) {
+        sim_field_t *field = &w->field[slot];
+        if (field->kind != FIELD_NONE)
+            continue;
+        field_clear(field);
+        field->descriptor = desc;
+        field->timer = field_duration(kind);
+        field->aux = aux;
+        field->kind = kind;
+        field->zone = zone & 3u;
+        field->owner = owner & 1u;
+        uint8_t flavor = field_flavor(kind);
+        if (flavor != AFTER_FLAVOR_BASE) {
+            w->aftermath_flavor = flavor;
+            aftermath_start(w, owner, AFTER_INSPECT, 1u);
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool field_apply_spell(sim_world_t *w, uint8_t slot, uint8_t side) {
+    sim_field_t *field = &w->field[slot];
+    sim_spell_t *spell = &w->spell[side];
+    bool same_owner = field->owner == side;
+    uint32_t desc = spell->descriptor;
+    uint8_t magnitude = SPELL_DESC_MAGNITUDE(desc);
+    switch (field->kind) {
+        case FIELD_TRAP: {
+            if (same_owner)
+                return false;
+            uint32_t payload = field->descriptor;
+            uint8_t owner = field->owner;
+            field_clear(field);
+            spell_despawn(spell);
+            resolve_payload(w, owner, payload, min_u8(SPELL_DESC_MAGNITUDE(payload), 2u));
+            aftermath_start(w, side, AFTER_PANIC, 2u);
+            set_outcome(w, FX_DETONATE);
+            return true;
+        }
+        case FIELD_SINGULARITY:
+            if (same_owner)
+                return false;
+            if (SPELL_DESC_FORM(desc) == SPELL_BEAM &&
+                magnitude > SPELL_DESC_MAGNITUDE(field->descriptor)) {
+                field_clear(field);
+            } else {
+                field->aux = min_u8((uint8_t)(field->aux + magnitude), 4u);
+                field->descriptor = desc_set_magnitude(field->descriptor, field->aux);
+                spell_despawn(spell);
+                aftermath_start(w, field->owner, AFTER_INSPECT, magnitude);
+                set_outcome(w, FX_RESIDUE);
+            }
+            return true;
+        case FIELD_STEAM: {
+            uint8_t element = SPELL_DESC_ELEMENT(desc);
+            if (element == ELEM_EMBER || element == ELEM_FROST) {
+                if (magnitude > 1u)
+                    spell->descriptor = desc_set_magnitude(desc, (uint8_t)(magnitude - 1u));
+                else
+                    spell_despawn(spell);
+            } else if (element == ELEM_VOID) {
+                if (magnitude < 4u)
+                    spell->descriptor = desc_set_magnitude(desc, (uint8_t)(magnitude + 1u));
+            } else {
+                field_clear(field); /* force disperses the cloud */
+            }
+            return true;
+        }
+        case FIELD_RUNE:
+            if (!same_owner)
+                return false;
+            if (magnitude < 4u)
+                spell->descriptor = desc_set_magnitude(desc, (uint8_t)(magnitude + 1u));
+            field_clear(field);
+            return true;
+        case FIELD_FAMILIAR:
+            if (same_owner)
+                return false;
+            field_clear(field);
+            spell_despawn(spell);
+            aftermath_start(w, side, AFTER_INSPECT, 1u);
+            set_outcome(w, FX_RESIDUE);
+            return true;
+        case FIELD_WALL:
+            if (same_owner)
+                return false;
+            if (magnitude <= field->aux) {
+                field->aux = (uint8_t)(field->aux - magnitude);
+                spell_despawn(spell);
+                if (!field->aux)
+                    field_clear(field);
+            } else {
+                spell->descriptor = desc_set_magnitude(desc, (uint8_t)(magnitude - field->aux));
+                field_clear(field);
+            }
+            return true;
+        case FIELD_VORTEX: {
+            if (same_owner)
+                return false;
+            uint8_t lane = trajectory_lane(SPELL_DESC_TRAJECTORY(desc));
+            spell->descriptor = desc_set_trajectory(desc, (uint8_t)((lane + 1u) % 5u));
+            field_clear(field);
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+static void collide_fields(sim_world_t *w) {
+    uint8_t first =
+        w->spell[SIM_SIDE_R].progress > w->spell[SIM_SIDE_L].progress ? SIM_SIDE_R : SIM_SIDE_L;
+    for (uint8_t order = 0; order < 2u; order++) {
+        uint8_t side = order ? (uint8_t)(first ^ 1u) : first;
+        sim_spell_t *spell = &w->spell[side];
+        if (!spell->active)
+            continue;
+        uint8_t zone = residue_zone_for_u(spell_u(spell, side));
+        if (zone >= SIM_RESIDUE_ZONES)
+            continue;
+        for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++) {
+            uint8_t seen = (uint8_t)(SPELL_RESOLVED_FIELD0 << slot);
+            if ((spell->resolved & seen) || w->field[slot].kind == FIELD_NONE ||
+                w->field[slot].zone != zone)
+                continue;
+            if (field_apply_spell(w, slot, side)) {
+                spell->resolved |= seen;
+                break; /* a carrier reacts to at most one field per tick */
+            }
+        }
+    }
+}
+
 /* Mirror matches (both spells carrying the priority form) resolve
  * symmetrically: magnitude first, then the same tempo/trend tiebreak as the
  * elemental clash, with a dead tie annihilating both. Historically the left
@@ -806,6 +1003,7 @@ static void collide_clash(sim_world_t *w, sim_spell_t *a, sim_spell_t *b, uint32
  * singularity > set trap > beam > chain > swarm > elemental clash. The order
  * of this ladder is hash-pinned — reordering it changes duel outcomes. */
 void duel_combat_collision_step(sim_world_t *w) {
+    collide_fields(w);
     sim_spell_t *a = &w->spell[0], *b = &w->spell[1];
     if (!a->active || !b->active)
         return;
@@ -1023,6 +1221,45 @@ static void step_conjure(sim_world_t *w, uint8_t side, sim_spell_t *sp) {
         spell_despawn(sp);
 }
 
+static uint8_t spell_field_kind(uint32_t desc) {
+    switch (incantation_signature(desc)) {
+        case SPELL_SIGNATURE_RUNE:
+            return FIELD_RUNE;
+        case SPELL_SIGNATURE_FAMILIAR:
+            return FIELD_FAMILIAR;
+        case SPELL_SIGNATURE_WALL:
+            return FIELD_WALL;
+        case SPELL_SIGNATURE_VORTEX:
+            return FIELD_VORTEX;
+        default:
+            break;
+    }
+    if (SPELL_DESC_FORM(desc) == SPELL_CONJURE && conjure_is_trap(desc))
+        return FIELD_TRAP;
+    if (SPELL_DESC_FORM(desc) == SPELL_SINGULARITY)
+        return FIELD_SINGULARITY;
+    return FIELD_NONE;
+}
+
+static bool field_ready(uint8_t kind, uint8_t age) {
+    return age >= ((kind == FIELD_SINGULARITY || kind == FIELD_VORTEX) ? SINGULARITY_GROW_TICKS
+                                                                       : CONJURE_PRELUDE_TICKS);
+}
+
+static bool transfer_spell_to_field(sim_world_t *w, uint8_t side, sim_spell_t *spell,
+                                    uint8_t kind) {
+    uint8_t zone = residue_zone_for_u(spell_u(spell, side));
+    if (kind == FIELD_FAMILIAR || zone >= SIM_RESIDUE_ZONES)
+        zone = residue_doorstep_zone(side);
+    uint8_t aux = kind == FIELD_WALL || kind == FIELD_TRAP ? SPELL_DESC_MAGNITUDE(spell->descriptor)
+                  : kind == FIELD_SINGULARITY              ? spell->aux
+                                                           : 0u;
+    if (!field_add(w, kind, zone, side, spell->descriptor, aux))
+        return false;
+    spell_despawn(spell);
+    return true;
+}
+
 void duel_combat_spell_step(sim_world_t *w, uint8_t side) {
     sim_spell_t *sp = &w->spell[side];
     if (!sp->active)
@@ -1032,6 +1269,10 @@ void duel_combat_spell_step(sim_world_t *w, uint8_t side) {
         return;
     uint8_t form = SPELL_DESC_FORM(sp->descriptor);
     sp->age = sat_inc(sp->age);
+    uint8_t field_kind = spell_field_kind(sp->descriptor);
+    if (field_kind != FIELD_NONE && field_ready(field_kind, sp->age) &&
+        transfer_spell_to_field(w, side, sp, field_kind))
+        return;
     switch (form) {
         case SPELL_PROJECTILE:
         case SPELL_FIREBALL:
@@ -1058,6 +1299,73 @@ void duel_combat_spell_step(sim_world_t *w, uint8_t side) {
             break;
         default:
             break;
+    }
+}
+
+void duel_combat_field_step(sim_world_t *w) {
+    for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++) {
+        sim_field_t *field = &w->field[slot];
+        if (field->kind == FIELD_NONE)
+            continue;
+        if (field->timer)
+            field->timer--;
+        if (field->kind == FIELD_FAMILIAR) {
+            uint8_t elapsed = (uint8_t)(SIM_FIELD_FAMILIAR_TICKS - field->timer);
+            uint8_t stage = min_u8((uint8_t)(elapsed / 20u), 3u);
+            field->aux = stage;
+            field->zone = field->owner == SIM_SIDE_L ? stage : (uint8_t)(3u - stage);
+            if (stage == 3u) {
+                uint8_t owner = field->owner;
+                uint32_t desc = field->descriptor;
+                field_clear(field);
+                resolve_payload(w, owner, area_pulse_desc(desc), 1u);
+                w->aftermath_flavor = AFTER_FLAVOR_FAMILIAR;
+                aftermath_start(w, owner ^ 1u, AFTER_COMPLAINT, 1u);
+                continue;
+            }
+        }
+        if (field->timer)
+            continue;
+        uint8_t kind = field->kind;
+        uint8_t owner = field->owner;
+        uint8_t zone = field->zone;
+        uint8_t aux = field->aux;
+        uint32_t desc = field->descriptor;
+        field_clear(field);
+        if (kind == FIELD_TRAP) {
+            resolve_payload(w, owner, desc, min_u8(SPELL_DESC_MAGNITUDE(desc), 2u));
+            aftermath_start(w, owner ^ 1u, AFTER_PANIC, 2u);
+            set_outcome(w, FX_DETONATE);
+        } else if (kind == FIELD_SINGULARITY) {
+            if (aux)
+                resolve_payload(w, owner, desc_set_magnitude(desc, min_u8(aux, 4u)), 0);
+            else
+                residue_deposit(w, zone, ELEM_VOID, 2u);
+            aftermath_start(w, owner, AFTER_INSPECT, aux ? aux : 2u);
+            set_outcome(w, aux ? FX_RESIDUE : FX_COLLAPSE);
+        }
+    }
+}
+
+void duel_combat_echo_step(sim_world_t *w) {
+    for (uint8_t side = 0; side < 2u; side++) {
+        sim_wizard_t *wizard = &w->wiz[side];
+        if (!wizard->echo_desc)
+            continue;
+        if (wizard->echo_ticks > 1u) {
+            wizard->echo_ticks--;
+            continue;
+        }
+        if (w->spell[side].active || wizard->life != LIFE_ACTIVE) {
+            wizard->echo_ticks = 1u;
+            continue;
+        }
+        uint32_t desc = wizard->echo_desc;
+        wizard->echo_desc = 0;
+        wizard->echo_ticks = 0;
+        spell_spawn(w, side, desc);
+        w->aftermath_flavor = AFTER_FLAVOR_ECHO;
+        aftermath_start(w, side, AFTER_INSPECT, 1u);
     }
 }
 
@@ -1171,10 +1479,26 @@ void duel_combat_residue_step(sim_world_t *w) {
         uint8_t se = SPELL_DESC_ELEMENT(sp->descriptor);
         uint8_t ze = rz->element;
         bool reacted = true;
-        if ((se == ELEM_EMBER && ze == ELEM_FROST) || (se == ELEM_FROST && ze == ELEM_EMBER)) {
-            memset(rz, 0, sizeof *rz);
+        if (desc_is_bloom(sp->descriptor) && se == ze) {
+            residue_weaken(w, zone);
             resolve_payload(w, side, area_pulse_desc(sp->descriptor), 1u);
-            set_outcome(w, FX_DETONATE);
+            w->aftermath_flavor = AFTER_FLAVOR_BLOOM;
+            aftermath_start(w, side ^ 1u, AFTER_CHEER, 1u);
+            set_outcome(w, FX_COMBINE);
+        } else if ((se == ELEM_EMBER && ze == ELEM_FROST) ||
+                   (se == ELEM_FROST && ze == ELEM_EMBER)) {
+            if (field_add(w, FIELD_STEAM, zone, side, sp->descriptor, 0u)) {
+                memset(rz, 0, sizeof *rz);
+                aftermath_start(w, 0, AFTER_INSPECT, 1u);
+                aftermath_start(w, 1, AFTER_INSPECT, 1u);
+                set_outcome(w, FX_RESIDUE);
+            } else {
+                /* Both persistent slots are occupied: preserve the bounded
+                 * pre-field immediate resolution instead of queueing. */
+                memset(rz, 0, sizeof *rz);
+                resolve_payload(w, side, area_pulse_desc(sp->descriptor), 1u);
+                set_outcome(w, FX_DETONATE);
+            }
         } else if (se == ELEM_VOID) {
             residue_weaken(w, zone);
             uint8_t mag = SPELL_DESC_MAGNITUDE(sp->descriptor);

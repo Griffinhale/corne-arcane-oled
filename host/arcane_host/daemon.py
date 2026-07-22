@@ -50,6 +50,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="optional systemd user timer unit to treat as a Pomodoro source",
     )
     parser.add_argument(
+        "--pomodoro-duration",
+        type=float,
+        default=1500.0,
+        metavar="SECONDS",
+        help="Pomodoro ritual duration used for quarter-stage boundaries (default: 1500)",
+    )
+    parser.add_argument(
         "--once", action="store_true", help="send one heartbeat after HELLO and exit"
     )
     parser.add_argument(
@@ -65,6 +72,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--interval must be at least 0.1 and below the 1.5 s firmware timeout")
     if args.retry_interval <= 0:
         parser.error("--retry-interval must be positive")
+    if args.pomodoro_duration <= 0:
+        parser.error("--pomodoro-duration must be positive")
     return args
 
 
@@ -162,7 +171,9 @@ def run(args: argparse.Namespace) -> int:
         once=args.once,
         verbose=args.verbose,
     )
-    adapters = SemanticAdapters(resolver, policy, runtime.wake)
+    adapters = SemanticAdapters(
+        resolver, policy, runtime.wake, pomodoro_duration=args.pomodoro_duration
+    )
     runtime.bind_adapters(adapters)
 
     if override is None:

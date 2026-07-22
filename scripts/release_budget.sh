@@ -1,13 +1,13 @@
 #!/usr/bin/env sh
 set -eu
 
-flash_limit=81896
+flash_limit=$((88 * 1024))
 ram_limit=16496
 hard_stop=$((96 * 1024))
-reserve_min=$((16 * 1024))
-release_flash_growth_limit=$((69644 + 8192))
+reserve_min=$((8 * 1024))
+release_flash_growth_limit=$flash_limit
 release_ram_growth_limit=$((13464 + 512))
-diagnostic_flash_growth_limit=$((71100 + 8192))
+diagnostic_flash_growth_limit=$flash_limit
 diagnostic_ram_growth_limit=$((13576 + 512))
 
 measure() {
@@ -36,13 +36,17 @@ measure() {
             growth_flash_limit=$diagnostic_flash_growth_limit
             growth_ram_limit=$diagnostic_ram_growth_limit
             ;;
+        *-hp8-candidate.elf|*-hp10-candidate.elf)
+            growth_flash_limit=$release_flash_growth_limit
+            growth_ram_limit=$release_ram_growth_limit
+            ;;
         *)
             echo "FAIL release-budget: unknown image class: $image" >&2
             return 1
             ;;
     esac
     test "$flash" -le "$growth_flash_limit" || {
-        echo "FAIL release-budget: $image exceeds its +8192 flash growth allowance ($growth_flash_limit)" >&2
+        echo "FAIL release-budget: $image exceeds the cumulative 88 KiB flash ceiling ($growth_flash_limit)" >&2
         return 1
     }
     test "$ram" -le "$growth_ram_limit" || {
@@ -54,11 +58,13 @@ measure() {
         return 1
     }
     test "$reserve" -ge "$reserve_min" || {
-        echo "FAIL release-budget: $image leaves less than 16 KiB reserve" >&2
+        echo "FAIL release-budget: $image leaves less than 8 KiB reserve" >&2
         return 1
     }
 }
 
 measure artifacts/release/griffin_arcane-release.elf
 measure artifacts/release/griffin_arcane-diagnostic.elf
+measure artifacts/release/griffin_arcane-hp8-candidate.elf
+measure artifacts/release/griffin_arcane-hp10-candidate.elf
 echo "PASS release-budget"

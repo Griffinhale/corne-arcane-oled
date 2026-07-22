@@ -899,10 +899,10 @@ void duel_combat_draw_ward(duel_fb_t *fb, int facing, int strength, int focus, b
     }
 }
 
-bool duel_combat_incoming_void_at_ward(const duel_view_t *view, int defender,
+bool duel_combat_incoming_void_at_ward(const duel_view_t *view, int defender, uint8_t session,
                                        duel_view_spell_t *incoming) {
     for (int s = 0; s < 2; s++) {
-        duel_view_spell_t spell = duel_view_spell(view, (uint8_t)s);
+        duel_view_spell_t spell = duel_view_spell(view, (uint8_t)s, session);
         if (!spell.active || DUEL_KIND_ELEMENT(spell.kind) != ELEM_VOID)
             continue;
         if ((defender == SIM_SIDE_R && spell.dir > 0 && spell.pos >= 228) ||

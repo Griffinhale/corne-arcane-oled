@@ -31,7 +31,8 @@ _corne_arcane_precmd() {
        command git rebase --show-current-patch >/dev/null 2>&1; then
       _state=operation
     elif command git diff --quiet --ignore-submodules -- 2>/dev/null &&
-         command git diff --cached --quiet --ignore-submodules -- 2>/dev/null; then
+         command git diff --cached --quiet --ignore-submodules -- 2>/dev/null &&
+         [[ -z $(command git status --porcelain --untracked-files=normal 2>/dev/null) ]]; then
       _state=clean
     else
       _state=dirty
@@ -53,5 +54,7 @@ _corne_arcane_precmd() {
 }
 
 autoload -Uz add-zsh-hook
+add-zsh-hook -d preexec _corne_arcane_preexec 2>/dev/null
+add-zsh-hook -d precmd _corne_arcane_precmd 2>/dev/null
 add-zsh-hook preexec _corne_arcane_preexec
 add-zsh-hook precmd _corne_arcane_precmd

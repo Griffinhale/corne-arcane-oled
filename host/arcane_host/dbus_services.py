@@ -18,13 +18,14 @@ from .dbus_contract import (
     KWIN_SERVICE,
     OBJECT_PATH,
     REPORT_ACTIVE_WINDOW,
+    REPORT_BROWSER_ACTIVITY,
     REPORT_REPOSITORY_STATE,
     REPORT_TERMINAL_COMPLETION,
     RepositoryState,
 )
 from .focus import FocusArbiter
 from .policy import NotificationPolicy
-from .protocol import Category, Priority
+from .protocol import Category, Intensity, Priority, Secondary
 
 
 class FocusService:
@@ -105,6 +106,9 @@ class EventService:
     def report_repository_state(self, state: RepositoryState, success: bool) -> bool:
         return self.adapters.repository(state, success)
 
+    def report_browser_activity(self, kind: Secondary, intensity: Intensity) -> None:
+        self.adapters.browser(kind, intensity)
+
     def clear(self) -> None:
         self.policy.clear()
         self.changed()
@@ -127,6 +131,21 @@ class EventService:
                 )
             else:
                 self.report_repository_state(state, bool(success))
+                invocation.return_value(None)
+            return
+        if method == REPORT_BROWSER_ACTIVITY:
+            kind_value, intensity_value = parameters.unpack()
+            try:
+                kind = Secondary(kind_value)
+                intensity = Intensity(intensity_value)
+                if kind not in {Secondary.SCROLL, Secondary.TAB, Secondary.PAGE}:
+                    raise ValueError
+            except (ValueError, TypeError):
+                invocation.return_dbus_error(
+                    f"{EVENTS_INTERFACE}.InvalidArguments", "invalid browser activity"
+                )
+            else:
+                self.report_browser_activity(kind, intensity)
                 invocation.return_value(None)
             return
         if method == INJECT_SYNTHETIC:

@@ -76,15 +76,77 @@ PROFILES = (
         category_override=Category.TERMINAL,
     ),
     ApplicationProfile(
+        "scriptorium",
+        frozenset(
+            {
+                "libreoffice-writer",
+                "libreoffice-startcenter",
+                "obsidian",
+                "md.obsidian.obsidian",
+                "zettlr",
+                "com.zettlr.zettlr",
+                "joplin",
+                "net.cozic.joplin-desktop",
+                "typora",
+                "ghostwriter",
+                "org.kde.ghostwriter",
+                "focuswriter",
+                "org.gottcode.focuswriter",
+            }
+        ),
+        scene=Scene.DUEL,
+        floor=Floor.RESEARCH,
+    ),
+    ApplicationProfile(
+        "studio",
+        frozenset(
+            {
+                "krita",
+                "org.kde.krita",
+                "blender",
+                "org.blender.blender",
+                "inkscape",
+                "org.inkscape.inkscape",
+                "gimp",
+                "org.gimp.gimp",
+                "kdenlive",
+                "org.kde.kdenlive",
+                "audacity",
+                "org.audacityteam.audacity",
+                "ardour",
+                "org.ardour.ardour",
+                "spotify",
+                "vlc",
+                "org.kde.elisa",
+                "mpv",
+            }
+        ),
+        scene=Scene.ARCHIVE,
+        floor=Floor.COMMONS,
+    ),
+    ApplicationProfile(
+        "code",
+        frozenset(
+            {
+                "code",
+                "visual-studio-code",
+                "codium",
+                "vscodium",
+                "zed",
+                "dev.zed.zed",
+                "sublime-text",
+                "jetbrains-idea",
+                "jetbrains-pycharm",
+            }
+        ),
+        scene=Scene.DUEL,
+        floor=Floor.WORKSHOP,
+    ),
+    ApplicationProfile(
         "communication",
         frozenset({"slack", "discord", "signal", "org.telegram.desktop", "thunderbird"}),
         scene=Scene.DUEL,
         category_override=Category.COMMUNICATION,
-    ),
-    ApplicationProfile(
-        "media",
-        frozenset({"spotify", "vlc", "org.kde.elisa", "mpv"}),
-        scene=Scene.ARCHIVE,
     ),
 )
 

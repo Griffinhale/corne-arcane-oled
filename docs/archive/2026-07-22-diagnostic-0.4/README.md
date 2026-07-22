@@ -1,9 +1,8 @@
 # Corne Arcane 0.4 diagnostic observation evidence
 
 This directory preserves the diagnostic runs performed on both physical halves
-on 2026-07-22. It is diagnostic evidence, not a completed physical acceptance
-record; the remaining manual checks stay open in
-[`../../physical-checklist.md`](../../physical-checklist.md).
+on 2026-07-22. The passing run became evidence for the subsequently completed
+[`0.4 physical acceptance`](../2026-07-22-0.4-physical-acceptance.md).
 
 ## Investigation sequence
 

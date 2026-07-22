@@ -116,6 +116,12 @@ enum {
     INCANTATION_OBJECT_OBSERVATORY_SCOPE,
     INCANTATION_OBJECT_OBSERVATORY_CHART,
     INCANTATION_OBJECT_OBSERVATORY_DOME,
+    INCANTATION_OBJECT_SCRIPTORIUM_LECTERN,
+    INCANTATION_OBJECT_SCRIPTORIUM_RACK,
+    INCANTATION_OBJECT_SCRIPTORIUM_INDEX,
+    INCANTATION_OBJECT_STUDIO_STAGE,
+    INCANTATION_OBJECT_STUDIO_MIXER,
+    INCANTATION_OBJECT_STUDIO_REEL,
 };
 
 /* One compact descriptor per (floor, action). `station` is the resident's
@@ -162,6 +168,22 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_OBSERVATORY_DOME},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_OBSERVATORY_CHART},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_OBSERVATORY_DOME},
+    /* Scriptorium: lectern/quill, scroll rack, index and copy-desk work. */
+    {15, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
+    {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_SCRIPTORIUM_RACK},
+    {23, INCANTATION_POSE_INSPECT, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_SCRIPTORIUM_INDEX},
+    {16, INCANTATION_POSE_SEATED, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_SCRIPTORIUM_RACK},
+    {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_SCRIPTORIUM_INDEX},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
+    /* Studio: resonance stage, mixer/projector, and reel handling. */
+    {15, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_STAGE},
+    {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_STUDIO_REEL},
+    {23, INCANTATION_POSE_INSPECT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_MIXER},
+    {16, INCANTATION_POSE_SEATED, INCANTATION_MARK_NONE, INCANTATION_OBJECT_STUDIO_MIXER},
+    {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_STUDIO_STAGE},
+    {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_STUDIO_REEL},
+    {18, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_STAGE},
 };
 
 static const incantation_occupation_desc_t *incantation_occupation(uint8_t key) {
@@ -170,20 +192,24 @@ static const incantation_occupation_desc_t *incantation_occupation(uint8_t key) 
     return &incantation_occupations[key];
 }
 
-uint8_t incantation_effective_floor(const duel_render_t *r) {
-    uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
+uint8_t incantation_effective_district(const duel_render_t *r) {
+    uint8_t district = duel_render_district(r);
     if (INCANTATION_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
         INCANTATION_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
-        floor = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
-    return floor;
+        district = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
+    return district;
+}
+
+uint8_t incantation_effective_floor(const duel_render_t *r) {
+    return duel_district_floor(incantation_effective_district(r));
 }
 
 /* Desk-space anchor of each floor object (INCANTATION_OBJECT_*, 3 per floor).
  * The occupation anchor and the object-reaction sparkle both index this table,
  * keyed by the occupation's reaction object. */
-static const int8_t incantation_object_anchors[12][2] = {
-    {14, 95}, {24, 82}, {11, 88}, {14, 79}, {24, 88}, {13, 94},
-    {14, 91}, {24, 90}, {11, 82}, {13, 88}, {24, 84}, {16, 82},
+static const int8_t incantation_object_anchors[18][2] = {
+    {14, 95}, {24, 82}, {11, 88}, {14, 79}, {24, 88}, {13, 94}, {14, 91}, {24, 90}, {11, 82},
+    {13, 88}, {24, 84}, {16, 82}, {13, 91}, {25, 87}, {22, 76}, {14, 88}, {24, 82}, {27, 96},
 };
 
 incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action) {
@@ -207,8 +233,8 @@ static void incantation_draw_object_reaction(duel_fb_t *fb, uint8_t reaction, bo
     };
     /* The reaction IS the object index: anchor it directly (the old
      * reaction -> action -> occupation -> reaction round-trip was identity). */
-    int x = duel_fb_desk_x(is_left, incantation_object_anchors[reaction % 12u][0]);
-    int y = incantation_object_anchors[reaction % 12u][1];
+    int x = duel_fb_desk_x(is_left, incantation_object_anchors[reaction % 18u][0]);
+    int y = incantation_object_anchors[reaction % 18u][1];
     int toward_gap = is_left ? 1 : -1;
     const int8_t(*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
     for (int i = 0; i < 3; i++)

@@ -28,6 +28,11 @@ uint8_t duel_scry_mask_from_rows(const uint16_t rows[DUEL_INPUT_ROWS]) {
     return mask;
 }
 
+bool duel_physical_key_wakes_display(uint8_t row, uint8_t column) {
+    return !((row == SCRY_KEY_L_ROW && column == SCRY_KEY_L_COL) ||
+             (row == SCRY_KEY_R_ROW && column == SCRY_KEY_R_COL));
+}
+
 sim_inputs_t duel_inputs_from_rows(const uint16_t rows[DUEL_INPUT_ROWS]) {
     sim_inputs_t in = {0};
     for (uint8_t r = 0; r < DUEL_INPUT_ROWS_PER_HAND; r++) {
@@ -146,9 +151,9 @@ bool duel_tx_repair_due(const duel_tx_policy_t *policy, uint32_t now_ms) {
     return policy->have_sent && now_ms - policy->last_sent_ms >= DUEL_REPAIR_TX_MS;
 }
 
-bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic, uint32_t now_ms,
-                            duel_display_phase_t display_phase) {
-    uint8_t target = DUEL_CIVIC_FLOOR(civic);
+bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic, uint8_t external,
+                            uint32_t now_ms, duel_display_phase_t display_phase) {
+    uint8_t target = duel_civic_district(civic, external);
     if (!policy->initialized) {
         policy->target = policy->source = target;
         policy->initialized = true;
@@ -192,17 +197,96 @@ uint8_t duel_flash_remaining(const duel_flash_policy_t *policy, uint32_t now_ms)
     return duel_presentation_remaining(policy->started_ms, policy->duration_ms, now_ms);
 }
 
+void duel_scry_presentation_reset(duel_scry_policy_t *policy) { memset(policy, 0, sizeof *policy); }
+
+static uint8_t duel_scry_scroll_at(const duel_scry_policy_t *policy, uint32_t now_ms) {
+    return (uint8_t)(((now_ms - policy->scroll_started_ms) / DUEL_SCRY_SCROLL_STEP_MS) %
+                     DUEL_SCRY_STREAM_PIXELS);
+}
+
+static uint8_t duel_scry_unroll_extent(const duel_scry_policy_t *policy, uint32_t now_ms) {
+    uint32_t steps = (now_ms - policy->started_ms) / DUEL_SCRY_UNROLL_STEP_MS;
+    if (steps >= DUEL_SCRY_EXTENT_FULL - policy->from_extent)
+        return DUEL_SCRY_EXTENT_FULL;
+    return (uint8_t)(policy->from_extent + 1u + steps);
+}
+
+static uint8_t duel_scry_reroll_extent(const duel_scry_policy_t *policy, uint32_t now_ms) {
+    uint32_t steps = (now_ms - policy->started_ms) / DUEL_SCRY_REROLL_STEP_MS;
+    return steps >= policy->from_extent ? 0u : (uint8_t)(policy->from_extent - steps);
+}
+
+duel_scry_frame_t duel_scry_presentation(duel_scry_policy_t *policy, bool requested_open,
+                                         uint32_t now_ms) {
+#ifdef ARCANE_REDUCED_MOTION
+    duel_scry_presentation_reset(policy);
+    return (duel_scry_frame_t){
+        .motion = requested_open ? DUEL_SCRY_MOTION_PACK(DUEL_SCRY_EXTENT_FULL, false) : 0u,
+        .scroll = 0u,
+    };
+#else
+    uint8_t extent = 0u;
+    if (policy->state == DUEL_SCRY_CLOSED && requested_open) {
+        policy->state = DUEL_SCRY_UNROLLING;
+        policy->started_ms = now_ms;
+        policy->scroll_started_ms = now_ms;
+        policy->from_extent = 0u;
+    }
+
+    if (policy->state == DUEL_SCRY_UNROLLING) {
+        extent = duel_scry_unroll_extent(policy, now_ms);
+        if (!requested_open) {
+            policy->state = DUEL_SCRY_REROLLING;
+            policy->started_ms = now_ms;
+            policy->from_extent = extent;
+            policy->frozen_scroll = duel_scry_scroll_at(policy, now_ms);
+        } else if (extent == DUEL_SCRY_EXTENT_FULL) {
+            policy->state = DUEL_SCRY_HELD;
+        }
+    } else if (policy->state == DUEL_SCRY_HELD) {
+        extent = DUEL_SCRY_EXTENT_FULL;
+        if (!requested_open) {
+            policy->state = DUEL_SCRY_REROLLING;
+            policy->started_ms = now_ms;
+            policy->from_extent = extent;
+            policy->frozen_scroll = duel_scry_scroll_at(policy, now_ms);
+        }
+    } else if (policy->state == DUEL_SCRY_REROLLING) {
+        extent = duel_scry_reroll_extent(policy, now_ms);
+        if (requested_open) {
+            policy->state = DUEL_SCRY_UNROLLING;
+            policy->started_ms = now_ms;
+            policy->from_extent = extent;
+            policy->scroll_started_ms =
+                now_ms - (uint32_t)policy->frozen_scroll * DUEL_SCRY_SCROLL_STEP_MS;
+        } else if (!extent) {
+            duel_scry_presentation_reset(policy);
+        }
+    }
+
+    if (policy->state == DUEL_SCRY_CLOSED)
+        return (duel_scry_frame_t){0};
+
+    bool reroll = policy->state == DUEL_SCRY_REROLLING;
+    uint8_t scroll = reroll ? policy->frozen_scroll : duel_scry_scroll_at(policy, now_ms);
+    return (duel_scry_frame_t){
+        .motion = DUEL_SCRY_MOTION_PACK(extent, reroll),
+        .scroll = scroll,
+    };
+#endif
+}
+
 bool duel_flash_observe_view(duel_flash_policy_t *policy, uint8_t last_spell_kind[2],
-                             const duel_view_t *view, uint32_t now_ms) {
+                             const duel_view_t *view, uint8_t session, uint32_t now_ms) {
     // Remember the last visible style in each spell slot. Resolution clears
     // the authoritative slot, but its outcome can still scale from this local
     // presentation cache without growing combat state or the wire.
     for (uint8_t s = 0; s < 2; s++) {
-        duel_view_spell_t spell = duel_view_spell(view, s);
+        duel_view_spell_t spell = duel_view_spell(view, s, session);
         if (spell.active)
             last_spell_kind[s] = spell.kind;
     }
-    uint8_t fx_seq = VIEW_FX_SEQ(view->fx_stance); /* v11: high nibble is stances */
+    uint8_t fx_seq = VIEW_FX_SEQ(view->fx_stance); /* high nibble is stances */
     if (fx_seq == policy->seen_fx_seq)
         return false;
     uint8_t flash_kind = VIEW_OVERLAY_FX(view->outcome_overlay);

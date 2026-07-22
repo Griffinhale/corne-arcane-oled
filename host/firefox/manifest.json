@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "Corne Arcane Activity Bridge",
+  "version": "1.0.0",
+  "description": "Sends only scroll, tab, and page activity kind plus a 0-3 intensity.",
+  "permissions": ["nativeMessaging", "webNavigation", "<all_urls>"],
+  "background": {"scripts": ["background.js"]},
+  "content_scripts": [
+    {"matches": ["<all_urls>"], "js": ["scroll.js"], "run_at": "document_start"}
+  ],
+  "browser_specific_settings": {
+    "gecko": {"id": "corne-arcane-activity@griffinhale.github.io"}
+  }
+}

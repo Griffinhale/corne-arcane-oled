@@ -20,7 +20,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     bool local_fx = r->flash_frames && side_outcome && defender_left == is_left;
     bool local_impact = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
     duel_view_spell_t piercer;
-    bool have_piercer = duel_combat_incoming_void_at_ward(&r->view, side, &piercer);
+    bool have_piercer = duel_combat_incoming_void_at_ward(&r->view, side, r->seed, &piercer);
     bool ward_punctured =
         have_piercer || (local_impact && DUEL_KIND_ELEMENT(r->flash_spell_kind) == ELEM_VOID);
     int ward_lane = have_piercer ? duel_combat_spell_lane_y(piercer.kind)
@@ -31,6 +31,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     duel_environment_draw_tower(fb, r, is_left);
     duel_environment_draw_floor(fb, r, is_left);
     duel_overlay_draw_residue(fb, r, is_left);
+    duel_overlay_draw_fields(fb, r, is_left);
     if (!(r->revision & INCANTATION_AFTERMATH_WIRE) &&
         DUEL_CIVIC_FLOOR(r->civic) != DUEL_CIVIC_FLOOR_SPECIAL) {
         draw_courier(fb, r, is_left);
@@ -92,7 +93,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
             // phased by the session seed.
             bool calm = wz->stance == DUEL_STANCE_NONE && wz->inc_state == INC_IDLE &&
                         wz->pose == POSE_IDLE && !local_fx &&
-                        !duel_view_spell(&r->view, (uint8_t)side).active;
+                        !duel_view_spell(&r->view, (uint8_t)side, r->seed).active;
             int idle_xo = 0;
             bool taunt = false;
             if (calm) {
@@ -210,7 +211,7 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     // overwritten by the 2x2 cells; the trade-off — a low spell over its own
     // HP columns briefly overpaints them — matches duel_overlay_draw_local_fx, also post-HP.
     for (int s = 0; s < 2; s++) {
-        duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s);
+        duel_view_spell_t spell = duel_view_spell(&r->view, (uint8_t)s, r->seed);
         if (!spell.active)
             continue;
         duel_view_wizard_t caster = duel_view_wizard(&r->view, (uint8_t)s);
@@ -221,25 +222,22 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     if (local_fx)
         duel_overlay_draw_local_fx(fb, r, wz, facing, is_left);
 
-    // normalized alert sigil sits above all scene/combat artwork, but an open scry
-    // replaces it with the normalized in-panel summary.
-    if (!duel_view_scry_open(&r->view))
-        duel_overlay_draw_alert(fb, r, is_left);
+    // Alert and local attunement remain part of the living world beneath the
+    // temporary almanac scroll.
+    duel_overlay_draw_alert(fb, r, is_left);
+    duel_overlay_draw_attunement(fb, r, wz, is_left);
 
-    if (!duel_view_scry_open(&r->view))
-        duel_overlay_draw_attunement(fb, r, wz, is_left);
-
-    // scry scrying overlay, drawn above the world when the layer-key chord is
-    // held. The stale-link and debug glyphs draw AFTER, so a broken link is
-    // still legible in its corner even with the panel up.
-    if (duel_view_scry_open(&r->view)) {
+    // One scroll per OLED unrolls above the world while the layer-key chord is
+    // held, then remains just long enough to reroll. Stale-link and diagnostic
+    // glyphs retain priority by drawing afterward.
+    if (duel_render_scry_visible(r)) {
         duel_overlay_draw_scry(fb, r, is_left);
     }
 
     if (r->flags & DUEL_RENDER_STALE) {
         // Two separated chain links in the top corner nearest the gap. The
-        // celestial arc (and, under scry, the relocated alert summary) can
-        // occupy these cells, so the link-loss indicator clears its field
+        // celestial arc (and, under scry, the Host reading) can occupy these
+        // cells, so the link-loss indicator clears its field
         // first — it must stay legible over everything.
         int bx = is_left ? 23 : 2;
         for (int y = 1; y <= 9; y++)

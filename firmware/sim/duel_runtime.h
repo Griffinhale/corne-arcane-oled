@@ -7,6 +7,7 @@
 
 #include "duel_display.h"
 #include "duel_host.h"
+#include "duel_render.h"
 #include "duel_sim.h"
 #include "duel_view.h"
 
@@ -27,6 +28,10 @@
 
 // Level-sampled scry chord mask (SCRY_M_*) from the current matrix rows.
 uint8_t duel_scry_mask_from_rows(const uint16_t rows[DUEL_INPUT_ROWS]);
+/* The two deliberate scry thumbs may update the sleeping simulation but never
+ * wake OLED/RGB hardware. Any ordinary key (including a key used with a layer
+ * thumb) remains a wake source. */
+bool duel_physical_key_wakes_display(uint8_t row, uint8_t column);
 // Full per-tick input sample: down masks, scry mask, held positions, and the
 // per-half physical spell layer.
 sim_inputs_t duel_inputs_from_rows(const uint16_t rows[DUEL_INPUT_ROWS]);
@@ -81,8 +86,8 @@ typedef struct {
     bool active;
 } duel_floor_policy_t;
 
-bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic, uint32_t now_ms,
-                            duel_display_phase_t display_phase);
+bool duel_floor_note_target(duel_floor_policy_t *policy, uint8_t civic, uint8_t external,
+                            uint32_t now_ms, duel_display_phase_t display_phase);
 uint8_t duel_floor_presentation(duel_floor_policy_t *policy, uint32_t now_ms);
 
 typedef struct {
@@ -97,12 +102,45 @@ bool duel_flash_note(duel_flash_policy_t *policy, uint8_t fx_seq, uint8_t kind, 
                      uint32_t now_ms);
 uint8_t duel_flash_remaining(const duel_flash_policy_t *policy, uint32_t now_ms);
 
+/* ---- deliberate scry scroll motion --------------------------------------
+ * Each OLED owns one vertical parchment. Presentation is local and bounded:
+ * seven unroll extents, a slow upward content stream while held, then a
+ * shorter reroll after release. The authoritative open/page bits stay on the
+ * existing v12 wire; losing this cache loses only transitional frames. */
+#define DUEL_SCRY_UNROLL_STEP_MS 50u
+#define DUEL_SCRY_REROLL_STEP_MS 40u
+#define DUEL_SCRY_SCROLL_STEP_MS 200u
+
+enum {
+    DUEL_SCRY_CLOSED = 0,
+    DUEL_SCRY_UNROLLING,
+    DUEL_SCRY_HELD,
+    DUEL_SCRY_REROLLING,
+};
+
+typedef struct {
+    uint32_t started_ms;
+    uint32_t scroll_started_ms;
+    uint8_t state;
+    uint8_t from_extent;
+    uint8_t frozen_scroll;
+} duel_scry_policy_t;
+
+typedef struct {
+    uint8_t motion;
+    uint8_t scroll;
+} duel_scry_frame_t;
+
+duel_scry_frame_t duel_scry_presentation(duel_scry_policy_t *policy, bool requested_open,
+                                         uint32_t now_ms);
+void duel_scry_presentation_reset(duel_scry_policy_t *policy);
+
 /* One render-side observation pass: caches the last visible style per spell
  * slot, then arms a flash deadline for a new one-shot outcome, scaling it
  * from the DEFENDER's cached spell style. Returns true when a new flash was
  * armed. */
 bool duel_flash_observe_view(duel_flash_policy_t *policy, uint8_t last_spell_kind[2],
-                             const duel_view_t *view, uint32_t now_ms);
+                             const duel_view_t *view, uint8_t session, uint32_t now_ms);
 
 /* Wake grace: a local keypress holds the panel awake (and vetoes following
  * the master into DIM/SLEEP) for this long. */
@@ -119,7 +157,7 @@ enum {
 
 #define DUEL_SKY_CYCLE_MS 1800000u
 uint8_t duel_sky_phase(uint32_t session_elapsed_ms);
-// v11 celestial arc position within the current phase (0..3): 4 phases x 4
+// Celestial arc position within the current phase (0..3): 4 phases x 4
 // sub-phases = 16 arc steps per cycle, carried in secondary bits 5-6.
 uint8_t duel_sky_subphase(uint32_t session_elapsed_ms);
 
@@ -149,7 +187,8 @@ uint8_t duel_diplomacy_target(const duel_diplomacy_t *state);
 // Wall-clock period of one civic tick: the bounded cadence at which the
 // resident and floor advance. ~300 ms keeps each 16-tick action (~4.8 s)
 // inside the spec's 3-10 s window while staying far below combat cadence.
-#define DUEL_CIVIC_TICK_MS 300u
+#define DUEL_CIVIC_TICK_MS        300u
+#define DUEL_CROWD_ARRIVAL_PHASES (SIM_AFTER_DEFAULT_TICKS * SIM_TICK_MS / DUEL_CIVIC_TICK_MS)
 
 typedef struct {
     uint8_t shared_pres;

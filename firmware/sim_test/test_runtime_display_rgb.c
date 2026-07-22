@@ -54,19 +54,21 @@ static void test_runtime_tx_policy(void) {
 
 static void test_runtime_presentation_policy(void) {
     duel_floor_policy_t floor = {0};
+    uint8_t duel_scene = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 0, false);
+    uint8_t focus_scene = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 0, false);
     bool ok = true;
-    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, 0, 0), 100u,
-                                  DUEL_DISPLAY_ACTIVE));
-    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, 0, 0), 200u,
-                                  DUEL_DISPLAY_ACTIVE));
+    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, 0, 0),
+                                  duel_scene, 100u, DUEL_DISPLAY_ACTIVE));
+    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, 0, 0),
+                                  duel_scene, 200u, DUEL_DISPLAY_ACTIVE));
     EXPECT(INCANTATION_FLOOR_TRANSITION_ACTIVE(duel_floor_presentation(&floor, 349u)) &&
            INCANTATION_FLOOR_TRANSITION_PHASE(duel_floor_presentation(&floor, 350u)) == 1u);
-    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL, 0, 0), 400u,
-                                  DUEL_DISPLAY_ACTIVE) &&
-           floor.source == DUEL_CIVIC_FLOOR_RESEARCH);
+    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL, 0, 0),
+                                  focus_scene, 400u, DUEL_DISPLAY_ACTIVE) &&
+           floor.source == DUEL_DISTRICT_SCRIPTORIUM);
     EXPECT(!INCANTATION_FLOOR_TRANSITION_ACTIVE(duel_floor_presentation(&floor, 1000u)));
-    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, 0, 0), 1100u,
-                                  DUEL_DISPLAY_SLEEP) &&
+    EXPECT(duel_floor_note_target(&floor, DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, 0, 0),
+                                  duel_scene, 1100u, DUEL_DISPLAY_SLEEP) &&
            !floor.active);
 
     duel_flash_policy_t flash = {0};
@@ -79,6 +81,27 @@ static void test_runtime_presentation_policy(void) {
     EXPECT(duel_wake_grace_active(&grace, UINT32_MAX - 20u) && duel_wake_grace_active(&grace, 0u) &&
            !duel_display_should_follow(DUEL_DISPLAY_SLEEP, &grace, 0u) &&
            duel_display_should_follow(DUEL_DISPLAY_SLEEP, &grace, 20u) && grace == 0u);
+
+    duel_scry_policy_t scroll = {0};
+    duel_scry_frame_t sf = duel_scry_presentation(&scroll, false, 100u);
+    EXPECT(sf.motion == 0u && sf.scroll == 0u && scroll.state == DUEL_SCRY_CLOSED);
+    sf = duel_scry_presentation(&scroll, true, 100u);
+    EXPECT(DUEL_SCRY_MOTION_EXTENT(sf.motion) == 1u && scroll.state == DUEL_SCRY_UNROLLING);
+    sf = duel_scry_presentation(&scroll, true, 399u);
+    EXPECT(DUEL_SCRY_MOTION_EXTENT(sf.motion) == 6u && sf.scroll == 1u);
+    sf = duel_scry_presentation(&scroll, true, 400u);
+    EXPECT(DUEL_SCRY_MOTION_EXTENT(sf.motion) == DUEL_SCRY_EXTENT_FULL &&
+           scroll.state == DUEL_SCRY_HELD);
+    sf = duel_scry_presentation(&scroll, true, 700u);
+    EXPECT(sf.scroll == 3u && !(sf.motion & DUEL_SCRY_REROLL));
+    sf = duel_scry_presentation(&scroll, false, 700u);
+    EXPECT(DUEL_SCRY_MOTION_EXTENT(sf.motion) == DUEL_SCRY_EXTENT_FULL &&
+           (sf.motion & DUEL_SCRY_REROLL) && sf.scroll == 3u);
+    sf = duel_scry_presentation(&scroll, false,
+                                700u + DUEL_SCRY_REROLL_STEP_MS * DUEL_SCRY_EXTENT_FULL);
+    EXPECT(sf.motion == 0u && sf.scroll == 0u && scroll.state == DUEL_SCRY_CLOSED);
+    duel_scry_presentation_reset(&scroll);
+    EXPECT(scroll.state == DUEL_SCRY_CLOSED && scroll.started_ms == 0u);
     CHECK(ok, "runtime_floor_restart_sleep_snap_flash_deadlines_wake_grace_and_follow");
 }
 
@@ -172,12 +195,16 @@ static void test_runtime_input_sampling(void) {
     in = duel_inputs_from_rows(rows);
     EXPECT(in.scry_mask == (SCRY_M_L | SCRY_M_R) && in.layer[0] == 3u && in.layer[1] == 3u &&
            in.down_mask == 3u);
+    EXPECT(!duel_physical_key_wakes_display(SCRY_KEY_L_ROW, SCRY_KEY_L_COL) &&
+           !duel_physical_key_wakes_display(SCRY_KEY_R_ROW, SCRY_KEY_R_COL) &&
+           duel_physical_key_wakes_display(0u, 0u) &&
+           duel_physical_key_wakes_display(SCRY_KEY_L_ROW, SCRY_KEY_L_COL - 1u));
 
     /* Chord plus any other key = ordinary layer-3 use: OTHER set. */
     rows[0] = 1u;
     in = duel_inputs_from_rows(rows);
     EXPECT(in.scry_mask == (SCRY_M_L | SCRY_M_R | SCRY_M_OTHER));
-    CHECK(ok, "runtime_input_sampling_scry_chord_positions_and_spell_layers");
+    CHECK(ok, "runtime_input_sampling_scry_chord_positions_layers_and_sleep_nonwake");
 }
 
 static void test_runtime_tick_budget(void) {
@@ -279,18 +306,18 @@ static void test_runtime_flash_observe(void) {
     duel_view_from_world(&world, &view);
     duel_flash_policy_t flash = {0};
     uint8_t last_kind[2] = {0, 0};
-    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 100u) &&
+    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 0u, 100u) &&
            DUEL_KIND_ELEMENT(last_kind[SIM_SIDE_L]) == ELEM_EMBER);
     world.spell[SIM_SIDE_L].active = 0;
     world.spell[SIM_SIDE_L].descriptor = 0;
     world.fx_seq = 1u;
     world.fx_kind = FX_IMPACT_R;
     duel_view_from_world(&world, &view);
-    EXPECT(duel_flash_observe_view(&flash, last_kind, &view, 200u) && flash.kind == FX_IMPACT_R &&
-           flash.spell_kind == last_kind[SIM_SIDE_L] &&
+    EXPECT(duel_flash_observe_view(&flash, last_kind, &view, 0u, 200u) &&
+           flash.kind == FX_IMPACT_R && flash.spell_kind == last_kind[SIM_SIDE_L] &&
            flash.duration_ms == DUEL_PRESENTATION_IMPACT_MS);
     /* The same fx_seq never re-arms. */
-    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 300u));
+    EXPECT(!duel_flash_observe_view(&flash, last_kind, &view, 0u, 300u));
     CHECK(ok, "runtime_flash_observe_caches_style_and_arms_defender_flash");
 }
 

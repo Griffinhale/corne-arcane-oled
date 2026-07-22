@@ -43,20 +43,54 @@ static void snapshot_write_residue(duel_snapshot_t *p, uint8_t zone, uint8_t ele
     }
 }
 
+static uint16_t field_total(uint8_t kind) {
+    switch (kind) {
+        case FIELD_TRAP:
+            return SIM_FIELD_TRAP_TICKS;
+        case FIELD_SINGULARITY:
+            return SIM_FIELD_SINGULARITY_TICKS;
+        case FIELD_STEAM:
+            return SIM_FIELD_STEAM_TICKS;
+        case FIELD_RUNE:
+            return SIM_FIELD_RUNE_TICKS;
+        case FIELD_FAMILIAR:
+            return SIM_FIELD_FAMILIAR_TICKS;
+        case FIELD_WALL:
+            return SIM_FIELD_WALL_TICKS;
+        case FIELD_VORTEX:
+            return SIM_FIELD_VORTEX_TICKS;
+        default:
+            return 1u;
+    }
+}
+
+uint8_t duel_field_projection(const sim_field_t *field) {
+    if (field->kind == FIELD_NONE)
+        return 0;
+    uint16_t total = field_total(field->kind);
+    uint16_t remaining = field->timer > total ? total : field->timer;
+    uint8_t age = (uint8_t)(((uint32_t)(total - remaining) * 4u) / total);
+    if (age > 3u)
+        age = 3u;
+    return (uint8_t)((field->kind & 7u) | ((field->zone & 3u) << 3) | (age << 5) |
+                     ((field->owner & 1u) << 7));
+}
+
 void duel_encode_external_alert_display(const sim_world_t *w, uint8_t session, uint16_t seq,
                                         uint8_t external, uint8_t alert, uint8_t display_phase,
                                         duel_snapshot_t *out) {
     memset(out, 0, sizeof *out);
-    out->magic = DUEL_MAGIC;
-    out->ver = DUEL_VER;
+    out->signature_version = DUEL_SIGNATURE_VERSION;
     out->session = session;
     out->flags = DUEL_FLAGS_WORLD_VALID | DUEL_FLAGS_DISPLAY_PACK(display_phase);
-    /* v11 seq is a wrapping byte (ample for stale detection at snapshot
+    /* v12 seq is a wrapping byte (ample for stale detection at snapshot
      * cadence); callers keep their wider counters and we truncate. The
-     * memset above is the v11 stance prefill; residue is live
+     * memset above is the stance prefill; residue is live
      * and filled from the world below. */
     out->seq = (uint8_t)seq;
     duel_view_from_world(w, &out->view);
+    for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++)
+        out->field[slot] = duel_field_projection(&w->field[slot]);
     out->external = external;
     out->alert = alert;
     uint8_t packed[2];
@@ -123,25 +157,34 @@ void duel_snapshot_residue_render(const duel_snapshot_t *p, uint8_t out[2]) {
 bool duel_decode_valid(const duel_snapshot_t *p) {
     bool shared_valid;
     if (p->revision & INCANTATION_AFTERMATH_WIRE) {
-        shared_valid = (p->revision & INCANTATION_AFTERMATH_REV_RESERVED) == 0u;
+        shared_valid = INCANTATION_AFTERMATH_FLAVOR(p->revision) < AFTER_FLAVOR_COUNT;
     } else {
         shared_valid = DUEL_VISITOR_KIND(p->shared_pres) < DUEL_CIVIC_COURIER_COUNT &&
                        DUEL_EVENT_ID(p->revision) < DUEL_CIVIC_EVENT_COUNT &&
                        DUEL_EVENT_TARGET(p->revision) <= DUEL_CIVIC_EVENT_TARGET_SHARED;
     }
-    /* v11 has no reserved bits left; the range checks with teeth are the
+    bool fields_valid = true;
+    for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++) {
+        uint8_t field = p->field[slot];
+        uint8_t kind = DUEL_FIELD_KIND(field);
+        if ((kind == FIELD_NONE && field != 0u) || kind >= FIELD_KIND_COUNT ||
+            DUEL_FIELD_ZONE(field) >= SIM_RESIDUE_ZONES || DUEL_FIELD_AGE(field) > 3u ||
+            DUEL_FIELD_OWNER(field) > SIM_SIDE_R)
+            fields_valid = false;
+    }
+    /* v12 has no reserved bits left; the range checks with teeth are the
      * display-phase bound, the activity enum, and the residue canonical
-     * form (an empty zone must carry element 0). A v10 half fails the ver
+     * form (an empty zone must carry element 0). An older half fails identity
      * check and takes the established stale-link presentation. */
     bool residue_canonical = true;
     for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
         if (duel_snapshot_residue_intensity(p, zone) == 0u &&
             duel_snapshot_residue_element(p, zone) != 0u)
             residue_canonical = false;
-    return p->magic == DUEL_MAGIC && p->ver == DUEL_VER &&
+    return p->signature_version == DUEL_SIGNATURE_VERSION &&
            DUEL_FLAGS_DISPLAY(p->flags) <= DUEL_DISPLAY_SLEEP &&
-           DUEL_SECONDARY_ACTIVITY(p->secondary) <= DUEL_CIVIC_SECONDARY_CALENDAR &&
-           residue_canonical && shared_valid && duel_view_valid(&p->view) &&
+           DUEL_SECONDARY_ACTIVITY(p->secondary) <= DUEL_CIVIC_SECONDARY_PAGE &&
+           residue_canonical && fields_valid && shared_valid && duel_view_valid(&p->view) &&
            p->crc == duel_crc8(p, offsetof(duel_snapshot_t, crc));
 }
 

@@ -15,7 +15,7 @@
 #define DUEL_HOST_REPORT_SIZE  32
 #define DUEL_HOST_MAGIC0       0xCA
 #define DUEL_HOST_MAGIC1       0x8E
-#define DUEL_HOST_VERSION      2
+#define DUEL_HOST_VERSION      3
 #define DUEL_HOST_PAYLOAD_SIZE 20
 
 enum {
@@ -154,10 +154,13 @@ enum {
     DUEL_CIVIC_SECONDARY_TRANSFER = 2,
     DUEL_CIVIC_SECONDARY_SYSTEM = 3,
     DUEL_CIVIC_SECONDARY_CALENDAR = 4,
+    DUEL_CIVIC_SECONDARY_SCROLL = 5,
+    DUEL_CIVIC_SECONDARY_TAB = 6,
+    DUEL_CIVIC_SECONDARY_PAGE = 7,
 };
 
 // Civic byte: bits0-1 floor, bits2-3 mode, bits4-5 host intensity. Bits 6-7
-// must be clear on Raw HID v2; the split v11 snapshot allocates them to
+// must be clear on Raw HID v3; the split snapshot allocates them to
 // residue zone3's element (duel_proto.h) — the master writes them after
 // relaying the host's civic bits.
 #define DUEL_CIVIC_PACK(floor, mode, intensity)                                                    \
@@ -165,12 +168,12 @@ enum {
 #define DUEL_CIVIC_FLOOR(value)     ((uint8_t)((value) & 3u))
 #define DUEL_CIVIC_MODE(value)      ((uint8_t)(((value) >> 2) & 3u))
 #define DUEL_CIVIC_INTENSITY(value) ((uint8_t)(((value) >> 4) & 3u))
-#define DUEL_CIVIC_RESERVED_MASK    0xC0u /* Raw HID v2: bits 6-7 must be clear */
+#define DUEL_CIVIC_RESERVED_MASK    0xC0u /* Raw HID v3: bits 6-7 must be clear */
 
-// Secondary byte ledger: bits0-2 host activity. The split v11 snapshot owns
+// Secondary byte ledger: bits0-2 host activity. The split v12 snapshot owns
 // the rest: bits3-4 master sky phase, bits5-6 sky sub-phase (celestial arc
 // step within the phase), bit7 residue zone3 intensity high bit (see
-// duel_proto.h). Raw HID v2 producers must leave bits3-7 clear — the host
+// duel_proto.h). Raw HID v3 producers must leave bits3-7 clear — the host
 // never supplies sky or residue state.
 #define DUEL_SECONDARY_PACK(activity)  ((uint8_t)((activity) & 7u))
 #define DUEL_SECONDARY_ACTIVITY(value) ((uint8_t)((value) & 7u))
@@ -179,17 +182,56 @@ enum {
 #define DUEL_SECONDARY_SKY_PHASE(value)         ((uint8_t)(((value) >> 3) & 3u))
 #define DUEL_SECONDARY_SKY_SUB_PACK(value, sub) ((uint8_t)(((value) & 0x9Fu) | (((sub) & 3u) << 5)))
 #define DUEL_SECONDARY_SKY_SUBPHASE(value)      ((uint8_t)(((value) >> 5) & 3u))
-#define DUEL_SECONDARY_HID_RESERVED             0xF8u /* Raw HID v2: bits3-7 must be clear */
+#define DUEL_SECONDARY_HID_RESERVED             0xF8u /* Raw HID v3: bits3-7 must be clear */
 
 // Raw HID range check for the civic byte and the low activity bits of the
-// secondary byte. Split v11 no longer shares it: its civic bits 6-7 carry
+// secondary byte. The split snapshot no longer shares it: its civic bits 6-7 carry
 // residue state, so duel_decode_valid applies its own checks.
 static inline bool duel_civic_semantics_valid(uint8_t civic, uint8_t secondary) {
     return (civic & DUEL_CIVIC_RESERVED_MASK) == 0 &&
-           DUEL_SECONDARY_ACTIVITY(secondary) <= DUEL_CIVIC_SECONDARY_CALENDAR;
+           DUEL_SECONDARY_ACTIVITY(secondary) <= DUEL_CIVIC_SECONDARY_PAGE;
 }
 
-// Raw HID v2 payload positions for the always-present civic bytes.
+/* Six renderer-level districts are derived from the existing scene/floor
+ * semantics. Applications select broad combinations; no per-app scene enters
+ * firmware or the split link. */
+enum {
+    DUEL_DISTRICT_COMMONS = 0,
+    DUEL_DISTRICT_RESEARCH,
+    DUEL_DISTRICT_WORKSHOP,
+    DUEL_DISTRICT_OBSERVATORY,
+    DUEL_DISTRICT_SCRIPTORIUM,
+    DUEL_DISTRICT_STUDIO,
+    DUEL_DISTRICT_COUNT,
+};
+
+static inline uint8_t duel_civic_district(uint8_t civic, uint8_t external) {
+    uint8_t floor = DUEL_CIVIC_FLOOR(civic);
+    uint8_t scene = DUEL_HOST_CONTEXT_SCENE(external);
+    if (floor == DUEL_CIVIC_FLOOR_WORKSHOP)
+        return DUEL_DISTRICT_WORKSHOP;
+    if (floor == DUEL_CIVIC_FLOOR_SPECIAL && scene == DUEL_HOST_SCENE_FOCUS)
+        return DUEL_DISTRICT_OBSERVATORY;
+    if (floor == DUEL_CIVIC_FLOOR_RESEARCH && scene == DUEL_HOST_SCENE_DUEL)
+        return DUEL_DISTRICT_SCRIPTORIUM;
+    if (floor == DUEL_CIVIC_FLOOR_COMMONS && scene == DUEL_HOST_SCENE_ARCHIVE)
+        return DUEL_DISTRICT_STUDIO;
+    if (floor == DUEL_CIVIC_FLOOR_RESEARCH)
+        return DUEL_DISTRICT_RESEARCH;
+    if (floor == DUEL_CIVIC_FLOOR_SPECIAL)
+        return DUEL_DISTRICT_OBSERVATORY;
+    return DUEL_DISTRICT_COMMONS;
+}
+
+static inline uint8_t duel_district_floor(uint8_t district) {
+    return district == DUEL_DISTRICT_RESEARCH || district == DUEL_DISTRICT_SCRIPTORIUM
+               ? DUEL_CIVIC_FLOOR_RESEARCH
+           : district == DUEL_DISTRICT_WORKSHOP    ? DUEL_CIVIC_FLOOR_WORKSHOP
+           : district == DUEL_DISTRICT_OBSERVATORY ? DUEL_CIVIC_FLOOR_SPECIAL
+                                                   : DUEL_CIVIC_FLOOR_COMMONS;
+}
+
+// Raw HID v3 payload positions for the always-present civic bytes.
 #define DUEL_HOST_PAYLOAD_CIVIC     6
 #define DUEL_HOST_PAYLOAD_SECONDARY 7
 #define DUEL_HOST_PAYLOAD_LEN       8

@@ -1,18 +1,18 @@
 # Protocol bit ledger
 
-This ledger is the allocation authority for the two fixed 32-byte transports.
-Raw HID remains version 2; split snapshots are version 11. Integers wider than
-one byte are little-endian. Every reserved bit
-must be zero; receivers reject malformed version, length, reserved-bit, enum,
-range, or CRC combinations.
+This ledger is the allocation authority for the two fixed 32-byte production
+transports. Raw HID is version 3 and split snapshots are version 12. Integers
+wider than one byte are little-endian. Receivers reject malformed identity,
+version, length, enum, canonical-zero, range, or CRC combinations; mixed
+versions never downgrade.
 
-## Raw HID v2 host report (32 bytes)
+## Raw HID v3 host report (32 bytes)
 
 | Offset | Size | Field | Allocation |
 |---:|---:|---|---|
 | 0 | 1 | `magic0` | `0xCA` |
 | 1 | 1 | `magic1` | `0x8E` |
-| 2 | 1 | `version` | `2` |
+| 2 | 1 | `version` | `3` |
 | 3 | 1 | `type` | hello `1`, heartbeat `2`, notify `3` |
 | 4 | 4 | `session` | daemon session nonce |
 | 8 | 2 | `seq` | per-session sequence, wrapping |
@@ -22,96 +22,88 @@ range, or CRC combinations.
 
 Payload bytes are scene, notification count, category, priority, age,
 persistent, civic, and secondary. Civic bits are floor 0–1, mode 2–3,
-host intensity 4–5, and reserved 6–7. Raw HID secondary bits 0–2 carry the
-activity channel; bits 3–7 must be zero. The host never supplies sky phase.
+intensity 4–5, and reserved-zero 6–7. Secondary bits 0–2 are none `0`, media
+`1`, transfer `2`, system `3`, calendar `4`, browser scroll `5`, tab selection
+`6`, or page event `7`; bits 3–7 are zero. Firmware v12 rejects Raw HID v2.
+
+`ReportBrowserActivity(yy)` accepts only secondary values 5–7 and intensity
+0–3. Host adapters coalesce reports to at most 4 Hz and clear browser activity
+after 1.5 seconds. The browser extension/native host carries exactly `kind`
+and `intensity`, never page identity or content.
 
 ## Diagnostic v2 (diagnostic images only)
 
-Diagnostic requests and responses use the Raw HID endpoint but are a separate
-three-page protocol. Every report is 32 bytes: magic `CA 8E`, diagnostic
-version `2`, type `0x70` request or `0x71` response, page, page count, 16-bit
-nonce, 23-byte payload, and CRC-8. Requests set page count and all payload bytes
-to zero. Responses set page count to three and echo page and nonce. A v1 reply,
-a two-page/v2 mixture, or any nonzero reserved byte is rejected.
+Diagnostics retain their separate version-2 protocol; this is not production
+Raw HID v2 compatibility. Requests and responses use three 32-byte pages:
+magic `CA 8E`, version `2`, type `0x70` request or `0x71` response, page, page
+count, 16-bit nonce, 23-byte payload, and CRC-8. Requests zero page count and
+payload. Responses set page count to three and echo page and nonce. A v1 reply,
+a mixed page count, or a nonzero reserved byte is rejected.
 
-Pages 0 and 1 retain the established counter and timing allocation. Page 2
-payload bytes 0–1 are master minimum free stack, bytes 2–3 are peer minimum free
-stack, and bytes 4–22 are reserved zero. The reverse split diagnostic reply is
-18 bytes: the prior 16-byte fields followed by peer minimum free stack. It stays
-below QMK's 32-byte reverse-RPC capacity. None of these diagnostic layouts are
-compiled into the release image.
+Pages 0 and 1 carry counters/timing. Page 2 payload bytes 0–1 are master
+minimum free stack, 2–3 peer minimum free stack, and 4–22 reserved zero. The
+reverse split diagnostic reply remains 18 bytes. Diagnostics are absent from
+release images.
 
-## Split snapshot v11 (32 bytes)
+## Split snapshot v12 (32 bytes)
 
-The v10 → v11 repack freed 22 bits without growing the packet — `seq`
-narrowed to a wrapping byte (+8), the view's fx byte lends its high nibble
-(+4), and the reserved bits of `flags` (+5), `civic` (+2), and `secondary`
-(+3) were allocated — and spent exactly 22: four battlefield-residue zones
-(4 × 4), two wizard stances (2 × 2), and the sky sub-phase (2). All three
-allocations are live in the current encoder and renderer.
+Version and magic share byte 0 as `signature_version = 0xAC`: signature nibble
+`0xA`, version nibble `12`. A v11 receiver sees invalid magic and enters its
+existing stale-link presentation.
 
 | Offset | Size | Field | Allocation |
 |---:|---:|---|---|
-| 0 | 1 | `magic` | `0xA7` |
-| 1 | 1 | `ver` | `11` |
-| 2 | 1 | `session` | master boot nonce |
-| 3 | 1 | `flags` | world-valid bit 0; display phase bits 1–2; residue zone 2 element bits 3–4, intensity bits 5–6; residue zone 3 intensity LOW bit 7 |
-| 4 | 1 | `seq` | wrapping byte, incremented on every attempted send, including cadence skips |
-| 5 | 1 | `residue` | zone 0 element bits 0–1, intensity 2–3; zone 1 element 4–5, intensity 6–7 |
-| 6 | 19 | `view` | canonical duel/render projection |
+| 0 | 1 | `signature_version` | exactly `0xAC` |
+| 1 | 1 | `session` | master boot nonce and variance seed |
+| 2 | 1 | `flags` | world-valid 0; display phase 1–2; residue zone 2 element 3–4/intensity 5–6; zone 3 intensity low bit 7 |
+| 3 | 1 | `seq` | wrapping byte |
+| 4 | 1 | `residue` | zone 0 element/intensity nibbles, then zone 1 |
+| 5 | 18 | `view` | canonical duel/render projection |
+| 23 | 1 | `field[0]` | kind 0–2, zone 3–4, age quarter 5–6, owner 7 |
+| 24 | 1 | `field[1]` | same; zero is the only inactive encoding |
 | 25 | 1 | `external` | host online/scene/count/persistent summary |
-| 26 | 1 | `alert` | category bits 0–2, priority 3–4, age 5–7 |
-| 27 | 1 | `civic` | floor 0–1, mode 2–3, intensity 4–5; residue zone 3 element bits 6–7 |
-| 28 | 1 | `secondary` | activity 0–2, sky phase 3–4, sky sub-phase 5–6; residue zone 3 intensity HIGH bit 7 |
+| 26 | 1 | `alert` | category 0–2, priority 3–4, age 5–7 |
+| 27 | 1 | `civic` | floor 0–1, mode 2–3, intensity 4–5; residue zone 3 element 6–7 |
+| 28 | 1 | `secondary` | activity 0–2, sky phase 3–4, sub-phase 5–6; zone 3 intensity high bit 7 |
 | 29 | 1 | `shared_pres` | visitor or aftermath payload, selected by `revision.7` |
-| 30 | 1 | `revision` | event or aftermath payload; bit 7 is the discriminator |
+| 30 | 1 | `revision` | event or aftermath phase/flavor; bit 7 discriminator |
 | 31 | 1 | `crc` | CRC-8 over bytes 0–30 |
 
-Sky values are dawn `0`, day `1`, dusk `2`, and night `3`; the sub-phase is
-the quarter of the current phase, giving the celestial arc 16 steps per
-cycle. A stale half runs its local cycle; the next accepted master snapshot
-replaces phase and sub-phase directly without replay.
+The 18-byte view keeps the six wizard bytes, seven shared spell bytes,
+`fx_stance`, `outcome_overlay`, two phase bytes, and `status_visual`. Each
+active spell occupies a 20-bit descriptor plus 8-bit progress. The descriptor
+retains form, element, payload, trajectory, magnitude, status, tempo, trend,
+and valid. Interaction reconstructs as ABSORB for singularity, PHASE for other
+void, and SOLID otherwise; master-local COMBINE is intentionally rendered as
+SOLID. Variance reconstructs as `CRC8(session, side, compressed) & 3`. The
+exhaustive compile-domain test pins all slave-observable fields and both
+reconstructions. Inactive descriptors require zero progress.
 
-Residue zones follow the duel u-axis: `0` doorstep-L, `1` mid-L, `2` mid-R,
-`3` doorstep-R; elements reuse the `ELEM_*` encoding and intensity `0` means
-empty, whose canonical form requires element `0` (validators reject
-non-canonical zones). Zone 3 is the one field that straddles bytes — its
-intensity low bit rides `flags.7` and its high bit `secondary.7`; the
-`duel_snapshot_residue_*` accessors in `duel_proto.h` are the only sanctioned
-door. The encoder fills every zone from the authoritative
-`sim_world_t.residue`; `duel_snapshot_set_civic` masks the borrowed bits out
-of its incoming civic/secondary semantics and preserves the encoder's values,
-so no call ordering is required. Decay timers are master-local and never
-cross the wire.
+Field kinds are none `0`, trap `1`, singularity `2`, steam cloud `3`, rune `4`,
+familiar `5`, wall `6`, and vortex `7`. Zones are doorstep-L, mid-L, mid-R,
+and doorstep-R. Age is the elapsed lifetime quarter. The global slots are
+authoritative; only this display projection crosses the split.
 
-Within the 19-byte view, the former `fx_seq` byte is now `fx_stance`: bits
-0–3 carry the one-shot outcome sequence (wraps at 16; every consumer compares
-equality only) and bits 4–5 / 6–7 carry the left / right wizard stance
-(`DUEL_STANCE_*`: none, meditate, study, fortify; pace/taunt derive locally
-and never ride the wire). `outcome_overlay` uses bits 0–3 for the one-shot
-`FX_*` kind, bit 4 for the scry-open overlay, bits 5–6 for scry scene, and
-keeps bit 7 reserved. Scry is a presentation overlay and does not change
-civic wire ownership.
-
-A v10 half sees a version mismatch, rejects every v11 frame, and takes the
-established stale-link presentation; mixed revisions never render from
-misinterpreted bytes.
+Residue uses the same four zones. Intensity zero requires element zero. Zone 3
+straddles `flags.7`, `secondary.7`, and `civic.6–7`; accessors in
+`duel_proto.h` are the sanctioned interface. The civic setter preserves these
+borrowed bits.
 
 ## Shared presentation discriminator
 
-When `revision.7 == 0`, `shared_pres` is courier kind 0–2, city 3, lifecycle
-4–5, and density 6–7. `revision` is rare-event id 0–2, phase 3–4, target 5–6,
-with bit 7 clear. Diplomatic targets encode left advantage `0`, right
-advantage `1`, or balance `2`.
+With `revision.7 == 0`, `shared_pres` is courier kind 0–2, city 3, lifecycle
+4–5, density 6–7. `revision` is rare-event id 0–2, phase 3–4, and target 5–6.
 
-When `revision.7 == 1`, authoritative aftermath owns both bytes. `shared_pres`
-contains left and right aftermath kinds in bits 0–2 and 3–5 plus world state
-in 6–7. `revision` contains left and right phases in 0–1 and 2–3, reserved zero
-bits 4–6, and the discriminator in 7. Aftermath suppresses ordinary courier and
-rare-event interpretation.
+With `revision.7 == 1`, aftermath owns both bytes. `shared_pres` carries left
+and right kinds in bits 0–2 and 3–5 plus world state in 6–7. `revision` carries
+left/right phase in 0–1 and 2–3, aftermath flavor in 4–6, and the discriminator
+in 7. Flavors are base `0`, rune `1`, familiar `2`, wall `3`, vortex `4`, echo
+`5`, and bloom `6`; `7` is rejected.
 
-Rendering precedence is sky underlay, floor, combat/champions, health, alert,
-scry, recovery, and diagnostics. A source floor is shown during transition
-phases 0–1; the target floor owns phases 2–3. Observatory suppresses ordinary
-couriers, rare events, and energetic typing accents, while combat, alert,
-health, scry, transitions, and authoritative aftermath remain visible.
+Rendering precedence keeps stale/diagnostic indicators ahead of ordinary
+decoration. Each OLED owns a narrow, black-interior almanac scroll: seven local
+presentation extents unroll from the centre, labelled values advance upward
+while the deliberate chord remains held, and release freezes then rerolls the
+reading. These frames add no wire state and never pause combat or wake sleeping
+hardware. Observatory suppresses crowds and disposable energetic ambience, not
+authoritative combat or warnings.

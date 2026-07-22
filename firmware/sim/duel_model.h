@@ -73,7 +73,9 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS    12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#define SIM_MAX_HP        8 /* Allows KOs during ordinary typing sessions. */
+#ifndef SIM_MAX_HP
+#define SIM_MAX_HP 8 /* Preserved baseline while the physical 8/10 A/B gate is pending. */
+#endif
 
 /* ---- combat -------------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
@@ -133,7 +135,7 @@ enum { LIFE_ACTIVE = 0, LIFE_COLLAPSE = 1, LIFE_DOWNED = 2, LIFE_MEDIC = 3, LIFE
  * SIM_STANCE_ENTRY_TICKS of INC_IDLE (stance_step, authoritative only) and
  * exit is any own keydown — a byte write in inc_keydown, so the typing path
  * never waits on stance logic. Values ride the view's fx_stance high nibble
- * (v11); PACE/TAUNT deliberately have no sim state and never ride the wire —
+ * PACE/TAUNT deliberately have no sim state and never ride the wire —
  * the renderer derives them locally from NONE + idle + seed.
  * `temper` (0..7, starts SIM_TEMPER_NEUTRAL) drifts at resolve time: damage
  * taken +1, own spell stopped -1, KO one step back toward neutral. */
@@ -186,6 +188,51 @@ enum {
 enum { INTERACT_SOLID = 0, INTERACT_PHASE = 1, INTERACT_ABSORB = 2, INTERACT_COMBINE = 3 };
 enum { TEMPO_DELIBERATE = 0, TEMPO_FLOWING = 1, TEMPO_RAPID = 2, TEMPO_FRANTIC = 3 };
 enum { TREND_DECELERATING = 0, TREND_STEADY = 1, TREND_ACCELERATING = 2, TREND_IRREGULAR = 3 };
+
+/* Derived readings deliberately reuse the existing descriptor grammar. They
+ * are mechanics/presentation predicates, not an expansion of the 3-bit form. */
+enum {
+    SPELL_SIGNATURE_BASE = 0,
+    SPELL_SIGNATURE_RUNE,
+    SPELL_SIGNATURE_FAMILIAR,
+    SPELL_SIGNATURE_WALL,
+    SPELL_SIGNATURE_VORTEX,
+    SPELL_SIGNATURE_ECHO,
+    SPELL_SIGNATURE_BLOOM,
+};
+
+/* Exactly two persistent field slots exist globally. Kind zero is inactive;
+ * the remaining values also fit the split snapshot's three-bit projection. */
+enum {
+    FIELD_NONE = 0,
+    FIELD_TRAP,
+    FIELD_SINGULARITY,
+    FIELD_STEAM,
+    FIELD_RUNE,
+    FIELD_FAMILIAR,
+    FIELD_WALL,
+    FIELD_VORTEX,
+    FIELD_KIND_COUNT,
+};
+#define SIM_FIELD_SLOTS             2u
+#define SIM_FIELD_TRAP_TICKS        75u
+#define SIM_FIELD_SINGULARITY_TICKS 50u
+#define SIM_FIELD_STEAM_TICKS       75u
+#define SIM_FIELD_RUNE_TICKS        150u
+#define SIM_FIELD_FAMILIAR_TICKS    80u
+#define SIM_FIELD_WALL_TICKS        150u
+#define SIM_FIELD_VORTEX_TICKS      100u
+
+enum {
+    AFTER_FLAVOR_BASE = 0,
+    AFTER_FLAVOR_RUNE,
+    AFTER_FLAVOR_FAMILIAR,
+    AFTER_FLAVOR_WALL,
+    AFTER_FLAVOR_VORTEX,
+    AFTER_FLAVOR_ECHO,
+    AFTER_FLAVOR_BLOOM,
+    AFTER_FLAVOR_COUNT,
+};
 
 /* current one-shot outcomes retain the legacy 0..6 values above. Values 7..15
  * are deliberately side-neutral aftermaths except for the two ward-shatter
@@ -299,6 +346,7 @@ typedef struct {
     sim_incantation_t inc;
     uint32_t pending_desc;
     uint32_t prepared_desc;
+    uint32_t echo_desc; /* one reduced repeat may be pending per side */
     uint32_t prev_held;
     uint8_t inc_state;
     uint8_t ward_strength;
@@ -314,7 +362,8 @@ typedef struct {
     uint8_t stance;       /* DUEL_STANCE_*; sub-state of LIFE_ACTIVE */
     uint8_t stance_ticks; /* idle ticks toward entry, then held ticks in-stance */
     uint8_t studied;      /* STUDY buff pending; consumed by the next inc_commit */
-    uint8_t _pad[2];      /* explicit padding: keeps world hashing deterministic */
+    uint8_t echo_ticks;   /* bounded delay; a blocked slot holds at one tick */
+    uint8_t _pad[1];      /* explicit padding: keeps world hashing deterministic */
 } sim_wizard_t;
 
 typedef struct {
@@ -334,7 +383,19 @@ typedef struct {
  * never read back). Bit7 marks the spell's single residue transmutation
  * — one reaction per spell lifetime. */
 #define SPELL_RESOLVED_PAYLOAD 0x01u
+#define SPELL_RESOLVED_FIELD0  0x20u
+#define SPELL_RESOLVED_FIELD1  0x40u
 #define SPELL_RESOLVED_REACTED 0x80u
+
+typedef struct {
+    uint32_t descriptor; /* complete master-local spell descriptor */
+    uint16_t timer;      /* bounded remaining lifetime */
+    uint8_t aux;         /* charge, wall strength, or familiar progress */
+    uint8_t kind;        /* FIELD_*; FIELD_NONE requires canonical all-zero */
+    uint8_t zone;        /* SIM_RESIDUE_* battlefield zone */
+    uint8_t owner;       /* SIM_SIDE_* */
+    uint8_t _pad[2];
+} sim_field_t;
 
 /* ---- battlefield residue ------------------------------------------------
  * Session-scale elemental residue in four fixed zones on the duel u-axis:
@@ -379,8 +440,9 @@ typedef struct {
  *   SELECT     a selector key tapped while ACTIVE cycles the scene
  *   CANCELLED  any other key touched during PENDING (i.e. real layer-3 use);
  *              latched until a full release so it cannot flicker open
- * A release from ACTIVE/SELECT simply closes the overlay; the underlying
- * scene is never disturbed. */
+ * A release from ACTIVE/SELECT closes the authoritative overlay immediately;
+ * the bounded render cache may finish a short reroll without changing the
+ * world. The underlying scene is never disturbed. */
 enum {
     SCRY_IDLE = 0,
     SCRY_FIRST_HELD = 1,
@@ -405,6 +467,7 @@ typedef struct {
     uint8_t prev_down_mask; /* for rising-edge cast detection */
     sim_wizard_t wiz[2];
     sim_spell_t spell[2];
+    sim_field_t field[SIM_FIELD_SLOTS];
     uint8_t fx_seq;          /* increments once per one-shot outcome */
     uint8_t fx_kind;         /* FX_*: none/impact/deflect/fizzle, L/R per defender */
     uint16_t overflow_count; /* lifetime dropped events, saturating */
@@ -412,19 +475,20 @@ typedef struct {
     sim_scry_t scry;         /* scry layer-key overlay chord machine (authoritative-only) */
     sim_aftermath_t aftermath[2];
     uint8_t world_state;
-    uint8_t _incantation_pad;
+    uint8_t aftermath_flavor;
     sim_residue_t residue[SIM_RESIDUE_ZONES]; /* authoritative-only */
 } sim_world_t;
 
 /* These layouts are hashed by deterministic tests and projected onto the
  * fixed view/snapshot contracts. Keep field order and explicit padding exact. */
 _Static_assert(sizeof(sim_incantation_t) == 44, "incantation layout changed");
-_Static_assert(sizeof(sim_wizard_t) == 88, "wizard layout changed");
+_Static_assert(sizeof(sim_wizard_t) == 92, "wizard layout changed");
 _Static_assert(sizeof(sim_spell_t) == 12, "spell layout changed");
+_Static_assert(sizeof(sim_field_t) == 12, "field layout changed");
 _Static_assert(sizeof(sim_aftermath_t) == 6, "aftermath layout changed");
 _Static_assert(sizeof(sim_residue_t) == 3, "residue layout changed");
 _Static_assert(sizeof(sim_scry_t) == 4, "scry layout changed");
-_Static_assert(sizeof(sim_world_t) == 244, "world layout changed");
+_Static_assert(sizeof(sim_world_t) == 276, "world layout changed");
 
 // True while the scrying overlay should be drawn (ACTIVE or SELECT). Slave
 // worlds decoded from the wire land in exactly these states, so both halves

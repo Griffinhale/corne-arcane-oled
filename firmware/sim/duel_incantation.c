@@ -219,6 +219,29 @@ uint8_t incantation_tempo_trend(const sim_incantation_t *inc) {
     return INCANTATION_AMBIENCE_PACK(true, tempo, trend);
 }
 
+uint8_t incantation_signature(uint32_t desc) {
+    if (!SPELL_DESC_VALID(desc))
+        return SPELL_SIGNATURE_BASE;
+    uint8_t form = SPELL_DESC_FORM(desc);
+    uint8_t payload = SPELL_DESC_PAYLOAD(desc);
+    uint8_t trajectory = SPELL_DESC_TRAJECTORY(desc);
+    if (form == SPELL_CONJURE && (payload == PAY_STATUS || payload == PAY_HYBRID) &&
+        (trajectory == TRAJ_GROUND || trajectory == TRAJ_AREA))
+        return SPELL_SIGNATURE_RUNE;
+    if (form == SPELL_CONJURE && trajectory == TRAJ_RETURNING)
+        return SPELL_SIGNATURE_FAMILIAR;
+    if (form == SPELL_GROUND_WAVE && payload == PAY_STATUS)
+        return SPELL_SIGNATURE_WALL;
+    if (form == SPELL_SINGULARITY && (trajectory == TRAJ_RETURNING || trajectory == TRAJ_HOMING))
+        return SPELL_SIGNATURE_VORTEX;
+    if (SPELL_DESC_TREND(desc) == TREND_IRREGULAR &&
+        SPELL_DESC_INTERACTION(desc) == INTERACT_COMBINE && SPELL_DESC_MAGNITUDE(desc) >= 2u)
+        return SPELL_SIGNATURE_ECHO;
+    if (trajectory == TRAJ_AREA && payload == PAY_HYBRID && SPELL_DESC_MAGNITUDE(desc) >= 2u)
+        return SPELL_SIGNATURE_BLOOM;
+    return SPELL_SIGNATURE_BASE;
+}
+
 uint8_t incantation_local_ambience(const sim_wizard_t *wizard) {
     if (wizard->inc_state == INC_COLLECTING)
         return incantation_tempo_trend(&wizard->inc);

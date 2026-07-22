@@ -6,6 +6,7 @@ void run_runtime_display_rgb_tests(void);
 void run_protocol_view_tests(void);
 void run_incantation_compiler_tests(void);
 void run_combat_lifecycle_tests(void);
+void run_fields_magic_tests(void);
 void run_civic_presentation_tests(void);
 void run_rendering_geometry_tests(void);
 void run_diagnostics_tests(void);
@@ -15,6 +16,7 @@ int main(void) {
     run_protocol_view_tests();
     run_incantation_compiler_tests();
     run_combat_lifecycle_tests();
+    run_fields_magic_tests();
     run_civic_presentation_tests();
     run_rendering_geometry_tests();
     run_diagnostics_tests();

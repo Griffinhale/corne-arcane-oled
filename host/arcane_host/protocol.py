@@ -8,7 +8,7 @@ from enum import IntEnum
 
 REPORT_SIZE = 32
 MAGIC = (0xCA, 0x8E)
-VERSION = 2
+VERSION = 3
 PAYLOAD_SIZE = 20
 
 
@@ -77,6 +77,9 @@ class Secondary(IntEnum):
     TRANSFER = 2
     SYSTEM = 3
     CALENDAR = 4
+    SCROLL = 5
+    TAB = 6
+    PAGE = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,7 +173,7 @@ def build_packet(
     summary: NotificationSummary | None = None,
     civic: CivicState = DEFAULT_CIVIC,
 ) -> bytes:
-    """Build the canonical v2 report with its eight-byte semantic payload."""
+    """Build the canonical v3 report with its eight-byte semantic payload."""
     if not 0 <= session <= 0xFFFFFFFF:
         raise ValueError("session must fit uint32")
     if not 0 <= sequence <= 0xFFFF:

@@ -1,4 +1,4 @@
-.PHONY: test mechanics-test visual-test noalloc-check release-build release-budget hygiene \
+.PHONY: test mechanics-test mechanics-hp-candidates visual-test hp-gate noalloc-check release-build release-budget hygiene \
 	format format-check lint
 
 PYTHON_SOURCES := $(shell find host/arcane_host host/tests tools -type f -name '*.py' | sort)
@@ -11,8 +11,14 @@ test: mechanics-test visual-test noalloc-check
 mechanics-test:
 	$(MAKE) -C firmware/sim_test mechanics-test
 
+mechanics-hp-candidates:
+	$(MAKE) -C firmware/sim_test mechanics-hp-candidates
+
 visual-test:
 	$(MAKE) -C firmware/sim_test visual-test
+
+hp-gate:
+	$(MAKE) -C firmware/sim_test hp-gate
 
 noalloc-check:
 	$(MAKE) -C firmware/sim_test noalloc-check

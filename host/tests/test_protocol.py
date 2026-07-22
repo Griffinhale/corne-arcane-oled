@@ -24,7 +24,7 @@ class ProtocolTests(unittest.TestCase):
         report = build_packet(Message.HELLO, 0x11223344, 0, Scene.ARCHIVE, 2)
         self.assertEqual(len(report), 32)
         self.assertEqual(
-            report.hex(), "ca8e0201443322110000080102070200000000000000000000000000000000ba"
+            report.hex(), "ca8e030144332211000008010207020000000000000000000000000000000095"
         )
 
     def test_crc_covers_every_payload_byte(self) -> None:

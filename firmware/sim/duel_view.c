@@ -26,6 +26,66 @@ static uint8_t display_kind(uint32_t desc) {
                                SPELL_DESC_MAGNITUDE(desc) - 1u);
 }
 
+uint32_t duel_spell_descriptor_compress(uint32_t desc) {
+    if (!SPELL_DESC_VALID(desc))
+        return 0;
+    return (desc & 0x7fffu) | ((desc >> 2) & 0x00018000u) | ((desc >> 2) & 0x00060000u) |
+           0x00080000u;
+}
+
+static uint8_t descriptor_variance(uint8_t session, uint8_t side, uint32_t compressed) {
+    uint8_t bytes[5] = {session, side, (uint8_t)compressed, (uint8_t)(compressed >> 8),
+                        (uint8_t)(compressed >> 16)};
+    uint8_t crc = 0;
+    for (uint8_t i = 0; i < sizeof bytes; i++) {
+        crc ^= bytes[i];
+        for (uint8_t bit = 0; bit < 8u; bit++)
+            crc = (crc & 0x80u) ? (uint8_t)((crc << 1) ^ 0x07u) : (uint8_t)(crc << 1);
+    }
+    return crc & 3u;
+}
+
+uint32_t duel_spell_descriptor_expand(uint32_t compressed, uint8_t session, uint8_t side) {
+    if (!(compressed & 0x00080000u))
+        return 0;
+    uint32_t desc = (compressed & 0x7fffu) | ((compressed & 0x00018000u) << 2) |
+                    ((compressed & 0x00060000u) << 2) | 0x00800000u;
+    uint8_t interaction = SPELL_DESC_FORM(desc) == SPELL_SINGULARITY ? INTERACT_ABSORB
+                          : SPELL_DESC_ELEMENT(desc) == ELEM_VOID    ? INTERACT_PHASE
+                                                                     : INTERACT_SOLID;
+    desc |= (uint32_t)interaction << 15;
+    desc |= (uint32_t)descriptor_variance(session, side, compressed) << 21;
+    return desc;
+}
+
+static void view_spell_pack(duel_view_t *view, uint8_t side, uint32_t desc, uint8_t progress) {
+    uint32_t compressed = duel_spell_descriptor_compress(desc);
+    if (side == SIM_SIDE_L) {
+        view->spell[0] = (uint8_t)compressed;
+        view->spell[1] = (uint8_t)(compressed >> 8);
+        view->spell[2] = (uint8_t)((compressed >> 16) | (progress << 4));
+        view->spell[3] = (uint8_t)(progress >> 4);
+    } else {
+        view->spell[3] |= (uint8_t)(compressed << 4);
+        view->spell[4] = (uint8_t)(compressed >> 4);
+        view->spell[5] = (uint8_t)(compressed >> 12);
+        view->spell[6] = progress;
+    }
+}
+
+static uint32_t view_spell_compressed(const duel_view_t *view, uint8_t side) {
+    if (side == SIM_SIDE_L)
+        return (uint32_t)view->spell[0] | ((uint32_t)view->spell[1] << 8) |
+               ((uint32_t)(view->spell[2] & 0x0fu) << 16);
+    return (uint32_t)(view->spell[3] >> 4) | ((uint32_t)view->spell[4] << 4) |
+           ((uint32_t)view->spell[5] << 12);
+}
+
+static uint8_t view_spell_progress(const duel_view_t *view, uint8_t side) {
+    return side == SIM_SIDE_L ? (uint8_t)((view->spell[2] >> 4) | (view->spell[3] << 4))
+                              : view->spell[6];
+}
+
 void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
     memset(view, 0, sizeof *view);
     for (uint8_t side = 0; side < 2; side++) {
@@ -38,12 +98,8 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
         view->wizard[side][1] = VIEW_W1_PACK(wz->life, wz->variant, wz->status);
         view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus, wz->prepared);
         const sim_spell_t *sp = &world->spell[side];
-        if (sp->active) {
-            view->spell[side][0] = (uint8_t)sp->descriptor;
-            view->spell[side][1] = (uint8_t)(sp->descriptor >> 8);
-            view->spell[side][2] = (uint8_t)(sp->descriptor >> 16);
-            view->spell[side][3] = sp->progress;
-        }
+        if (sp->active)
+            view_spell_pack(view, side, sp->descriptor, sp->progress);
         if (wz->inc_state == INC_COLLECTING) {
             view->phase[side] = incantation_complexity(&wz->inc);
         } else if (wz->inc_state == INC_WINDUP || wz->inc_state == INC_PREPARED) {
@@ -108,10 +164,10 @@ duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
     return wz;
 }
 
-duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side) {
-    uint32_t desc = (uint32_t)view->spell[side][0] | ((uint32_t)view->spell[side][1] << 8) |
-                    ((uint32_t)view->spell[side][2] << 16);
-    uint8_t progress = view->spell[side][3];
+duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side, uint8_t session) {
+    uint32_t compressed = view_spell_compressed(view, side);
+    uint32_t desc = duel_spell_descriptor_expand(compressed, session, side);
+    uint8_t progress = view_spell_progress(view, side);
     duel_view_spell_t spell = {
         .active = desc != 0,
         .pos = side == SIM_SIDE_L ? progress : (uint8_t)(255u - progress),
@@ -151,16 +207,18 @@ bool duel_view_valid(const duel_view_t *view) {
         if ((inc_state == INC_WINDUP || inc_state == INC_PREPARED) &&
             VIEW_PHASE_FORM(view->phase[side]) > SPELL_CONJURE)
             return false;
-        uint32_t desc = (uint32_t)view->spell[side][0] | ((uint32_t)view->spell[side][1] << 8) |
-                        ((uint32_t)view->spell[side][2] << 16);
-        uint8_t progress = view->spell[side][3];
-        if (!desc) {
+        uint32_t compressed = view_spell_compressed(view, side);
+        uint8_t progress = view_spell_progress(view, side);
+        if (!compressed) {
             if (progress)
                 return false;
             continue;
         }
-        if (!SPELL_DESC_VALID(desc) || (desc & 0xff000000u) ||
-            SPELL_DESC_FORM(desc) > SPELL_CONJURE || SPELL_DESC_STATUS(desc) > STATUS_MARKED)
+        if (!(compressed & 0x00080000u) || (compressed & 0xfff00000u))
+            return false;
+        uint32_t desc = duel_spell_descriptor_expand(compressed, 0, side);
+        if (!SPELL_DESC_VALID(desc) || SPELL_DESC_FORM(desc) > SPELL_CONJURE ||
+            SPELL_DESC_STATUS(desc) > STATUS_MARKED)
             return false;
     }
     return true;

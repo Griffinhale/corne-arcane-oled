@@ -13,15 +13,18 @@ void duel_combat_pose_step(sim_wizard_t *wizard, bool down, bool was_down);
 void duel_combat_lifecycle_step(sim_wizard_t *wizard);
 void duel_combat_stance_step(sim_world_t *world, uint8_t side);
 void duel_combat_regeneration_step(sim_world_t *world);
+void duel_combat_field_step(sim_world_t *world);
 void duel_combat_collision_step(sim_world_t *world);
 void duel_combat_residue_step(sim_world_t *world);
 void duel_combat_spell_step(sim_world_t *world, uint8_t side);
+void duel_combat_echo_step(sim_world_t *world);
 void duel_combat_status_release_step(sim_world_t *world);
 void duel_combat_aftermath_step(sim_world_t *world);
 void duel_combat_scry_step(sim_scry_t *scry, uint8_t mask);
 
 /* sim_tick owns this exact order:
  * shared overflow -> authoritative input collection -> shared pose/held state ->
- * lifecycle -> stance -> regeneration -> collision -> residue -> left/right
- * spell motion -> status/windup/release -> aftermath -> scry -> shared edge/tick.
+ * lifecycle -> stance -> regeneration -> field lifetime -> spell/field then
+ * spell/spell collision -> residue -> left/right spell motion -> echo ->
+ * status/windup/release -> aftermath -> scry -> shared edge/tick.
  * Changing the order changes deterministic mechanics and wire-visible state. */

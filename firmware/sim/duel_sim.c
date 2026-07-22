@@ -55,10 +55,12 @@ void sim_tick(sim_world_t *w, sim_inputs_t in, const sim_event_t *ev, uint8_t n,
         for (uint8_t side = 0; side < 2; side++)
             duel_combat_stance_step(w, side);
         duel_combat_regeneration_step(w);
+        duel_combat_field_step(w);
         duel_combat_collision_step(w);
         duel_combat_residue_step(w);
         duel_combat_spell_step(w, SIM_SIDE_L);
         duel_combat_spell_step(w, SIM_SIDE_R);
+        duel_combat_echo_step(w);
         duel_combat_status_release_step(w);
         duel_combat_aftermath_step(w);
         duel_combat_scry_step(&w->scry, in.scry_mask);

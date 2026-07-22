@@ -1,37 +1,37 @@
 #include "test_harness.h"
 
 static void test_floor_occupations_and_transitions(void) {
-    duel_fb_t floor[2][3];
+    duel_fb_t floor[2][DUEL_DISTRICT_COUNT];
     bool ok = true;
     for (uint8_t city = 0; city < 2u; city++)
-        for (uint8_t occupation = 0; occupation < 3u; occupation++)
-            render_floor_scene(occupation, city == 0u, 0u, &floor[city][occupation]);
+        for (uint8_t occupation = 0; occupation < DUEL_DISTRICT_COUNT; occupation++)
+            render_district_scene(occupation, city == 0u, 0u, 0u, &floor[city][occupation]);
     for (uint8_t city = 0; city < 2u; city++)
-        for (uint8_t a = 0; a < 3u; a++)
-            for (uint8_t b = (uint8_t)(a + 1u); b < 3u; b++) {
+        for (uint8_t a = 0; a < DUEL_DISTRICT_COUNT; a++)
+            for (uint8_t b = (uint8_t)(a + 1u); b < DUEL_DISTRICT_COUNT; b++) {
                 unsigned diff =
                     band_difference(&floor[city][a], &floor[city][b], DUEL_FLOOR_Y0, DUEL_FLOOR_Y1);
-                if (diff < 40u)
+                if (diff < 24u)
                     printf("DIAG floor city=%u pair=%u/%u diff=%u\n", city, a, b, diff);
-                EXPECT(diff >= 40u);
+                EXPECT(diff >= 24u);
             }
 
     for (uint8_t phase = 0; phase < 4u; phase++) {
         duel_fb_t transitioned;
-        uint8_t byte = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, phase, true);
-        render_floor_scene(DUEL_CIVIC_FLOOR_WORKSHOP, true, byte, &transitioned);
+        uint8_t byte = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_DISTRICT_COMMONS, phase, true);
+        render_district_scene(DUEL_DISTRICT_WORKSHOP, true, 0u, byte, &transitioned);
         const duel_fb_t *reference =
-            phase < 2u ? &floor[0][DUEL_CIVIC_FLOOR_COMMONS] : &floor[0][DUEL_CIVIC_FLOOR_WORKSHOP];
+            phase < 2u ? &floor[0][DUEL_DISTRICT_COMMONS] : &floor[0][DUEL_DISTRICT_WORKSHOP];
         EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y0, DUEL_FLOOR_Y1) > 0u);
         /* Protection includes the beam row itself. */
         EXPECT(band_difference(&transitioned, reference, 0, DUEL_FLOOR_BEAM_Y) == 0u);
         EXPECT(band_difference(&transitioned, reference, DUEL_FLOOR_Y1 + 1, DUEL_CANVAS_H - 1) ==
                0u);
-        EXPECT(INCANTATION_FLOOR_TRANSITION_SOURCE(byte) == DUEL_CIVIC_FLOOR_COMMONS &&
+        EXPECT(INCANTATION_FLOOR_TRANSITION_SOURCE(byte) == DUEL_DISTRICT_COMMONS &&
                INCANTATION_FLOOR_TRANSITION_PHASE(byte) == phase &&
-               INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xe0u));
+               INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xc0u));
     }
-    CHECK(ok, "incantation_six_occupation_scenes_40px_and_four_protected_transition_phases");
+    CHECK(ok, "incantation_six_districts_two_city_voices_and_four_protected_transition_phases");
 }
 
 static void test_render_interaction_combine_solid_parity(void) {
@@ -75,7 +75,8 @@ static void test_render_interaction_combine_solid_parity(void) {
 }
 
 /* Mirrors hp_window_xy: 2x2 lit windows, gapward column x7-8, outer x3-4,
- * rows bottom-up at y56/52/48/44 (each window owns py and py+1). */
+ * rows bottom-up from y56. HP 8 uses four rows through y44; HP 10 adds the
+ * supported fifth candidate row at y40. */
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
     int canonical_x = (hp_index & 1) ? 3 : 7;
     int px = is_left ? canonical_x : DUEL_CANVAS_W - 2 - canonical_x;
@@ -95,7 +96,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             duel_fb_t fb;
             incantation_render(&fb, &r, side == 0u, false);
             unsigned lit = 0;
-            for (int y = 44; y <= 57; y++) {
+            for (int y = 40; y <= 57; y++) {
                 for (int x = 3; x <= 8; x++) {
                     int sx = side == 0u ? x : DUEL_CANVAS_W - 1 - x;
                     bool expected = false;
@@ -139,7 +140,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
             incantation_render(&grid, &full, side == 0u, false);
             for (int i = 0; i < SIM_MAX_HP; i++) {
                 for (int x = 0; x < DUEL_CANVAS_W; x++)
-                    for (int y = 44; y <= 57; y++)
+                    for (int y = 40; y <= 57; y++)
                         if (health_pixel(side == 0u, i, x, y))
                             if (duel_fb_get(&zero, x, y) || !duel_fb_get(&grid, x, y)) {
                                 printf("DIAG health-pose side=%u state=%zu x=%d y=%d zero=%u "
@@ -150,7 +151,7 @@ static void test_health_grid_geometry_and_lifecycles(void) {
                             }
             }
         }
-    CHECK(ok, "incantation_health_0_8_window_2x2_bottom_up_mirror_6x14_pose_clearance");
+    CHECK(ok, "incantation_health_0_to_max_2x2_bottom_up_mirror_candidate_pose_clearance");
 }
 
 static void test_local_layer_attunement(void) {
@@ -190,23 +191,6 @@ static void test_local_layer_attunement(void) {
     bool global_right_same = memcmp(&br, &rr, sizeof br) == 0;
     EXPECT(global_left_same && global_right_same);
 
-    /* During the bilateral dwell each OLED can show its own mark. Once scry is
-     * authoritative, the instruments replace both without retaining either. */
-    duel_render_t open_none = base;
-    open_none.view.outcome_overlay |= 0x10u;
-    open_none.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
-    duel_fb_t ol0, or0, ol1, or1;
-    incantation_render(&ol0, &open_none, true, false);
-    incantation_render(&or0, &open_none, false, false);
-    duel_render_t open_local = open_none;
-    open_local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_LEFT);
-    incantation_render(&ol1, &open_local, true, false);
-    open_local.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_RIGHT);
-    incantation_render(&or1, &open_local, false, false);
-    bool open_left_same = memcmp(&ol0, &ol1, sizeof ol0) == 0;
-    bool open_right_same = memcmp(&or0, &or1, sizeof or0) == 0;
-    EXPECT(open_left_same && open_right_same);
-
     sim_world_t typed;
     sim_init(&typed, SIMF_AUTHORITATIVE, 0);
     for (int i = 0; i < SCRY_PENDING_TICKS * 3; i++)
@@ -218,93 +202,152 @@ static void test_local_layer_attunement(void) {
     bool world_same = incantation_bytes_hash(&w, sizeof w) == before;
     EXPECT(typing_closed && world_same);
     if (!ok)
-        printf("DIAG local lc=%u lsr=%u rsl=%u rc=%u gl=%u gr=%u ol=%u or=%u typing=%u world=%u "
-               "state=%u\n",
+        printf("DIAG local lc=%u lsr=%u rsl=%u rc=%u gl=%u gr=%u typing=%u world=%u state=%u\n",
                left_changes, left_spares_right, right_spares_left, right_changes, global_left_same,
-               global_right_same, open_left_same, open_right_same, typing_closed, world_same,
-               typed.scry.state);
+               global_right_same, typing_closed, world_same, typed.scry.state);
     CHECK(ok,
           "incantation_local_attunement_physical_half_release_typing_pending_and_scry_suppression");
 }
 
-static bool framebuffer_subset(const duel_fb_t *small, const duel_fb_t *large) {
-    for (int y = 0; y < DUEL_CANVAS_H; y++)
-        for (int x = 0; x < DUEL_CANVAS_W; x++)
-            if (duel_fb_get(small, x, y) && !duel_fb_get(large, x, y))
+static bool framebuffer_region_equal(const duel_fb_t *a, const duel_fb_t *b, int x0, int x1, int y0,
+                                     int y1) {
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            if (duel_fb_get(a, x, y) != duel_fb_get(b, x, y))
                 return false;
     return true;
 }
 
+static unsigned framebuffer_cleared_pixels(const duel_fb_t *base, const duel_fb_t *open) {
+    unsigned cleared = 0;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++) {
+            if (duel_fb_get(base, x, y) && !duel_fb_get(open, x, y))
+                cleared++;
+        }
+    return cleared;
+}
+
+static unsigned framebuffer_backing_pixels(const duel_fb_t *base, const duel_fb_t *open) {
+    unsigned added = 0;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            if (!duel_fb_get(base, x, y) && duel_fb_get(open, x, y))
+                added++;
+    return added;
+}
+
+static unsigned framebuffer_lit_pixels(const duel_fb_t *fb) {
+    unsigned lit = 0u;
+    for (int y = 0; y < DUEL_CANVAS_H; y++)
+        for (int x = 0; x < DUEL_CANVAS_W; x++)
+            lit += duel_fb_get(fb, x, y);
+    return lit;
+}
+
 static void test_diegetic_scry_instruments(void) {
     bool ok = true;
-    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
-        for (uint8_t scene = 0; scene < SCRY_SCENES; scene++)
-            for (uint8_t online = 0; online < 2u; online++)
-                for (uint8_t notif_case = 0; notif_case < 2u; notif_case++)
-                    for (uint8_t side = 0; side < 2u; side++) {
-                        sim_world_t w;
-                        sim_init(&w, SIMF_AUTHORITATIVE, 0);
-                        duel_render_t r = {0};
-                        duel_render_from_world(&r, &w);
-                        r.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
-                        r.seed = 9;
-                        r.civic_phase = 48;
-                        uint8_t notif = notif_case ? 4u : 0u;
-                        r.external = DUEL_HOST_CONTEXT_PACK(online, scene, notif, false);
-                        r.layer = DUEL_RENDER_LAYER_PACK(scene, DUEL_RENDER_LOCAL_NONE);
-                        r.view.outcome_overlay =
-                            (uint8_t)((r.view.outcome_overlay & 0x1fu) | (scene << 5));
-                        duel_fb_t base, open;
-                        incantation_render(&base, &r, side == 0u, false);
-                        r.view.outcome_overlay |= 0x10u;
-                        incantation_render(&open, &r, side == 0u, false);
-                        bool subset = framebuffer_subset(&base, &open);
-                        bool changed = memcmp(&base, &open, sizeof base) != 0;
-                        if (!subset || !changed)
-                            printf("DIAG scry case floor=%u scene=%u online=%u notif=%u side=%u "
-                                   "subset=%u changed=%u\n",
-                                   floor, scene, online, notif, side, subset, changed);
-                        EXPECT(subset && changed);
-                        for (int y = 0; y < DUEL_CANVAS_H; y++)
-                            for (int x = 0; x < DUEL_CANVAS_W; x++)
-                                if (duel_fb_get(&base, x, y) != duel_fb_get(&open, x, y))
-                                    if (!(y <= 35 || (y >= 59 && y <= 60))) {
-                                        printf("DIAG scry exclusion floor=%u scene=%u online=%u "
-                                               "notif=%u side=%u x=%d y=%d\n",
-                                               floor, scene, online, notif, side, x, y);
-                                        ok = false;
-                                    }
-                    }
-
-    /* Compare only added instruments: all architectural positions mirror while
-     * selector indices retain their semantic order. */
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[0].ward_strength = 2u;
+    w.wiz[1].status = STATUS_FROZEN;
+    w.wiz[1].status_intensity = 2u;
+    w.wiz[1].status_ticks = 80u;
+    w.residue[SIM_RESIDUE_MID_L] = (sim_residue_t){ELEM_EMBER, 2u, SIM_RESIDUE_DECAY_UNITS};
+    w.field[0] = (sim_field_t){
+        .descriptor =
+            SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FORCE, PAY_STATUS, TRAJ_GROUND, 2u, STATUS_MARKED,
+                            INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0u),
+        .timer = SIM_FIELD_RUNE_TICKS,
+        .kind = FIELD_RUNE,
+        .zone = SIM_RESIDUE_MID_L,
+        .owner = SIM_SIDE_L,
+    };
+    duel_fb_t page_frame[2][SCRY_SCENES];
+    duel_fb_t page_header[2][SCRY_SCENES];
+    bool header_recorded[2][SCRY_SCENES] = {{false}};
+    for (uint8_t page = 0; page < SCRY_SCENES; page++)
+        for (uint8_t host_scene = 0; host_scene < DUEL_HOST_SCENE_COUNT; host_scene++)
+            for (uint8_t online = 0; online < 2u; online++)
+                for (uint8_t side = 0; side < 2u; side++) {
+                    duel_render_t r = {0};
+                    duel_render_from_world(&r, &w);
+                    r.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_MODE_NORMAL,
+                                              DUEL_CIVIC_INTENSITY_BUSY);
+                    r.seed = 9;
+                    r.civic_phase = 48;
+                    r.external = DUEL_HOST_CONTEXT_PACK(online, host_scene, 4u, false);
+                    r.alert = DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_SECURITY,
+                                                   DUEL_HOST_PRIORITY_CRITICAL, 3u);
+                    /* Deliberately unrelated to both host scene and page:
+                     * emitted layer never selects almanac content. */
+                    r.layer = DUEL_RENDER_LAYER_PACK((page + 1u) & 3u, DUEL_RENDER_LOCAL_NONE);
+                    r.view.outcome_overlay =
+                        (uint8_t)((r.view.outcome_overlay & 0x1fu) | (page << 5));
+                    duel_fb_t base, open;
+                    incantation_render(&base, &r, side == 0u, false);
+                    r.view.outcome_overlay |= 0x10u;
+                    incantation_render(&open, &r, side == 0u, false);
+                    bool changed = memcmp(&base, &open, sizeof base) != 0;
+                    unsigned cleared = framebuffer_cleared_pixels(&base, &open);
+                    unsigned backing = framebuffer_backing_pixels(&base, &open);
+                    unsigned lit = framebuffer_lit_pixels(&open);
+                    bool outer_margin_same = framebuffer_region_equal(&base, &open, 0, 0, 0, 127) &&
+                                             framebuffer_region_equal(&base, &open, 31, 31, 0, 127);
+                    bool rollers = duel_fb_get(&open, 4, 5) && duel_fb_get(&open, 27, 5) &&
+                                   duel_fb_get(&open, 1, 6) && duel_fb_get(&open, 30, 6) &&
+                                   duel_fb_get(&open, 4, 123) && duel_fb_get(&open, 27, 123) &&
+                                   duel_fb_get(&open, 1, 122) && duel_fb_get(&open, 30, 122) &&
+                                   duel_fb_get(&open, 3, 64) && duel_fb_get(&open, 28, 64);
+                    EXPECT(changed && cleared >= 300u && backing >= 300u && backing <= 900u &&
+                           lit < 1400u && outer_margin_same && rollers);
+                    /* The page heading/fraction is authoritative and does not
+                     * change when host scene supplies different content. */
+                    if (!header_recorded[side][page]) {
+                        page_header[side][page] = open;
+                        header_recorded[side][page] = true;
+                    } else {
+                        EXPECT(framebuffer_region_equal(&page_header[side][page], &open, 2, 29, 5,
+                                                        21));
+                    }
+                    if (host_scene == DUEL_HOST_SCENE_ARCHIVE && online)
+                        page_frame[side][page] = open;
+                }
+    for (uint8_t side = 0; side < 2u; side++)
+        for (uint8_t a = 0; a < SCRY_SCENES; a++)
+            for (uint8_t b = (uint8_t)(a + 1u); b < SCRY_SCENES; b++)
+                EXPECT(memcmp(&page_frame[side][a], &page_frame[side][b],
+                              sizeof page_frame[side][a]) != 0);
+    for (uint8_t a = 0; a < SCRY_SCENES; a++) {
+        EXPECT(framebuffer_region_equal(&page_header[SIM_SIDE_L][a], &page_header[SIM_SIDE_R][a], 2,
+                                        29, 5, 21));
+        for (uint8_t b = (uint8_t)(a + 1u); b < SCRY_SCENES; b++)
+            EXPECT(!framebuffer_region_equal(&page_header[SIM_SIDE_L][a],
+                                             &page_header[SIM_SIDE_L][b], 2, 29, 5, 21));
+    }
+
+    /* Moving the content stream never moves the parchment itself. */
+    duel_render_t moving = {0};
+    duel_render_from_world(&moving, &w);
+    moving.view.outcome_overlay = VIEW_OVERLAY_PACK(0u, true, 1u);
+    moving.scry_motion = DUEL_SCRY_MOTION_PACK(DUEL_SCRY_EXTENT_FULL, false);
+    duel_fb_t scroll_zero, scroll_one;
+    incantation_render(&scroll_zero, &moving, true, false);
+    moving.scry_scroll = 1u;
+    incantation_render(&scroll_one, &moving, true, false);
+    EXPECT(memcmp(&scroll_zero, &scroll_one, sizeof scroll_zero) != 0 &&
+           framebuffer_region_equal(&scroll_zero, &scroll_one, 1, 30, 5, 7) &&
+           framebuffer_region_equal(&scroll_zero, &scroll_one, 1, 30, 121, 123));
+
+    /* Every normalized alert remains legible on the Host scroll; stale-link
+     * and diagnostics retain their later-layer priority. */
     duel_render_t r = {0};
     duel_render_from_world(&r, &w);
     r.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
     r.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 3, true);
     r.alert = DUEL_HOST_ALERT_PACK(DUEL_HOST_CATEGORY_SECURITY, DUEL_HOST_PRIORITY_CRITICAL, 7);
     r.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_NONE);
-    duel_fb_t lb, rb, lo, ro;
-    incantation_render(&lb, &r, true, false);
-    incantation_render(&rb, &r, false, false);
-    r.view.outcome_overlay =
-        (uint8_t)((r.view.outcome_overlay & 0x0fu) | 0x10u | (DUEL_HOST_SCENE_FOCUS << 5));
-    incantation_render(&lo, &r, true, false);
-    incantation_render(&ro, &r, false, false);
-    for (int y = 0; y < DUEL_CANVAS_H; y++)
-        for (int x = 0; x < DUEL_CANVAS_W; x++) {
-            bool ld = duel_fb_get(&lo, x, y) != duel_fb_get(&lb, x, y);
-            bool rd = duel_fb_get(&ro, 31 - x, y) != duel_fb_get(&rb, 31 - x, y);
-            if (ld != rd) {
-                printf("DIAG scry mirror x=%d y=%d ld=%u rd=%u\n", x, y, ld, rd);
-                ok = false;
-            }
-        }
-
-    /* Every normalized alert remains visible in the outer corner; stale-link
-     * and diagnostics retain their later-layer priority. */
+    r.view.outcome_overlay = (uint8_t)((r.view.outcome_overlay & 0x0fu) | 0x10u | (2u << 5));
     duel_render_t empty_alert = r;
     empty_alert.alert = 0;
     empty_alert.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 4, false);
@@ -329,9 +372,98 @@ static void test_diegetic_scry_instruments(void) {
      * heartbeat on the left tower-top tip (diag_tick 7 < 13 -> lit at x6 y0),
      * drawn last so it keeps its later-layer priority over the scene. */
     EXPECT(duel_fb_get(&priority, 23, 2) && duel_fb_get(&priority, 6, 0));
-    CHECK(
-        ok,
-        "incantation_diegetic_scry_all_scenes_floors_host_alert_subset_mirror_exclusions_priority");
+    CHECK(ok, "incantation_two_labelled_scrolls_authoritative_pages_motion_alert_and_priority");
+}
+
+static unsigned crowd_head_additions(const duel_fb_t *base, const duel_fb_t *moment, bool is_left,
+                                     uint8_t seed, uint8_t district) {
+    unsigned added = 0u;
+    for (uint8_t i = 0; i < DUEL_CROWD_BYSTANDERS; i++) {
+        int desk_x = 6 + i * 20 + ((seed + district + i) & 1u);
+        int x = is_left ? desk_x : DUEL_CANVAS_W - 1 - desk_x;
+        int feet = 108 - (int)((seed + i + district) & 1u);
+        for (int dx = -1; dx <= 1; dx++)
+            added += !duel_fb_get(base, x + dx, feet - 5) && duel_fb_get(moment, x + dx, feet - 5);
+    }
+    return added;
+}
+
+static void test_observatory_quarters_and_bounded_crowds(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    duel_fb_t ritual[2][4];
+    for (uint8_t side = 0; side < 2u; side++)
+        for (uint8_t stage = 0; stage < 4u; stage++) {
+            duel_render_t render = {0};
+            duel_render_from_world(&render, &world);
+            render.seed = 0x35u;
+            render.civic_phase = 7u;
+            render.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 0u, false);
+            render.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_MODE_QUIET, stage);
+            incantation_render(&ritual[side][stage], &render, side == SIM_SIDE_L, false);
+            duel_fb_t later;
+            render.civic_phase = 203u; /* no within-quarter occupation motion */
+            incantation_render(&later, &render, side == SIM_SIDE_L, false);
+            EXPECT(band_difference(&ritual[side][stage], &later, DUEL_FLOOR_Y0, DUEL_FLOOR_Y1) ==
+                   0u);
+        }
+    for (uint8_t side = 0; side < 2u; side++)
+        for (uint8_t a = 0; a < 4u; a++)
+            for (uint8_t b = (uint8_t)(a + 1u); b < 4u; b++)
+                EXPECT(band_difference(&ritual[side][a], &ritual[side][b], DUEL_FLOOR_Y0,
+                                       DUEL_FLOOR_Y1) >= 8u);
+
+    /* An arrival crowd is exactly two derived bystanders plus the ordinary
+     * resident. Its session-phased window is strictly shorter than the
+     * default aftermath, and QUIET/Observatory suppress it. */
+    EXPECT(DUEL_CROWD_MAX_VISIBLE == 3u && DUEL_CROWD_BYSTANDERS == 2u &&
+           DUEL_CROWD_ARRIVAL_PHASES * DUEL_CIVIC_TICK_MS <=
+               SIM_AFTER_DEFAULT_TICKS * SIM_TICK_MS &&
+           (DUEL_CROWD_ARRIVAL_PHASES + 1u) * DUEL_CIVIC_TICK_MS >
+               SIM_AFTER_DEFAULT_TICKS * SIM_TICK_MS);
+    for (uint8_t side = 0; side < 2u; side++) {
+        duel_render_t base = {0};
+        duel_render_from_world(&base, &world);
+        base.seed = 9u;
+        base.civic_phase = (uint8_t)(64u - base.seed);
+        base.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 1u, false);
+        base.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0u);
+        duel_render_t arrival = base;
+        arrival.shared_pres =
+            DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, side, DUEL_CIVIC_VISIT_ARRIVING);
+        duel_fb_t base_frame, arrival_frame;
+        incantation_render(&base_frame, &base, side == SIM_SIDE_L, false);
+        incantation_render(&arrival_frame, &arrival, side == SIM_SIDE_L, false);
+        EXPECT(crowd_head_additions(&base_frame, &arrival_frame, side == SIM_SIDE_L, base.seed,
+                                    DUEL_DISTRICT_COMMONS) >= 2u);
+
+        base.civic_phase = (uint8_t)(base.civic_phase + DUEL_CROWD_ARRIVAL_PHASES);
+        arrival.civic_phase = base.civic_phase;
+        incantation_render(&base_frame, &base, side == SIM_SIDE_L, false);
+        incantation_render(&arrival_frame, &arrival, side == SIM_SIDE_L, false);
+        EXPECT(crowd_head_additions(&base_frame, &arrival_frame, side == SIM_SIDE_L, base.seed,
+                                    DUEL_DISTRICT_COMMONS) == 0u);
+
+        base.civic_phase = (uint8_t)(64u - base.seed);
+        arrival.civic_phase = base.civic_phase;
+        base.civic = arrival.civic =
+            DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_QUIET, 0u);
+        incantation_render(&base_frame, &base, side == SIM_SIDE_L, false);
+        incantation_render(&arrival_frame, &arrival, side == SIM_SIDE_L, false);
+        EXPECT(crowd_head_additions(&base_frame, &arrival_frame, side == SIM_SIDE_L, base.seed,
+                                    DUEL_DISTRICT_COMMONS) == 0u);
+
+        base.external = arrival.external =
+            DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_FOCUS, 1u, false);
+        base.civic = arrival.civic =
+            DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_MODE_NORMAL, 0u);
+        incantation_render(&base_frame, &base, side == SIM_SIDE_L, false);
+        incantation_render(&arrival_frame, &arrival, side == SIM_SIDE_L, false);
+        EXPECT(crowd_head_additions(&base_frame, &arrival_frame, side == SIM_SIDE_L, base.seed,
+                                    DUEL_DISTRICT_OBSERVATORY) == 0u);
+    }
+    CHECK(ok, "observatory_four_quarter_boundaries_and_crowds_max_three_brief_quiet_suppressed");
 }
 
 static void test_gap_cue_families_temporal_mirrors(void) {
@@ -422,7 +554,7 @@ static void test_all_forms_bilateral_mirror(void) {
         duel_view_t lv, rv;
         duel_view_from_world(&left_world, &lv);
         duel_view_from_world(&right_world, &rv);
-        duel_view_spell_t ls = duel_view_spell(&lv, 0), rs = duel_view_spell(&rv, 1);
+        duel_view_spell_t ls = duel_view_spell(&lv, 0, 0), rs = duel_view_spell(&rv, 1, 0);
         duel_fb_t ll, lr, rl, rr;
         duel_fb_clear(&ll);
         duel_fb_clear(&lr);
@@ -472,6 +604,7 @@ void run_rendering_geometry_tests(void) {
     test_health_grid_geometry_and_lifecycles();
     test_local_layer_attunement();
     test_diegetic_scry_instruments();
+    test_observatory_quarters_and_bounded_crowds();
     test_floor_occupations_and_transitions();
     test_gap_cue_families_temporal_mirrors();
     test_all_forms_bilateral_mirror();

@@ -1,52 +1,35 @@
 # Corne Arcane exploration backlog
 
-Version 0.4 is the accepted software baseline. Nothing here is required to
-complete it; these are possible future directions that need product/design
-discussion before implementation.
+Version 0.4 remains the rollback baseline. The previously specified v12,
+living-world, magic, and host-adapter work is implemented as an unflashed
+candidate and tracked in `beyond-0.4-candidate.md`; it is no longer backlog.
 
 ## Presentation worlds and information surfaces
 
-- Deepen the Pomodoro-selected Observatory only after its pending desk-distance
-  and full-cycle physical acceptance establishes that it remains calm/readable.
-- Add application worlds beyond Commons, Research, and Workshop without turning
-  every application into a bespoke scene.
-- Add denser or multi-page scry views while keeping the gesture deliberate and
-  the underlying world active.
-- Expand Archive objects, city occupations, ambient behaviors, couriers, rare
-  events, residents, medic variants, and roster voices within the OLED density
-  and protected-region limits.
+- Consider further art only after the six districts, four-stage Observatory,
+  almanac, crowds, and field silhouettes pass physical desk-distance review.
 
 ## Input-driven fiction and combat variety
 
-- Explore additional bounded spell forms, payloads, shallow triggers,
-  interactions, aftermath arcs, and outcome grammars beyond the current eight forms.
-- Consider richer browser activity such as coarse scroll, tab, or page-event
-  semantics. Any adapter must remain optional, privacy-redacted, and semantic;
-  firmware must never receive content, URLs, titles, or streamed frames.
+- Explore additional bounded spell outcomes only after the two-spell/two-field
+  candidate proves calm and readable in physical work sessions.
 - Preserve one authoritative master simulation, hard entity/chain caps,
   deterministic fixed ticks, and typing-path independence.
 
 ## Host integration
 
-- Add shell completion adapters beyond the existing Zsh/Git hook.
-- Consider new privacy-bounded host semantic categories and application
-  profiles beyond Raw HID v2's current normalized summary.
-- Explore broader desktop support behind adapters without coupling firmware to
-  KWin, Plasma, D-Bus, or one operating system.
+- Consider adapters beyond KWin/GNOME and Firefox only behind the same
+  fail-soft, opt-in, enum-only privacy boundary.
 
 ## Architecture constraints for future work
 
-- The split v11 packet is exactly 32 bytes. New authoritative or synchronized
-  presentation state requires repacking, state reuse, derivation, or a new
-  version; the v11 repack already spent the bits it freed, so no wire reserve
-  remains.
+- The split v12 packet is exactly 32 bytes and has no wire reserve.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
   interface. The safe launcher hands that one endpoint between the daemon and
   Vial; a future integration must preserve exclusive ownership.
-- Current flash and static-RAM figures are the single source of truth in
-  `acceptance.md` §Resource measurements. Future content needs an explicit flash
-  budget and must preserve at least the accepted safety reserve or revise the
-  budget intentionally.
+- Accepted rollback figures remain in `acceptance.md`; current candidate
+  figures are in `beyond-0.4-candidate.md`. Future content needs an explicit
+  flash budget and must preserve the 88 KiB ceiling and 8 KiB hard-stop reserve.
 - Static RAM growth, stack headroom, split/OLED timing, no-allocation gates,
   power policy, stale-link recovery, and exact visual/determinism tests remain
   release gates.
@@ -54,27 +37,6 @@ discussion before implementation.
   entity pool/pathfinding/needs simulation, host-supplied text or bitmaps, or
   streamed framebuffers without an explicit product-level reversal of the
   current scope guards.
-
-## Possible v12 work recorded on 2026-07-17
-
-Concrete inputs for the next protocol version:
-
-- **Field objects**: deferred on 2026-07-17 because the projected ~1.4 KiB
-  flash cost would consume the remaining growth margin. The archived design
-  uses a two-entry
-  field array (kind/zone/age/owner, 1 byte each on the wire), slot transfer
-  when a trap arms or a singularity matures so the caster's in-flight slot
-  frees, and an additive collision-ladder check before the spell-vs-spell
-  ladder. Needs 2 wire bytes — the impetus for v12.
-- **Descriptor wire compression**: drop the 4 interaction bits by
-  substituting SOLID for COMBINE on the slave — the C-gate spike proved the
-  slave-observable projection exact over the full compile domain, and the
-  render-parity guard test now in the mechanics suite
-  (`incantation_render_combine_solid_parity_all_elements_forms`) fails the
-  moment a slave-side COMBINE visual appears. `variance`-by-session-seed
-  frees 4 more bits (presentation jitter only; goldens re-baseline then).
-- **HP tuning**: the pending desk-side 8-vs-10 HP verdict in the current
-  physical checklist is the first v12 tuning input.
 
 ## Questions to settle before coding
 

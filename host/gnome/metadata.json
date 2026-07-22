@@ -1,0 +1,6 @@
+{
+  "uuid": "corne-arcane-focus@griffinhale.github.io",
+  "name": "Corne Arcane Focus Bridge",
+  "description": "Opt-in application identifier bridge; never reads window titles.",
+  "shell-version": ["45", "46", "47", "48", "49"]
+}

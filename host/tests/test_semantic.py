@@ -175,6 +175,37 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolver.state.civic.floor, Floor.COMMONS)
         self.assertIsNone(adapters.next_deadline(now[0]))
 
+    def test_pomodoro_changes_only_at_quarters_and_clamps_late_attachment(self) -> None:
+        now = [0.0]
+        resolver = SemanticResolver()
+        adapters = SemanticAdapters(
+            resolver,
+            NotificationPolicy(),
+            lambda: None,
+            lambda: now[0],
+            pomodoro_duration=100.0,
+        )
+        adapters.pomodoro(True, 100.0)
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        self.assertEqual(adapters.next_deadline(now[0]), 25.0)
+        now[0] = 24.0
+        self.assertFalse(adapters.poll(now[0]))
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        for boundary, stage in (
+            (25.0, Intensity.ACTIVE),
+            (50.0, Intensity.BUSY),
+            (75.0, Intensity.SATURATED),
+        ):
+            now[0] = boundary
+            self.assertTrue(adapters.poll(now[0]))
+            self.assertEqual(resolver.state.civic.intensity, stage)
+
+        now[0] = 200.0
+        adapters.pomodoro(True, 35.0)
+        self.assertEqual(resolver.state.civic.intensity, Intensity.BUSY)
+        adapters.pomodoro(True, 500.0)
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+
     def test_all_adapter_mappings(self) -> None:
         now = [20.0]
         changes = []
@@ -186,7 +217,10 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
         self.assertEqual(policy.summary(now[0]).category, Category.OTHER)
         adapters.dnd(True)
-        self.assertEqual(resolver.state.scene, Scene.FOCUS)
+        # DND preserves the focused/media district and adds QUIET; it never
+        # impersonates an active Pomodoro Observatory.
+        self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
         adapters.dnd(False)
         adapters.pomodoro(True, 50)
         self.assertEqual(resolver.state.scene, Scene.FOCUS)

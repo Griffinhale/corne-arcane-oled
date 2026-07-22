@@ -9,9 +9,11 @@ Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 
 ```bash
 make lint            # Ruff plus Python/C formatting checks
-make test            # mechanics, 363 visual scenes, allocation scan, host tests
+make test            # mechanics, 548 visual scenes, allocation scan, host tests
+make hp-gate         # pinned 8-HP and 10-HP 30-minute workloads
+make mechanics-hp-candidates # full mechanics suite under both geometries
 make hygiene         # active-tree naming and historical-comment policy
-make release-build   # release and diagnostic QMK images
+make release-build   # release, diagnostic, and both unflashed HP candidates
 make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check
 ```
@@ -22,7 +24,7 @@ artifacts, archived documents, layout data, and golden hashes are excluded.
 
 ## Golden review
 
-`firmware/sim_test/golden/visual_current.hashes` contains 363 exact framebuffer
+`firmware/sim_test/golden/visual_current.hashes` contains 548 exact framebuffer
 scenes. Do not regenerate it as a routine response to a failure. First build a
 reviewable dump/contact sheet, inspect the changed scenes and protected regions,
 and establish that the visual change is intentional. Update the golden only in
@@ -36,9 +38,10 @@ rendering/geometry. Shared deterministic helpers belong in the test harness.
 ## Release budgets
 
 Run both release commands after firmware changes. `release-budget` enforces the
-absolute flash and static-RAM ceilings, per-image growth allowances, the 96 KiB
-hard stop, and at least 16 KiB reserve. Investigate growth before considering a
-budget change; do not raise a ceiling to make an unrelated refactor pass.
+88 KiB flash and 16,496-byte static-RAM ceilings, the current-baseline +512-byte
+RAM allowance, the 96 KiB hard stop, and at least 8 KiB reserve. Investigate
+growth before considering a budget change; do not raise a ceiling to make an
+unrelated refactor pass.
 
 The current measured values are recorded in `acceptance.md`. Generated ELF,
 UF2, and map files are ignored working artifacts, not acceptance evidence.
@@ -64,7 +67,8 @@ When moving code across modules:
 4. Keep private cross-module calls in an internal header; avoid making helpers
    public merely to satisfy tests.
 5. Run sanitizer mechanics tests and exact visual goldens before and after the
-   extraction, then build both QMK variants and compare resource use.
+   extraction, then build release, diagnostic, and HP A/B candidates and
+   compare resource use.
 6. Commit formatting separately from semantic or structural edits.
 
 ## Comments and history
