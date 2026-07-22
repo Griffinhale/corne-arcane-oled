@@ -111,7 +111,7 @@ static void draw_courier_floor_mark(duel_fb_t *fb, bool is_left, uint8_t kind,
     };
     const int8_t (*pixels)[2] = mark[kind - 1u][floor];
     for (int i = 0; i < 3; i++)
-        duel_fb_px(fb, incantation_desk_x(is_left, x + pixels[i][0]), y + pixels[i][1], true);
+        duel_fb_px(fb, duel_fb_desk_x(is_left, x + pixels[i][0]), y + pixels[i][1], true);
 }
 
 void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
@@ -150,7 +150,7 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
         x = INCANTATION_LIFT_X + (destination.x - INCANTATION_LIFT_X) * step / 3;
         y = INCANTATION_LIFT_Y + (destination.y - INCANTATION_LIFT_Y) * step / 3;
     }
-    int cx = incantation_desk_x(is_left, x), g = is_left ? 1 : -1;
+    int cx = duel_fb_desk_x(is_left, x), g = is_left ? 1 : -1;
 
     switch (kind) {
         case DUEL_CIVIC_COURIER_MESSENGER:
@@ -163,19 +163,19 @@ void draw_courier(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
             break;
         case DUEL_CIVIC_COURIER_PARCEL:
             /* Filing cart, canister trolley, or braced parts crate. */
-            incantation_civic_hline(fb, is_left, x - 2, x + 2, y);
-            incantation_civic_hline(fb, is_left, x - 2, x + 2, y - 4);
-            incantation_civic_vline(fb, is_left, x - 2, y - 4, y);
-            incantation_civic_vline(fb, is_left, x + 2, y - 4, y);
+            duel_fb_desk_hline(fb, is_left, x - 2, x + 2, y);
+            duel_fb_desk_hline(fb, is_left, x - 2, x + 2, y - 4);
+            duel_fb_desk_vline(fb, is_left, x - 2, y - 4, y);
+            duel_fb_desk_vline(fb, is_left, x + 2, y - 4, y);
             duel_fb_px(fb, cx - g, y + 1, true); duel_fb_px(fb, cx + g, y + 1, true);
             break;
         case DUEL_CIVIC_COURIER_BEACON:
-            incantation_civic_vline(fb, is_left, x, y - 7, y + 2);
-            incantation_civic_hline(fb, is_left, x - 2, x + 2, y + 2);
+            duel_fb_desk_vline(fb, is_left, x, y - 7, y + 2);
+            duel_fb_desk_hline(fb, is_left, x - 2, x + 2, y + 2);
             break;
         default: /* Sentinel: security post / anomaly seal / lockout barrier. */
-            incantation_civic_vline(fb, is_left, x, y - 8, y + 1);
-            incantation_civic_hline(fb, is_left, x - 2, x + 2, y + 1);
+            duel_fb_desk_vline(fb, is_left, x, y - 8, y + 1);
+            duel_fb_desk_hline(fb, is_left, x - 2, x + 2, y + 1);
             draw_courier_floor_mark(fb, is_left, kind, floor, x, y);
             if (life == DUEL_CIVIC_VISIT_AGING) {
                 duel_fb_px(fb, cx - 3, y + 1, true); duel_fb_px(fb, cx + 3, y + 1, true);

@@ -417,6 +417,6 @@ void duel_scenario_render(const duel_scenario_t *scenario, uint32_t frame,
     duel_scenario_build(scenario, &render);
     duel_fb_clear(left);
     duel_fb_clear(right);
-    wiz_draw_scene(left, &render, true, frame, scenario->diagnostics);
-    wiz_draw_scene(right, &render, false, frame, scenario->diagnostics);
+    duel_scene_draw(left, &render, true, frame, scenario->diagnostics);
+    duel_scene_draw(right, &render, false, frame, scenario->diagnostics);
 }

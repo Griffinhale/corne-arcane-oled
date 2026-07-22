@@ -4,12 +4,13 @@
  * One global visitor/courier occupies the active floor at a time, driven by the
  * normalized notification summary (category/count/age/persistence). The master
  * derives the visitor state and packs it into the snapshot's shared_pres byte
- * (DUEL_VISITOR_* in duel_draw.h); both halves render it locally. No coordinates
+ * (DUEL_VISITOR_* in duel_civic.h); both halves render it locally. No coordinates
  * or sprites cross the split link.
  */
 #pragma once
 
-#include "duel_draw.h"
+#include "duel_framebuffer.h"
+#include "duel_render.h"
 
 
 // Count-bucket density (spec §11: count buckets 1 / 2-4 / 5+). The notification

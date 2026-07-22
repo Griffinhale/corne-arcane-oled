@@ -68,8 +68,8 @@ static void record_render(const char *name, const duel_render_t *render,
                           uint32_t frame, bool hud) {
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(&left, render, true, frame, hud);
-    wiz_draw_scene(&right, render, false, frame, hud);
+    duel_scene_draw(&left, render, true, frame, hud);
+    duel_scene_draw(&right, render, false, frame, hud);
     record_case(name, &left, &right);
 }
 
@@ -117,7 +117,7 @@ static void add_occupation_case(const char *name, sim_world_t *world,
     /* Only the requested half is drawn; the other framebuffer stays blank. */
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(is_left ? &left : &right, &render, is_left, 7u, false);
+    duel_scene_draw(is_left ? &left : &right, &render, is_left, 7u, false);
     record_case(name, &left, &right);
 }
 
@@ -143,8 +143,8 @@ static void add_bilateral_attunement_case(const char *name, sim_world_t *world) 
     right_render.layer = DUEL_RENDER_LAYER_PACK(3, DUEL_RENDER_LOCAL_RIGHT);
     duel_fb_t left, right;
     duel_fb_clear(&left); duel_fb_clear(&right);
-    wiz_draw_scene(&left, &left_render, true, 7u, false);
-    wiz_draw_scene(&right, &right_render, false, 7u, false);
+    duel_scene_draw(&left, &left_render, true, 7u, false);
+    duel_scene_draw(&right, &right_render, false, 7u, false);
     record_case(name, &left, &right);
 }
 

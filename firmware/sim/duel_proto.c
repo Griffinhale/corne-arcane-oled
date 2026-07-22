@@ -1,8 +1,8 @@
 #include <string.h>
 
 #include "duel_proto.h"
+#include "duel_civic.h"
 #include "duel_display.h"
-#include "duel_draw.h"
 #include "duel_host.h"
 
 // CRC-8, polynomial 0x07, no table — 31 bytes per 32-byte report doesn't

@@ -24,7 +24,7 @@
 
 // Base weights in DUEL_CIVIC_EVENT_* order (NONE first). Locals 1-4 sum to 24;
 // shareds 5-6 sum to 8 before the diplomacy adjustment.
-static const uint8_t ev_weights[DUEL_CIVIC_EVENT_COUNT] = {
+static const uint8_t event_weights[DUEL_CIVIC_EVENT_COUNT] = {
     0, /* NONE                        */
     6, /* RUNAWAY_SCROLL   (local)    */
     6, /* JAMMED_GEAR      (local)    */
@@ -36,7 +36,7 @@ static const uint8_t ev_weights[DUEL_CIVIC_EVENT_COUNT] = {
 
 // Small deterministic byte hash (FNV-1a flavoured), matching the resident
 // engine's discipline: the ONLY randomness source, keyed by presentation state.
-static uint8_t ev_hash(uint8_t a, uint8_t b, uint8_t c) {
+static uint8_t event_hash(uint8_t a, uint8_t b, uint8_t c) {
     uint32_t h = 2166136261u;
     h = (h ^ a) * 16777619u;
     h = (h ^ b) * 16777619u;
@@ -48,20 +48,20 @@ static uint8_t ev_hash(uint8_t a, uint8_t b, uint8_t c) {
 }
 
 // Effective deck weight for one family after the diplomacy adjustment.
-static uint8_t ev_weight(uint8_t family, int8_t balance) {
+static uint8_t event_weight(uint8_t family, int8_t balance) {
     uint8_t magnitude = (uint8_t)(balance < 0 ? -balance : balance);
     return family == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER
-               ? (uint8_t)(4u + 2u * magnitude) : ev_weights[family];
+               ? (uint8_t)(4u + 2u * magnitude) : event_weights[family];
 }
 
-static uint8_t ev_pick_family(uint8_t rnd, int8_t balance) {
+static uint8_t event_pick_family(uint8_t rnd, int8_t balance) {
     uint16_t total = 0;
     for (int i = 1; i < DUEL_CIVIC_EVENT_COUNT; i++)
-        total = (uint16_t)(total + ev_weight((uint8_t)i, balance));
+        total = (uint16_t)(total + event_weight((uint8_t)i, balance));
     uint8_t r = (uint8_t)(rnd % total);
     uint16_t acc = 0;
     for (int i = 1; i < DUEL_CIVIC_EVENT_COUNT; i++) {
-        acc = (uint16_t)(acc + ev_weight((uint8_t)i, balance));
+        acc = (uint16_t)(acc + event_weight((uint8_t)i, balance));
         if (r < acc) return (uint8_t)i;
     }
     return DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
@@ -71,15 +71,15 @@ static uint8_t ev_pick_family(uint8_t rnd, int8_t balance) {
 // cycle index is bounded (phase is a byte, PERIOD>=8 -> <=32 cycles), so the
 // forward walk that resolves the "no repeat" rule is a small bounded loop with
 // no recursion and no allocation.
-static uint8_t ev_family_for_cycle(uint8_t seed, uint8_t cycle, int8_t balance) {
+static uint8_t event_family_for_cycle(uint8_t seed, uint8_t cycle, int8_t balance) {
     uint8_t prev = DUEL_CIVIC_EVENT_NONE;
     uint8_t fam  = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL;
     for (uint16_t c = 0; c <= cycle; c++) {
-        fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x3Cu), balance);
+        fam = event_pick_family(event_hash(seed, (uint8_t)c, 0x3Cu), balance);
         if (fam == prev) {
             // Re-roll with a second salt, then linear-skip to guarantee the
             // family differs from the previous cycle (cooldown).
-            fam = ev_pick_family(ev_hash(seed, (uint8_t)c, 0x7Eu), balance);
+            fam = event_pick_family(event_hash(seed, (uint8_t)c, 0x7Eu), balance);
             uint8_t guard = 0;
             while (fam == prev && guard < DUEL_CIVIC_EVENT_COUNT) {
                 fam = (uint8_t)(fam + 1u);
@@ -93,7 +93,7 @@ static uint8_t ev_family_for_cycle(uint8_t seed, uint8_t cycle, int8_t balance) 
 }
 
 // Local families land in one city (seed/cycle-chosen); shared families straddle.
-static uint8_t ev_target_for(uint8_t family, uint8_t seed, uint8_t cycle,
+static uint8_t event_target_for(uint8_t family, uint8_t seed, uint8_t cycle,
                              int8_t balance) {
     if (family == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
         return balance > 0 ? DUEL_CIVIC_EVENT_TARGET_LEFT :
@@ -101,16 +101,16 @@ static uint8_t ev_target_for(uint8_t family, uint8_t seed, uint8_t cycle,
                              DUEL_CIVIC_EVENT_TARGET_SHARED;
     if (family > DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
         return DUEL_CIVIC_EVENT_TARGET_SHARED;
-    return (ev_hash(seed, cycle, 0x5Au) & 1u) ? DUEL_CIVIC_EVENT_TARGET_RIGHT
+    return (event_hash(seed, cycle, 0x5Au) & 1u) ? DUEL_CIVIC_EVENT_TARGET_RIGHT
                                               : DUEL_CIVIC_EVENT_TARGET_LEFT;
 }
 
 // Sub-phase (0..PERIOD-1) -> lifecycle phase (ARMED..COOLDOWN), split evenly.
-static uint8_t ev_phase_for_sub(uint8_t sub) {
+static uint8_t event_phase_for_sub(uint8_t sub) {
     return (uint8_t)((sub * 4u) / CIVIC_EVENT_PERIOD);
 }
 
-static uint8_t ev_pack_idtarget(uint8_t id, uint8_t target) {
+static uint8_t event_pack_idtarget(uint8_t id, uint8_t target) {
     return (uint8_t)((id & 7u) | ((target & 3u) << 5));
 }
 
@@ -121,17 +121,17 @@ civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligibl
     uint8_t cycle = (uint8_t)(phase / CIVIC_EVENT_PERIOD);
     uint8_t sub   = (uint8_t)(phase % CIVIC_EVENT_PERIOD);
     civic_event_state_t st;
-    st.phase    = ev_phase_for_sub(sub);
+    st.phase    = event_phase_for_sub(sub);
     st.progress = sub;
     if (!eligible) {
         // Safety-gated: critical visitor, transition, KO/replacement, or family
         // cooldown all fold into `eligible`. The slot stays empty (NONE).
-        st.id_target = ev_pack_idtarget(DUEL_CIVIC_EVENT_NONE, DUEL_CIVIC_EVENT_TARGET_LEFT);
+        st.id_target = event_pack_idtarget(DUEL_CIVIC_EVENT_NONE, DUEL_CIVIC_EVENT_TARGET_LEFT);
         return st;
     }
-    uint8_t family = ev_family_for_cycle(seed, cycle, session_balance);
-    uint8_t target = ev_target_for(family, seed, cycle, session_balance);
-    st.id_target = ev_pack_idtarget(family, target);
+    uint8_t family = event_family_for_cycle(seed, cycle, session_balance);
+    uint8_t target = event_target_for(family, seed, cycle, session_balance);
+    st.id_target = event_pack_idtarget(family, target);
     return st;
 }
 
@@ -140,13 +140,13 @@ civic_event_state_t civic_event_derive(uint8_t seed, uint8_t phase, bool eligibl
  * families straddle the desk gap (courier, floor band near the gap edge) or the
  * open-sky corridor between the wizard towers (civic sky, y18-24, above the
  * champion).
- * draw_rare_event runs first in wiz_draw_scene, so the combat / health / alert
+ * draw_rare_event runs first in duel_scene_draw, so the combat / health / alert
  * layers paint over it and can never be occluded. QUIET mode drops the motion
  * accents, calming the event without removing its identity. */
 
 
 static void event_px(duel_fb_t *fb, bool is_left, int x, int y) {
-    duel_fb_px(fb, incantation_desk_x(is_left, x), y, true);
+    duel_fb_px(fb, duel_fb_desk_x(is_left, x), y, true);
 }
 
 static uint8_t event_action(uint8_t floor, uint8_t id) {
@@ -191,8 +191,8 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor,
             static const uint8_t length[4] = {4, 13, 8, 2};
             int end = x - length[phase & 3u];
             if (end < 3) end = 3;
-            incantation_civic_hline(fb, is_left, end, x, y);
-            incantation_civic_vline(fb, is_left, x, y - 3, y + 1);
+            duel_fb_desk_hline(fb, is_left, end, x, y);
+            duel_fb_desk_vline(fb, is_left, x, y - 3, y + 1);
             draw_event_floor_mark(fb, is_left, id, floor, x, y);
             if (!quiet && phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE)
                 event_px(fb, is_left, end - 1, y - 3);
@@ -212,7 +212,7 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor,
             break;
         case DUEL_CIVIC_EVENT_WORK_BREAK:
             /* Tea wait, observation log, or a tool laid across the bench. */
-            incantation_civic_hline(fb, is_left, x - 4, x + 4, y);
+            duel_fb_desk_hline(fb, is_left, x - 4, x + 4, y);
             event_px(fb, is_left, x - 2, y - 1); event_px(fb, is_left, x - 1, y - 1);
             draw_event_floor_mark(fb, is_left, id, floor, x, y);
             if (!quiet && phase < DUEL_CIVIC_EVENT_PHASE_RESOLVING)
@@ -235,13 +235,13 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor,
     if (id == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER) {
         int top = at.y - 12;
         static const uint8_t reach[4] = {27, 31, 29, 26};
-        incantation_civic_vline(fb, is_left, at.x, top, at.y);
-        incantation_civic_hline(fb, is_left, at.x, reach[phase & 3u], top);
-        incantation_civic_hline(fb, is_left, at.x, reach[phase & 3u], top + 3);
+        duel_fb_desk_vline(fb, is_left, at.x, top, at.y);
+        duel_fb_desk_hline(fb, is_left, at.x, reach[phase & 3u], top);
+        duel_fb_desk_hline(fb, is_left, at.x, reach[phase & 3u], top + 3);
         /* Dispatch seal, specimen pennant, or toothed workshop banner. */
         draw_event_floor_mark(fb, is_left, id, floor, at.x, top);
         event_px(fb, is_left, at.x - 1, at.y - 2);
-        incantation_civic_vline(fb, is_left, at.x - 1, at.y - 1, at.y);
+        duel_fb_desk_vline(fb, is_left, at.x - 1, at.y - 1, at.y);
     } else {
         /* Civic sky keeps its shared horizon while its ribbon adopts the active
          * room's dispatch, chart, or blueprint cadence. The ribbon lives in the
@@ -262,7 +262,7 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor,
         for (int i = 0; i < streamers; i++) {
             int sx = (at.x + i * 7) & 31;
             if (sx < DUEL_TOWER_W) continue; /* desk-authored: tower is x0..12 */
-            incantation_civic_vline(fb, is_left, sx, base - 4, base - 1);
+            duel_fb_desk_vline(fb, is_left, sx, base - 4, base - 1);
         }
         if (!quiet && phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE)
             for (int x = floor; x < DUEL_CANVAS_W; x += 3) {

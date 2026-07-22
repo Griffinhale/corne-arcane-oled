@@ -1,8 +1,8 @@
 #include <string.h>
 
 #include "duel_runtime.h"
+#include "duel_civic.h"
 #include "duel_courier.h"
-#include "duel_draw.h"
 #include "duel_event.h"
 
 uint8_t duel_scry_mask_from_rows(const uint16_t rows[DUEL_INPUT_ROWS]) {

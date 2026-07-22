@@ -779,7 +779,7 @@ bool oled_task_user(void) {
 #endif
 
     duel_fb_clear(&fb);
-    wiz_draw_scene(&fb, &duel_render, is_keyboard_left(), frame++, hud);
+    duel_scene_draw(&fb, &duel_render, is_keyboard_left(), frame++, hud);
     // duel_fb_t is already in QMK's page-major layout. The OLED driver compares
     // these bytes with its own buffer and dirties only changed transfer blocks.
     oled_set_cursor(0, 0);

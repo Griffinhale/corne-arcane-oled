@@ -8,7 +8,7 @@
 
 // Small deterministic byte hash (FNV-1a flavoured). The only randomness source
 // for the resident, keyed strictly by presentation inputs — never by w.tick.
-static uint8_t rez_hash(uint8_t a, uint8_t b, uint8_t c) {
+static uint8_t resident_hash(uint8_t a, uint8_t b, uint8_t c) {
     uint32_t h = 2166136261u;
     h = (h ^ a) * 16777619u;
     h = (h ^ b) * 16777619u;
@@ -20,13 +20,13 @@ static uint8_t rez_hash(uint8_t a, uint8_t b, uint8_t c) {
 }
 
 uint8_t civic_resident_personality(uint8_t seed, bool is_left) {
-    return (uint8_t)(rez_hash(seed, is_left ? 1u : 0u, 0xA5u) % DUEL_CIVIC_PERSONALITY_COUNT);
+    return (uint8_t)(resident_hash(seed, is_left ? 1u : 0u, 0xA5u) % DUEL_CIVIC_PERSONALITY_COUNT);
 }
 
 // Ambient action weights per personality, ordered by DUEL_CIVIC_ACTION_*:
 // WORK, WALK, INSPECT, REST, WATCH_ROOF, HANDLE_DELIVERY, REACT. Event-driven
 // actions (HANDLE_DELIVERY, REACT) keep a small ambient weight so the vocabulary
-// is exercised; Waves 4/6 later force them from real couriers/combat.
+// is exercised; event-driven presentation can force them from couriers/combat.
 static const uint8_t action_weights[DUEL_CIVIC_PERSONALITY_COUNT][DUEL_CIVIC_ACTION_COUNT] = {
     /* DILIGENT   */ {8, 2, 4, 1, 1, 2, 1},
     /* CURIOUS    */ {2, 5, 7, 1, 4, 2, 1},
@@ -39,7 +39,7 @@ static uint8_t pick_action(uint8_t seed, bool is_left, uint8_t personality, uint
     const uint8_t *w = action_weights[personality];
     uint16_t total = 0;
     for (int i = 0; i < DUEL_CIVIC_ACTION_COUNT; i++) total = (uint16_t)(total + w[i]);
-    uint8_t rnd = (uint8_t)(rez_hash(seed, (uint8_t)(is_left ? 0x11u : 0x22u), (uint8_t)(slot + 1u)) % total);
+    uint8_t rnd = (uint8_t)(resident_hash(seed, (uint8_t)(is_left ? 0x11u : 0x22u), (uint8_t)(slot + 1u)) % total);
     uint16_t acc = 0;
     for (int i = 0; i < DUEL_CIVIC_ACTION_COUNT; i++) {
         acc = (uint16_t)(acc + w[i]);
@@ -169,22 +169,6 @@ uint8_t incantation_effective_floor(const duel_render_t *r) {
     return floor;
 }
 
-int incantation_desk_x(bool is_left, int x) {
-    return is_left ? x : DUEL_CANVAS_W - 1 - x;
-}
-
-void incantation_civic_hline(duel_fb_t *fb, bool is_left, int x0, int x1, int y) {
-    int a = incantation_desk_x(is_left, x0), b = incantation_desk_x(is_left, x1);
-    if (a > b) { int t = a; a = b; b = t; }
-    duel_fb_hline(fb, a, b, y);
-}
-
-void incantation_civic_vline(duel_fb_t *fb, bool is_left, int x, int y0, int y1) {
-    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
-    x = incantation_desk_x(is_left, x);
-    for (; y0 <= y1; y0++) duel_fb_px(fb, x, y0, true);
-}
-
 /* Desk-space anchor of each floor object (INCANTATION_OBJECT_*, 3 per floor).
  * The occupation anchor and the object-reaction sparkle both index this table,
  * keyed by the occupation's reaction object. */
@@ -213,7 +197,7 @@ static void incantation_draw_object_reaction(duel_fb_t *fb, uint8_t reaction,
     };
     /* The reaction IS the object index: anchor it directly (the old
      * reaction -> action -> occupation -> reaction round-trip was identity). */
-    int x = incantation_desk_x(is_left, incantation_object_anchors[reaction % 12u][0]);
+    int x = duel_fb_desk_x(is_left, incantation_object_anchors[reaction % 12u][0]);
     int y = incantation_object_anchors[reaction % 12u][1];
     int toward_gap = is_left ? 1 : -1;
     const int8_t (*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
@@ -267,7 +251,7 @@ void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_lef
     (void)mode; (void)frame;
     const incantation_occupation_desc_t *desc = incantation_occupation(res->station);
     int gapward = is_left ? 1 : -1;
-    int cx = incantation_desk_x(is_left, desc->station);
+    int cx = duel_fb_desk_x(is_left, desc->station);
     int fy = desc->pose == INCANTATION_POSE_CARRY ? 107 :
              desc->pose == INCANTATION_POSE_SEATED ? 107 : 105;
     bool ordinary = res->task == RESIDENT_NORMAL;
@@ -388,5 +372,5 @@ void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_lef
 
 void incantation_resident_draw_attunement(duel_fb_t *fb, bool is_left, uint8_t floor) {
     incantation_point_t anchor = incantation_occupation_anchor(floor, DUEL_CIVIC_ACTION_WORK);
-    duel_fb_px(fb, incantation_desk_x(is_left, anchor.x), anchor.y, true);
+    duel_fb_px(fb, duel_fb_desk_x(is_left, anchor.x), anchor.y, true);
 }

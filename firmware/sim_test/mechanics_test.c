@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "duel_draw.h"
+#include "duel_combat_draw.h"
 #include "duel_courier.h"
 #include "duel_event.h"
 #include "duel_host.h"
@@ -1324,7 +1325,7 @@ static void test_render_purity(void) {
     duel_render_from_world(&render, &w);
     duel_fb_t fb;
     duel_fb_clear(&fb);
-    wiz_draw_scene(&fb, &render, true, 7, false);
+    duel_scene_draw(&fb, &render, true, 7, false);
     bool nonempty = false;
     for (size_t i = 0; i < sizeof fb.bits; i++) nonempty |= fb.bits[i] != 0;
     CHECK(nonempty && memcmp(&w, &before, sizeof w) == 0,
@@ -1606,8 +1607,8 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     duel_render_from_world(&master, &w); master.seed = 9; master.civic_phase = 12;
     duel_fb_t ml, mr;
     duel_fb_clear(&ml); duel_fb_clear(&mr);
-    wiz_draw_scene(&ml, &master, true, 0, false);
-    wiz_draw_scene(&mr, &master, false, 0, false);
+    duel_scene_draw(&ml, &master, true, 0, false);
+    duel_scene_draw(&mr, &master, false, 0, false);
     int beam_y = 63 + DUEL_ROOF_DY;
     bool ok = true;
     EXPECT(duel_fb_get(&ml, 21, beam_y) && duel_fb_get(&ml, 31, beam_y) &&
@@ -1623,8 +1624,8 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     slave.revision = rx.last.revision;
     duel_fb_t sl, sr;
     duel_fb_clear(&sl); duel_fb_clear(&sr);
-    wiz_draw_scene(&sl, &slave, true, 0, false);
-    wiz_draw_scene(&sr, &slave, false, 0, false);
+    duel_scene_draw(&sl, &slave, true, 0, false);
+    duel_scene_draw(&sr, &slave, false, 0, false);
     EXPECT(memcmp(&ml, &sl, sizeof ml) == 0 && memcmp(&mr, &sr, sizeof mr) == 0);
     CHECK(ok, "incantation_bilateral_beam_and_aftermath_split_render_convergence");
 }
@@ -1656,7 +1657,7 @@ static void render_floor_scene(uint8_t floor, bool is_left, uint8_t transition,
     r.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
     r.seed = 0x42u; r.civic_phase = 19u; r.floor_transition = transition;
     duel_fb_clear(fb);
-    wiz_draw_scene(fb, &r, is_left, 7u, false);
+    duel_scene_draw(fb, &r, is_left, 7u, false);
 }
 
 static void test_floor_occupations_and_transitions(void) {
@@ -1884,7 +1885,7 @@ static void test_aftermath_floor_kind_phase_half_matrix(void) {
 static void incantation_render(duel_fb_t *fb, const duel_render_t *r, bool is_left,
                        bool diagnostics) {
     duel_fb_clear(fb);
-    wiz_draw_scene(fb, r, is_left, 7u, diagnostics);
+    duel_scene_draw(fb, r, is_left, 7u, diagnostics);
 }
 
 static uint64_t incantation_bytes_hash(const void *data, size_t size) {
@@ -2294,10 +2295,10 @@ static void test_gap_cue_families_temporal_mirrors(void) {
             duel_view_spell_t right = left;
             duel_fb_t ll, lr, rl, rr;
             duel_fb_clear(&ll); duel_fb_clear(&lr); duel_fb_clear(&rl); duel_fb_clear(&rr);
-            incantation_draw_spell(&ll, &left, 0, 0, true, 9u);
-            incantation_draw_spell(&lr, &left, 0, 0, false, 9u);
-            incantation_draw_spell(&rl, &right, 1, 0, true, 9u);
-            incantation_draw_spell(&rr, &right, 1, 0, false, 9u);
+            duel_combat_draw_spell(&ll, &left, 0, 0, true, 9u);
+            duel_combat_draw_spell(&lr, &left, 0, 0, false, 9u);
+            duel_combat_draw_spell(&rl, &right, 1, 0, true, 9u);
+            duel_combat_draw_spell(&rr, &right, 1, 0, false, 9u);
             EXPECT(exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl) &&
                   framebuffer_pixels(&ll) + framebuffer_pixels(&lr) > 0u);
         }
@@ -2313,8 +2314,8 @@ static void test_gap_cue_families_temporal_mirrors(void) {
                                                            MOD_NONE, PAY_IMPACT), 1u)};
             duel_fb_t left, right;
             duel_fb_clear(&left); duel_fb_clear(&right);
-            incantation_draw_spell(&left, &sp, 0, 0, true, 9u);
-            incantation_draw_spell(&right, &sp, 0, 0, false, 9u);
+            duel_combat_draw_spell(&left, &sp, 0, 0, true, 9u);
+            duel_combat_draw_spell(&right, &sp, 0, 0, false, 9u);
             for (int y = 0; y < DUEL_CANVAS_H; y++)
                 EXPECT(!duel_fb_get(&left, 31, y) && !duel_fb_get(&right, 0, y));
             if (p == 224u) break;
@@ -2349,10 +2350,10 @@ static void test_all_forms_bilateral_mirror(void) {
         duel_view_spell_t ls = duel_view_spell(&lv, 0), rs = duel_view_spell(&rv, 1);
         duel_fb_t ll, lr, rl, rr;
         duel_fb_clear(&ll); duel_fb_clear(&lr); duel_fb_clear(&rl); duel_fb_clear(&rr);
-        incantation_draw_spell(&ll, &ls, 0, 0, true, 5);
-        incantation_draw_spell(&lr, &ls, 0, 0, false, 5);
-        incantation_draw_spell(&rl, &rs, 1, 0, true, 5);
-        incantation_draw_spell(&rr, &rs, 1, 0, false, 5);
+        duel_combat_draw_spell(&ll, &ls, 0, 0, true, 5);
+        duel_combat_draw_spell(&lr, &ls, 0, 0, false, 5);
+        duel_combat_draw_spell(&rl, &rs, 1, 0, true, 5);
+        duel_combat_draw_spell(&rr, &rs, 1, 0, false, 5);
         bool mirrored = exact_mirror(&ll, &rr) && exact_mirror(&lr, &rl);
         if (!mirrored) printf("DIAG bilateral form=%u\n", form);
         EXPECT(mirrored);
@@ -2748,7 +2749,7 @@ static void test_observatory_sky_and_suppression(void) {
 
     duel_fb_t clean, disposable;
     duel_fb_clear(&clean);
-    wiz_draw_scene(&clean, &base, true, 7u, false);
+    duel_scene_draw(&clean, &base, true, 7u, false);
     duel_render_t noisy = base;
     noisy.shared_pres = (uint8_t)(DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_BEACON, 0,
         DUEL_CIVIC_VISIT_WAITING) | DUEL_VISITOR_DENSITY_PACK(DUEL_CIVIC_DENSITY_MANY));
@@ -2757,7 +2758,7 @@ static void test_observatory_sky_and_suppression(void) {
     noisy.local_ambience = INCANTATION_AMBIENCE_PACK(true, TEMPO_FRANTIC,
                                                      TREND_IRREGULAR);
     duel_fb_clear(&disposable);
-    wiz_draw_scene(&disposable, &noisy, true, 7u, false);
+    duel_scene_draw(&disposable, &noisy, true, 7u, false);
     bool ok = true;
     EXPECT(memcmp(clean.bits, disposable.bits, sizeof clean.bits) == 0);
 
@@ -2766,7 +2767,7 @@ static void test_observatory_sky_and_suppression(void) {
         duel_render_t sky = base;
         sky.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
         duel_fb_clear(&phase_fb[phase]);
-        wiz_draw_scene(&phase_fb[phase], &sky, true, 7u, false);
+        duel_scene_draw(&phase_fb[phase], &sky, true, 7u, false);
         if (phase)
             EXPECT(memcmp(phase_fb[phase - 1].bits, phase_fb[phase].bits,
                          sizeof phase_fb[phase].bits) != 0);

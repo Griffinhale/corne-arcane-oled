@@ -14,7 +14,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "duel_draw.h"
+#include "duel_framebuffer.h"
+#include "duel_render.h"
 
 
 // Number of civic ticks one resident action occupies. A civic tick is
@@ -40,10 +41,6 @@ incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action)
 // the floor (scenery, courier, marks) must use this one derivation so the
 // layers cannot desync mid-transition.
 uint8_t incantation_effective_floor(const duel_render_t *r);
-
-int incantation_desk_x(bool is_left, int x);
-void incantation_civic_hline(duel_fb_t *fb, bool is_left, int x0, int x1, int y);
-void incantation_civic_vline(duel_fb_t *fb, bool is_left, int x, int y0, int y1);
 
 // Fully-derived resident record for one city at one civic phase. No stored
 // coordinates: the station index maps to a fixed spot in the floor band.

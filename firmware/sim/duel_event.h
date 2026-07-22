@@ -3,13 +3,14 @@
  *
  * One shared rare-event slot. A deterministic, safety-gated weighted deck
  * selects a family; the master advances it and packs (id/phase/target) into the
- * snapshot's revision byte (DUEL_EVENT_* in duel_draw.h). Both halves render it
+ * snapshot's revision byte (DUEL_EVENT_* in duel_civic.h). Both halves render it
  * locally. Never alters combat, host state, notification policy, or saved data.
  * The current firmware always includes this layer.
  */
 #pragma once
 
-#include "duel_draw.h"
+#include "duel_framebuffer.h"
+#include "duel_render.h"
 
 
 // Derive the deck's state for one civic phase — a pure, stateless function of
