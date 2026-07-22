@@ -10,7 +10,7 @@ CFLAGS   += $(SANFLAGS) -I../sim
 SIM_SRC := ../sim/duel_framebuffer.c ../sim/duel_render.c \
            ../sim/duel_environment_draw.c ../sim/duel_combat_draw.c \
            ../sim/duel_overlay_draw.c ../sim/duel_draw.c \
-           ../sim/duel_sim.c ../sim/duel_incantation.c \
+           ../sim/duel_sim.c ../sim/duel_incantation.c ../sim/duel_combat.c \
            ../sim/duel_view.c ../sim/duel_proto.c ../sim/duel_host.c \
            ../sim/duel_display.c ../sim/duel_resident.c \
            ../sim/duel_courier.c ../sim/duel_event.c ../sim/duel_runtime.c \
@@ -21,7 +21,12 @@ test: mechanics-test visual-test noalloc-check
 
 RUNNER_RECIPE = $(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
 
-mechanics_runner: mechanics_test.c test_support.c test_support.h $(SIM_SRC) $(HDRS)
+MECHANICS_SRC := test_main.c test_harness.c test_protocol_view.c \
+                 test_incantation_compiler.c test_combat_lifecycle.c \
+                 test_civic_presentation.c test_rendering_geometry.c \
+                 test_runtime_display_rgb.c test_support.c
+
+mechanics_runner: $(MECHANICS_SRC) test_harness.h test_support.h $(SIM_SRC) $(HDRS)
 	$(RUNNER_RECIPE)
 
 mechanics-test: mechanics_runner

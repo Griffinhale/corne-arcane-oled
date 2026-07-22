@@ -53,7 +53,7 @@ typedef struct {
 #define DUEL_RENDER_LAYER_PACK(global, local) \
     ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
 
-_Static_assert(sizeof(duel_render_t) <= 40, "render state remains compact");
+_Static_assert(sizeof(duel_render_t) == 40, "render state layout changed");
 
 void duel_render_from_world(duel_render_t *render, const sim_world_t *world);
 uint8_t duel_render_host_online(const duel_render_t *render);
