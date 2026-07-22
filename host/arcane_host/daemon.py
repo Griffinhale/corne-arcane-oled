@@ -11,29 +11,20 @@ import sys
 import time
 from typing import Callable
 
-from .adapters import DBusAdapterHub, SemanticAdapters
-
+from .adapters import SemanticAdapters
+from .dbus_adapters import DBusAdapterHub
+from .dbus_contract import BUS_NAME
+from .dbus_services import EventService, FocusService, KWinBridgeLoader
 from .desktop import DesktopMonitor, DesktopNotificationAdapter
 from .focus import FocusArbiter
 from .heartbeat import DryRunTransport, HidHeartbeat, HidTransport
 from .hidraw import Device, choose_device
 from .policy import NotificationPolicy
-from .protocol import (
-    Category,
-    CivicState,
-    EMPTY_SUMMARY,
-    NotificationSummary,
-    Priority,
-    Scene,
-)
+from .protocol import Category, EMPTY_SUMMARY, NotificationSummary, Priority, Scene
+from .runtime import DaemonRuntime
 from .semantic import SemanticResolver
 
 SCENES = {scene.name.lower(): scene for scene in Scene}
-BUS_NAME = "io.github.Griffinhale.CorneArcane"
-OBJECT_PATH = "/io/github/Griffinhale/CorneArcane"
-FOCUS_INTERFACE = "io.github.Griffinhale.CorneArcane.Focus"
-EVENTS_INTERFACE = "io.github.Griffinhale.CorneArcane.Events"
-KWIN_SERVICE = "org.kde.KWin"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -73,260 +64,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-INTROSPECTION_XML = f"""
-<node>
-  <interface name='{FOCUS_INTERFACE}'>
-    <method name='ReportActiveWindow'>
-      <arg type='s' name='resourceClass' direction='in'/>
-      <arg type='s' name='desktopFileName' direction='in'/>
-    </method>
-  </interface>
-</node>
-"""
-
-
-class FocusService:
-    def __init__(self, Gio, connection, arbiter: FocusArbiter, clock=time.monotonic,
-                 changed: Callable[[], None] = lambda: None) -> None:
-        self.Gio = Gio
-        self.connection = connection
-        self.arbiter = arbiter
-        self.clock = clock
-        self.changed = changed
-        info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION_XML)
-        self.registration_id = connection.register_object(
-            OBJECT_PATH, info.interfaces[0], self._method_call, None, None
-        )
-
-    def _method_call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
-        del connection, sender, path, interface
-        if method == "ReportActiveWindow":
-            resource_class, desktop_file_name = parameters.unpack()
-            self.arbiter.report(resource_class, desktop_file_name, self.clock())
-            self.changed()
-            invocation.return_value(None)
-            return
-        invocation.return_dbus_error(f"{FOCUS_INTERFACE}.UnknownMethod", method)
-
-
-EVENTS_XML = f"""
-<node>
-  <interface name='{EVENTS_INTERFACE}'>
-    <method name='ReportTerminalCompletion'>
-      <arg type='u' name='durationMilliseconds' direction='in'/>
-      <arg type='i' name='exitStatus' direction='in'/>
-    </method>
-    <method name='ReportRepositoryState'>
-      <arg type='y' name='state' direction='in'/>
-      <arg type='b' name='success' direction='in'/>
-    </method>
-    <method name='InjectSynthetic'>
-      <arg type='y' name='category' direction='in'/>
-      <arg type='y' name='priority' direction='in'/>
-      <arg type='b' name='persistent' direction='in'/>
-    </method>
-    <method name='ClearNotifications'/>
-  </interface>
-</node>
-"""
-
-
-class EventService:
-    """Private diagnostic and redacted terminal-completion ingress."""
-
-    def __init__(
-        self,
-        Gio,
-        connection,
-        policy: NotificationPolicy,
-        focus: FocusArbiter,
-        changed: Callable[[], None],
-        adapters: SemanticAdapters | None = None,
-        clock=time.monotonic,
-    ) -> None:
-        self.policy = policy
-        self.focus = focus
-        self.changed = changed
-        self.adapters = adapters
-        self.clock = clock
-        info = Gio.DBusNodeInfo.new_for_xml(EVENTS_XML)
-        self.registration_id = connection.register_object(
-            OBJECT_PATH, info.interfaces[0], self._method_call, None, None
-        )
-
-    def report_terminal_completion(self, duration_ms: int, exit_status: int) -> bool:
-        if duration_ms < 10_000 or self.focus.terminal_focused:
-            return False
-        priority = Priority.LOW if exit_status == 0 else Priority.NORMAL
-        changed = self.policy.inject(
-            Category.TERMINAL,
-            priority,
-            False,
-            self.clock(),
-        )
-        if changed:
-            self.changed()
-        return changed
-
-    def inject_synthetic(self, category: int, priority: int, persistent: bool) -> bool:
-        try:
-            changed = self.policy.inject(
-                Category(category), Priority(priority), bool(persistent), self.clock()
-            )
-        except (ValueError, TypeError):
-            return False
-        if changed:
-            self.changed()
-        return changed
-
-    def report_repository_state(self, state: int, success: bool) -> bool:
-        if self.adapters is not None:
-            return self.adapters.repository(int(state), bool(success))
-        if state not in range(4):
-            return False
-        priority = Priority.CRITICAL if state == 3 and not success else (
-            Priority.LOW if state == 0 else Priority.NORMAL
-        )
-        changed = self.policy.inject(
-            Category.TRANSFER,
-            priority,
-            False,
-            self.clock(),
-            key="repository-state",
-            replacement=True,
-        )
-        if changed:
-            self.changed()
-        return changed
-
-    def clear(self) -> None:
-        self.policy.clear()
-        self.changed()
-
-    def _method_call(self, connection, sender, path, interface, method, parameters, invocation) -> None:
-        del connection, sender, path, interface
-        if method == "ReportTerminalCompletion":
-            self.report_terminal_completion(*parameters.unpack())
-            invocation.return_value(None)
-            return
-        if method == "ReportRepositoryState":
-            state, success = parameters.unpack()
-            if state not in range(4):
-                invocation.return_dbus_error(
-                    f"{EVENTS_INTERFACE}.InvalidArguments", "invalid repository state"
-                )
-            else:
-                self.report_repository_state(state, success)
-                invocation.return_value(None)
-            return
-        if method == "InjectSynthetic":
-            category, priority, persistent = parameters.unpack()
-            try:
-                Category(category)
-                parsed_priority = Priority(priority)
-                if category == Category.NONE or parsed_priority == Priority.NONE:
-                    raise ValueError
-                if persistent and parsed_priority != Priority.CRITICAL:
-                    raise ValueError
-            except (ValueError, TypeError):
-                invocation.return_dbus_error(
-                    f"{EVENTS_INTERFACE}.InvalidArguments", "invalid notification fields"
-                )
-            else:
-                self.inject_synthetic(category, priority, persistent)
-                invocation.return_value(None)
-            return
-        if method == "ClearNotifications":
-            self.clear()
-            invocation.return_value(None)
-            return
-        invocation.return_dbus_error(f"{EVENTS_INTERFACE}.UnknownMethod", method)
-
-
-class KWinBridgeLoader:
-    """Reload the packaged script whenever KWin acquires its D-Bus name."""
-
-    def __init__(self, Gio, GLib, connection, script_path: Path, verbose: bool = False) -> None:
-        self.Gio = Gio
-        self.GLib = GLib
-        self.connection = connection
-        self.script_path = script_path
-        self.verbose = verbose
-        self.subscription_id = connection.signal_subscribe(
-            "org.freedesktop.DBus",
-            "org.freedesktop.DBus",
-            "NameOwnerChanged",
-            "/org/freedesktop/DBus",
-            KWIN_SERVICE,
-            Gio.DBusSignalFlags.NONE,
-            self._owner_changed,
-        )
-        self.load()
-
-    def _owner_changed(self, connection, sender, path, interface, signal, parameters) -> None:
-        del connection, sender, path, interface, signal
-        name, _old_owner, new_owner = parameters.unpack()
-        if name == KWIN_SERVICE and new_owner:
-            self.load()
-
-    def load(self) -> None:
-        if not self.script_path.is_file():
-            if self.verbose:
-                print(f"arcane-host: KWin bridge missing: {self.script_path}", file=sys.stderr)
-            return
-        # A daemon restart can leave the prior script live in the same KWin
-        # process. Reload it so its startup report covers the current window.
-        try:
-            self.connection.call_sync(
-                KWIN_SERVICE,
-                "/Scripting",
-                "org.kde.kwin.Scripting",
-                "unloadScript",
-                self.GLib.Variant("(s)", ("cornearcane",)),
-                None,
-                self.Gio.DBusCallFlags.NONE,
-                1000,
-                None,
-            )
-        except Exception:
-            pass
-        try:
-            result = self.connection.call_sync(
-                KWIN_SERVICE,
-                "/Scripting",
-                "org.kde.kwin.Scripting",
-                "loadScript",
-                self.GLib.Variant("(ss)", (str(self.script_path), "cornearcane")),
-                self.GLib.VariantType.new("(i)"),
-                self.Gio.DBusCallFlags.NONE,
-                1000,
-                None,
-            )
-            script_id = result.unpack()[0]
-            if script_id >= 0:
-                self.connection.call_sync(
-                    KWIN_SERVICE,
-                    f"/Scripting/Script{script_id}",
-                    "org.kde.kwin.Script",
-                    "run",
-                    None,
-                    None,
-                    self.Gio.DBusCallFlags.NONE,
-                    1000,
-                    None,
-                )
-                if self.verbose:
-                    print("arcane-host: KWin focus bridge loaded", flush=True)
-        except Exception as error:  # PyGObject raises GLib.Error; keep imports optional for tests.
-            if self.verbose:
-                print(f"arcane-host: KWin bridge not ready ({error})", file=sys.stderr, flush=True)
-
-
 def default_kwin_script() -> Path:
     configured = os.environ.get("CORNE_ARCANE_KWIN_SCRIPT")
     if configured:
         return Path(configured)
     return Path(__file__).resolve().parents[1] / "kwin" / "contents" / "code" / "main.js"
+
+
+def _run_dry(heartbeat: HidHeartbeat, once: bool) -> int:
+    while True:
+        sent = heartbeat.tick(time.monotonic())
+        if sent and once:
+            heartbeat.close()
+            return 0
+        time.sleep(0.02)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -342,9 +93,6 @@ def run(args: argparse.Namespace) -> int:
     override = SCENES[args.scene] if args.scene is not None else None
     resolver = SemanticResolver(override)
 
-    def scene_provider() -> Scene:
-        return resolver.state.scene
-
     if args.dry_run:
         device_factory: Callable[[], HidTransport] = DryRunTransport
     else:
@@ -353,41 +101,29 @@ def run(args: argparse.Namespace) -> int:
 
     fixed_session = args.session
     session_factory = (
-        (lambda: fixed_session) if fixed_session is not None else (lambda: secrets.randbits(32) or 1)
+        (lambda: fixed_session)
+        if fixed_session is not None
+        else (lambda: secrets.randbits(32) or 1)
     )
     fixed_summary = (
         EMPTY_SUMMARY
         if args.notify == 0
         else NotificationSummary(args.notify, Category.OTHER, Priority.NORMAL)
     )
-
     resolver.update(summary=fixed_summary if args.notify else policy.summary(time.monotonic()))
-
-    def summary_provider() -> NotificationSummary:
-        return resolver.state.summary
-
-    def civic_provider() -> CivicState:
-        return resolver.state.civic
-
     heartbeat = HidHeartbeat(
-        scene_provider,
+        lambda: resolver.state.scene,
         device_factory,
         session_factory,
-        summary_provider=summary_provider,
-        civic_provider=civic_provider,
+        summary_provider=lambda: resolver.state.summary,
+        civic_provider=lambda: resolver.state.civic,
         interval=args.interval,
         retry_interval=args.retry_interval,
         verbose=args.verbose,
     )
 
-    # Dry-run stays usable in build/test environments without a session bus.
     if args.dry_run:
-        while True:
-            sent = heartbeat.tick(time.monotonic())
-            if sent and args.once:
-                heartbeat.close()
-                return 0
-            time.sleep(0.02)
+        return _run_dry(heartbeat, args.once)
 
     try:
         import gi
@@ -395,7 +131,11 @@ def run(args: argparse.Namespace) -> int:
         gi.require_version("Gio", "2.0")
         from gi.repository import Gio, GLib
     except (ImportError, ValueError) as error:
-        print(f"arcane-host: PyGObject/Gio is required for automatic focus mode: {error}", file=sys.stderr)
+        heartbeat.close()
+        print(
+            f"arcane-host: PyGObject/Gio is required for automatic focus mode: {error}",
+            file=sys.stderr,
+        )
         return 2
 
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
@@ -403,81 +143,38 @@ def run(args: argparse.Namespace) -> int:
         system_connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
     except Exception:
         system_connection = None
-    owner_id = 0
-    focus_service = None
-    event_service = None
-    desktop_monitor = None
-    adapter_hub = None
-    owned_objects = {}
-    loop = GLib.MainLoop()
-    source_id = 0
-    last_revision = resolver.state.revision
-    in_tick = False
-    wake_pending = False
 
-    def service_tick() -> bool:
-        nonlocal source_id, last_revision, in_tick, wake_pending
-        source_id = 0
-        in_tick = True
-        now = time.monotonic()
-        adapters.poll(now)
-        if override is None:
-            arbiter.poll(now)
-        summary = fixed_summary if args.notify else policy.summary(now)
-        resolver.update(
-            summary=summary, focus_scene=arbiter.scene, focus_floor=arbiter.floor
-        )
-        if resolver.state.revision != last_revision:
-            last_revision = resolver.state.revision
-            heartbeat.request_notify()
-        sent = heartbeat.tick(now)
-        if sent and args.once:
-            in_tick = False
-            loop.quit()
-            return False
-        deadlines = [heartbeat.next_deadline(now), now + 1.0]
-        focus_deadline = arbiter.next_deadline() if override is None else None
-        policy_deadline = None if args.notify else policy.next_deadline(now)
-        if focus_deadline is not None:
-            deadlines.append(focus_deadline)
-        if policy_deadline is not None:
-            deadlines.append(policy_deadline)
-        adapter_deadline = adapters.next_deadline(now)
-        if adapter_deadline is not None:
-            deadlines.append(adapter_deadline)
-        delay_ms = (
-            1 if wake_pending else
-            max(1, min(1000, int(max(0.0, min(deadlines) - now) * 1000)))
-        )
-        wake_pending = False
-        source_id = GLib.timeout_add(delay_ms, service_tick)
-        in_tick = False
-        return False
+    runtime = DaemonRuntime(
+        Gio,
+        GLib,
+        GLib.MainLoop(),
+        heartbeat,
+        resolver,
+        policy,
+        arbiter,
+        fixed_summary=fixed_summary if args.notify else None,
+        focus_override=override is not None,
+        once=args.once,
+        verbose=args.verbose,
+    )
+    adapters = SemanticAdapters(resolver, policy, runtime.wake)
+    runtime.bind_adapters(adapters)
 
-    def wake() -> None:
-        nonlocal source_id, wake_pending
-        if in_tick:
-            wake_pending = True
-            return
-        if source_id:
-            try:
-                GLib.source_remove(source_id)
-            except Exception:
-                pass
-        source_id = GLib.idle_add(service_tick)
-
-    adapters = SemanticAdapters(resolver, policy, wake)
     if override is None:
-        focus_service = FocusService(Gio, connection, arbiter, changed=wake)
-
-    event_service = EventService(Gio, connection, policy, arbiter, wake, adapters)
+        runtime.own(FocusService(Gio, connection, arbiter, changed=runtime.wake))
+    runtime.own(EventService(Gio, connection, policy, arbiter, adapters, runtime.wake))
 
     if not args.no_desktop_notifications:
-        desktop_adapter = DesktopNotificationAdapter(
-            policy, salt, arbiter.matches_focused
-        )
-        desktop_monitor = DesktopMonitor(
-            Gio, GLib, desktop_adapter, time.monotonic, args.verbose, wake
+        desktop_adapter = DesktopNotificationAdapter(policy, salt, arbiter.matches_focused)
+        desktop_monitor = runtime.own(
+            DesktopMonitor(
+                Gio,
+                GLib,
+                desktop_adapter,
+                time.monotonic,
+                args.verbose,
+                runtime.wake,
+            )
         )
         if not desktop_monitor.start() and args.verbose:
             print(
@@ -486,39 +183,33 @@ def run(args: argparse.Namespace) -> int:
                 flush=True,
             )
 
-    adapter_hub = DBusAdapterHub(
-        Gio, connection, system_connection, adapters, args.pomodoro_unit
+    runtime.own(
+        DBusAdapterHub(Gio, connection, system_connection, adapters, args.pomodoro_unit)
     )
 
     def name_acquired(bus_connection, name) -> None:
         del name
         if override is None:
-            owned_objects["bridge"] = KWinBridgeLoader(
-                Gio,
-                GLib,
-                bus_connection,
-                args.kwin_script or default_kwin_script(),
-                args.verbose,
+            runtime.own(
+                KWinBridgeLoader(
+                    Gio,
+                    GLib,
+                    bus_connection,
+                    args.kwin_script or default_kwin_script(),
+                    args.verbose,
+                )
             )
 
-    owner_id = Gio.bus_own_name_on_connection(
-        connection, BUS_NAME, Gio.BusNameOwnerFlags.NONE, name_acquired, None
+    runtime.set_bus_owner(
+        Gio.bus_own_name_on_connection(
+            connection,
+            BUS_NAME,
+            Gio.BusNameOwnerFlags.NONE,
+            name_acquired,
+            None,
+        )
     )
-
-    wake()
-    try:
-        loop.run()
-    except KeyboardInterrupt:
-        if args.verbose:
-            print("arcane-host: stopped; firmware context expires within 1.5 s")
-    finally:
-        if adapter_hub is not None:
-            adapter_hub.close()
-        del focus_service, event_service, desktop_monitor
-        owned_objects.clear()
-        if owner_id:
-            Gio.bus_unown_name(owner_id)
-        heartbeat.close()
+    runtime.run()
     return 0
 
 

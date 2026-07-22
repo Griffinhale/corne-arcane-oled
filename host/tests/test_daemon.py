@@ -6,7 +6,15 @@ import sys
 import tempfile
 import unittest
 
-from arcane_host.daemon import EventService, KWinBridgeLoader, KWIN_SERVICE
+from arcane_host.adapters import SemanticAdapters
+from arcane_host.dbus_contract import (
+    EVENTS_INTERFACE,
+    INJECT_SYNTHETIC,
+    KWIN_SERVICE,
+    REPORT_REPOSITORY_STATE,
+    RepositoryState,
+)
+from arcane_host.dbus_services import EventService, KWinBridgeLoader
 from arcane_host.heartbeat import DryRunTransport, HidHeartbeat
 from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
@@ -21,6 +29,7 @@ from arcane_host.protocol import (
     Scene,
     Secondary,
 )
+from arcane_host.semantic import SemanticResolver
 
 
 class FakeDevice:
@@ -221,6 +230,9 @@ class EventServiceTests(unittest.TestCase):
         service.clock = lambda: now
         service.changed_calls = 0
         service.changed = lambda: setattr(service, "changed_calls", service.changed_calls + 1)
+        service.adapters = SemanticAdapters(
+            SemanticResolver(), policy, service.changed, service.clock
+        )
         return service
 
     def test_terminal_threshold_focus_and_priority(self) -> None:
@@ -243,10 +255,49 @@ class EventServiceTests(unittest.TestCase):
         policy = NotificationPolicy()
         focus = FocusArbiter(settle_seconds=0)
         service = self.make_service(focus, policy)
-        service.adapters = None
-        self.assertTrue(service.report_repository_state(1, True))
+        self.assertTrue(service.report_repository_state(RepositoryState.DIRTY, True))
         self.assertEqual(policy.summary(20).category, Category.TRANSFER)
-        self.assertFalse(service.report_repository_state(9, False))
+
+    def test_invalid_fields_are_rejected_once_at_dbus_boundary(self) -> None:
+        class Invocation:
+            error = None
+            value = object()
+
+            def return_dbus_error(self, name, message):
+                self.error = (name, message)
+
+            def return_value(self, value):
+                self.value = value
+
+        service = self.make_service(FocusArbiter(), NotificationPolicy())
+        repository = Invocation()
+        service._method_call(
+            None,
+            None,
+            None,
+            None,
+            REPORT_REPOSITORY_STATE,
+            FakeVariant((9, True)),
+            repository,
+        )
+        self.assertEqual(
+            repository.error,
+            (f"{EVENTS_INTERFACE}.InvalidArguments", "invalid repository state"),
+        )
+        notification = Invocation()
+        service._method_call(
+            None,
+            None,
+            None,
+            None,
+            INJECT_SYNTHETIC,
+            FakeVariant((Category.OTHER, Priority.NORMAL, True)),
+            notification,
+        )
+        self.assertEqual(
+            notification.error,
+            (f"{EVENTS_INTERFACE}.InvalidArguments", "invalid notification fields"),
+        )
 
 
 class FakeVariant:

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from arcane_host.adapters import DBusAdapterHub, SemanticAdapters
+from arcane_host.adapters import SemanticAdapters
+from arcane_host.dbus_adapters import DBusAdapterHub
+from arcane_host.dbus_contract import RepositoryState
 from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import canonical_identifier, resolve_profile
@@ -151,9 +153,9 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolver.state.civic.secondary, Secondary.SYSTEM)
         adapters.network("online")
         self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
-        adapters.repository(2, True)  # operation in flight
+        adapters.repository(RepositoryState.OPERATION, True)
         self.assertEqual(resolver.state.civic.secondary, Secondary.TRANSFER)
-        adapters.repository(3, True)  # completion clears the channel
+        adapters.repository(RepositoryState.COMPLETION, True)
         self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
 
     def test_pomodoro_uses_warning_and_completion_deadlines(self) -> None:
@@ -201,9 +203,8 @@ class SemanticTests(unittest.TestCase):
 
         policy.clear()
         now[0] += 20
-        self.assertTrue(adapters.repository(1, True))
+        self.assertTrue(adapters.repository(RepositoryState.DIRTY, True))
         self.assertEqual(policy.summary(now[0]).category, Category.TRANSFER)
-        self.assertFalse(adapters.repository(9, True))
         self.assertGreaterEqual(len(changes), 6)
 
     def test_dbus_hub_routes_live_property_semantics(self) -> None:

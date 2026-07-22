@@ -56,6 +56,17 @@ class _Tracked:
     persistent: bool
 
 
+@dataclass(slots=True)
+class NotificationCounters:
+    matched_replies: int = 0
+    unmatched_replies: int = 0
+    replacements: int = 0
+    closes: int = 0
+    parse_failures: int = 0
+    pending_high_water: int = 0
+    evictions: int = 0
+
+
 class DesktopNotificationAdapter:
     """Pure correlation/redaction core fed by a separate D-Bus monitor."""
 
@@ -82,15 +93,7 @@ class DesktopNotificationAdapter:
         self._next_key = 1
         self.monitor_enabled = False
         self.monitor_error: str | None = None
-        self.counters = {
-            "matched_replies": 0,
-            "unmatched_replies": 0,
-            "replacements": 0,
-            "closes": 0,
-            "parse_failures": 0,
-            "pending_high_water": 0,
-            "evictions": 0,
-        }
+        self.counters = NotificationCounters()
 
     def digest_text(self, summary: str, body: str) -> bytes:
         digest = hashlib.blake2s(key=self._salt, digest_size=16)
@@ -151,7 +154,7 @@ class DesktopNotificationAdapter:
             pool = candidates or list(self._pending)
             oldest_key = min(pool, key=lambda key: self._pending[key].created)
             del self._pending[oldest_key]
-            self.counters["evictions"] += 1
+            self.counters.evictions += 1
         request_key = (self._digest_peer(sender), int(serial))
         self._pending[request_key] = _Pending(
             now,
@@ -161,8 +164,8 @@ class DesktopNotificationAdapter:
             persistent,
             int(replaces_id),
         )
-        self.counters["pending_high_water"] = max(
-            self.counters["pending_high_water"], len(self._pending)
+        self.counters.pending_high_water = max(
+            self.counters.pending_high_water, len(self._pending)
         )
         return True
 
@@ -177,9 +180,9 @@ class DesktopNotificationAdapter:
             (self._digest_peer(destination), int(reply_serial)), None
         )
         if pending is None:
-            self.counters["unmatched_replies"] += 1
+            self.counters.unmatched_replies += 1
             return False
-        self.counters["matched_replies"] += 1
+        self.counters.matched_replies += 1
         old = self._tracked.pop(pending.replaces_id, None) if pending.replaces_id else None
         policy_key: tuple[str, int]
         if old is not None:
@@ -197,7 +200,7 @@ class DesktopNotificationAdapter:
                 policy_key = existing_key
         duplicate = old is not None or pending.digest in self._digest_keys
         if old is not None:
-            self.counters["replacements"] += 1
+            self.counters.replacements += 1
         changed = self.policy.inject(
             pending.category,
             pending.priority,
@@ -217,7 +220,7 @@ class DesktopNotificationAdapter:
         tracked = self._tracked.pop(int(notification_id), None)
         if tracked is None:
             return False
-        self.counters["closes"] += 1
+        self.counters.closes += 1
         still_referenced = any(item.policy_key == tracked.policy_key for item in self._tracked.values())
         if not still_referenced:
             self._digest_keys.pop(tracked.digest, None)
@@ -267,6 +270,7 @@ class DesktopMonitor:
         self.verbose = verbose
         self.changed = changed
         self.connection = None
+        self.filter_id = 0
 
     def start(self) -> bool:
         try:
@@ -290,7 +294,7 @@ class DesktopMonitor:
                 2000,
                 None,
             )
-            connection.add_filter(self._filter, None)
+            self.filter_id = connection.add_filter(self._filter, None)
             self.adapter.monitor_enabled = True
             return True
         except Exception as error:
@@ -347,5 +351,21 @@ class DesktopMonitor:
                         self.changed()
         except Exception:
             # Monitoring is enrichment; malformed or unfamiliar traffic is ignored.
-            self.adapter.counters["parse_failures"] += 1
+            self.adapter.counters.parse_failures += 1
         return message
+
+    def close(self) -> None:
+        if self.connection is None:
+            return
+        if self.filter_id:
+            try:
+                self.connection.remove_filter(self.filter_id)
+            except Exception:
+                pass
+            self.filter_id = 0
+        try:
+            self.connection.close_sync(None)
+        except Exception:
+            pass
+        self.connection = None
+        self.adapter.monitor_enabled = False

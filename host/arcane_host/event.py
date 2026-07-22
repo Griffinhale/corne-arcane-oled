@@ -5,7 +5,16 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .daemon import BUS_NAME, EVENTS_INTERFACE, OBJECT_PATH
+from .dbus_contract import (
+    BUS_NAME,
+    CLEAR_NOTIFICATIONS,
+    EVENTS_INTERFACE,
+    INJECT_SYNTHETIC,
+    OBJECT_PATH,
+    REPORT_REPOSITORY_STATE,
+    REPORT_TERMINAL_COMPLETION,
+    RepositoryState,
+)
 from .protocol import Category, Priority
 
 CATEGORIES = {item.name.lower(): item for item in Category if item != Category.NONE}
@@ -44,7 +53,7 @@ def run(args: argparse.Namespace) -> int:
 
     connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
     if args.command == "notify":
-        method = "InjectSynthetic"
+        method = INJECT_SYNTHETIC
         parameters = GLib.Variant(
             "(yyb)",
             (int(CATEGORIES[args.category]), int(PRIORITIES[args.priority]), args.persistent),
@@ -53,14 +62,19 @@ def run(args: argparse.Namespace) -> int:
         if not 0 <= args.duration_ms <= 0xFFFFFFFF:
             print("corne-arcane-event: duration must fit uint32", file=sys.stderr)
             return 2
-        method = "ReportTerminalCompletion"
+        method = REPORT_TERMINAL_COMPLETION
         parameters = GLib.Variant("(ui)", (args.duration_ms, args.exit_status))
     elif args.command == "git":
-        method = "ReportRepositoryState"
-        state = {"clean": 0, "dirty": 1, "operation": 2, "completion": 3}[args.state]
+        method = REPORT_REPOSITORY_STATE
+        state = {
+            "clean": RepositoryState.CLEAN,
+            "dirty": RepositoryState.DIRTY,
+            "operation": RepositoryState.OPERATION,
+            "completion": RepositoryState.COMPLETION,
+        }[args.state]
         parameters = GLib.Variant("(yb)", (state, not args.failed))
     else:
-        method = "ClearNotifications"
+        method = CLEAR_NOTIFICATIONS
         parameters = None
     try:
         connection.call_sync(
