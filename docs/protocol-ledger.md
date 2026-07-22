@@ -1,8 +1,8 @@
 # Protocol bit ledger
 
 This ledger is the allocation authority for the two fixed 32-byte transports.
-Raw HID remains version 2; split snapshots are version 11 (the M15 Track P
-repack). Integers wider than one byte are little-endian. Every reserved bit
+Raw HID remains version 2; split snapshots are version 11. Integers wider than
+one byte are little-endian. Every reserved bit
 must be zero; receivers reject malformed version, length, reserved-bit, enum,
 range, or CRC combinations.
 
@@ -31,9 +31,8 @@ The v10 → v11 repack freed 22 bits without growing the packet — `seq`
 narrowed to a wrapping byte (+8), the view's fx byte lends its high nibble
 (+4), and the reserved bits of `flags` (+5), `civic` (+2), and `secondary`
 (+3) were allocated — and spent exactly 22: four battlefield-residue zones
-(4 × 4, Track A), two wizard stances (2 × 2, Track B), and the sky sub-phase
-(2). Residue and the sky sub-phase are live; the stance field ships zeroed
-until Track B lands.
+(4 × 4), two wizard stances (2 × 2), and the sky sub-phase (2). All three
+allocations are live in the current encoder and renderer.
 
 | Offset | Size | Field | Allocation |
 |---:|---:|---|---|

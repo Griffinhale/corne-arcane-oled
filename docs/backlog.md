@@ -1,8 +1,8 @@
 # Corne Arcane exploration backlog
 
 Version 0.4 is the accepted software baseline. Nothing here is required to
-complete it; these are possible directions for a future milestone and need
-product/design discussion before implementation.
+complete it; these are possible future directions that need product/design
+discussion before implementation.
 
 ## Presentation worlds and information surfaces
 
@@ -34,12 +34,12 @@ product/design discussion before implementation.
 - Explore broader desktop support behind adapters without coupling firmware to
   KWin, Plasma, D-Bus, or one operating system.
 
-## Architecture constraints for any next milestone
+## Architecture constraints for future work
 
 - The split v11 packet is exactly 32 bytes. New authoritative or synchronized
   presentation state requires repacking, state reuse, derivation, or a new
-  version; the v11 Track P repack already spent the bits it freed, so no wire
-  reserve remains.
+  version; the v11 repack already spent the bits it freed, so no wire reserve
+  remains.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
   interface. The safe launcher hands that one endpoint between the daemon and
   Vial; a future integration must preserve exclusive ownership.
@@ -55,13 +55,13 @@ product/design discussion before implementation.
   streamed framebuffers without an explicit product-level reversal of the
   current scope guards.
 
-## v12 seeds (recorded at the M15 close-out, 2026-07-17)
+## Possible v12 work recorded on 2026-07-17
 
-Concrete inputs for the next protocol version, carried over from M15:
+Concrete inputs for the next protocol version:
 
-- **Field objects (Track C)**: ejected at the 2026-07-17 C gate on flash
-  budget (~1.4 KiB projected against a milestone sitting 464 B under the
-  margin line without it). Design of record in the M15 plan §7: a 2-entry
+- **Field objects**: deferred on 2026-07-17 because the projected ~1.4 KiB
+  flash cost would consume the remaining growth margin. The archived design
+  uses a two-entry
   field array (kind/zone/age/owner, 1 byte each on the wire), slot transfer
   when a trap arms or a singularity matures so the caster's in-flight slot
   frees, and an additive collision-ladder check before the spell-vs-spell
@@ -73,14 +73,14 @@ Concrete inputs for the next protocol version, carried over from M15:
   (`incantation_render_combine_solid_parity_all_elements_forms`) fails the
   moment a slave-side COMBINE visual appears. `variance`-by-session-seed
   frees 4 more bits (presentation jitter only; goldens re-baseline then).
-- **HP tuning**: the desk-side 8-vs-10 HP verdict (M15 plan §10 Q4, judged
-  during the M15 physical checklist) is the first v12 tuning input.
+- **HP tuning**: the pending desk-side 8-vs-10 HP verdict in the current
+  physical checklist is the first v12 tuning input.
 
 ## Questions to settle before coding
 
 1. Which direction adds the most ambient value after Observatory acceptance:
    deeper existing cities, richer spells, or richer scry/host semantics?
-2. Should the next milestone spend protocol bytes, flash reserve, or both—and
+2. Should the next version spend protocol bytes, flash reserve, or both—and
    what recovery artifact and hard stop protect the accepted 0.4 baseline?
 3. Which additions are authoritative mechanics versus disposable presentation
    or external context?

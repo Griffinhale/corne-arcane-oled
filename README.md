@@ -46,7 +46,7 @@ git diff --check
 The QMK build uses `crkbd/rev1` and `CONVERT_TO=rp2040_ce`. Release and
 diagnostic artifacts are copied to `artifacts/release/` with neutral names.
 The release gate enforces fixed flash and static-RAM ceilings, the 96 KiB hard
-stop, a 16 KiB flash reserve, and per-image M15 growth allowances; the exact
+stop, a 16 KiB flash reserve, and per-image growth allowances; the exact
 ceilings and current measured figures are in `docs/acceptance.md` §Resource
 measurements.
 
