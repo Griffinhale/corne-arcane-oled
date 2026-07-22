@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
-from arcane_host.daemon import EventService, HidHeartbeat, KWinBridgeLoader, KWIN_SERVICE
+from arcane_host.daemon import EventService, KWinBridgeLoader, KWIN_SERVICE
+from arcane_host.heartbeat import DryRunTransport, HidHeartbeat
 from arcane_host.focus import FocusArbiter
 from arcane_host.policy import NotificationPolicy
 from arcane_host.protocol import (
@@ -44,6 +47,32 @@ class FakeDevice:
 
 
 class HeartbeatTests(unittest.TestCase):
+    def test_dry_run_receive_before_send_fails_clearly(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "before send"):
+            DryRunTransport().receive(0.25)
+
+    def test_dry_run_once_prints_hello_and_heartbeat(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "arcane_host.daemon",
+                "--dry-run",
+                "--once",
+                "--session",
+                "1",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reports = [bytes.fromhex(line) for line in result.stdout.splitlines()]
+        self.assertEqual(len(reports), 2)
+        self.assertEqual([len(report) for report in reports], [32, 32])
+        self.assertEqual([report[3] for report in reports], [Message.HELLO, Message.HEARTBEAT])
+        self.assertEqual([int.from_bytes(report[4:8], "little") for report in reports], [1, 1])
+
     def test_initial_duel_hello_and_500ms_continuity(self) -> None:
         device = FakeDevice()
         heartbeat = HidHeartbeat(lambda: Scene.DUEL, lambda: device, lambda: 7)

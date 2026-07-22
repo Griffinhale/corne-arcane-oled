@@ -78,6 +78,9 @@ class FakeDevice:
     def receive(self, _timeout: float) -> bytes:
         return self.reports.pop(0)
 
+    def close(self) -> None:
+        pass
+
 
 class QueryTests(unittest.TestCase):
     def test_queries_both_pages(self) -> None:
@@ -95,6 +98,9 @@ class QueryTests(unittest.TestCase):
             def receive(self, _timeout: float) -> bytes:
                 return bytes(32)
 
+            def close(self) -> None:
+                pass
+
         with self.assertRaisesRegex(ValueError, "mismatched VIA echo"):
             query(Mismatch(), nonce=1)
 
@@ -110,6 +116,9 @@ class QueryTests(unittest.TestCase):
                     report, self.request = self.request, b""
                     return report
                 raise TimeoutError("release firmware")
+
+            def close(self) -> None:
+                pass
 
         with self.assertRaises(TimeoutError):
             query(EchoOnly(), nonce=1)

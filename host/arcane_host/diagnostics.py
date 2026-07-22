@@ -11,6 +11,7 @@ import sys
 import time
 
 from .hidraw import Device, choose_device
+from .heartbeat import HidTransport
 from .protocol import MAGIC, REPORT_SIZE, crc8
 
 DIAGNOSTIC_VERSION = 1
@@ -151,11 +152,11 @@ def decode_pages(page0: bytes, page1: bytes) -> DiagnosticSnapshot:
     )
 
 
-def _read_page(device: object, page: int, nonce: int, timeout: float) -> bytes:
+def _read_page(device: HidTransport, page: int, nonce: int, timeout: float) -> bytes:
     request = build_request(page, nonce)
-    device.send(request)  # type: ignore[attr-defined]
+    device.send(request)
     deadline = time.monotonic() + timeout
-    echo = device.receive(timeout)  # type: ignore[attr-defined]
+    echo = device.receive(timeout)
     if echo != request:
         raise ValueError(f"diagnostic page {page} received a mismatched VIA echo")
     last_error: ValueError | None = None
@@ -164,7 +165,7 @@ def _read_page(device: object, page: int, nonce: int, timeout: float) -> bytes:
         if remaining <= 0:
             detail = f" ({last_error})" if last_error else ""
             raise TimeoutError(f"timed out waiting for diagnostic page {page}{detail}")
-        report = device.receive(remaining)  # type: ignore[attr-defined]
+        report = device.receive(remaining)
         try:
             return parse_response(report, page=page, nonce=nonce)
         except ValueError as error:
@@ -173,7 +174,7 @@ def _read_page(device: object, page: int, nonce: int, timeout: float) -> bytes:
             last_error = error
 
 
-def query(device: object, *, timeout: float = 1.0, nonce: int | None = None) -> DiagnosticSnapshot:
+def query(device: HidTransport, *, timeout: float = 1.0, nonce: int | None = None) -> DiagnosticSnapshot:
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     request_nonce = secrets.randbelow(0x10000) if nonce is None else nonce
