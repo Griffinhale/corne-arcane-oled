@@ -14,10 +14,10 @@ half is USB-powered.
 
 - [ ] Export the current four-layer Vial mapping and preserve the accepted
   recovery image before changing either half.
-- [ ] Disconnect USB, disconnect TRRS, flash the diagnostic artifact to the
+- [x] Disconnect USB, disconnect TRRS, flash the diagnostic artifact to the
   left controller, remove USB, and repeat with the identical artifact on the
   right controller.
-- [ ] Reconnect TRRS only while unpowered, power the normal USB half, and
+- [x] Reconnect TRRS only while unpowered, power the normal USB half, and
   confirm both displays leave stale-link mode and remain synchronized.
 - [ ] Exercise every physical key on all four layers, thumb holds, rolls,
   chords, alternation, and long holds. Confirm every host key event arrives
@@ -66,7 +66,7 @@ half is USB-powered.
 
 ## Diagnostics and rollback
 
-- [ ] Start the five-minute exclusive observation below, then continuously mix
+- [x] Start the five-minute exclusive observation below, then continuously mix
   typing on both halves with maximal casts until it completes. Retain the JSON
   and its exit status; exit `0` is required (`1` is an operational failure and
   `2` is a failed acceptance gate).
@@ -75,14 +75,14 @@ half is USB-powered.
   corne-arcane-diagnostics --observe 300 --json > physical-0.4-diagnostics.json
   ```
 
-- [ ] Confirm the JSON contains exactly `before`, `after`, `deltas`, `checks`,
+- [x] Confirm the JSON contains exactly `before`, `after`, `deltas`, `checks`,
   and `passed`; `passed` must be true. Confirm peer validity, snapshot age at
   most 1,000 ms, increasing split successes, and nonzero master and peer stack
   minima.
-- [ ] Confirm master and peer local housekeeping peaks are below 2,000 us and
+- [x] Confirm master and peer local housekeeping peaks are below 2,000 us and
   render peaks are below 5,000 us. The master housekeeping metric excludes the
   synchronous split wait, which is reported separately as `peak_split_tx_us`.
-- [ ] Confirm no growth in master queue overflow, missed resyncs, stale-link
+- [x] Confirm no growth in master queue overflow, missed resyncs, stale-link
   events, split protocol errors, malformed/stale host reports, or split
   failures, and no growth in the corresponding peer counters. Record catch-up
   growth for context; it does not fail acceptance.
@@ -99,17 +99,20 @@ half is USB-powered.
 
 | Measurement | Master | Peer |
 |---|---:|---:|
-| Peak housekeeping (us) |  |  |
-| Peak render + blit (us) |  |  |
-| Minimum free stack (bytes) |  |  |
-| Queue overflow delta |  |  |
-| Missed resync delta |  |  |
-| Stale-link delta |  |  |
+| Peak housekeeping (us) | 1,185 | 968 |
+| Peak render + blit (us) | 1,559 | 2,276 |
+| Minimum free stack (bytes) | 1,344 | 1,304 |
+| Queue overflow delta | 0 | 0 |
+| Missed resync delta | 0 | 0 |
+| Stale-link delta | 0 | 0 |
 
-Candidate release UF2 SHA-256: ________________________________________________
+Candidate release UF2 SHA-256:
+`4d5b2ffa6178e6ce14c6525cf29aa71f0ba84b8d559f5bb30f00c3038212552d`
 
-Candidate diagnostic UF2 SHA-256: _____________________________________________
+Candidate diagnostic UF2 SHA-256:
+`299eab9c282e3b4c378d1ba696adedf5b51f032cdf81c7f8a36d4f5c92fc7e30`
 
-Diagnostic JSON archive path: _________________________________________________
+Diagnostic JSON archive path:
+`docs/archive/2026-07-22-diagnostic-0.4/physical-0.4-diagnostics.json`
 
 Sign-off date: __________  Tester: __________  Result: __________

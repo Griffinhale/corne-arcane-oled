@@ -1,11 +1,12 @@
 # Corne Arcane 0.4 acceptance record
 
 Status: automated desktop, host, protocol, simulation, rendering, and firmware
-acceptance pass. A two-half world/combat run was reported passing on 2026-07-15;
-its evidence and the later unchecked hardware records are preserved under
-`docs/archive/`. The unified Vial handoff, persistence, current visual additions,
-and current release artifacts still require the physical checks in
-`physical-checklist.md`.
+acceptance pass. A two-half world/combat run was reported passing on 2026-07-15.
+The current diagnostic candidate passed a five-minute two-half observation on
+2026-07-22, and the release candidate was subsequently flashed with the host
+service active. The unified Vial edge cases and persistence, current visual
+additions, full sky cycle, sleep/non-wake, stale-link, and recovery-image checks
+still require completion in `physical-checklist.md`.
 
 ## Current contract
 
@@ -46,7 +47,7 @@ Measured 2026-07-22 from clean builds in the configured Vial-QMK checkout with
 | Build | Flash | Static RAM | Reserve below 96 KiB | Growth from image baseline |
 |---|---:|---:|---:|---:|
 | `griffin_arcane` release | 76,832 B | 13,504 B | 21,472 B | +7,188 B flash, +40 B RAM |
-| `griffin_arcane` diagnostic | 78,184 B | 13,624 B | 20,120 B | +7,084 B flash, +48 B RAM |
+| `griffin_arcane` diagnostic | 78,224 B | 13,632 B | 20,080 B | +7,124 B flash, +56 B RAM |
 
 Both images remain below the 81,896-byte flash ceiling, the 16,496-byte
 static-RAM ceiling, the 96 KiB hard stop, the per-image +8,192-byte flash and
@@ -66,6 +67,24 @@ signed checklist passes.
 | `griffin_arcane-release.elf` | `013dd528eb0cf4910e424f5920f2c8e1e33c29f66dbc31a66e0213bdc45f20b0` |
 | `griffin_arcane-diagnostic.uf2` | `a0a360b296029e63dde0bb90955f9f49939ca36a55fd4809fc90098120243085` |
 | `griffin_arcane-diagnostic.elf` | `125282dd3c2d852565da2e8b4d65a44de3299443327cc0bf70bceaa253840f89` |
+
+## Current candidate evidence
+
+The candidate files flashed on 2026-07-22 are distinct from the accepted hashes
+above because QMK embeds variable build metadata. The five-minute diagnostic
+observation passed with 1,185/968 us master/peer local-housekeeping peaks,
+1,559/2,276 us render peaks, 1,344/1,304-byte minimum free stacks, 250 ms final
+peer snapshot age, 2,112 additional successful split transfers, and no growth
+in any failure or error counter. The complete run and the two pre-fix
+investigation runs are preserved in the
+[2026-07-22 diagnostic archive](archive/2026-07-22-diagnostic-0.4/README.md).
+
+| Candidate artifact | SHA-256 |
+|---|---|
+| `griffin_arcane-release.uf2` | `4d5b2ffa6178e6ce14c6525cf29aa71f0ba84b8d559f5bb30f00c3038212552d` |
+| `griffin_arcane-release.elf` | `93b76daf6b57cfe4f35b5457d3788a5c27a4a431ee269aaf556863997ac6f1c6` |
+| `griffin_arcane-diagnostic.uf2` | `299eab9c282e3b4c378d1ba696adedf5b51f032cdf81c7f8a36d4f5c92fc7e30` |
+| `griffin_arcane-diagnostic.elf` | `2d956d2c082644a9e8d9580a25f01be479e89f585005953affa121e6a84b0e1d` |
 
 The 363-scene golden catalog is
 `firmware/sim_test/golden/visual_current.hashes`, SHA-256
