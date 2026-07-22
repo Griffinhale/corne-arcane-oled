@@ -25,6 +25,22 @@ persistent, civic, and secondary. Civic bits are floor 0–1, mode 2–3,
 host intensity 4–5, and reserved 6–7. Raw HID secondary bits 0–2 carry the
 activity channel; bits 3–7 must be zero. The host never supplies sky phase.
 
+## Diagnostic v2 (diagnostic images only)
+
+Diagnostic requests and responses use the Raw HID endpoint but are a separate
+three-page protocol. Every report is 32 bytes: magic `CA 8E`, diagnostic
+version `2`, type `0x70` request or `0x71` response, page, page count, 16-bit
+nonce, 23-byte payload, and CRC-8. Requests set page count and all payload bytes
+to zero. Responses set page count to three and echo page and nonce. A v1 reply,
+a two-page/v2 mixture, or any nonzero reserved byte is rejected.
+
+Pages 0 and 1 retain the established counter and timing allocation. Page 2
+payload bytes 0–1 are master minimum free stack, bytes 2–3 are peer minimum free
+stack, and bytes 4–22 are reserved zero. The reverse split diagnostic reply is
+18 bytes: the prior 16-byte fields followed by peer minimum free stack. It stays
+below QMK's 32-byte reverse-RPC capacity. None of these diagnostic layouts are
+compiled into the release image.
+
 ## Split snapshot v11 (32 bytes)
 
 The v10 → v11 repack freed 22 bits without growing the packet — `seq`

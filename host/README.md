@@ -11,8 +11,14 @@ Public commands and identities remain `corne-arcane-host`,
 
 - Run host tests: `./run_tests.sh`
 - Exercise one offline exchange: `python -m arcane_host.daemon --dry-run --once --session 1`
+- Observe physical acceptance metrics: `corne-arcane-diagnostics --observe 300 --json`
 - Launch Vial safely: `corne-arcane-vial`
 - Install on NixOS: import `../corne.nix`
+
+Diagnostics stop and later restore an active host service for the whole query or
+observation window. They leave an inactive service inactive and fail if its
+state cannot be determined. `--no-service-handoff` bypasses that protection for
+deliberate development use.
 
 The daemon, D-Bus, Raw HID, privacy, reconnect, and Vial handoff architecture
 is documented in [`../docs/architecture.md`](../docs/architecture.md). Build,

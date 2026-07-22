@@ -12,8 +12,10 @@ and current release artifacts still require the physical checks in
 - `griffin_arcane` is the only production firmware. Both halves use the same
   artifact; mixed split versions reject one another and show the stale-link
   presentation.
-- Raw HID v2 and split snapshot v11 are exactly 32 bytes. Receivers validate
-  version, length, enum ranges, reserved bits, and CRC before accepting state.
+- Production Raw HID v2 and split snapshot v11 are exactly 32 bytes. The
+  diagnostics-only v2 protocol uses three 32-byte pages and an 18-byte reverse
+  split reply. Receivers validate version, length, enum ranges, reserved bits,
+  and CRC before accepting state.
 - Simulation is deterministic, fixed-tick, allocation-free, and authoritative
   on the master. Typing remains ordinary QMK output and is never retained as
   characters, words, or complete input sequences.
@@ -28,8 +30,9 @@ and current release artifacts still require the physical checks in
   pixels. Host state expires after 1.5 seconds without a valid report.
 - OLED and RGB sleep are woken only by physical key activity. Focus, host,
   timer, and background-world changes do not wake them.
-- Vial and the daemon share one Raw HID endpoint. `corne-arcane-vial` stops and
-  restores only a daemon that was active before the handoff.
+- Vial, diagnostics, and the daemon share one Raw HID endpoint. Vial and
+  diagnostics stop and restore only a daemon that was active before their
+  exclusive ownership window; unknown service state fails closed.
 
 The detailed byte allocation is authoritative in `protocol-ledger.md`. The
 current physical procedure is authoritative in `physical-checklist.md`.
@@ -43,7 +46,7 @@ Measured 2026-07-22 from clean builds in the configured Vial-QMK checkout with
 | Build | Flash | Static RAM | Reserve below 96 KiB | Growth from image baseline |
 |---|---:|---:|---:|---:|
 | `griffin_arcane` release | 76,832 B | 13,504 B | 21,472 B | +7,188 B flash, +40 B RAM |
-| `griffin_arcane` diagnostic | 78,056 B | 13,624 B | 20,248 B | +6,956 B flash, +48 B RAM |
+| `griffin_arcane` diagnostic | 78,184 B | 13,624 B | 20,120 B | +7,084 B flash, +48 B RAM |
 
 Both images remain below the 81,896-byte flash ceiling, the 16,496-byte
 static-RAM ceiling, the 96 KiB hard stop, the per-image +8,192-byte flash and
@@ -51,8 +54,11 @@ static-RAM ceiling, the 96 KiB hard stop, the per-image +8,192-byte flash and
 
 ## Artifacts and hashes
 
-Artifacts are under `artifacts/release/`. These hashes are recorded evidence;
-this documentation repair does not replace or re-accept the artifacts.
+Artifacts are under `artifacts/release/`. These are the previously recorded
+hashes and remain unchanged while physical acceptance is pending. Clean builds
+embed variable QMK metadata, so newly generated candidate hashes must be
+recorded from the exact files flashed and may replace this table only after the
+signed checklist passes.
 
 | Artifact | SHA-256 |
 |---|---|
@@ -71,11 +77,16 @@ The 363-scene golden catalog is
   framebuffer scenes, the no-allocation scan, and host tests.
 - Deterministic workloads preserve their pinned mechanics and first-KO ranges;
   sustained steady prose reaches first blood near 16 seconds.
-- `make release-build` builds release and diagnostic images for `crkbd/rev1`
-  with `CONVERT_TO=rp2040_ce`.
+- `make release-build` verifies the repository-owned Vial-QMK pin, then builds
+  release and diagnostic images for `crkbd/rev1` with
+  `CONVERT_TO=rp2040_ce`.
 - `make release-budget` enforces absolute flash/RAM ceilings, growth ceilings,
   the 96 KiB hard stop, and 16 KiB reserve.
 - `make lint`, `make hygiene`, and `git diff --check` pass.
+- PR/push CI repeats native verification on Ubuntu 24.04 with pinned Ruff and
+  clang-format. Scheduled and manual firmware CI rebuilds the pinned checkout
+  and retains build artifacts for 14 days without publishing or accepting
+  them.
 
 Automated tests cannot claim physical flashing, desk-distance readability,
 real-device timing or stack headroom, secure unlock, power-cycle persistence,

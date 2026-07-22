@@ -17,6 +17,8 @@ safe extraction, and release procedures are in
 [`../docs/development.md`](../docs/development.md). Flash safety and rollback are
 in [`../docs/physical-checklist.md`](../docs/physical-checklist.md).
 
-Raw HID v2 and split snapshot v11 remain fixed 32-byte contracts; consult
+Production Raw HID v2 and split snapshot v11 remain fixed 32-byte contracts.
+Diagnostic builds additionally expose the separate three-page diagnostic v2
+protocol and an 18-byte reverse split reply; consult
 [`../docs/protocol-ledger.md`](../docs/protocol-ledger.md) before changing any
 wire-facing type or bit allocation.

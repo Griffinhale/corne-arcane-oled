@@ -73,7 +73,10 @@ Every Raw HID write is a request/response exchange. A valid VIA echo must arrive
 before the next heartbeat is scheduled. A timeout, mismatch, short read, or
 device error closes the transport and begins rediscovery with a fresh session.
 Vial shares that endpoint, so `corne-arcane-vial` performs an exclusive,
-state-preserving service handoff.
+state-preserving service handoff. Diagnostics use the same ownership guard for
+single reads and observation windows, restoring only a service that was active
+beforehand. Their separate diagnostics-only v2 protocol does not alter
+production Raw HID v2.
 
 ## Invariants
 
@@ -88,8 +91,10 @@ state-preserving service handoff.
   not enter retained semantic state or either wire protocol.
 - Timing: host state expires after 1.5 seconds; heartbeat and reconnect timing,
   display sleep, 25 Hz simulation, and 20-second HP regeneration are contracts.
-- Protocols: Raw HID v2 and split v11 are exactly 32 bytes. Versions, enum
-  values, packing, reserved bits, CRC coverage, and stale fallback are stable.
+- Protocols: production Raw HID v2 and split v11 are exactly 32 bytes. The
+  diagnostics-only v2 reports are three 32-byte pages with an 18-byte reverse
+  split reply. Versions, enum values, packing, reserved bits, CRC coverage, and
+  stale fallback are stable.
 - Stale link: invalid or absent split traffic selects safe local presentation.
   The next valid snapshot replaces synchronized state directly, without replay.
 - Power: only physical key activity wakes OLED and RGB surfaces. Host or

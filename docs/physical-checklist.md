@@ -66,26 +66,49 @@ half is USB-powered.
 
 ## Diagnostics and rollback
 
-- [ ] After five minutes of mixed typing and maximal casts, run
-  `corne-arcane-diagnostics` and record both diagnostic pages.
-- [ ] Confirm `peak_housekeeping_us < 2000` and
-  `peak_render_blit_us < 5000` on both halves.
-- [ ] Confirm queue overflow remains zero and protocol/malformed counters do
-  not grow under a healthy link.
-- [ ] Inspect `duel_diag.stack_min_free_bytes` on both halves with a debugger;
-  confirm nonzero margin and record the values rather than only a threshold.
+- [ ] Start the five-minute exclusive observation below, then continuously mix
+  typing on both halves with maximal casts until it completes. Retain the JSON
+  and its exit status; exit `0` is required (`1` is an operational failure and
+  `2` is a failed acceptance gate).
+
+  ```bash
+  corne-arcane-diagnostics --observe 300 --json > physical-0.4-diagnostics.json
+  ```
+
+- [ ] Confirm the JSON contains exactly `before`, `after`, `deltas`, `checks`,
+  and `passed`; `passed` must be true. Confirm peer validity, snapshot age at
+  most 1,000 ms, increasing split successes, and nonzero master and peer stack
+  minima.
+- [ ] Confirm master and peer housekeeping peaks are below 2,000 us and render
+  peaks are below 5,000 us.
+- [ ] Confirm no growth in master queue overflow, missed resyncs, stale-link
+  events, split protocol errors, malformed/stale host reports, or split
+  failures, and no growth in the corresponding peer counters. Record catch-up
+  growth for context; it does not fail acceptance.
 - [ ] Flash `griffin_arcane-release.uf2` to both halves using the same safety
   sequence. Repeat typing, Vial handoff/persistence, maximal aftermath,
   sleep/non-wake, and reconnect smoke tests.
 - [ ] Verify the artifact hashes in `acceptance.md`, boot the preserved
   recovery image on both halves, then restore the accepted release.
+- [ ] Only after every item passes, copy this signed checklist and the unchanged
+  diagnostic JSON under a dated `docs/archive/` record, mark this active
+  checklist complete, and update `acceptance.md` with the exact hashes,
+  resources, measurements, sign-off date, tester, and archive links. If any
+  item fails, leave acceptance pending and keep the existing accepted hashes.
 
-| Measurement | Left | Right |
+| Measurement | Master | Peer |
 |---|---:|---:|
 | Peak housekeeping (us) |  |  |
 | Peak render + blit (us) |  |  |
 | Minimum free stack (bytes) |  |  |
-| Queue overflow |  |  |
-| Split protocol errors |  |  |
+| Queue overflow delta |  |  |
+| Missed resync delta |  |  |
+| Stale-link delta |  |  |
+
+Candidate release UF2 SHA-256: ________________________________________________
+
+Candidate diagnostic UF2 SHA-256: _____________________________________________
+
+Diagnostic JSON archive path: _________________________________________________
 
 Sign-off date: __________  Tester: __________  Result: __________
