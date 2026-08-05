@@ -22,6 +22,7 @@ work.
 - Review current acceptance and resource use: [`docs/acceptance.md`](docs/acceptance.md)
 - Flash both halves or test recovery: [`docs/physical-checklist.md`](docs/physical-checklist.md)
 - Inspect the 32-byte wire layouts: [`docs/protocol-ledger.md`](docs/protocol-ledger.md)
+- Install the host daemon, adapters, and diagnostics: [`host/README.md`](host/README.md)
 - Explore deferred product work: [`docs/backlog.md`](docs/backlog.md)
 
 The active firmware identity is `griffin_arcane`; `griffin` is the stable
@@ -57,10 +58,30 @@ make release-budget
 make hygiene
 ```
 
-Launch Vial through `corne-arcane-vial`, which safely hands the shared Raw HID
-endpoint away from the daemon and restores the prior service state. Never
-connect or disconnect TRRS while either half is USB-powered; flash the same UF2
-to each unpowered, separated half.
+Never connect or disconnect TRRS while either half is USB-powered; flash the
+same UF2 to each unpowered, separated half.
+
+## Running the host daemon (optional)
+
+The keyboard is complete without it. The host package
+([`host/README.md`](host/README.md)) adds privacy-redacted desktop semantics
+over Raw HID v3 — shell, GNOME, and Firefox adapters report only bounded
+enums and durations, never content. On NixOS, import
+[`corne.nix`](corne.nix); the service runs as `corne-arcane-host.service`.
+
+Day-to-day operations, all safe against a running service:
+
+```bash
+corne-arcane-event browser scroll 1              # send one activity event by hand
+corne-arcane-diagnostics --observe 300 --json    # watch acceptance metrics live
+corne-arcane-vial                                # launch Vial for keymap edits
+```
+
+`corne-arcane-vial` hands the shared Raw HID endpoint away from the daemon
+and restores the prior service state afterward — use it instead of launching
+Vial directly. Diagnostics do the same stop/restore dance around their
+observation window and refuse to guess if the service state can't be
+determined.
 
 Historical plans and evidence live under `docs/archive/` and are not current
 implementation guidance.
