@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 700" width="1060" height="700" role="img"
+     aria-label="Key positions feed a 25 Hz simulation on the master half, which renders its own OLED and sends a 32-byte snapshot over TRRS to the slave half, which only draws. An optional Linux daemon sends 32-byte enum-only heartbeats over USB.">
+  <style>
+    .bg   { fill: #101318; }
+    .card { fill: #191e27; stroke: #39424f; stroke-width: 1.5; rx: 10; }
+    .opt  { fill: #161a22; stroke: #4a5364; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 10; }
+    .t    { font-family: ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e2e7ef; }
+    .h    { font-size: 15px; font-weight: 700; letter-spacing: .08em; fill: #ffffff; }
+    .b    { font-size: 14px; }
+    .d    { font-size: 13px; fill: #98a3b4; }
+    .m    { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #8fc0ff; }
+    .no   { font-size: 13px; fill: #f0a5a5; }
+    .wire { stroke: #8fc0ff; stroke-width: 2; fill: none; }
+    .flow { stroke: #6f7b8d; stroke-width: 2; fill: none; }
+    .scr  { fill: #000000; stroke: #7d8899; stroke-width: 1.5; rx: 3; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1060" height="700"/>
+  <defs>
+    <marker id="a" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+      <path d="M 0,1 L 8,4.5 L 0,8 z" fill="#6f7b8d"/>
+    </marker>
+    <marker id="aw" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto">
+      <path d="M 0,1 L 8,4.5 L 0,8 z" fill="#8fc0ff"/>
+    </marker>
+  </defs>
+
+  <rect class="card" x="380" y="24" width="300" height="50"/>
+  <text class="t h" x="530" y="55" text-anchor="middle">YOUR FINGERS ON THE KEYS</text>
+
+  <path class="flow" d="M 400,74 L 212,74 L 212,146" marker-end="url(#a)"/>
+  <path class="flow" d="M 530,74 L 530,146" marker-end="url(#a)"/>
+  <text class="t d" x="222" y="112">letters</text>
+  <text class="t d" x="546" y="112">key positions</text>
+
+  <rect class="card" x="60" y="148" width="304" height="72"/>
+  <text class="t b" x="212" y="176" text-anchor="middle">Ordinary typing, unchanged</text>
+  <text class="t d" x="212" y="200" text-anchor="middle">plain QMK output to your computer</text>
+
+  <rect class="card" x="380" y="150" width="300" height="340"/>
+  <text class="t h" x="530" y="180" text-anchor="middle">MASTER HALF</text>
+  <text class="t no" x="530" y="204" text-anchor="middle">never keycodes, never characters</text>
+  <rect class="card" x="404" y="220" width="252" height="64"/>
+  <text class="t b" x="530" y="245" text-anchor="middle">simulation, 25 Hz fixed tick</text>
+  <text class="t d" x="530" y="267" text-anchor="middle">integer math, no allocation</text>
+  <rect class="card" x="404" y="300" width="252" height="44"/>
+  <text class="t b" x="530" y="328" text-anchor="middle">render its own display</text>
+  <path class="flow" d="M 530,344 L 530,358" marker-end="url(#a)"/>
+  <rect class="scr" x="507" y="362" width="46" height="106"/>
+  <text class="t d" x="530" y="484" text-anchor="middle">left OLED</text>
+
+  <rect class="card" x="756" y="150" width="248" height="340"/>
+  <text class="t h" x="880" y="180" text-anchor="middle">SLAVE HALF</text>
+  <text class="t no" x="880" y="204" text-anchor="middle">never simulates</text>
+  <rect class="card" x="778" y="220" width="204" height="124"/>
+  <text class="t b" x="880" y="248" text-anchor="middle">check version,</text>
+  <text class="t b" x="880" y="268" text-anchor="middle">ranges and CRC,</text>
+  <text class="t b" x="880" y="288" text-anchor="middle">then draw it</text>
+  <text class="t d" x="880" y="316" text-anchor="middle">a bad or missing packet</text>
+  <text class="t d" x="880" y="334" text-anchor="middle">falls back to a safe scene</text>
+  <path class="flow" d="M 880,344 L 880,358" marker-end="url(#a)"/>
+  <rect class="scr" x="857" y="362" width="46" height="106"/>
+  <text class="t d" x="880" y="484" text-anchor="middle">right OLED</text>
+
+  <path class="wire" d="M 680,266 L 752,266" marker-end="url(#aw)"/>
+  <text class="t m" x="716" y="246" text-anchor="middle">32 bytes</text>
+  <text class="t d" x="716" y="290" text-anchor="middle">over TRRS</text>
+
+  <rect class="opt" x="60" y="526" width="620" height="150"/>
+  <text class="t h" x="88" y="558">OPTIONAL — LINUX DAEMON</text>
+  <text class="t d" x="88" y="584">The keyboard is complete without this. It only changes which</text>
+  <text class="t d" x="88" y="604">district of the city the tower shows around the duel.</text>
+  <text class="t b" x="88" y="636">Sends: enums, counters, durations, salted digests</text>
+  <text class="t no" x="88" y="660">Cannot send: window titles, URLs, paths, commands, typed text</text>
+
+  <path class="wire" d="M 540,526 L 540,498" marker-end="url(#aw)"/>
+  <text class="t m" x="556" y="546">32 bytes</text>
+  <text class="t d" x="556" y="566">over USB</text>
+
+  <text class="t d" x="712" y="600">Both displays draw locally.</text>
+  <text class="t d" x="712" y="620">Pixels never cross the link —</text>
+  <text class="t d" x="712" y="640">only state does.</text>
+</svg>

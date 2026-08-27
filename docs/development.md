@@ -37,6 +37,17 @@ reviewable dump/contact sheet, inspect the changed scenes and protected regions,
 and establish that the visual change is intentional. Update the golden only in
 the same change that explains and tests the new presentation contract.
 
+The figures in the documentation come from the same dump, so a reviewed visual
+change is also a figure change:
+
+```bash
+python3 tools/figures.py /tmp/frames docs/images
+```
+
+Regenerate them in the change that moves the golden, and review the result as
+part of the same inspection. A figure that disagrees with the catalog is a
+stale figure, not a new contract.
+
 Mechanics test names and PASS output are stable diagnostics. Add focused cases
 to the appropriate suite: runtime/display/RGB, protocol/view,
 incantation/compiler, combat/lifecycle, civic/presentation, or

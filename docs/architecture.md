@@ -5,6 +5,10 @@ surfaces. The master half decides mechanics; the slave half never reconstructs
 or advances authoritative world state. Both halves draw locally from bounded
 projections, so the split carries state rather than pixels.
 
+![Key positions feed the master half's simulation, which renders its own
+display and sends a 32-byte snapshot over TRRS to the slave half; an optional
+Linux daemon sends 32-byte enum-only heartbeats over USB](images/architecture.svg)
+
 ## Firmware data flow
 
 ```text
@@ -42,6 +46,12 @@ Rendering proceeds through `duel_render_t`. `duel_framebuffer.c` owns clipped
 overlay drawing are isolated in their respective modules; `duel_draw.c` owns
 only full-scene composition order. Resident, courier, and event derivation
 depend on civic/render/framebuffer contracts, never on the compositor.
+
+Each district resolves to a room and a resident, drawn in one of two
+architectural voices — astral on the left canvas, mechanical on the right.
+Both canvases below are renderer output for the same district:
+
+![The eight districts, each drawn on both canvases](images/districts.png)
 
 ## Host data flow
 

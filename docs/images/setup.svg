@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 660" width="1100" height="660" role="img"
+     aria-label="Three ways in: run the simulation natively with no hardware; build and flash the firmware onto a Corne; or additionally install the optional Linux daemon.">
+  <style>
+    .bg   { fill: #101318; }
+    .lane { fill: #161a22; stroke: #39424f; stroke-width: 1.5; rx: 12; }
+    .opt  { fill: #161a22; stroke: #4a5364; stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; }
+    .step { fill: #1e2431; stroke: #3d4756; stroke-width: 1.2; rx: 7; }
+    .t    { font-family: ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; fill: #e2e7ef; }
+    .n    { font-size: 22px; font-weight: 700; fill: #5f6b7d; }
+    .h    { font-size: 16px; font-weight: 700; fill: #ffffff; }
+    .b    { font-size: 13px; }
+    .d    { font-size: 12.5px; fill: #98a3b4; }
+    .g    { font-size: 13px; fill: #9ede9e; }
+    .no   { font-size: 12.5px; fill: #f0a5a5; }
+    .m    { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #8fc0ff; }
+    .flow { stroke: #5f6b7d; stroke-width: 1.8; fill: none; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1100" height="660"/>
+  <defs>
+    <marker id="s" markerWidth="8" markerHeight="8" refX="6.5" refY="4" orient="auto">
+      <path d="M 0,1 L 7,4 L 0,7 z" fill="#5f6b7d"/>
+    </marker>
+  </defs>
+
+  <!-- lane 1 -->
+  <rect class="lane" x="30" y="30" width="330" height="580"/>
+  <text class="t n" x="56" y="72">1</text>
+  <text class="t h" x="86" y="66">See it, no hardware</text>
+  <text class="t d" x="86" y="88">a checkout and a C compiler</text>
+
+  <rect class="step" x="54" y="112" width="282" height="46"/>
+  <text class="t m" x="70" y="140">make test</text>
+  <path class="flow" d="M 195,158 L 195,176" marker-end="url(#s)"/>
+  <rect class="step" x="54" y="180" width="282" height="64"/>
+  <text class="t m" x="70" y="204">firmware/sim_test/visual_runner</text>
+  <text class="t m" x="70" y="226">  --dump-pgm /tmp/frames</text>
+  <path class="flow" d="M 195,244 L 195,262" marker-end="url(#s)"/>
+  <rect class="step" x="54" y="266" width="282" height="64"/>
+  <text class="t m" x="70" y="290">python3 tools/figures.py \</text>
+  <text class="t m" x="70" y="312">  /tmp/frames docs/images</text>
+
+  <text class="t g" x="54" y="368">You get every scene the renderer</text>
+  <text class="t g" x="54" y="388">can draw, as images, on any Linux</text>
+  <text class="t g" x="54" y="408">box. No keyboard involved.</text>
+  <text class="t d" x="54" y="442">This is the fastest way to find out</text>
+  <text class="t d" x="54" y="462">whether you want the rest of it.</text>
+
+  <!-- lane 2 -->
+  <rect class="lane" x="385" y="30" width="330" height="580"/>
+  <text class="t n" x="411" y="72">2</text>
+  <text class="t h" x="441" y="66">Put it on the keyboard</text>
+  <text class="t d" x="441" y="88">a Corne (crkbd rev1), RP2040, two OLEDs</text>
+
+  <rect class="step" x="409" y="112" width="282" height="64"/>
+  <text class="t b" x="425" y="136">Check out Vial-QMK at the</text>
+  <text class="t m" x="425" y="160">VIAL_QMK_REVISION</text>
+  <path class="flow" d="M 550,176 L 550,194" marker-end="url(#s)"/>
+  <rect class="step" x="409" y="198" width="282" height="46"/>
+  <text class="t m" x="425" y="226">./host/install_firmware.sh</text>
+  <path class="flow" d="M 550,244 L 550,262" marker-end="url(#s)"/>
+  <rect class="step" x="409" y="266" width="282" height="46"/>
+  <text class="t m" x="425" y="294">make release-build</text>
+  <path class="flow" d="M 550,312 L 550,330" marker-end="url(#s)"/>
+  <rect class="step" x="409" y="334" width="282" height="46"/>
+  <text class="t b" x="425" y="362">Flash both halves</text>
+
+  <text class="t no" x="409" y="410">Read docs/flashing.md first.</text>
+  <text class="t no" x="409" y="430">Bootloader entry on this board is</text>
+  <text class="t no" x="409" y="450">unusual, and there is one rule about</text>
+  <text class="t no" x="409" y="470">TRRS that will cost you hardware.</text>
+
+  <text class="t g" x="409" y="512">You get the duel, the city, and both</text>
+  <text class="t g" x="409" y="532">displays. Nothing else is required —</text>
+  <text class="t g" x="409" y="552">the keyboard is complete offline.</text>
+
+  <!-- lane 3 -->
+  <rect class="opt" x="740" y="30" width="330" height="580"/>
+  <text class="t n" x="766" y="72">3</text>
+  <text class="t h" x="796" y="66">Optional: add the city</text>
+  <text class="t d" x="796" y="88">Linux desktop, on top of step 2</text>
+
+  <rect class="step" x="764" y="112" width="282" height="58"/>
+  <text class="t b" x="780" y="134">NixOS</text>
+  <text class="t m" x="780" y="156">import ./corne.nix</text>
+  <text class="t d" x="905" y="190" text-anchor="middle">— or —</text>
+  <rect class="step" x="764" y="204" width="282" height="58"/>
+  <text class="t b" x="780" y="226">Debian or Ubuntu</text>
+  <text class="t m" x="780" y="248">dpkg-buildpackage -b -uc -us</text>
+  <path class="flow" d="M 905,262 L 905,282" marker-end="url(#s)"/>
+  <rect class="step" x="764" y="286" width="282" height="58"/>
+  <text class="t b" x="780" y="308">Plain X11 session only:</text>
+  <text class="t m" x="780" y="330">corne-arcane-focus-x11</text>
+  <text class="t d" x="764" y="368">KWin and GNOME Shell report from</text>
+  <text class="t d" x="764" y="388">inside the compositor already.</text>
+
+  <text class="t g" x="764" y="424">The tower shows a Workshop while you</text>
+  <text class="t g" x="764" y="444">write code, an Arena while you play,</text>
+  <text class="t g" x="764" y="464">an Observatory during a timer.</text>
+
+  <text class="t b" x="764" y="508">It sends enums, counters, durations</text>
+  <text class="t b" x="764" y="528">and salted digests.</text>
+  <text class="t no" x="764" y="556">Never titles, URLs, paths, commands,</text>
+  <text class="t no" x="764" y="576">notification bodies, or typed text.</text>
+</svg>
