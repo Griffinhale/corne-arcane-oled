@@ -67,7 +67,10 @@ The keyboard is complete without it. The host package
 ([`host/README.md`](host/README.md)) adds privacy-redacted desktop semantics
 over Raw HID v3 — shell, GNOME, and Firefox adapters report only bounded
 enums and durations, never content. On NixOS, import
-[`corne.nix`](corne.nix); the service runs as `corne-arcane-host.service`.
+[`corne.nix`](corne.nix); on Debian or Ubuntu, build the package with
+`dpkg-buildpackage -b -uc -us`. Either way the service runs as
+`corne-arcane-host.service`, from one install layout defined in
+[`host/Makefile`](host/Makefile).
 
 Day-to-day operations, all safe against a running service:
 

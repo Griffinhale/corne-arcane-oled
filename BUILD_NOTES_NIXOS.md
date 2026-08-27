@@ -45,6 +45,22 @@ Use `make release-build` to produce neutral files under `artifacts/release/`
 and `make release-budget` to enforce the candidate resource ceilings. Do not
 flash either HP candidate before the 0.4 checklist is accepted or superseded.
 
+## Device access
+
+`corne.nix` takes the udev rule from the package, as `60-corne-arcane.rules`,
+rather than writing it inline. `services.udev.extraRules` lands in
+`99-local.rules`, and systemd consumes the `uaccess` tag from a match in
+`73-seat-late.rules` that udev has already evaluated by then, so the inline rule
+this file previously described granted nothing. Access came from
+`qmk-udev-rules`' blanket hidraw rule instead, which
+`hardware.keyboard.qmk.enable` still installs and which is also what covers the
+RP2040 bootloader when flashing.
+
+```bash
+udevadm test /sys/class/hidraw/hidrawN   # rule matches at 60, uaccess then runs
+getfacl /dev/hidrawN                     # the active user holds an ACL
+```
+
 ## Host service and Vial handoff
 
 ```bash
