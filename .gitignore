@@ -7,6 +7,9 @@ firmware/sim_test/.noalloc.o
 /.scratch/
 artifacts/release/*.map
 # Preserved local milestone/rollback evidence is intentionally never cleaned.
+# Photo/video captures stay local until a curated set is worth publishing;
+# remove the line below (or `git add -f`) to version one.
+docs/evidence/
 artifacts/m11-gallery/
 artifacts/m11.1-baseline/
 artifacts/m11.1-candidate/
