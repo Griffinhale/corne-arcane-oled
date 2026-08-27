@@ -8,15 +8,15 @@ holding, impact, and the scarred aftermath](docs/images/duel.png)
 
 A fixed-tick simulation runs on the master half at 25 Hz. Key *positions*,
 never keycodes and never characters, feed a combat model with elemental
-residue, field effects, wards, and aftermath that persists across duels. Both displays
-render live state from a 32-byte snapshot crossing the TRRS link; the slave
-half never recomputes the world, it only draws what it is sent.
+residue, field effects, wards, and aftermath that persists across duels. Both
+displays render live state from a 32-byte snapshot crossing the TRRS link. The
+slave half never recomputes the world, it only draws what it is sent.
 
 ## Beneath the duel is a city
 
-Eight districts, being Commons, Research, Workshop, Observatory,
+There are eight districts: Commons, Research, Workshop, Observatory,
 Scriptorium, Studio, Arena, and Undercroft. Each has a room, a resident who
-works in it, and two architectural voices: curved and astral on the left half,
+works in it, and two architectural voices, curved and astral on the left half,
 squared and mechanical on the right.
 
 <img src="docs/images/rooms.gif" alt="The eight district rooms in turn, each drawn on both halves" width="300">
@@ -27,8 +27,8 @@ only, and the tower changes floor around you.
 
 Which row you type on picks the element. How varied the burst is decides the
 form, the size, and how strong a ward you are holding while you type it. A
-pause commits the spell. [](docs/duel.md) covers all of it, and
-[](docs/glossary.md) defines the vocabulary.
+pause commits the spell. [`docs/duel.md`](docs/duel.md) covers all of it, and
+[`docs/glossary.md`](docs/glossary.md) defines the vocabulary.
 
 ## Three ways in
 
@@ -118,6 +118,8 @@ which is why a catalog of exact framebuffer hashes can be a test. And privacy is
 normalizes to bounded enums before anything is retained, so there is no code
 path that could leak content even if something upstream misbehaved.
 
+- How casting works, in depth: [`docs/duel.md`](docs/duel.md)
+- Vocabulary: [`docs/glossary.md`](docs/glossary.md)
 - Data flow, ownership, and invariants: [`docs/architecture.md`](docs/architecture.md)
 - The two 32-byte wire layouts, bit by bit: [`docs/protocol-ledger.md`](docs/protocol-ledger.md)
 - Build, test, format, review goldens: [`docs/development.md`](docs/development.md)
