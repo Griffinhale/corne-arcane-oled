@@ -179,9 +179,9 @@ def fields_animation(frames, out_dir):
 # panels are one world at three points in its day: the sun high, the right
 # wizard mid-cast, and the moon up over a different district.
 SOCIAL = [
-    ("scenario_deflect", "a cast meets a raised ward"),
-    ("scenario_pose-cast", "a long cast gathers overhead"),
-    ("scenario_impact", "it lands"),
+    ("combat_sky_day", "midday: a cast meets a ward"),
+    ("combat_sky_dusk", "dusk: a long charge gathers"),
+    ("combat_sky_night", "night: it lands"),
 ]
 SOCIAL_TEXT = [
     ("Corne Arcane", 62, INK, 0),

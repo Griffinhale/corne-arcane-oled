@@ -17,7 +17,7 @@ typedef struct {
     char name[48];
     uint64_t hash;
 } visual_case_t;
-static visual_case_t cases[640];
+static visual_case_t cases[768];
 static size_t ncases;
 
 static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {
@@ -652,12 +652,28 @@ static void build_catalog(void) {
     cross.diag_overflow = 3u;
     add_render_case_diagnostics("cross_event_stale_diagnostics", &cross, 13u);
 
-    static const uint8_t hp_cases[] = {0, 1, 6};
-    for (size_t i = 0; i < sizeof hp_cases; i++) {
+    /* Every legal pip count, so a change to SIM_MAX_HP re-reviews the whole
+     * ladder instead of three samples of it. The health-pip decision cannot be
+     * made from a subset. */
+    for (uint8_t hp = 0; hp < SIM_MAX_HP; hp++) {
         char name[48];
         sim_init(&world, SIMF_AUTHORITATIVE, 0);
-        world.wiz[0].hp = world.wiz[1].hp = hp_cases[i];
-        snprintf(name, sizeof name, "health_%u", hp_cases[i]);
+        world.wiz[0].hp = world.wiz[1].hp = hp;
+        snprintf(name, sizeof name, "health_%u", hp);
+        add_case(name, &world, 0, 0);
+    }
+    /* Full health is the initialised world, already reviewed as
+     * sky_commons_dawn_idle_8hp, so the ladder stops one short of it. */
+    /* A duel is almost never symmetric, and the two bars are drawn
+     * independently onto mirrored geometry. */
+    static const uint8_t hp_pairs[][2] = {
+        {SIM_MAX_HP, 1u}, {6u, 3u}, {2u, (uint8_t)(SIM_MAX_HP - 1u)}};
+    for (size_t i = 0; i < sizeof hp_pairs / sizeof hp_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[0].hp = hp_pairs[i][0];
+        world.wiz[1].hp = hp_pairs[i][1];
+        snprintf(name, sizeof name, "health_%u_vs_%u", hp_pairs[i][0], hp_pairs[i][1]);
         add_case(name, &world, 0, 0);
     }
 
@@ -713,6 +729,220 @@ static void build_catalog(void) {
         world.wiz[0].status_intensity = 3;
         world.wiz[0].status_ticks = 125;
         add_case(names[status], &world, status, 0);
+        /* Intensity feeds wind-up length, so its presentation is load-bearing.
+         * Only BURNING draws it: FROZEN, DISRUPTED and MARKED are pixel
+         * identical at every level, which the uniqueness gate proves, so
+         * pinning them at more than one intensity would pin nothing. */
+        if (status != STATUS_BURNING)
+            continue;
+        for (uint8_t intensity = 1u; intensity < 3u; intensity++) {
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            world.wiz[0].status = status;
+            world.wiz[0].status_intensity = intensity;
+            world.wiz[0].status_ticks = (uint8_t)(75u + (intensity - 1u) * 25u);
+            snprintf(name, sizeof name, "%s_intensity_%u", names[status], intensity);
+            add_case(name, &world, status, 0);
+        }
+    }
+
+    /* ---- combat states the per-family matrices leave unpinned -------------
+     * Each case below is a legal world the renderer already supports and that
+     * nothing else in this catalog reaches. They are host-side review frames
+     * like every other scene here and cost no firmware budget. */
+
+    /* One long wind-up sampled across its span. windup_total drives the charge
+     * indicator, whose range the single frame per form never exercises. */
+    static const uint8_t windup_remaining[] = {36u, 24u, 12u, 1u};
+    for (size_t i = 0; i < sizeof windup_remaining; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_L].pose = POSE_CAST;
+        world.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
+        world.wiz[SIM_SIDE_L].windup_total = 40u;
+        world.wiz[SIM_SIDE_L].cast_windup = windup_remaining[i];
+        world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_LONG;
+        world.wiz[SIM_SIDE_L].pending_desc = descriptor(SPELL_BEAM, 4u);
+        snprintf(name, sizeof name, "windup_progress_%zu", i);
+        add_case(name, &world, 5u, 0);
+    }
+
+    /* Both wizards acting at once. One spell per side is legal and the side
+     * matrix only ever exercises a single half. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++) {
+        world.wiz[side].pose = POSE_CAST;
+        world.wiz[side].inc_state = INC_WINDUP;
+        world.wiz[side].windup_total = 30u;
+        world.wiz[side].cast_windup = side ? 8u : 20u;
+        world.wiz[side].cast_tier = SPELL_TIER_MEDIUM;
+        world.wiz[side].pending_desc = descriptor(side ? SPELL_FIREBALL : SPELL_BEAM, 3u);
+    }
+    add_case("duel_both_winding", &world, 5u, 0);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.spell[SIM_SIDE_L] = (sim_spell_t){
+        .active = 1, .progress = 96u, .dir = 4, .descriptor = descriptor(SPELL_PROJECTILE, 3u)};
+    world.spell[SIM_SIDE_R] = (sim_spell_t){
+        .active = 1, .progress = 160u, .dir = -4, .descriptor = descriptor(SPELL_FIREBALL, 3u)};
+    add_case("duel_both_in_flight", &world, 6u, 0);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++) {
+        world.wiz[side].ward_strength = 3u;
+        world.wiz[side].ward_capacity = 3u;
+        world.wiz[side].ward_focus = 2u;
+        world.wiz[side].shield_ticks = SIM_SHIELD_TICKS;
+    }
+    world.spell[SIM_SIDE_L] = (sim_spell_t){
+        .active = 1, .progress = 232u, .dir = 4, .descriptor = descriptor(SPELL_PROJECTILE, 2u)};
+    world.spell[SIM_SIDE_R] = (sim_spell_t){
+        .active = 1, .progress = 24u, .dir = -4, .descriptor = descriptor(SPELL_PROJECTILE, 2u)};
+    add_case("duel_both_warded", &world, 6u, 0);
+
+    /* Two fields at once. There are exactly two slots and every field_* case
+     * fills one, so slot interaction and combined silhouettes are unpinned. */
+    static const struct {
+        const char *name;
+        uint8_t a_kind;
+        uint8_t a_zone;
+        uint8_t b_kind;
+        uint8_t b_zone;
+    } field_pairs[] = {
+        {"rune_wall", FIELD_RUNE, SIM_RESIDUE_MID_L, FIELD_WALL, SIM_RESIDUE_MID_R},
+        {"vortex_trap", FIELD_VORTEX, SIM_RESIDUE_DOORSTEP_L, FIELD_TRAP, SIM_RESIDUE_MID_R},
+        {"singularity_familiar", FIELD_SINGULARITY, SIM_RESIDUE_MID_L, FIELD_FAMILIAR,
+         SIM_RESIDUE_DOORSTEP_R},
+    };
+    for (size_t i = 0; i < sizeof field_pairs / sizeof field_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        duel_render_t pair = {0};
+        duel_render_from_world(&pair, &world);
+        pair.seed = 0x35u;
+        pair.civic_phase = 21u;
+        pair.field[0] = (uint8_t)(field_pairs[i].a_kind | (field_pairs[i].a_zone << 3) | (2u << 5));
+        pair.field[1] =
+            (uint8_t)(field_pairs[i].b_kind | (field_pairs[i].b_zone << 3) | (1u << 5) | 0x80u);
+        snprintf(name, sizeof name, "field_pair_%s", field_pairs[i].name);
+        add_render_case(name, &pair, 9u);
+    }
+
+    /* The lifecycle arc mirrored onto the right half, which is drawn from
+     * mirrored geometry that the left-half scenarios never exercise. */
+    static const struct {
+        const char *name;
+        uint8_t life;
+        uint8_t ticks;
+    } right_life[] = {
+        {"collapse", LIFE_COLLAPSE, SIM_COLLAPSE_TICKS / 2u},
+        {"downed", LIFE_DOWNED, SIM_DOWNED_TICKS / 2u},
+        {"medic", LIFE_MEDIC, SIM_MEDIC_TICKS / 2u},
+        {"replace", LIFE_REPLACE, SIM_REPLACE_TICKS / 2u},
+    };
+    for (size_t i = 0; i < sizeof right_life / sizeof right_life[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_R].hp = 0;
+        world.wiz[SIM_SIDE_R].life = right_life[i].life;
+        world.wiz[SIM_SIDE_R].life_ticks = right_life[i].ticks;
+        snprintf(name, sizeof name, "life_right_%s", right_life[i].name);
+        add_case(name, &world, 3u, 0);
+    }
+
+    /* A spell arriving at a wizard who is already down. FX_FIZZLE_L names the
+     * left defender, and no catalog case drew that outcome. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].hp = 0;
+    world.wiz[SIM_SIDE_L].life = LIFE_DOWNED;
+    world.wiz[SIM_SIDE_L].life_ticks = SIM_DOWNED_TICKS / 2u;
+    add_case("life_fizzle_at_downed", &world, 4u, FX_FIZZLE_L);
+
+    /* Every roster variant, which is also what rotates doctrine affinity. The
+     * variant is cosmetic on an active wizard; during the replacement walk-in
+     * the silhouette is the same for half of them, so it is pinned here on the
+     * active roster where it is actually distinguishable. */
+    for (uint8_t variant = 0; variant < SIM_ROSTER_N; variant++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        /* Both halves carry a different variant, so one frame shows two of the
+         * four silhouettes and variant 0 does not restate the default world. */
+        world.wiz[SIM_SIDE_L].variant = variant;
+        world.wiz[SIM_SIDE_R].variant = (uint8_t)((variant + 1u) % SIM_ROSTER_N);
+        snprintf(name, sizeof name, "roster_variant_%u", variant);
+        add_case(name, &world, 3u, 0);
+    }
+
+    /* Combat under the other three sky phases, one duel state per hour. Every
+     * other duel scene carries the default dawn secondary byte, so the
+     * renderer's composition of a duel over the celestial arc was pinned at a
+     * single hour and a single moment. */
+    static const char *hour_name[] = {"dawn", "day", "dusk", "night"};
+    for (uint8_t phase = DUEL_SKY_DAY; phase <= DUEL_SKY_NIGHT; phase++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        if (phase == DUEL_SKY_DAY) {
+            /* A cast crossing toward a raised ward. */
+            world.wiz[SIM_SIDE_R].ward_strength = 3u;
+            world.wiz[SIM_SIDE_R].ward_capacity = 3u;
+            world.wiz[SIM_SIDE_R].ward_focus = 2u;
+            world.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+            world.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1,
+                                                    .progress = 168u,
+                                                    .dir = 4,
+                                                    .descriptor = descriptor(SPELL_PROJECTILE, 3u)};
+        } else if (phase == DUEL_SKY_DUSK) {
+            /* A long charge gathering before release. */
+            world.wiz[SIM_SIDE_L].pose = POSE_CAST;
+            world.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
+            world.wiz[SIM_SIDE_L].windup_total = 40u;
+            world.wiz[SIM_SIDE_L].cast_windup = 14u;
+            world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SATURATED;
+            world.wiz[SIM_SIDE_L].pending_desc = descriptor(SPELL_FIREBALL, 4u);
+        } else {
+            /* The same duel one beat later, landing. */
+            world.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 2u;
+        }
+        duel_render_t hour = {0};
+        duel_render_from_world(&hour, &world);
+        hour.seed = 0x5au;
+        hour.civic_phase = 19u;
+        hour.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
+        hour.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
+        if (phase == DUEL_SKY_NIGHT) {
+            hour.flash_kind = FX_IMPACT_R;
+            hour.flash_frames = 10u;
+            hour.flash_spell_kind = DUEL_KIND_WITH_TIER(
+                DUEL_KIND_PACK(ELEM_EMBER, MOD_NONE, PAY_IMPACT), SPELL_TIER_LONG);
+        }
+        snprintf(name, sizeof name, "combat_sky_%s", hour_name[phase]);
+        add_render_case(name, &hour, 7u);
+    }
+
+    /* Residue meeting an arriving spell of its own element, which is the one
+     * path to the combine outcome. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.residue[SIM_RESIDUE_MID_R].element = ELEM_EMBER;
+    world.residue[SIM_RESIDUE_MID_R].intensity = SIM_RESIDUE_MAX_INTENSITY;
+    world.spell[SIM_SIDE_L] = (sim_spell_t){
+        .active = 1, .progress = 168u, .dir = 4, .descriptor = descriptor(SPELL_SINGULARITY, 3u)};
+    add_case("residue_bloom_detonation", &world, 6u, FX_COMBINE);
+
+    /* Each ward tier meeting an incoming spell. The standalone tiers above
+     * show the ward with nothing arriving at it. */
+    for (uint8_t tier = 1; tier <= 4; tier++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_R].ward_strength = tier;
+        world.wiz[SIM_SIDE_R].ward_capacity = tier;
+        world.wiz[SIM_SIDE_R].ward_focus = 2u;
+        world.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+        world.spell[SIM_SIDE_L] = (sim_spell_t){.active = 1,
+                                                .progress = 228u,
+                                                .dir = 4,
+                                                .descriptor = descriptor(SPELL_PROJECTILE, tier)};
+        snprintf(name, sizeof name, "ward_meets_spell_tier_%u", tier);
+        add_case(name, &world, tier, FX_DEFLECT_R);
     }
 
     /* Stances. MEDITATE/STUDY restage onto the balcony (MEDITATE's
