@@ -6,6 +6,6 @@
 
 [project]
 name = "corne-arcane-host"
-version = "0.5.0"
+version = "0.6.0"
 description = "Corne Arcane OLED host semantics and safe Vial handoff"
 requires-python = ">=3.10"

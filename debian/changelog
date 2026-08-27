@@ -1,3 +1,20 @@
+corne-arcane-host (0.6.0) unstable; urgency=low
+
+  * Report the new revel scene for games and launchers. The firmware pairs it
+    with the commons floor to select a district of its own, so a game no longer
+    presents identically to a chat window. Older firmware rejects the value and
+    falls back to showing the host as offline while such a window is focused;
+    flash both halves before upgrading the daemon.
+  * Background media no longer overrides the focused window. It supplies a
+    scene only when no application profile matched, so a recognised window keeps
+    its own presentation while something is playing. Two behaviours change: a
+    document editor with media playing now reports its own scene rather than the
+    archive scene, and so does a chat window.
+  * Ship the X11 focus producer's user unit for sessions with no compositor
+    focus bridge. It remains opt-in and is not enabled by installation.
+
+ -- Griffin Hale <griffinhale.3@gmail.com>  Thu, 27 Aug 2026 01:30:00 -0700
+
 corne-arcane-host (0.5.0) unstable; urgency=low
 
   * Initial Debian packaging of the optional host daemon. The install layout
