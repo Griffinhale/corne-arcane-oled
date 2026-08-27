@@ -26,4 +26,20 @@ if [ -n "$active" ] && rg -n -i \
     exit 1
 fi
 
+# The package version is declared once, in host/pyproject.toml. Documentation
+# names the package rather than restating the number, so a release is a single
+# edit and cannot leave contradictory versions behind.
+version=$(sed -n 's/^version = "\(.*\)"$/\1/p' host/pyproject.toml)
+if [ -z "$version" ]; then
+    echo "FAIL hygiene: no version declared in host/pyproject.toml" >&2
+    exit 1
+fi
+restated=$(printf '%s\n' "$tracked" | grep -v '^host/pyproject\.toml$' |
+    xargs grep -lF -- "$version" 2>/dev/null || true)
+if [ -n "$restated" ]; then
+    echo "FAIL hygiene: package version $version restated outside host/pyproject.toml" >&2
+    printf '%s\n' "$restated" >&2
+    exit 1
+fi
+
 echo "PASS hygiene"

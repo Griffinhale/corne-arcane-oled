@@ -1,4 +1,4 @@
-# Corne Arcane host package 0.5.0 candidate
+# Corne Arcane host package
 
 The optional host package sends bounded, privacy-redacted desktop and browser
 activity semantics to `griffin_arcane`. Firmware remains fully functional when

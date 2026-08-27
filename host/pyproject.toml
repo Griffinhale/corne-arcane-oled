@@ -1,0 +1,11 @@
+# Package metadata for the optional host daemon. This is the single declared
+# source of the version: documentation refers to the package rather than
+# restating the number, and both host/package.nix and debian/ read it from here.
+# Install layout lives in host/Makefile; this file is metadata, not a build
+# backend.
+
+[project]
+name = "corne-arcane-host"
+version = "0.5.0"
+description = "Corne Arcane OLED host semantics and safe Vial handoff"
+requires-python = ">=3.10"

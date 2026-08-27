@@ -5,18 +5,18 @@ let
 in
 stdenvNoCC.mkDerivation {
   pname = "corne-arcane-host";
-  version = "0.5.0";
+  version = (lib.importTOML ./pyproject.toml).project.version;
   src = lib.cleanSource ./.;
 
   nativeBuildInputs = [ makeWrapper ];
-  nativeCheckInputs = [ pythonEnv ];
+  nativeCheckInputs = [ python3 ];
   doCheck = true;
 
   checkPhase = ''
     runHook preCheck
-    PYTHONDONTWRITEBYTECODE=1 ${pythonEnv}/bin/python -m unittest discover -s tests -v
+    PYTHONDONTWRITEBYTECODE=1 ${python3}/bin/python -m unittest discover -s tests -v
     PYTHONPYCACHEPREFIX="$TMPDIR/corne-arcane-pycache" \
-      ${pythonEnv}/bin/python -m compileall -q arcane_host tests
+      ${python3}/bin/python -m compileall -q arcane_host tests
     runHook postCheck
   '';
 
@@ -76,7 +76,7 @@ stdenvNoCC.mkDerivation {
 
   meta = {
     description = "Corne Arcane OLED host semantics and safe Vial handoff";
-    license = lib.licenses.mit;
+    license = lib.licenses.gpl2Only;
     platforms = lib.platforms.linux;
     mainProgram = "corne-arcane-host";
   };

@@ -4,7 +4,7 @@
     "Name": "Corne Arcane Focus Bridge",
     "Description": "Reports privacy-bounded active application identifiers to the local Corne Arcane daemon",
     "Version": "1.0",
-    "License": "MIT"
+    "License": "GPL-2.0-only"
   },
   "KPackageStructure": "KWin/Script",
   "X-Plasma-API": "javascript",

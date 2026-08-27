@@ -62,7 +62,7 @@ active, and the older-generation caveat are in the top-level `README.md`
 while the daemon is paused.
 
 The service retains its D-Bus, event-client, diagnostics, udev, and command
-identities. Package metadata is `0.5.0`.
+identities. The package version is declared in `host/pyproject.toml`.
 
 ## Flashing
 
