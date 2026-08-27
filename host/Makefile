@@ -38,7 +38,8 @@ COMMANDS = \
 	event:event \
 	diagnostics:diagnostics \
 	browser-bridge:browser_bridge \
-	vial:vial_launcher
+	vial:vial_launcher \
+	focus-x11:focus_x11
 
 .PHONY: install install-lib install-commands install-units install-assets install-udev
 
@@ -68,11 +69,19 @@ install-commands:
 		echo "  generated corne-arcane-$$suffix -> arcane_host.$$module"; \
 	done
 
+# Generated from .in templates so ExecStart follows PREFIX. The focus producer
+# is opt-in: it is installed but never enabled, because KWin and GNOME Shell
+# report focus from inside the compositor and need no helper.
+UNITS = corne-arcane-host corne-arcane-focus-x11
+
 install-units:
 	install -d "$(DESTDIR)$(UNITDIR)"
-	sed 's|@PREFIX@|$(PREFIX)|g' systemd/corne-arcane-host.service.in \
-		> "$(DESTDIR)$(UNITDIR)/corne-arcane-host.service"
-	chmod 0644 "$(DESTDIR)$(UNITDIR)/corne-arcane-host.service"
+	@for unit in $(UNITS); do \
+		sed 's|@PREFIX@|$(PREFIX)|g' "systemd/$$unit.service.in" \
+			> "$(DESTDIR)$(UNITDIR)/$$unit.service"; \
+		chmod 0644 "$(DESTDIR)$(UNITDIR)/$$unit.service"; \
+		echo "  generated $$unit.service"; \
+	done
 
 install-assets:
 	install -d "$(DESTDIR)$(MOZILLADIR)"

@@ -49,7 +49,7 @@ jobs:
         run: |
           stage="$RUNNER_TEMP/stage"
           make -C host install DESTDIR="$stage" PREFIX=/usr PYTHON=/usr/bin/python3
-          for command in host event diagnostics browser-bridge vial; do
+          for command in host event diagnostics browser-bridge vial focus-x11; do
             test -x "$stage/usr/bin/corne-arcane-$command"
           done
           unit="$stage/usr/lib/systemd/user/corne-arcane-host.service"

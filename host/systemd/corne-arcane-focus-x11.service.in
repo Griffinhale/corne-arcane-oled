@@ -1,0 +1,16 @@
+[Unit]
+Description=Corne Arcane X11 focus producer
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Opt-in. KWin and GNOME Shell report focus from inside the compositor and need
+# no helper; enable this only on a plain X11 session that has neither.
+ConditionEnvironment=DISPLAY
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/corne-arcane-focus-x11
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
