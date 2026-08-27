@@ -6,9 +6,12 @@ firmware/sim_test/hp_gate_*
 firmware/sim_test/.noalloc.o
 /.scratch/
 artifacts/release/*.map
-# Preserved local milestone/rollback evidence is intentionally never cleaned.
-# Photo/video captures stay local until a curated set is worth publishing;
-# remove the line below (or `git add -f`) to version one.
+# Preserved local planning history, signed acceptance records, and rollback
+# evidence. These are working records of how the project got here rather than
+# documentation of what it currently is, so they stay on disk and out of the
+# repository. Photo/video captures stay local until a curated set is worth
+# publishing; remove a line below (or `git add -f`) to version one.
+docs/archive/
 docs/evidence/
 artifacts/m11-gallery/
 artifacts/m11.1-baseline/
