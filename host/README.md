@@ -27,7 +27,10 @@ The install layout is defined once, in `Makefile`, and driven by both
 `package.nix` and `../debian/rules`, so the two platforms cannot drift apart.
 
 On NixOS, import [`../corne.nix`](../corne.nix). It supplies the package, the
-udev rule, and the user service.
+udev rule, and the user service. On a session with no compositor focus bridge
+also set `services.corne-arcane-host.x11FocusProducer = true;` -- NixOS builds
+user units from module definitions rather than from the package, so the
+producer's unit ships but is not declared without it.
 
 On Debian or Ubuntu, build the package from a checkout:
 
@@ -61,7 +64,7 @@ everything else still works and focus simply stays at its default.
 - GNOME Shell: opt-in, and requires Shell 45 or newer. The extension uses the
   ESM extension API, which GNOME 44 and older cannot load at all.
 - Plain X11: enable `corne-arcane-focus-x11.service`, which needs `xprop` from
-  `x11-utils`. Use this on XFCE, Cinnamon, i3, or Plasma 5. It reports the
+  `x11-utils` (`services.corne-arcane-host.x11FocusProducer = true;` on NixOS). Use this on XFCE, Cinnamon, i3, or Plasma 5. It reports the
   `WM_CLASS` pair and `_GTK_APPLICATION_ID`, which between them cover the
   spellings the profile table knows.
 - Other Wayland compositors have no producer yet.

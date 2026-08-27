@@ -25,7 +25,14 @@ artifacts, archived documents, layout data, and golden hashes are excluded.
 ## Golden review
 
 `firmware/sim_test/golden/visual_current.hashes` contains 622 exact framebuffer
-scenes. Do not regenerate it as a routine response to a failure. First build a
+scenes. Build a reviewable sheet with:
+
+```bash
+firmware/sim_test/visual_runner --dump-pgm /tmp/frames
+python3 tools/contact_sheet.py /tmp/frames sheet --only district_
+```
+
+ Do not regenerate it as a routine response to a failure. First build a
 reviewable dump/contact sheet, inspect the changed scenes and protected regions,
 and establish that the visual change is intentional. Update the golden only in
 the same change that explains and tests the new presentation contract.
@@ -43,9 +50,21 @@ RAM allowance, the 96 KiB hard stop, and at least 8 KiB reserve. Investigate
 growth before considering a budget change; do not raise a ceiling to make an
 unrelated refactor pass.
 
-The current measured values are recorded in `acceptance.md`. Generated ELF,
-UF2, and map files are ignored working artifacts, not acceptance evidence.
-Physical acceptance is separate and follows `physical-checklist.md`.
+Generated ELF, UF2, and map files are ignored working artifacts. The last
+clean pinned-QMK build, `arm-none-eabi-gcc 15.2.rel1`:
+
+| Image | Flash | Static RAM | Reserve below 96 KiB |
+|---|---:|---:|---:|
+| release | 85,356 B | 13,552 B | 12,948 B |
+| diagnostic | 86,736 B | 13,680 B | 11,568 B |
+| 8-HP candidate | 85,356 B | 13,552 B | 12,948 B |
+| 10-HP candidate | 85,364 B | 13,552 B | 12,940 B |
+
+Record the compiler alongside any figure you compare against: it moves these
+numbers more than most changes do. The binding constraint is the 88 KiB flash
+ceiling on the diagnostic image, not the hard-stop reserve.
+
+Flashing hardware is a separate procedure; see [`flashing.md`](flashing.md).
 
 `VIAL_QMK_REVISION` is the sole accepted Vial-QMK pin. `release-build` rejects
 a checkout at any other revision and prints the deliberate development

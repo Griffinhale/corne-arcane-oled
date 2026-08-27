@@ -1,13 +1,16 @@
 # Corne Arcane exploration backlog
 
-Version 0.4 remains the rollback baseline. The previously specified v12,
-living-world, magic, and host-adapter work is implemented as an unflashed
-candidate and tracked in `beyond-0.4-candidate.md`; it is no longer backlog.
+What is listed here is deferred, not planned. The split v12 world, the eight
+districts, the magic signatures, and the host adapters are all implemented and
+running; none of that is backlog. Everything below is an idea with a stated
+precondition, and the precondition is usually that something already built has
+proven calm in real work rather than merely correct in tests.
 
 ## Presentation worlds and information surfaces
 
 - Consider further art only after the eight districts, four-stage Observatory,
-  almanac, crowds, and field silhouettes pass physical desk-distance review.
+  almanac, crowds, and field silhouettes have been read at desk distance over a
+  full working day, not just confirmed legible once.
 
 ## Input-driven fiction and combat variety
 
@@ -27,8 +30,7 @@ candidate and tracked in `beyond-0.4-candidate.md`; it is no longer backlog.
 - Raw HID remains a fixed 32-byte semantic protocol and shares the Vial
   interface. The safe launcher hands that one endpoint between the daemon and
   Vial; a future integration must preserve exclusive ownership.
-- Accepted rollback figures remain in `acceptance.md`; current candidate
-  figures are in `beyond-0.4-candidate.md`. Future content needs an explicit
+- Current resource figures are in `development.md`. Future content needs an explicit
   flash budget and must preserve the 88 KiB ceiling and 8 KiB hard-stop reserve.
 - Static RAM growth, stack headroom, split/OLED timing, no-allocation gates,
   power policy, stale-link recovery, and exact visual/determinism tests remain

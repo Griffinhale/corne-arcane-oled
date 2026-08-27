@@ -1,4 +1,4 @@
-# Corne Arcane beyond-0.4 candidate on NixOS
+# Corne Arcane on NixOS
 
 Import `./corne.nix` directly from this checkout. It supplies QMK tooling, the
 `corne-arcane-host` service and commands, udev access for the keyboard's Raw HID
@@ -58,8 +58,10 @@ support, OLED, RGB Matrix, and four persistent dynamic keymap layers.
 the recovery image.
 
 Use `make release-build` to produce neutral files under `artifacts/release/`
-and `make release-budget` to enforce the candidate resource ceilings. Do not
-flash either HP candidate before the 0.4 checklist is accepted or superseded.
+and `make release-budget` to enforce the resource ceilings. The two HP images
+are an unresolved A/B experiment in combat pacing, not release candidates;
+flash `griffin_arcane-release.uf2` unless you are deliberately running that
+comparison.
 
 ## Device access
 
@@ -98,8 +100,8 @@ identities. The package version is declared in `host/pyproject.toml`.
 
 ## Flashing
 
-Flashing needs the normal QMK udev rules. The flash-safety sequence — never
-hot-plug TRRS, power down, separate the halves, flash the identical UF2 to each
-controller, reconnect TRRS unpowered — and the recovery route are in the
-top-level `README.md` §Flash safely and §Recovery; the detailed physical
-verification and recovery steps are in `docs/physical-checklist.md`.
+Flashing needs the normal QMK udev rules, which `hardware.keyboard.qmk.enable`
+installs. The full sequence — never hot-plug TRRS, power down, separate the
+halves, hold BOOT to reach the RP2040 bootloader, copy the identical UF2 to each
+controller, reconnect TRRS unpowered — is in
+[`docs/flashing.md`](docs/flashing.md).
