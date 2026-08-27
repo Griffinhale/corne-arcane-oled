@@ -6,24 +6,29 @@ OLEDs. Type normally; the way you type casts spells.
 ![Five moments from a duel, rendered on both halves: at rest, casting, the ward
 holding, impact, and the scarred aftermath](docs/images/duel.png)
 
-A fixed-tick simulation runs on the master half at 25 Hz. Key *positions* —
-never keycodes, never characters — feed a combat model with elemental residue,
-field effects, wards, and aftermath that persists across duels. Both displays
+A fixed-tick simulation runs on the master half at 25 Hz. Key *positions*,
+never keycodes and never characters, feed a combat model with elemental
+residue, field effects, wards, and aftermath that persists across duels. Both displays
 render live state from a 32-byte snapshot crossing the TRRS link; the slave
 half never recomputes the world, it only draws what it is sent.
 
 ## Beneath the duel is a city
 
-Eight districts — Commons, Research, Workshop, Observatory, Scriptorium,
-Studio, Arena, Undercroft — each with a room, a resident who works in it, and
-two architectural voices: curved and astral on the left half, squared and
-mechanical on the right.
+Eight districts, being Commons, Research, Workshop, Observatory,
+Scriptorium, Studio, Arena, and Undercroft. Each has a room, a resident who
+works in it, and two architectural voices: curved and astral on the left half,
+squared and mechanical on the right.
 
 <img src="docs/images/rooms.gif" alt="The eight district rooms in turn, each drawn on both halves" width="300">
 
 The keyboard is complete offline. An optional Linux daemon adds the city: it
 tells the keyboard what kind of thing you are doing, in enums and counters
 only, and the tower changes floor around you.
+
+Which row you type on picks the element. How varied the burst is decides the
+form, the size, and how strong a ward you are holding while you type it. A
+pause commits the spell. [](docs/duel.md) covers all of it, and
+[](docs/glossary.md) defines the vocabulary.
 
 ## Three ways in
 
@@ -59,7 +64,7 @@ make release-build                # UF2 + ELF + map, with resource budgets
 
 `firmware/` is the source of truth; it is a keymap, not a standalone tree.
 
-Then follow [`docs/flashing.md`](docs/flashing.md) — the bootloader entry on
+Then follow [`docs/flashing.md`](docs/flashing.md). The bootloader entry on
 this board is less obvious than usual, and there is one rule about TRRS that
 will cost you hardware if you get it wrong.
 
@@ -77,9 +82,9 @@ has focus, so the tower shows a Workshop while you write code, an Arena while
 you play something, an Observatory during a Pomodoro.
 
 It reports enums, counters, durations, and salted digests. Not window titles,
-URLs, file paths, command lines, notification bodies, or typed text — none of
-those enter retained state or either wire protocol, by construction rather than
-by filtering. See [`host/README.md`](host/README.md) for what each adapter can
+URLs, file paths, command lines, notification bodies, or typed text. None of
+those enter retained state or either wire protocol, and that is a property of
+how the code is built, not something a filter strips out later. See [`host/README.md`](host/README.md) for what each adapter can
 and cannot see.
 
 Install on NixOS by importing [`corne.nix`](corne.nix); on Debian or Ubuntu
@@ -94,7 +99,7 @@ corne-arcane-vial                                # launch Vial for keymap edits
 
 Vial, diagnostics, and the daemon share one Raw HID endpoint, so
 `corne-arcane-vial` hands it over and restores the previous service state
-afterward. Use it rather than launching Vial directly.
+afterward. Use it instead of launching Vial directly.
 
 If focus never seems to change anything, you probably have no focus producer:
 KWin and GNOME Shell report from inside the compositor, but a plain X11 session
@@ -106,10 +111,10 @@ needs the opt-in `corne-arcane-focus-x11` service.
 display and sends a 32-byte snapshot over TRRS to the slave half; an optional
 Linux daemon sends 32-byte enum-only heartbeats over USB](docs/images/architecture.svg)
 
-Two design commitments run through all of it. The simulation is deterministic —
-fixed ticks, integer math, no allocation, no time reads inside mechanics — so a
-given input sequence always produces the same frames, which is why a catalog of
-exact framebuffer hashes can be a test. And privacy is structural: the host
+Two design commitments run through all of it. The simulation is
+deterministic. Fixed ticks, integer math, no allocation, and no time reads
+inside mechanics mean a given input sequence always produces the same frames,
+which is why a catalog of exact framebuffer hashes can be a test. And privacy is structural: the host
 normalizes to bounded enums before anything is retained, so there is no code
 path that could leak content even if something upstream misbehaved.
 
@@ -126,7 +131,7 @@ path that could leak content even if something upstream misbehaved.
 
 [GPLv2](LICENSE). The firmware is a derivative work of
 [Vial-QMK](https://github.com/vial-kb/vial-qmk) (itself derived from
-[QMK Firmware](https://github.com/qmk/qmk_firmware)), so the whole firmware —
-including the custom spell-duel simulation and rendering modules — is licensed
+[QMK Firmware](https://github.com/qmk/qmk_firmware)), so the whole firmware,
+including the custom spell-duel simulation and rendering modules, is licensed
 under the GNU General Public License v2. Images are covered by the same
 licence; see [`docs/images/README.md`](docs/images/README.md).

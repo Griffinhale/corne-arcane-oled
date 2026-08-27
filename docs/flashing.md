@@ -56,7 +56,7 @@ mid-write. A file manager or `cp` may report an I/O error or "device removed".
 That is the normal RP2040 behaviour and does not mean the flash failed.
 
 If the volume does not mount automatically, find it with `lsblk` and mount it by
-hand — it is a small FAT filesystem labelled `RPI-RP2`.
+hand. It is a small FAT filesystem labelled `RPI-RP2`.
 
 ## Which half is "left"
 
@@ -72,7 +72,7 @@ whichever half you normally use.
 
 Both displays should leave stale-link mode and stay synchronized once TRRS is
 reconnected and one half is powered. Then exercise every key on all four layers
-and confirm each keystroke arrives exactly once — the simulation reads key
+and confirm each keystroke arrives exactly once. The simulation reads key
 positions, and must never consume or rewrite ordinary typing.
 
 If you run the host daemon, restart it and confirm the displays pick up focus

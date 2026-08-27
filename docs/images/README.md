@@ -17,7 +17,7 @@ Every scene named in those figures is a case in the committed catalog. The
 animations hold one case per frame; they are a tour of the catalog, not a
 recording of the simulation running, and no frame is interpolated or edited.
 
-A catalog frame is 67x128 — the left canvas, a separator, then the right
+A catalog frame is 67x128: the left canvas, a separator, then the right
 canvas. Each canvas is one physical 32x128 OLED, so a figure showing two
 panels is showing both halves of the keyboard.
 
@@ -51,7 +51,7 @@ is published.
 ## Drawn by hand
 
 `architecture.svg` and `setup.svg` are hand-authored SVG. They are text, so
-they diff like source. Both carry their own dark background rather than
+they diff like source. Both carry their own dark background instead of
 relying on the reader's theme, which keeps them legible next to the renderer
 figures in either GitHub theme.
 

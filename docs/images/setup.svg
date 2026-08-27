@@ -70,7 +70,7 @@
   <text class="t no" x="409" y="470">TRRS that will cost you hardware.</text>
 
   <text class="t g" x="409" y="512">You get the duel, the city, and both</text>
-  <text class="t g" x="409" y="532">displays. Nothing else is required —</text>
+  <text class="t g" x="409" y="532">displays. Nothing else is required;</text>
   <text class="t g" x="409" y="552">the keyboard is complete offline.</text>
 
   <!-- lane 3 -->
@@ -82,7 +82,7 @@
   <rect class="step" x="764" y="112" width="282" height="58"/>
   <text class="t b" x="780" y="134">NixOS</text>
   <text class="t m" x="780" y="156">import ./corne.nix</text>
-  <text class="t d" x="905" y="190" text-anchor="middle">— or —</text>
+  <text class="t d" x="905" y="190" text-anchor="middle">or</text>
   <rect class="step" x="764" y="204" width="282" height="58"/>
   <text class="t b" x="780" y="226">Debian or Ubuntu</text>
   <text class="t m" x="780" y="248">dpkg-buildpackage -b -uc -us</text>

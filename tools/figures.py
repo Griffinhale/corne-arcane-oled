@@ -175,6 +175,36 @@ def fields_animation(frames, out_dir):
     return animate(cells, 20, 26, font(17), out_dir / "fields.gif", 550)
 
 
+# The repository's social preview. GitHub renders this at 1280x640.
+SOCIAL = ["scenario_duel-idle", "scenario_long-cast", "scenario_impact"]
+SOCIAL_TEXT = [
+    ("Corne Arcane", 62, INK, 0),
+    ("A deterministic spell-duel world that lives", 21, DIM, 34),
+    ("on a split keyboard's two OLEDs.", 21, DIM, 29),
+    ("Key positions, never keycodes and never", 21, DIM, 42),
+    ("characters, drive a 25 Hz simulation.", 21, DIM, 29),
+]
+
+
+def social_figure(frames, out_dir):
+    """A 1280x640 card: what it is on the left, what it looks like on the right."""
+    img = Image.new("RGB", (1280, 640), BACKDROP)
+    drawer = ImageDraw.Draw(img)
+    y = 150
+    for text, size, fill, lead in SOCIAL_TEXT:
+        y += lead
+        drawer.text((72, y), text, fill=fill, font=font(size))
+        y += size
+    x = 566
+    for name in SOCIAL:
+        panels = cell(frames, name, name, 3, 10)
+        img.paste(panels, (x, (640 - panels.height) // 2))
+        x += panels.width + 22
+    path = out_dir / "social-preview.png"
+    img.save(path, optimize=True)
+    return path, img.size
+
+
 def duel_figure(frames, out_dir):
     scale, pad = 3, 34
     cells = [(cell(frames, n, n, scale, 10), label) for n, label in DUEL]
@@ -214,6 +244,7 @@ def main():
     for build in (
         duel_figure,
         districts_figure,
+        social_figure,
         rooms_animation,
         spells_animation,
         fields_animation,

@@ -66,7 +66,7 @@
   <text class="t d" x="716" y="290" text-anchor="middle">over TRRS</text>
 
   <rect class="opt" x="60" y="526" width="620" height="150"/>
-  <text class="t h" x="88" y="558">OPTIONAL — LINUX DAEMON</text>
+  <text class="t h" x="88" y="558">OPTIONAL: LINUX DAEMON</text>
   <text class="t d" x="88" y="584">The keyboard is complete without this. It only changes which</text>
   <text class="t d" x="88" y="604">district of the city the tower shows around the duel.</text>
   <text class="t b" x="88" y="636">Sends: enums, counters, durations, salted digests</text>
@@ -77,6 +77,6 @@
   <text class="t d" x="556" y="566">over USB</text>
 
   <text class="t d" x="712" y="600">Both displays draw locally.</text>
-  <text class="t d" x="712" y="620">Pixels never cross the link —</text>
+  <text class="t d" x="712" y="620">Pixels never cross the link,</text>
   <text class="t d" x="712" y="640">only state does.</text>
 </svg>

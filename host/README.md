@@ -29,7 +29,7 @@ The install layout is defined once, in `Makefile`, and driven by both
 On NixOS, import [`../corne.nix`](../corne.nix). It supplies the package, the
 udev rule, and the user service. On a session with no compositor focus bridge
 also set `services.corne-arcane-host.x11FocusProducer = true;` -- NixOS builds
-user units from module definitions rather than from the package, so the
+user units from module definitions instead of from the package, so the
 producer's unit ships but is not declared without it.
 
 On Debian or Ubuntu, build the package from a checkout:

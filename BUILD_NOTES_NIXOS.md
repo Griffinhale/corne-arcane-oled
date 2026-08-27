@@ -25,7 +25,7 @@ Leaving it off where it is needed is not a partial failure: nothing calls
 presents as the same district regardless of what is in front of you. The
 producer ships with the package either way; the option only decides whether the
 user unit is declared, because NixOS builds user units from module definitions
-rather than from the package's unit directory.
+instead of from the package's unit directory.
 
 ```bash
 systemctl --user status corne-arcane-focus-x11.service
@@ -66,7 +66,7 @@ comparison.
 ## Device access
 
 `corne.nix` takes the udev rule from the package, as `60-corne-arcane.rules`,
-rather than writing it inline. `services.udev.extraRules` lands in
+instead of writing it inline. `services.udev.extraRules` lands in
 `99-local.rules`, and systemd consumes the `uaccess` tag from a match in
 `73-seat-late.rules` that udev has already evaluated by then, so the inline rule
 this file previously described granted nothing. Access came from
@@ -101,7 +101,7 @@ identities. The package version is declared in `host/pyproject.toml`.
 ## Flashing
 
 Flashing needs the normal QMK udev rules, which `hardware.keyboard.qmk.enable`
-installs. The full sequence — never hot-plug TRRS, power down, separate the
+installs. The full sequence (never hot-plug TRRS, power down, separate the
 halves, hold BOOT to reach the RP2040 bootloader, copy the identical UF2 to each
-controller, reconnect TRRS unpowered — is in
+controller, reconnect TRRS unpowered) is in
 [`docs/flashing.md`](docs/flashing.md).

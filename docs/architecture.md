@@ -3,7 +3,7 @@
 Corne Arcane has one authoritative simulation and two local presentation
 surfaces. The master half decides mechanics; the slave half never reconstructs
 or advances authoritative world state. Both halves draw locally from bounded
-projections, so the split carries state rather than pixels.
+projections, so the split carries state, not pixels.
 
 ![Key positions feed the master half's simulation, which renders its own
 display and sends a 32-byte snapshot over TRRS to the slave half; an optional
@@ -29,7 +29,7 @@ physical matrix
 ```
 
 `keymap.c` owns hardware integration, wall-clock sampling, split transport, and
-OLED/RGB hooks. It supplies physical positions—not keycodes or text—to
+OLED/RGB hooks. It supplies physical positions, not keycodes or text, to
 `duel_sim.c`. The simulation orchestrator preserves the fixed phase order
 declared in `duel_sim_internal.h`. `duel_incantation.c` owns collection and
 descriptor compilation; `duel_combat.c` owns damage, wards, collision, motion,
@@ -48,7 +48,7 @@ only full-scene composition order. Resident, courier, and event derivation
 depend on civic/render/framebuffer contracts, never on the compositor.
 
 Each district resolves to a room and a resident, drawn in one of two
-architectural voices — astral on the left canvas, mechanical on the right.
+architectural voices: astral on the left canvas, mechanical on the right.
 Both canvases below are renderer output for the same district:
 
 ![The eight districts, each drawn on both canvases](images/districts.png)

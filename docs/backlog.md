@@ -4,7 +4,7 @@ What is listed here is deferred, not planned. The split v12 world, the eight
 districts, the magic signatures, and the host adapters are all implemented and
 running; none of that is backlog. Everything below is an idea with a stated
 precondition, and the precondition is usually that something already built has
-proven calm in real work rather than merely correct in tests.
+proven calm in real work, not merely correct in tests.
 
 ## Presentation worlds and information surfaces
 
@@ -44,7 +44,7 @@ proven calm in real work rather than merely correct in tests.
 
 1. Which direction adds the most ambient value after Observatory acceptance:
    deeper existing cities, richer spells, or richer scry/host semantics?
-2. Should the next version spend protocol bytes, flash reserve, or both—and
+2. Should the next version spend protocol bytes, flash reserve, or both, and
    what recovery artifact and hard stop protect the accepted 0.4 baseline?
 3. Which additions are authoritative mechanics versus disposable presentation
    or external context?

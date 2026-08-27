@@ -31,14 +31,18 @@ jobs:
         run: |
           "$RUNNER_TEMP/vial-qmk/util/qmk_install.sh" -y
 
-      # qmk_install.sh installs the Python half with `pip install --user`, which
-      # this runner refuses as an externally managed environment. It does not
-      # report that as a failure, so the CLI silently never arrives and the
-      # build fails later with `qmk: not found`. Own that half explicitly.
+      # Two separate reasons the CLI was missing. The pinned checkout's
+      # requirements.txt lists only the libraries the CLI imports, never the
+      # `qmk` command itself, which ships as its own package. And qmk_install.sh
+      # installs that file with `pip install --user`, which this runner refuses
+      # as an externally managed environment without reporting a failure. Own
+      # the whole Python half here: the command first, then the pinned
+      # checkout's own libraries on top of it.
       - name: Install the QMK CLI
         run: |
           python3 -m venv "$RUNNER_TEMP/qmk-venv"
           "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install qmk
           "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install \
               -r "$RUNNER_TEMP/vial-qmk/requirements.txt"
           echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
