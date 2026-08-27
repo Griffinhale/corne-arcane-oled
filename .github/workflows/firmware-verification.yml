@@ -27,9 +27,26 @@ jobs:
           git -C "$RUNNER_TEMP/vial-qmk" checkout --detach "$QMK_REVISION"
           git -C "$RUNNER_TEMP/vial-qmk" submodule update --init --recursive
 
-      - name: Install Vial-QMK dependencies
+      - name: Install Vial-QMK toolchain packages
         run: |
           "$RUNNER_TEMP/vial-qmk/util/qmk_install.sh" -y
+
+      # qmk_install.sh installs the Python half with `pip install --user`, which
+      # this runner refuses as an externally managed environment. It does not
+      # report that as a failure, so the CLI silently never arrives and the
+      # build fails later with `qmk: not found`. Own that half explicitly.
+      - name: Install the QMK CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qmk-venv"
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install \
+              -r "$RUNNER_TEMP/vial-qmk/requirements.txt"
+          echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm the toolchain answers
+        run: |
+          qmk --version
+          arm-none-eabi-gcc --version | head -1
 
       - name: Build release and diagnostic firmware
         env:
