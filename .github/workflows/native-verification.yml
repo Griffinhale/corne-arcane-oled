@@ -31,5 +31,46 @@ jobs:
       - name: Repository hygiene
         run: make hygiene
 
+      # The install layout is defined once in host/Makefile and driven by both
+      # host/package.nix and debian/rules. Assert the Debian half here so a
+      # change that only gets checked against Nix cannot break it silently.
+      - name: Debian install layout
+        run: |
+          stage="$RUNNER_TEMP/stage"
+          make -C host install DESTDIR="$stage" PREFIX=/usr PYTHON=/usr/bin/python3
+          for command in host event diagnostics browser-bridge vial; do
+            test -x "$stage/usr/bin/corne-arcane-$command"
+          done
+          unit="$stage/usr/lib/systemd/user/corne-arcane-host.service"
+          manifest="$stage/usr/lib/mozilla/native-messaging-hosts/io.github.griffinhale.corne_arcane.json"
+          rule="$stage/usr/lib/udev/rules.d/60-corne-arcane.rules"
+          test -f "$unit" && test -f "$manifest" && test -f "$rule"
+          grep -qx 'ExecStart=/usr/bin/corne-arcane-host' "$unit"
+          grep -q '"/usr/bin/corne-arcane-browser-bridge"' "$manifest"
+          grep -q 'TAG+="uaccess"' "$rule"
+          # Assets another program finds by globbing a search path belong in
+          # lib/, never share/. Debian and NixOS use the same directories.
+          test ! -e "$stage/usr/share/systemd"
+          test ! -e "$stage/usr/share/mozilla"
+
+      - name: Installed commands run
+        run: |
+          stage="$RUNNER_TEMP/stage"
+          sudo cp -a "$stage/usr/lib/corne-arcane-host" /usr/lib/
+          "$stage/usr/bin/corne-arcane-diagnostics" --help > /dev/null
+          "$stage/usr/bin/corne-arcane-event" --help > /dev/null
+          timeout 30 "$stage/usr/bin/corne-arcane-host" --dry-run --once --session 1 > /dev/null
+
+      # Proves debian/control's Depends are sufficient: python3-gi alone has to
+      # supply the Gio and GLib typelibs the daemon imports.
+      - name: Declared runtime dependencies suffice
+        run: |
+          /usr/bin/python3 -c "
+          import gi
+          gi.require_version('Gio', '2.0')
+          from gi.repository import Gio, GLib
+          print('Gio and GLib typelibs available')
+          "
+
       - name: Whitespace errors
         run: git diff --check

@@ -28,17 +28,26 @@ fi
 
 # The package version is declared once, in host/pyproject.toml. Documentation
 # names the package rather than restating the number, so a release is a single
-# edit and cannot leave contradictory versions behind.
+# edit and cannot leave contradictory versions behind. dpkg requires the version
+# in debian/changelog, so that one restatement is checked for agreement rather
+# than forbidden.
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' host/pyproject.toml)
 if [ -z "$version" ]; then
     echo "FAIL hygiene: no version declared in host/pyproject.toml" >&2
     exit 1
 fi
-restated=$(printf '%s\n' "$tracked" | grep -v '^host/pyproject\.toml$' |
+restated=$(printf '%s\n' "$tracked" |
+    grep -Ev '^(host/pyproject\.toml|debian/changelog)$' |
     xargs grep -lF -- "$version" 2>/dev/null || true)
 if [ -n "$restated" ]; then
     echo "FAIL hygiene: package version $version restated outside host/pyproject.toml" >&2
     printf '%s\n' "$restated" >&2
+    exit 1
+fi
+
+changelog=$(sed -n '1s/^[^(]*(\([^)-]*\).*/\1/p' debian/changelog)
+if [ "$changelog" != "$version" ]; then
+    echo "FAIL hygiene: debian/changelog says $changelog, host/pyproject.toml says $version" >&2
     exit 1
 fi
 

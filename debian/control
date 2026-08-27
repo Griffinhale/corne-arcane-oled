@@ -1,0 +1,31 @@
+Source: corne-arcane-host
+Section: utils
+Priority: optional
+Maintainer: Griffin Hale <griffinhale.3@gmail.com>
+Build-Depends: debhelper-compat (= 13), python3 (>= 3.10)
+Standards-Version: 4.7.0
+Homepage: https://github.com/Griffinhale/corne-arcane-oled
+Rules-Requires-Root: no
+
+Package: corne-arcane-host
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.10),
+         python3-gi,
+         dbus-user-session
+Suggests: x11-utils
+Description: privacy-redacted desktop semantics for a Corne Arcane keyboard
+ Sends bounded desktop and browser activity semantics to a Corne v3 RP2040
+ keyboard running the griffin_arcane firmware, over QMK Raw HID. The keyboard
+ is fully functional without this package; it only enriches what the OLEDs
+ show.
+ .
+ Adapters report enums, durations, counters and salted digests. Window titles,
+ URLs, page content, command text, file paths and typed text are never read
+ into retained state and have no path onto either wire protocol. A missing bus,
+ denied permission or absent extension disables only that one adapter.
+ .
+ Focus reporting needs a producer. GNOME Shell 45 or newer and KWin under
+ Plasma 6 are supported; on other desktops focus semantics stay at their
+ default and everything else still works. dbus-user-session is required
+ because the daemon runs as a D-Bus-activated systemd user service.

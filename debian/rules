@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# The repository's top-level Makefile drives firmware simulation tests and needs
+# a QMK checkout, so the default build and clean steps are deliberately empty.
+override_dh_auto_build:
+
+override_dh_auto_clean:
+
+override_dh_auto_test:
+	cd host && ./run_tests.sh
+
+# host/Makefile is the single definition of the install layout; host/package.nix
+# drives the same target with PREFIX=$(out).
+override_dh_auto_install:
+	$(MAKE) -C host install \
+		DESTDIR=$(CURDIR)/debian/corne-arcane-host \
+		PREFIX=/usr \
+		PYTHON=/usr/bin/python3

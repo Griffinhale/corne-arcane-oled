@@ -1,0 +1,10 @@
+corne-arcane-host (0.5.0) unstable; urgency=low
+
+  * Initial Debian packaging of the optional host daemon. The install layout
+    comes from host/Makefile, the same target host/package.nix drives, so the
+    Debian and Nix installs cannot drift apart.
+  * Ship 60-corne-arcane.rules for non-root access to the keyboard's Raw HID
+    node. The number matters: systemd consumes the uaccess tag from a match in
+    73-seat-late.rules, so a higher-numbered rule grants nothing.
+
+ -- Griffin Hale <griffinhale.3@gmail.com>  Wed, 26 Aug 2026 19:38:39 -0700
