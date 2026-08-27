@@ -265,7 +265,7 @@ static void scry_pair(const scry_scroll_t *scroll, uint8_t row, const char *labe
 
 static void scry_city_content(const scry_scroll_t *scroll, const duel_render_t *r, bool is_left) {
     static const char *const districts[DUEL_DISTRICT_COUNT] = {
-        "COMMON", "ARCHIV", "WORK", "OBSERV", "SCRIPT", "STUDIO",
+        "COMMON", "ARCHIV", "WORK", "OBSERV", "SCRIPT", "STUDIO", "ARENA", "UNDER",
     };
     static const char *const modes[] = {"NORMAL", "QUIET", "URGENT", "QUIET"};
     static const char *const levels[] = {"CALM", "ACTIVE", "BUSY", "SAT"};
@@ -316,7 +316,7 @@ static void scry_duel_content(const scry_scroll_t *scroll, const duel_render_t *
 
 static void scry_host_content(const scry_scroll_t *scroll, const duel_render_t *r) {
     static const char *const districts[DUEL_DISTRICT_COUNT] = {
-        "COMMON", "ARCHIV", "WORK", "OBSERV", "SCRIPT", "STUDIO",
+        "COMMON", "ARCHIV", "WORK", "OBSERV", "SCRIPT", "STUDIO", "ARENA", "UNDER",
     };
     static const char *const alerts[] = {"NONE",   "TERM", "COMMS",  "XFER",
                                          "SYSTEM", "CAL",  "SECURE", "OTHER"};

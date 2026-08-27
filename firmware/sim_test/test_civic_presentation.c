@@ -25,7 +25,7 @@ static void test_civic_anchor_and_courier_matrix(void) {
 
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
-    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++)
         for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER; kind < DUEL_CIVIC_COURIER_COUNT; kind++)
             for (uint8_t life = DUEL_CIVIC_VISIT_ARRIVING; life <= DUEL_CIVIC_VISIT_RESOLVING;
                  life++)
@@ -74,8 +74,8 @@ static void test_civic_anchor_and_courier_matrix(void) {
     draw_courier(&mirror, &route, false);
     EXPECT(memcmp(&source, &expected, sizeof source) == 0 && exact_mirror(&expected, &mirror));
     for (uint8_t kind = DUEL_CIVIC_COURIER_MESSENGER; kind < DUEL_CIVIC_COURIER_COUNT; kind++) {
-        duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
-        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+        duel_fb_t variant[DUEL_CIVIC_FLOOR_COUNT];
+        for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++) {
             route.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
             route.shared_pres = DUEL_VISITOR_PACK(kind, 0, DUEL_CIVIC_VISIT_AGING);
             duel_fb_clear(&variant[floor]);
@@ -90,7 +90,7 @@ static void test_civic_anchor_and_courier_matrix(void) {
 
 static void test_rare_event_floor_phase_mode_target_matrix(void) {
     bool ok = true;
-    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++)
         for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL; id < DUEL_CIVIC_EVENT_COUNT; id++)
             for (uint8_t phase = DUEL_CIVIC_EVENT_PHASE_ARMED;
                  phase <= DUEL_CIVIC_EVENT_PHASE_COOLDOWN; phase++)
@@ -137,8 +137,8 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
     draw_rare_event(&empty, &none, true);
     EXPECT(framebuffer_pixels(&empty) == 0u);
     for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL; id < DUEL_CIVIC_EVENT_COUNT; id++) {
-        duel_fb_t variant[INCANTATION_OCCUPATION_FLOORS];
-        for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
+        duel_fb_t variant[DUEL_CIVIC_FLOOR_COUNT];
+        for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++) {
             none.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
             none.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE,
                                             id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER
@@ -170,7 +170,7 @@ static void test_aftermath_floor_kind_phase_half_matrix(void) {
     bool ok = true;
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
-    for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
+    for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++)
         for (uint8_t kind = AFTER_CHEER; kind <= AFTER_MAX_CAST; kind++)
             for (uint8_t phase = 0; phase < 4u; phase++)
                 for (uint8_t side = 0; side < 2u; side++) {
@@ -314,10 +314,76 @@ static void test_resident_geometry_and_object_separation(void) {
  * non-authoritative interaction read is the INTERACT_PHASE portal). This
  * pins that spike result: it fails the moment anyone adds a COMBINE visual. */
 
+/* The whole (floor, scene) domain, pinned as a table rather than by re-deriving
+ * it. duel_civic_district is ordered, so a rule inserted in the wrong place
+ * changes pairs nobody was looking at -- the Workshop floor in particular
+ * carries two districts and would silently collapse to one. */
+static void test_district_derivation_matrix(void) {
+    bool ok = true;
+    static const uint8_t expected[DUEL_CIVIC_FLOOR_COUNT][DUEL_HOST_SCENE_COUNT] = {
+        /* COMMONS  */ {DUEL_DISTRICT_COMMONS, DUEL_DISTRICT_STUDIO, DUEL_DISTRICT_COMMONS,
+                        DUEL_DISTRICT_ARENA},
+        /* RESEARCH */
+        {DUEL_DISTRICT_SCRIPTORIUM, DUEL_DISTRICT_RESEARCH, DUEL_DISTRICT_RESEARCH,
+         DUEL_DISTRICT_RESEARCH},
+        /* WORKSHOP */
+        {DUEL_DISTRICT_WORKSHOP, DUEL_DISTRICT_UNDERCROFT, DUEL_DISTRICT_WORKSHOP,
+         DUEL_DISTRICT_WORKSHOP},
+        /* SPECIAL  */
+        {DUEL_DISTRICT_OBSERVATORY, DUEL_DISTRICT_OBSERVATORY, DUEL_DISTRICT_OBSERVATORY,
+         DUEL_DISTRICT_OBSERVATORY},
+    };
+    bool reached[DUEL_DISTRICT_COUNT] = {false};
+    for (uint8_t floor = 0; floor < DUEL_CIVIC_FLOOR_COUNT; floor++)
+        for (uint8_t scene = 0; scene < DUEL_HOST_SCENE_COUNT; scene++) {
+            uint8_t civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, 0);
+            uint8_t external = DUEL_HOST_CONTEXT_PACK(true, scene, 0u, false);
+            uint8_t district = duel_civic_district(civic, external);
+            if (district != expected[floor][scene])
+                printf("DIAG district floor=%u scene=%u got=%u want=%u\n", floor, scene, district,
+                       expected[floor][scene]);
+            EXPECT(district == expected[floor][scene]);
+            reached[district] = true;
+            /* Whatever the pair, the reverse map must land on a floor that is a
+             * legal civic value and agree with the one that was packed for
+             * every district the derivation can single out by floor alone. */
+            EXPECT(duel_district_floor(district) < DUEL_CIVIC_FLOOR_COUNT);
+        }
+    /* Every district is reachable: an unreachable one is art that can never be
+     * displayed, and the catalog would still happily render it. */
+    for (uint8_t district = 0; district < DUEL_DISTRICT_COUNT; district++)
+        EXPECT(reached[district]);
+    /* The two districts that share a floor with another must still report that
+     * shared floor, so courier and event layers keyed on the floor stay put. */
+    EXPECT(duel_district_floor(DUEL_DISTRICT_ARENA) == DUEL_CIVIC_FLOOR_COMMONS);
+    EXPECT(duel_district_floor(DUEL_DISTRICT_UNDERCROFT) == DUEL_CIVIC_FLOOR_WORKSHOP);
+    /* Out-of-range district and scene both take the safe reading. */
+    EXPECT(duel_district_floor(DUEL_DISTRICT_COUNT) == DUEL_CIVIC_FLOOR_COMMONS);
+    CHECK(ok, "incantation_district_derivation_full_floor_scene_matrix_and_reverse_floors");
+}
+
+/* The scene field survives the master-to-slave hop. Raw HID carries it as a
+ * whole byte, but the split packs it into two bits, so a fourth value is the
+ * last one that can round-trip and the validator must accept exactly that. */
+static void test_scene_range_and_context_round_trip(void) {
+    bool ok = true;
+    EXPECT(DUEL_HOST_SCENE_COUNT == 4 && DUEL_HOST_SCENE_REVEL == 3);
+    for (uint8_t scene = 0; scene < DUEL_HOST_SCENE_COUNT; scene++)
+        for (uint8_t notif = 0; notif < 16u; notif++) {
+            uint8_t external = DUEL_HOST_CONTEXT_PACK(true, scene, notif, true);
+            EXPECT(DUEL_HOST_CONTEXT_SCENE(external) == scene &&
+                   DUEL_HOST_CONTEXT_NOTIF(external) == notif &&
+                   DUEL_HOST_CONTEXT_ONLINE(external) && DUEL_HOST_CONTEXT_PERSISTENT(external));
+        }
+    CHECK(ok, "incantation_scene_enum_full_and_two_bit_context_round_trip");
+}
+
 void run_civic_presentation_tests(void) {
     test_resident_occupation_derivation();
     test_resident_geometry_and_object_separation();
     test_civic_anchor_and_courier_matrix();
     test_rare_event_floor_phase_mode_target_matrix();
     test_aftermath_floor_kind_phase_half_matrix();
+    test_district_derivation_matrix();
+    test_scene_range_and_context_round_trip();
 }

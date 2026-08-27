@@ -6,7 +6,7 @@ candidate and tracked in `beyond-0.4-candidate.md`; it is no longer backlog.
 
 ## Presentation worlds and information surfaces
 
-- Consider further art only after the six districts, four-stage Observatory,
+- Consider further art only after the eight districts, four-stage Observatory,
   almanac, crowds, and field silhouettes pass physical desk-distance review.
 
 ## Input-driven fiction and combat variety

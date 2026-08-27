@@ -122,6 +122,13 @@ enum {
     INCANTATION_OBJECT_STUDIO_STAGE,
     INCANTATION_OBJECT_STUDIO_MIXER,
     INCANTATION_OBJECT_STUDIO_REEL,
+    INCANTATION_OBJECT_ARENA_RING,
+    INCANTATION_OBJECT_ARENA_STAND,
+    INCANTATION_OBJECT_ARENA_TALLY,
+    INCANTATION_OBJECT_UNDERCROFT_LEVERS,
+    INCANTATION_OBJECT_UNDERCROFT_VALVE,
+    INCANTATION_OBJECT_UNDERCROFT_PIPES,
+    INCANTATION_OBJECT_COUNT,
 };
 
 /* One compact descriptor per (floor, action). `station` is the resident's
@@ -184,6 +191,22 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_STUDIO_STAGE},
     {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_STUDIO_REEL},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_STAGE},
+    /* Arena: ring drill, carry gear to the stand, read the tally, rest. */
+    {14, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_ARENA_RING},
+    {19, INCANTATION_POSE_CARRY, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_ARENA_STAND},
+    {22, INCANTATION_POSE_INSPECT, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_ARENA_TALLY},
+    {24, INCANTATION_POSE_SEATED, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_STAND},
+    {14, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_TALLY},
+    {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_ARENA_STAND},
+    {14, INCANTATION_POSE_REACT, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_RING},
+    /* Undercroft: throw levers, carry parts, read the valve, log the pipes. */
+    {12, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
+    {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_PIPES},
+    {22, INCANTATION_POSE_INSPECT, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_UNDERCROFT_VALVE},
+    {16, INCANTATION_POSE_SEATED, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
+    {19, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_UNDERCROFT_PIPES},
+    {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_UNDERCROFT_VALVE},
+    {12, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
 };
 
 static const incantation_occupation_desc_t *incantation_occupation(uint8_t key) {
@@ -207,9 +230,10 @@ uint8_t incantation_effective_floor(const duel_render_t *r) {
 /* Desk-space anchor of each floor object (INCANTATION_OBJECT_*, 3 per floor).
  * The occupation anchor and the object-reaction sparkle both index this table,
  * keyed by the occupation's reaction object. */
-static const int8_t incantation_object_anchors[18][2] = {
-    {14, 95}, {24, 82}, {11, 88}, {14, 79}, {24, 88}, {13, 94}, {14, 91}, {24, 90}, {11, 82},
-    {13, 88}, {24, 84}, {16, 82}, {13, 91}, {25, 87}, {22, 76}, {14, 88}, {24, 82}, {27, 96},
+static const int8_t incantation_object_anchors[INCANTATION_OBJECT_COUNT][2] = {
+    {14, 95}, {24, 82}, {11, 88}, {14, 79}, {24, 88}, {13, 94}, {14, 91}, {24, 90},
+    {11, 82}, {13, 88}, {24, 84}, {16, 82}, {13, 91}, {25, 87}, {22, 76}, {14, 88},
+    {24, 82}, {27, 96}, {10, 94}, {26, 90}, {10, 78}, {9, 92},  {26, 88}, {14, 74},
 };
 
 incantation_point_t incantation_occupation_anchor(uint8_t floor, uint8_t action) {
@@ -233,8 +257,9 @@ static void incantation_draw_object_reaction(duel_fb_t *fb, uint8_t reaction, bo
     };
     /* The reaction IS the object index: anchor it directly (the old
      * reaction -> action -> occupation -> reaction round-trip was identity). */
-    int x = duel_fb_desk_x(is_left, incantation_object_anchors[reaction % 18u][0]);
-    int y = incantation_object_anchors[reaction % 18u][1];
+    uint8_t object = (uint8_t)(reaction % INCANTATION_OBJECT_COUNT);
+    int x = duel_fb_desk_x(is_left, incantation_object_anchors[object][0]);
+    int y = incantation_object_anchors[object][1];
     int toward_gap = is_left ? 1 : -1;
     const int8_t(*pixels)[2] = phase_pixels[(progress >> 2) & 3u];
     for (int i = 0; i < 3; i++)

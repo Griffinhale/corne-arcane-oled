@@ -44,11 +44,17 @@ enum {
     DUEL_HOST_PRIORITY_COUNT,
 };
 
+/* Broad activity posture supplied by the host. The split snapshot packs it into
+ * two bits (DUEL_HOST_CONTEXT_PACK), so REVEL is the last value this enum can
+ * ever hold; the Raw HID payload byte has room to spare but the master could
+ * not relay a fifth. Scenes are never rendered by name -- they exist only to
+ * pair with a civic floor and select a district. */
 enum {
     DUEL_HOST_SCENE_DUEL = 0,
     DUEL_HOST_SCENE_ARCHIVE = 1,
     DUEL_HOST_SCENE_FOCUS = 2,
-    DUEL_HOST_SCENE_COUNT = 3,
+    DUEL_HOST_SCENE_REVEL = 3,
+    DUEL_HOST_SCENE_COUNT = 4,
 };
 
 /*
@@ -129,6 +135,9 @@ enum {
     DUEL_CIVIC_FLOOR_RESEARCH = 1,
     DUEL_CIVIC_FLOOR_WORKSHOP = 2,
     DUEL_CIVIC_FLOOR_SPECIAL = 3,
+    /* The field is two bits, so this is both the count and the ceiling. It is
+     * deliberately not the district count: several districts share a floor. */
+    DUEL_CIVIC_FLOOR_COUNT = 4,
 };
 // Civic mode (civic byte bits 2-3): quiets or emphasises the current floor
 // without changing which floor is shown.
@@ -192,9 +201,11 @@ static inline bool duel_civic_semantics_valid(uint8_t civic, uint8_t secondary) 
            DUEL_SECONDARY_ACTIVITY(secondary) <= DUEL_CIVIC_SECONDARY_PAGE;
 }
 
-/* Six renderer-level districts are derived from the existing scene/floor
- * semantics. Applications select broad combinations; no per-app scene enters
- * firmware or the split link. */
+/* Eight renderer-level districts are derived from the scene/floor semantics.
+ * Applications select broad combinations; no per-app scene enters firmware or
+ * the split link. New districts append: the value is a lookup index into the
+ * occupation table and the floor-transition source field, so renumbering would
+ * silently repoint both. */
 enum {
     DUEL_DISTRICT_COMMONS = 0,
     DUEL_DISTRICT_RESEARCH,
@@ -202,12 +213,22 @@ enum {
     DUEL_DISTRICT_OBSERVATORY,
     DUEL_DISTRICT_SCRIPTORIUM,
     DUEL_DISTRICT_STUDIO,
+    DUEL_DISTRICT_ARENA,
+    DUEL_DISTRICT_UNDERCROFT,
     DUEL_DISTRICT_COUNT,
 };
 
+/* Order is load-bearing. Every exact (floor, scene) pair is tested before the
+ * floor-only fallbacks beneath it, so a floor that carries two districts must
+ * spell out its scene first: the Workshop pair heads the list precisely because
+ * a bare floor test there would shadow the Undercroft. Pairs no profile can
+ * produce fall through to the plain floor reading rather than to a district
+ * they do not mean. */
 static inline uint8_t duel_civic_district(uint8_t civic, uint8_t external) {
     uint8_t floor = DUEL_CIVIC_FLOOR(civic);
     uint8_t scene = DUEL_HOST_CONTEXT_SCENE(external);
+    if (floor == DUEL_CIVIC_FLOOR_WORKSHOP && scene == DUEL_HOST_SCENE_ARCHIVE)
+        return DUEL_DISTRICT_UNDERCROFT;
     if (floor == DUEL_CIVIC_FLOOR_WORKSHOP)
         return DUEL_DISTRICT_WORKSHOP;
     if (floor == DUEL_CIVIC_FLOOR_SPECIAL && scene == DUEL_HOST_SCENE_FOCUS)
@@ -216,6 +237,8 @@ static inline uint8_t duel_civic_district(uint8_t civic, uint8_t external) {
         return DUEL_DISTRICT_SCRIPTORIUM;
     if (floor == DUEL_CIVIC_FLOOR_COMMONS && scene == DUEL_HOST_SCENE_ARCHIVE)
         return DUEL_DISTRICT_STUDIO;
+    if (floor == DUEL_CIVIC_FLOOR_COMMONS && scene == DUEL_HOST_SCENE_REVEL)
+        return DUEL_DISTRICT_ARENA;
     if (floor == DUEL_CIVIC_FLOOR_RESEARCH)
         return DUEL_DISTRICT_RESEARCH;
     if (floor == DUEL_CIVIC_FLOOR_SPECIAL)
@@ -223,10 +246,14 @@ static inline uint8_t duel_civic_district(uint8_t civic, uint8_t external) {
     return DUEL_DISTRICT_COMMONS;
 }
 
+/* Inverse of the derivation, for the layers that still key off a floor. Commons
+ * is the fallback because it carries three districts (Commons, Studio, Arena)
+ * and is also the safe reading for a value outside the enum. */
 static inline uint8_t duel_district_floor(uint8_t district) {
     return district == DUEL_DISTRICT_RESEARCH || district == DUEL_DISTRICT_SCRIPTORIUM
                ? DUEL_CIVIC_FLOOR_RESEARCH
-           : district == DUEL_DISTRICT_WORKSHOP    ? DUEL_CIVIC_FLOOR_WORKSHOP
+           : district == DUEL_DISTRICT_WORKSHOP || district == DUEL_DISTRICT_UNDERCROFT
+               ? DUEL_CIVIC_FLOOR_WORKSHOP
            : district == DUEL_DISTRICT_OBSERVATORY ? DUEL_CIVIC_FLOOR_SPECIAL
                                                    : DUEL_CIVIC_FLOOR_COMMONS;
 }

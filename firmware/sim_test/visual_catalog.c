@@ -89,13 +89,18 @@ static void record_render(const char *name, const duel_render_t *render, uint32_
 
 static void set_district_context(duel_render_t *render, uint8_t district, uint8_t mode,
                                  uint8_t intensity) {
+    /* The exact (floor, scene) pair duel_civic_district maps back to this
+     * district. Every entry must round-trip, which is what pins the reviewed
+     * frame to the derivation rather than to a district number. */
     static const uint8_t floor[DUEL_DISTRICT_COUNT] = {
         DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_WORKSHOP,
         DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_COMMONS,
+        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_WORKSHOP,
     };
     static const uint8_t scene[DUEL_DISTRICT_COUNT] = {
         DUEL_HOST_SCENE_DUEL,  DUEL_HOST_SCENE_ARCHIVE, DUEL_HOST_SCENE_DUEL,
         DUEL_HOST_SCENE_FOCUS, DUEL_HOST_SCENE_DUEL,    DUEL_HOST_SCENE_ARCHIVE,
+        DUEL_HOST_SCENE_REVEL, DUEL_HOST_SCENE_ARCHIVE,
     };
     if (district >= DUEL_DISTRICT_COUNT)
         district = DUEL_DISTRICT_COMMONS;
@@ -219,7 +224,8 @@ static void build_catalog(void) {
     add_case("sky_commons_dawn_idle_8hp", &world, 0, 0);
 
     static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {
-        "commons", "research", "workshop", "observatory", "scriptorium", "studio"};
+        "commons",     "research", "workshop", "observatory",
+        "scriptorium", "studio",   "arena",    "undercroft"};
     static const char *mode_name[] = {"normal", "quiet", "urgent"};
     static const char *intensity_name[] = {"calm", "active", "busy", "saturated"};
 
@@ -575,7 +581,10 @@ static void build_catalog(void) {
     variant.shared_pres =
         DUEL_VISITOR_PACK(DUEL_CIVIC_COURIER_MESSENGER, 0, DUEL_CIVIC_VISIT_ARRIVING);
     add_render_case("courier_quiet_arrival", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    /* Both halves of the pair, together. Writing civic alone would leave the
+     * Archive scene the Research case above installed, and Archive over the
+     * Workshop floor is the Undercroft, not the Workshop. */
+    set_district_context(&variant, DUEL_DISTRICT_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0u);
     variant.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     add_render_case("courier_transition", &variant, 7u);
     variant.floor_transition = 0;
@@ -599,7 +608,7 @@ static void build_catalog(void) {
     variant.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_RUNAWAY_SCROLL,
                                        DUEL_CIVIC_EVENT_PHASE_ACTIVE, DUEL_CIVIC_EVENT_TARGET_LEFT);
     add_render_case("event_quiet", &variant, 7u);
-    variant.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0);
+    set_district_context(&variant, DUEL_DISTRICT_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, 0u);
     variant.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(DUEL_CIVIC_FLOOR_COMMONS, 1, true);
     add_render_case("event_transition", &variant, 7u);
     variant.floor_transition = 0;

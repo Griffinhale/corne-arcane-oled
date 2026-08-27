@@ -448,6 +448,96 @@ static void duel_environment_draw_floor_occupation(duel_fb_t *fb, uint8_t distri
             floor_gear(fb, OX(26), 84, 4);            /* reel */
             duel_fb_line(fb, OX(22), 72, OX(30), 78); /* projector */
         }
+    } else if (district == DUEL_DISTRICT_ARENA) {
+        /* Sparring ring and tiered stand. The ring is the only dominant mass in
+         * the set that is hollow -- a railed outline rather than a filled block
+         * -- and the stand is the only stepped silhouette, so the pair reads as
+         * Arena at desk distance without depending on either detail alone. */
+        OSPAN(3, 18, 104);
+        OSPAN(3, 18, 96);
+        for (int y = 84; y <= 103; y++) { /* corner posts, through the deck */
+            duel_fb_px(fb, OX(4), y, true);
+            duel_fb_px(fb, OX(17), y, true);
+        }
+        /* Three deep tiers with a closed back, not four shallow ones: at desk
+         * distance a 1 px riser is invisible and the stand collapses into more
+         * horizontal rules beside the ring. The offset has to be wide enough to
+         * read as a staircase from the outline alone. */
+        for (int tier = 0; tier < 3; tier++) {
+            int top = 101 - tier * 7;
+            int x0 = 21 + tier * 3;
+            OSPAN(x0, 30, top);
+            for (int y = top + 1; y <= top + 6; y++)
+                duel_fb_px(fb, OX(x0), y, true);
+        }
+        for (int y = 87; y <= 109; y++)
+            duel_fb_px(fb, OX(30), y, true);
+        /* Canopy legs. Without them the roof floats and the stand reads as two
+         * unrelated boxes; joined, the whole gap-side column is one tall
+         * grandstand, which is what separates it from the Commons notice board
+         * at desk distance. */
+        for (int y = 72; y <= 86; y++) {
+            duel_fb_px(fb, OX(22), y, true);
+            duel_fb_px(fb, OX(29), y, true);
+        }
+        if (is_left) {
+            floor_dome(fb, OX(21), OX(30), 70); /* canopy over the top tier */
+            OSPAN(5, 16, 90);                   /* one slack rope */
+            duel_fb_px(fb, OX(4), 82, true);    /* post finials */
+            duel_fb_px(fb, OX(17), 82, true);
+            for (int i = 0; i < 5; i++) /* tally orbs on a rising arc */
+                duel_fb_px(fb, OX(6 + i * 3), 78 - ((i * (4 - i)) / 2), true);
+        } else {
+            ORECT(21, 66, 30, 71); /* scaffold over the top tier */
+            duel_fb_line(fb, OX(21), 71, OX(30), 66);
+            OSPAN(5, 16, 86); /* three taut rails */
+            OSPAN(5, 16, 90);
+            OSPAN(5, 16, 94);
+            floor_gear(fb, OX(10), 76, 3); /* tally drum */
+        }
+    } else if (district == DUEL_DISTRICT_UNDERCROFT) {
+        /* Service level: the machinery the rest of the tower runs on. The
+         * paired pipe run crossing the full width high in the room is the
+         * signature -- every other district keeps its mass low or pinned
+         * against the outer wall, so nothing else puts two long horizontals
+         * up there. */
+        OSPAN(0, 30, 72);
+        OSPAN(0, 30, 76);
+        for (int x = 4; x <= 28; x += 6) {
+            duel_fb_px(fb, OX(x), 70, true);
+            duel_fb_px(fb, OX(x), 71, true);
+        }
+        ORECT(3, 96, 16, 104); /* lever bank cabinet */
+        OSPAN(3, 16, 96);
+        for (int x = 5; x <= 15; x += 2)
+            for (int y = 88; y <= 95; y++)
+                duel_fb_px(fb, OX(x), y, true);
+        /* Gap-side riser, broken around the valve housing. Running the pipes
+         * straight through put their verticals one pixel from the valve's own
+         * edges, and the pair read as noise rather than as a stop valve. */
+        for (int y = 80; y <= 104; y++) {
+            if (y >= 84 && y <= 92)
+                continue;
+            duel_fb_px(fb, OX(24), y, true);
+            duel_fb_px(fb, OX(28), y, true);
+        }
+        ORECT(22, 84, 30, 92);
+        if (is_left) {
+            floor_dome(fb, OX(22), OX(30), 81); /* arched wardstone housing */
+            duel_fb_line(fb, OX(23), 88, OX(26), 85);
+            duel_fb_line(fb, OX(26), 85, OX(29), 88);
+            duel_fb_line(fb, OX(29), 88, OX(26), 91);
+            duel_fb_line(fb, OX(26), 91, OX(23), 88);
+            for (int x = 5; x <= 15; x += 5)
+                duel_fb_px(fb, OX(x), 84, true); /* escaping vapour */
+        } else {
+            floor_gear(fb, OX(26), 88, 2); /* valve wheel inside the housing */
+            ORECT(22, 63, 30, 67);         /* riveted junction plate */
+            for (int y = 68; y <= 71; y++)
+                duel_fb_px(fb, OX(26), y, true);
+            for (int x = 5; x <= 15; x += 5)
+                duel_fb_px(fb, OX(x), 85, true);
+        }
     } else { /* Observatory: four quarter-boundary instrument states. */
         uint8_t stage = intensity & 3u;
         if (is_left) {

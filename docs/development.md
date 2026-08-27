@@ -9,7 +9,7 @@ Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 
 ```bash
 make lint            # Ruff plus Python/C formatting checks
-make test            # mechanics, 548 visual scenes, allocation scan, host tests
+make test            # mechanics, 622 visual scenes, allocation scan, host tests
 make hp-gate         # pinned 8-HP and 10-HP 30-minute workloads
 make mechanics-hp-candidates # full mechanics suite under both geometries
 make hygiene         # active-tree naming and historical-comment policy
@@ -24,7 +24,7 @@ artifacts, archived documents, layout data, and golden hashes are excluded.
 
 ## Golden review
 
-`firmware/sim_test/golden/visual_current.hashes` contains 548 exact framebuffer
+`firmware/sim_test/golden/visual_current.hashes` contains 622 exact framebuffer
 scenes. Do not regenerate it as a routine response to a failure. First build a
 reviewable dump/contact sheet, inspect the changed scenes and protected regions,
 and establish that the visual change is intentional. Update the golden only in

@@ -31,7 +31,7 @@ static void test_floor_occupations_and_transitions(void) {
                INCANTATION_FLOOR_TRANSITION_PHASE(byte) == phase &&
                INCANTATION_FLOOR_TRANSITION_ACTIVE(byte) && !(byte & 0xc0u));
     }
-    CHECK(ok, "incantation_six_districts_two_city_voices_and_four_protected_transition_phases");
+    CHECK(ok, "incantation_eight_districts_two_city_voices_and_four_protected_transition_phases");
 }
 
 static void test_render_interaction_combine_solid_parity(void) {

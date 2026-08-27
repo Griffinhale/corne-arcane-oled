@@ -21,7 +21,11 @@ versions never downgrade.
 | 31 | 1 | `crc` | CRC-8 over bytes 0–30 |
 
 Payload bytes are scene, notification count, category, priority, age,
-persistent, civic, and secondary. Civic bits are floor 0–1, mode 2–3,
+persistent, civic, and secondary. Scene is duel `0`, archive `1`, focus `2`, or
+revel `3`; receivers reject `4` and above. Raw HID spends a whole byte on it,
+but the split snapshot does not, so `3` is the last value the enum can hold --
+see the external byte below. The firmware never renders a scene by name: it
+pairs the scene with the civic floor to derive one of eight districts. Civic bits are floor 0–1, mode 2–3,
 intensity 4–5, and reserved-zero 6–7. Secondary bits 0–2 are none `0`, media
 `1`, transfer `2`, system `3`, calendar `4`, browser scroll `5`, tab selection
 `6`, or page event `7`; bits 3–7 are zero. Firmware v12 rejects Raw HID v2.
@@ -61,7 +65,7 @@ existing stale-link presentation.
 | 5 | 18 | `view` | canonical duel/render projection |
 | 23 | 1 | `field[0]` | kind 0–2, zone 3–4, age quarter 5–6, owner 7 |
 | 24 | 1 | `field[1]` | same; zero is the only inactive encoding |
-| 25 | 1 | `external` | host online/scene/count/persistent summary |
+| 25 | 1 | `external` | online 0; scene 1-2; notification count 3-6; persistent 7 |
 | 26 | 1 | `alert` | category 0–2, priority 3–4, age 5–7 |
 | 27 | 1 | `civic` | floor 0–1, mode 2–3, intensity 4–5; residue zone 3 element 6–7 |
 | 28 | 1 | `secondary` | activity 0–2, sky phase 3–4, sub-phase 5–6; zone 3 intensity high bit 7 |
@@ -83,6 +87,16 @@ Field kinds are none `0`, trap `1`, singularity `2`, steam cloud `3`, rune `4`,
 familiar `5`, wall `6`, and vortex `7`. Zones are doorstep-L, mid-L, mid-R,
 and doorstep-R. Age is the elapsed lifetime quarter. The global slots are
 authoritative; only this display projection crosses the split.
+
+Scene occupies exactly two bits of `external`, which is why the host enum is
+full at four values. Floor occupies exactly two bits of `civic`. The renderer
+derives its districts from that pair in a fixed rule order, checking every exact
+(floor, scene) combination before any floor-only fallback: Workshop with archive
+is the Undercroft and Workshop otherwise is the Workshop; Special with focus is
+the Observatory; Research with duel is the Scriptorium; Commons with archive is
+the Studio and Commons with revel is the Arena; the remaining pairs read as
+Research, Observatory, or Commons by floor alone. No district, and no per-application
+identity, occupies wire state of its own.
 
 Residue uses the same four zones. Intensity zero requires element zero. Zone 3
 straddles `flags.7`, `secondary.7`, and `civic.6–7`; accessors in
