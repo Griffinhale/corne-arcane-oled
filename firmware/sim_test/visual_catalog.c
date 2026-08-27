@@ -873,15 +873,34 @@ static void build_catalog(void) {
         add_case(name, &world, 3u, 0);
     }
 
-    /* Combat under the other three sky phases, one duel state per hour. Every
-     * other duel scene carries the default dawn secondary byte, so the
-     * renderer's composition of a duel over the celestial arc was pinned at a
-     * single hour and a single moment. */
-    static const char *hour_name[] = {"dawn", "day", "dusk", "night"};
-    for (uint8_t phase = DUEL_SKY_DAY; phase <= DUEL_SKY_NIGHT; phase++) {
+    /* Combat under the other three sky phases: one duel followed across its
+     * day. Every other duel scene carries the default dawn secondary byte and
+     * the Commons floor at full health, so the renderer's composition of a
+     * duel over the celestial arc, over a district that changes underneath it,
+     * and over a health bar that drains, was pinned at a single frame of all
+     * three. The districts come from three different civic floors so the room
+     * below actually changes. */
+    static const struct {
+        const char *hour;
+        uint8_t phase;
+        uint8_t district;
+        uint8_t mode;
+        uint8_t hp_left;
+        uint8_t hp_right;
+    } combat_hours[] = {
+        {"day", DUEL_SKY_DAY, DUEL_DISTRICT_WORKSHOP, DUEL_CIVIC_MODE_NORMAL, SIM_MAX_HP,
+         (uint8_t)(SIM_MAX_HP - 1u)},
+        {"dusk", DUEL_SKY_DUSK, DUEL_DISTRICT_SCRIPTORIUM, DUEL_CIVIC_MODE_NORMAL,
+         (uint8_t)(SIM_MAX_HP - 2u), (uint8_t)(SIM_MAX_HP - 4u)},
+        {"night", DUEL_SKY_NIGHT, DUEL_DISTRICT_OBSERVATORY, DUEL_CIVIC_MODE_QUIET,
+         (uint8_t)(SIM_MAX_HP - 3u), 2u},
+    };
+    for (size_t i = 0; i < sizeof combat_hours / sizeof combat_hours[0]; i++) {
         char name[48];
         sim_init(&world, SIMF_AUTHORITATIVE, 0);
-        if (phase == DUEL_SKY_DAY) {
+        world.wiz[SIM_SIDE_L].hp = combat_hours[i].hp_left;
+        world.wiz[SIM_SIDE_R].hp = combat_hours[i].hp_right;
+        if (combat_hours[i].phase == DUEL_SKY_DAY) {
             /* A cast crossing toward a raised ward. */
             world.wiz[SIM_SIDE_R].ward_strength = 3u;
             world.wiz[SIM_SIDE_R].ward_capacity = 3u;
@@ -891,7 +910,7 @@ static void build_catalog(void) {
                                                     .progress = 168u,
                                                     .dir = 4,
                                                     .descriptor = descriptor(SPELL_PROJECTILE, 3u)};
-        } else if (phase == DUEL_SKY_DUSK) {
+        } else if (combat_hours[i].phase == DUEL_SKY_DUSK) {
             /* A long charge gathering before release. */
             world.wiz[SIM_SIDE_L].pose = POSE_CAST;
             world.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
@@ -899,23 +918,21 @@ static void build_catalog(void) {
             world.wiz[SIM_SIDE_L].cast_windup = 14u;
             world.wiz[SIM_SIDE_L].cast_tier = SPELL_TIER_SATURATED;
             world.wiz[SIM_SIDE_L].pending_desc = descriptor(SPELL_FIREBALL, 4u);
-        } else {
-            /* The same duel one beat later, landing. */
-            world.wiz[SIM_SIDE_R].hp = SIM_MAX_HP - 2u;
         }
         duel_render_t hour = {0};
         duel_render_from_world(&hour, &world);
         hour.seed = 0x5au;
         hour.civic_phase = 19u;
-        hour.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
-        hour.secondary = DUEL_SECONDARY_SKY_PACK(0, phase);
-        if (phase == DUEL_SKY_NIGHT) {
+        set_district_context(&hour, combat_hours[i].district, combat_hours[i].mode, 0u);
+        hour.secondary = DUEL_SECONDARY_SKY_PACK(0, combat_hours[i].phase);
+        if (combat_hours[i].phase == DUEL_SKY_NIGHT) {
+            /* The same duel one beat later, landing. */
             hour.flash_kind = FX_IMPACT_R;
             hour.flash_frames = 10u;
             hour.flash_spell_kind = DUEL_KIND_WITH_TIER(
                 DUEL_KIND_PACK(ELEM_EMBER, MOD_NONE, PAY_IMPACT), SPELL_TIER_LONG);
         }
-        snprintf(name, sizeof name, "combat_sky_%s", hour_name[phase]);
+        snprintf(name, sizeof name, "combat_sky_%s", combat_hours[i].hour);
         add_render_case(name, &hour, 7u);
     }
 
