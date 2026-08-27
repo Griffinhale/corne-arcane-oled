@@ -44,10 +44,13 @@ in
     hardware.keyboard.qmk.enable = true;
 
     # Let Vial or the daemon open the running keyboard's hidraw node without
-    # root. QMK Raw HID uses usage page 0xFF60; uaccess grants the active user.
-    services.udev.extraRules = ''
-      KERNEL=="hidraw*", ATTRS{idVendor}=="4653", MODE="0660", TAG+="uaccess"
-    '';
+    # root. The rule ships with the package as 60-corne-arcane.rules rather than
+    # being written inline: services.udev.extraRules lands in 99-local.rules,
+    # which udev evaluates after the TAG=="uaccess" match in 73-seat-late.rules,
+    # so an inline rule adds the tag too late to grant anything. Confirm with
+    # `udevadm test /sys/class/hidraw/hidrawN` that the rule matches at 60 and
+    # that 73-seat-late.rules then runs the uaccess builtin.
+    services.udev.packages = [ corneArcaneHost ];
 
     systemd.user.services.corne-arcane-host = lib.mkIf cfg.enable {
       description = "Corne Arcane focus, notification policy, and Raw HID heartbeat";
