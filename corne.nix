@@ -30,6 +30,23 @@ in
       default = 1500;
       description = "Pomodoro duration in seconds used for Observatory quarter stages.";
     };
+    x11FocusProducer = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the plain-X11 focus producer as a user service.
+
+        Leave this off under KWin or GNOME Shell, which report focus from
+        inside the compositor. Turn it on for a session that has neither --
+        Cinnamon, XFCE, i3, Plasma 5 -- where nothing otherwise calls
+        ReportActiveWindow at all, focus never leaves its default, and every
+        window presents as the same district no matter what is in front of you.
+
+        The producer ships with the package either way; this only decides
+        whether the unit is declared, because NixOS builds user units from
+        module definitions rather than from the package's unit directory.
+      '';
+    };
   };
 
   config = {
@@ -65,5 +82,30 @@ in
         RestartSec = 2;
       };
     };
+
+    # Ordered after the daemon because that one is Type=dbus: systemd holds it
+    # unstarted until it owns the bus name, so waiting means the first focus
+    # report of a session lands instead of being dropped by an absent
+    # destination. A later drop is harmless -- the producer swallows it and the
+    # next focus change repairs the state -- but the first one would otherwise
+    # sit wrong until the user happened to switch windows.
+    systemd.user.services.corne-arcane-focus-x11 =
+      lib.mkIf (cfg.enable && cfg.x11FocusProducer) {
+        description = "Corne Arcane X11 focus producer";
+        wantedBy = [ "graphical-session.target" ];
+        partOf = [ "graphical-session.target" ];
+        after = [ "graphical-session-pre.target" "corne-arcane-host.service" ];
+        # xprop is the entire implementation: one property read per focus
+        # change, and none of the properties it can name carries a title.
+        path = [ pkgs.xorg.xprop ];
+        # A session that never exported DISPLAY has no X11 to watch.
+        unitConfig.ConditionEnvironment = "DISPLAY";
+        serviceConfig = {
+          Type = "simple";
+          ExecStart = "${corneArcaneHost}/bin/corne-arcane-focus-x11";
+          Restart = "always";
+          RestartSec = 2;
+        };
+      };
   };
 }

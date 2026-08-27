@@ -13,7 +13,23 @@ services.corne-arcane-host = {
   desktopNotifications = true;
   # pomodoroUnit = "pomodoro.timer";
   pomodoroDuration = 1500;
+  # x11FocusProducer = true;   # sessions without KWin or GNOME Shell
 };
+```
+
+`x11FocusProducer` decides whether anything reports the focused window on a
+session that has no compositor bridge -- Cinnamon, XFCE, i3, Plasma 5. Leave it
+off under KWin or GNOME Shell, which report focus from inside the compositor.
+Leaving it off where it is needed is not a partial failure: nothing calls
+`ReportActiveWindow` at all, so focus never leaves its default and every window
+presents as the same district regardless of what is in front of you. The
+producer ships with the package either way; the option only decides whether the
+user unit is declared, because NixOS builds user units from module definitions
+rather than from the package's unit directory.
+
+```bash
+systemctl --user status corne-arcane-focus-x11.service
+corne-arcane-focus-x11 --verbose   # prints each identity and what it matched
 ```
 
 Apply the host configuration with the machine's usual NixOS deployment
