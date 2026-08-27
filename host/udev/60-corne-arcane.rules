@@ -1,0 +1,10 @@
+# Let the daemon, diagnostics, and Vial open the keyboard's Raw HID node without
+# root. QMK Raw HID uses vendor usage page 0xFF60 on the running firmware; this
+# matches the foostan Corne vendor ID rather than the RP2040 bootloader, which
+# needs QMK's own flashing rules instead.
+#
+# The 60- prefix is load-bearing. systemd consumes the uaccess tag from a match
+# in 73-seat-late.rules, so a rule that adds the tag at a higher number is
+# evaluated too late and grants nothing at all. GROUP is the fallback for
+# sessions logind gives no ACL, such as ssh or su.
+KERNEL=="hidraw*", ATTRS{idVendor}=="4653", MODE="0660", GROUP="plugdev", TAG+="uaccess"

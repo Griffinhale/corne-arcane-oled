@@ -12,6 +12,17 @@ stdenvNoCC.mkDerivation {
   nativeCheckInputs = [ python3 ];
   doCheck = true;
 
+  # The install layout lives in ./Makefile so that this derivation and debian/
+  # cannot drift apart. Everything Nix-specific is the three variables below plus
+  # the environment wrapping in postInstall.
+  dontBuild = true;
+
+  makeFlags = [
+    "PREFIX=${placeholder "out"}"
+    "PYTHON=${pythonEnv}/bin/python"
+  ];
+
+  # The tests inject fake Gio objects, so the check phase needs no PyGObject.
   checkPhase = ''
     runHook preCheck
     PYTHONDONTWRITEBYTECODE=1 ${python3}/bin/python -m unittest discover -s tests -v
@@ -20,58 +31,16 @@ stdenvNoCC.mkDerivation {
     runHook postCheck
   '';
 
-  installPhase = ''
-    runHook preInstall
-    mkdir -p \
-      "$out/lib/corne-arcane-host" \
-      "$out/bin" \
-      "$out/share/corne-arcane/zsh" \
-      "$out/share/corne-arcane/bash" \
-      "$out/share/corne-arcane/fish/conf.d" \
-      "$out/share/corne-arcane/firefox" \
-      "$out/share/gnome-shell/extensions/corne-arcane-focus@griffinhale.github.io" \
-      "$out/share/mozilla/native-messaging-hosts" \
-      "$out/share/systemd/user" \
-      "$out/share/applications"
-    cp -r arcane_host "$out/lib/corne-arcane-host/"
-
-    mkdir -p "$out/share/kwin/scripts/cornearcane"
-    cp -r kwin/contents kwin/metadata.json "$out/share/kwin/scripts/cornearcane/"
-    cp zsh/corne-arcane.zsh "$out/share/corne-arcane/zsh/"
-    cp bash/corne-arcane.bash "$out/share/corne-arcane/bash/"
-    cp fish/conf.d/corne-arcane.fish "$out/share/corne-arcane/fish/conf.d/"
-    cp firefox/manifest.json firefox/background.js firefox/scroll.js \
-      "$out/share/corne-arcane/firefox/"
-    cp gnome/metadata.json gnome/extension.js \
-      "$out/share/gnome-shell/extensions/corne-arcane-focus@griffinhale.github.io/"
-    substitute firefox/io.github.griffinhale.corne_arcane.json.in \
-      "$out/share/mozilla/native-messaging-hosts/io.github.griffinhale.corne_arcane.json" \
-      --replace-fail '@out@' "$out"
-    cp desktop/corne-arcane-vial.desktop "$out/share/applications/"
-    substitute systemd/corne-arcane-host.service \
-      "$out/share/systemd/user/corne-arcane-host.service" \
-      --replace-fail '@out@' "$out"
-
-    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-host" \
-      --add-flags "-m arcane_host.daemon" \
-      --set PYTHONPATH "$out/lib/corne-arcane-host" \
+  # Only the paths Nix pins differ from the portable defaults: the KWin script
+  # lives in the store, Vial is deliberately absent from the system profile, and
+  # systemctl is not otherwise on the daemon's PATH.
+  postInstall = ''
+    wrapProgram "$out/bin/corne-arcane-host" \
       --set CORNE_ARCANE_KWIN_SCRIPT \
         "$out/share/kwin/scripts/cornearcane/contents/code/main.js"
-    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-event" \
-      --add-flags "-m arcane_host.event" \
-      --set PYTHONPATH "$out/lib/corne-arcane-host"
-    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-diagnostics" \
-      --add-flags "-m arcane_host.diagnostics" \
-      --set PYTHONPATH "$out/lib/corne-arcane-host"
-    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-browser-bridge" \
-      --add-flags "-m arcane_host.browser_bridge" \
-      --set PYTHONPATH "$out/lib/corne-arcane-host"
-    makeWrapper ${pythonEnv}/bin/python "$out/bin/corne-arcane-vial" \
-      --add-flags "-m arcane_host.vial_launcher" \
-      --set PYTHONPATH "$out/lib/corne-arcane-host" \
+    wrapProgram "$out/bin/corne-arcane-vial" \
       --set CORNE_ARCANE_VIAL_BIN ${lib.escapeShellArg (lib.getExe vial)} \
       --set CORNE_ARCANE_SYSTEMCTL ${lib.escapeShellArg (lib.getExe' systemd "systemctl")}
-    runHook postInstall
   '';
 
   meta = {

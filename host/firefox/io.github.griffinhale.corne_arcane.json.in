@@ -1,7 +1,7 @@
 {
   "name": "io.github.griffinhale.corne_arcane",
   "description": "Privacy-bounded Corne Arcane browser activity bridge",
-  "path": "@out@/bin/corne-arcane-browser-bridge",
+  "path": "@PREFIX@/bin/corne-arcane-browser-bridge",
   "type": "stdio",
   "allowed_extensions": ["corne-arcane-activity@griffinhale.github.io"]
 }

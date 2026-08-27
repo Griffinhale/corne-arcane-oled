@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import io
 import json
+import re
 import shlex
 import struct
 import subprocess
@@ -157,7 +159,21 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
         self.assertIn("{kind, intensity}", browser)
 
     def test_optional_assets_are_packaged_but_not_auto_enabled(self) -> None:
-        package = (ROOT / "package.nix").read_text()
+        """Every optional asset is installed, and nothing switches it on.
+
+        The install layout lives in Makefile; package.nix and debian/rules both
+        drive it, so the Makefile is where an asset would silently go missing.
+        The browser bridge is named by the native-messaging manifest, which is
+        the file that has to carry the right path for Firefox to find it.
+        """
+        packaging = "\n".join(
+            (ROOT / name).read_text()
+            for name in (
+                "Makefile",
+                "package.nix",
+                "firefox/io.github.griffinhale.corne_arcane.json.in",
+            )
+        )
         for asset in (
             "bash/corne-arcane.bash",
             "fish/conf.d/corne-arcane.fish",
@@ -165,9 +181,47 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
             "gnome/metadata.json",
             "corne-arcane-browser-bridge",
         ):
-            self.assertIn(asset, package)
-        self.assertNotIn("gnome-extensions enable", package)
-        self.assertNotIn("browser.runtime.install", package)
+            self.assertIn(asset, packaging)
+        self.assertNotIn("gnome-extensions enable", packaging)
+        self.assertNotIn("browser.runtime.install", packaging)
+
+    def test_generated_commands_cover_the_public_identities(self) -> None:
+        """The public command names come from one list, and each one resolves.
+
+        The Makefile generates every bin/ stub from COMMANDS, so a typo there
+        would ship a command that fails at import rather than at build time.
+        """
+        makefile = (ROOT / "Makefile").read_text()
+        entries = dict(re.findall(r"^\t([a-z-]+):([a-z_]+) *\\?$", makefile, re.MULTILINE))
+        self.assertEqual(
+            {f"corne-arcane-{suffix}" for suffix in entries},
+            {
+                "corne-arcane-host",
+                "corne-arcane-event",
+                "corne-arcane-diagnostics",
+                "corne-arcane-browser-bridge",
+                "corne-arcane-vial",
+            },
+        )
+        for module in entries.values():
+            imported = importlib.import_module(f"arcane_host.{module}")
+            self.assertTrue(callable(getattr(imported, "main", None)))
+
+    def test_installed_layout_places_search_path_assets_under_lib(self) -> None:
+        """Assets found by another program's search path belong in lib/.
+
+        NixOS globs {etc,lib}/systemd/user and {etc,lib}/udev/rules.d, and the
+        nixpkgs Firefox wrapper globs lib/mozilla/native-messaging-hosts. Debian
+        uses the same three directories under /usr. share/ is for the assets a
+        human installs by following the README.
+        """
+        makefile = (ROOT / "Makefile").read_text()
+        for variable, expected in (
+            ("UNITDIR", "$(PREFIX)/lib/systemd/user"),
+            ("MOZILLADIR", "$(PREFIX)/lib/mozilla/native-messaging-hosts"),
+            ("UDEVDIR", "$(PREFIX)/lib/udev/rules.d"),
+        ):
+            self.assertRegex(makefile, rf"(?m)^{variable} *= *{re.escape(expected)}$")
 
 
 class BroadProfileTests(unittest.TestCase):
