@@ -65,8 +65,8 @@ class ResourceClassParsingTests(unittest.TestCase):
         self.assertEqual(parse_wm_class(""), ("", ""))
 
     def test_gtk_application_id_is_read_per_property_not_per_position(self) -> None:
-        text = 'WM_CLASS(STRING) = "nemo", "Nemo"\n_GTK_APPLICATION_ID(STRING) = "org.x.Nemo"\n'
-        self.assertEqual(parse_gtk_application_id(text), "org.x.Nemo")
+        text = 'WM_CLASS(STRING) = "nemo", "Nemo"\n_GTK_APPLICATION_ID(STRING) = "org.Nemo"\n'
+        self.assertEqual(parse_gtk_application_id(text), "org.Nemo")
         self.assertEqual(parse_wm_class(text), ("Nemo", "nemo"))
         # An unset property must not shift the other one's value.
         unset = 'WM_CLASS(STRING) = "xterm", "XTerm"\n_GTK_APPLICATION_ID:  not found.\n'
@@ -74,10 +74,8 @@ class ResourceClassParsingTests(unittest.TestCase):
         self.assertEqual(parse_wm_class(unset), ("XTerm", "xterm"))
 
     def test_application_id_wins_the_second_slot_over_the_instance(self) -> None:
-        gtk = 'WM_CLASS(STRING) = "nemo", "Nemo"\n_GTK_APPLICATION_ID(STRING) = "org.x.Nemo"\n'
-        self.assertEqual(
-            read_identity("0x1", lambda *a, **k: Completed(gtk)), ("Nemo", "org.x.Nemo")
-        )
+        gtk = 'WM_CLASS(STRING) = "nemo", "Nemo"\n_GTK_APPLICATION_ID(STRING) = "org.Nemo"\n'
+        self.assertEqual(read_identity("0x1", lambda *a, **k: Completed(gtk)), ("Nemo", "org.Nemo"))
         plain = 'WM_CLASS(STRING) = "navigator", "Firefox"\n_GTK_APPLICATION_ID:  not found.\n'
         self.assertEqual(
             read_identity("0x1", lambda *a, **k: Completed(plain)), ("Firefox", "navigator")
@@ -127,8 +125,7 @@ class ReporterTests(unittest.TestCase):
         sent: list[tuple[str, str]] = []
         windows = {
             "0x1": 'WM_CLASS(STRING) = "navigator", "Firefox"',
-            "0x2": 'WM_CLASS(STRING) = "nemo", "Nemo"\n'
-            '_GTK_APPLICATION_ID(STRING) = "org.x.Nemo"\n',
+            "0x2": 'WM_CLASS(STRING) = "nemo", "Nemo"\n_GTK_APPLICATION_ID(STRING) = "org.Nemo"\n',
         }
 
         def run(argv, **_kwargs):
@@ -146,7 +143,7 @@ class ReporterTests(unittest.TestCase):
             ),
             run,
         )
-        self.assertEqual(sent, [("Firefox", "navigator"), ("Nemo", "org.x.Nemo")])
+        self.assertEqual(sent, [("Firefox", "navigator"), ("Nemo", "org.Nemo")])
 
     def test_second_identifier_rescues_applications_the_class_misses(self) -> None:
         """The point of sending both: either one may be the one that resolves.

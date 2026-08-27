@@ -118,6 +118,9 @@ PROFILES = (
                 "soffice",
                 "abiword",
                 "xed",
+                "org.x.editor",
+                "xreader",
+                "org.x.reader",
                 "gedit",
                 "org.gnome.gedit",
                 "org.gnome.texteditor",
@@ -195,6 +198,11 @@ PROFILES = (
                 "zed",
                 "dev.zed.zed",
                 "sublime-text",
+                "sublime2",
+                "sublime3",
+                "subl",
+                "godot",
+                "org.godotengine.godot",
                 "kate",
                 "org.kde.kate",
                 "kdevelop",
@@ -251,6 +259,10 @@ PROFILES = (
         frozenset(
             {
                 "nemo",
+                "org.nemo",
+                "bulky",
+                "warpinator",
+                "org.x.warpinator",
                 "nautilus",
                 "org.gnome.nautilus",
                 "dolphin",
@@ -277,8 +289,17 @@ PROFILES = (
         "settings",
         frozenset(
             {
+                # One binary backs every cinnamon-settings-* launcher
+                # (Exec=cinnamon-settings <module>), so this single alias covers
+                # the whole control-centre family rather than 30 dead strings.
                 "cinnamon-settings",
                 "cinnamon-control-center",
+                "nm-connection-editor",
+                "blueman-adapters",
+                "cups",
+                "gnome-online-accounts-gtk",
+                "onboard-settings",
+                "corne-arcane-vial",
                 "gnome-control-center",
                 "org.gnome.settings",
                 "gnome-tweaks",
