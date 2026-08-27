@@ -162,6 +162,34 @@ class HandleTests(unittest.TestCase):
             (fd / "4").symlink_to("/tmp/ordinary")
             self.assertEqual(hid_ownership.hidraw_handles(77, root), (Path("/dev/hidraw4"),))
 
+    def test_missing_vial_binary_is_reported_actionably_and_hands_back(self) -> None:
+        """Debian has no vial package, so the default name usually resolves to nothing.
+
+        The daemon has already been stopped by the time Popen runs, so the
+        failure has to name the fix and the guard still has to restore service.
+        """
+        order: list[str] = []
+
+        class Guard:
+            def __enter__(self) -> None:
+                order.append("enter")
+
+            def __exit__(self, *_args: object) -> None:
+                order.append("exit")
+
+        stderr = io.StringIO()
+        with (
+            patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
+            patch.object(vial_launcher.subprocess, "Popen", side_effect=FileNotFoundError()),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(vial_launcher.main([]), 1)
+
+        self.assertEqual(order, ["enter", "exit"])
+        message = stderr.getvalue()
+        self.assertIn("CORNE_ARCANE_VIAL_BIN", message)
+        self.assertIn("not found", message)
+
 
 if __name__ == "__main__":
     unittest.main()

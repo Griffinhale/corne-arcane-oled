@@ -258,6 +258,11 @@ class DesktopMonitor:
         "type='signal',interface='org.freedesktop.Notifications',member='NotificationClosed'",
     )
 
+    # A terminated monitor cannot be revived in place, so the connection is
+    # rebuilt. Back off so a bus that keeps refusing does not become a reconnect
+    # loop, and cap the wait well inside a work session.
+    RETRY_DELAYS = (2, 4, 8, 16, 32, 60)
+
     def __init__(
         self,
         Gio,
@@ -275,6 +280,9 @@ class DesktopMonitor:
         self.changed = changed
         self.connection = None
         self.filter_id = 0
+        self._retry_source = 0
+        self._retry_index = 0
+        self._closing = False
 
     def start(self) -> bool:
         try:
@@ -304,6 +312,8 @@ class DesktopMonitor:
             except (AttributeError, TypeError):
                 pass
             self.adapter.monitor_enabled = True
+            self.adapter.monitor_error = None
+            self._retry_index = 0
             return True
         except Exception as error:
             self.adapter.monitor_error = type(error).__name__
@@ -385,8 +395,46 @@ class DesktopMonitor:
                 file=sys.stderr,
                 flush=True,
             )
+        self._schedule_retry()
+
+    def _schedule_retry(self) -> None:
+        """Rebuild the connection later; a lost monitor is a deaf adapter.
+
+        Losing the connection has the same effect as never acquiring one: the
+        daemon keeps running and reporting healthy while no notification reaches
+        the wire, so Restart=always never fires. Callers that supply no GLib
+        main loop simply do not reconnect.
+        """
+        if self._closing or self._retry_source:
+            return
+        if not hasattr(self.GLib, "timeout_add_seconds"):
+            return
+        delay = self.RETRY_DELAYS[min(self._retry_index, len(self.RETRY_DELAYS) - 1)]
+        self._retry_index += 1
+        self._retry_source = self.GLib.timeout_add_seconds(delay, self._retry)
+
+    def _retry(self) -> bool:
+        self._retry_source = 0
+        if self._closing:
+            return False
+        # The old connection is already dead; drop it rather than filtering it.
+        self.connection = None
+        self.filter_id = 0
+        if self.start():
+            if self.verbose:
+                print("arcane-host: notification monitor reconnected", file=sys.stderr, flush=True)
+        else:
+            self._schedule_retry()
+        return False
 
     def close(self) -> None:
+        self._closing = True
+        if self._retry_source and hasattr(self.GLib, "source_remove"):
+            try:
+                self.GLib.source_remove(self._retry_source)
+            except Exception:
+                pass
+        self._retry_source = 0
         if self.connection is None:
             return
         if self.filter_id:

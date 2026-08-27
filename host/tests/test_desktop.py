@@ -174,5 +174,92 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.adapter.monitor_enabled)
 
 
+class MonitorReconnectTests(unittest.TestCase):
+    """A dropped monitor connection must not leave the adapter permanently deaf."""
+
+    class FakeGLib:
+        def __init__(self) -> None:
+            self.scheduled: list[tuple[int, object]] = []
+            self.removed: list[int] = []
+            self._next_source = 100
+
+        def timeout_add_seconds(self, delay, callback):
+            self._next_source += 1
+            self.scheduled.append((delay, callback))
+            return self._next_source
+
+        def source_remove(self, source) -> None:
+            self.removed.append(source)
+
+    def setUp(self) -> None:
+        self.glib = self.FakeGLib()
+        self.adapter = DesktopNotificationAdapter(
+            NotificationPolicy(), b"session salt", lambda _digest: False
+        )
+
+    def monitor(self, starts):
+        """A monitor whose start() outcome is scripted, so retries are observable."""
+        outcomes = list(starts)
+        instance = DesktopMonitor(object(), self.glib, self.adapter, lambda: 0)
+        instance.start = lambda: self._record_start(instance, outcomes)
+        return instance
+
+    def _record_start(self, instance, outcomes) -> bool:
+        succeeded = outcomes.pop(0) if outcomes else True
+        self.adapter.monitor_enabled = succeeded
+        if succeeded:
+            instance._retry_index = 0
+        return succeeded
+
+    def test_closed_connection_schedules_a_reconnect(self) -> None:
+        monitor = self.monitor([True])
+        monitor._on_closed(object(), True, None)
+        self.assertFalse(self.adapter.monitor_enabled)
+        self.assertEqual(len(self.glib.scheduled), 1)
+        delay, callback = self.glib.scheduled[0]
+        self.assertEqual(delay, DesktopMonitor.RETRY_DELAYS[0])
+
+        self.assertFalse(callback())
+        self.assertTrue(self.adapter.monitor_enabled)
+
+    def test_repeated_failure_backs_off_and_caps(self) -> None:
+        monitor = self.monitor([False] * 10)
+        monitor._on_closed(object(), True, None)
+        for _ in range(9):
+            self.glib.scheduled[-1][1]()
+        delays = [delay for delay, _ in self.glib.scheduled]
+        self.assertEqual(
+            delays[: len(DesktopMonitor.RETRY_DELAYS)], list(DesktopMonitor.RETRY_DELAYS)
+        )
+        self.assertTrue(all(delay == DesktopMonitor.RETRY_DELAYS[-1] for delay in delays[6:]))
+        self.assertFalse(self.adapter.monitor_enabled)
+
+    def test_one_retry_in_flight_at_a_time(self) -> None:
+        monitor = self.monitor([True])
+        monitor._on_closed(object(), True, None)
+        monitor._on_closed(object(), True, None)
+        self.assertEqual(len(self.glib.scheduled), 1)
+
+    def test_close_cancels_a_pending_retry_and_stops_reconnecting(self) -> None:
+        monitor = self.monitor([True])
+        monitor._on_closed(object(), True, None)
+        source = self.glib._next_source
+        monitor.close()
+        self.assertEqual(self.glib.removed, [source])
+
+        # A retry callback that had already fired must not resurrect the monitor.
+        self.adapter.monitor_enabled = False
+        self.assertFalse(self.glib.scheduled[0][1]())
+        self.assertFalse(self.adapter.monitor_enabled)
+
+    def test_absent_main_loop_disables_reconnect_rather_than_failing(self) -> None:
+        """daemon.py constructs the monitor with a real GLib; tests may not."""
+        monitor = DesktopMonitor(object(), object(), self.adapter, lambda: 0)
+        self.adapter.monitor_enabled = True
+        monitor._on_closed(object(), True, None)
+        self.assertFalse(self.adapter.monitor_enabled)
+        self.assertEqual(self.adapter.monitor_error, "ConnectionClosed")
+
+
 if __name__ == "__main__":
     unittest.main()

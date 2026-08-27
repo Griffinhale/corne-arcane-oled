@@ -14,7 +14,17 @@ VIAL = os.environ.get("CORNE_ARCANE_VIAL_BIN", "vial")
 def run_vial(args: list[str]) -> int:
     process: subprocess.Popen[bytes] | None = None
     try:
-        process = subprocess.Popen((VIAL, *args))
+        try:
+            process = subprocess.Popen((VIAL, *args))
+        except FileNotFoundError as missing:
+            # Vial ships as an AppImage on most distributions, so unlike
+            # systemctl the default name is often absent. Say so rather than
+            # reporting a bare ENOENT: the daemon has already been handed off by
+            # this point and the user needs to know it is coming back.
+            raise RuntimeError(
+                f"Vial executable {VIAL!r} not found. Set CORNE_ARCANE_VIAL_BIN to its "
+                "path; Vial is distributed as an AppImage and is usually not on PATH."
+            ) from missing
         return process.wait()
     finally:
         if process is not None and process.poll() is None:

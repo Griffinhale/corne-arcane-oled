@@ -28,6 +28,17 @@ jobs:
       - name: Native tests
         run: make test
 
+      # The notification adapter eavesdrops with BecomeMonitor, and the failure
+      # mode it had was invisible to unit tests and invisible on dbus-daemon.
+      # Exercise the real path on a throwaway bus. dbus-run-session launches
+      # dbus-daemon, which is what Debian 12 ships; dbus-broker, Debian 13's
+      # default, needs a systemd user session and is exercised on real desktops.
+      - name: Notification monitor on a live session bus
+        run: |
+          sudo apt-get install --yes dbus
+          cd host && dbus-run-session -- python3 -m unittest \
+            discover -s tests -k NotificationMonitorLiveBus -v
+
       - name: Repository hygiene
         run: make hygiene
 
