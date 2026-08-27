@@ -299,7 +299,14 @@ PROFILES = (
                 "cups",
                 "gnome-online-accounts-gtk",
                 "onboard-settings",
+                "onboard",
+                "cinnamon-onscreen-keyboard",
                 "corne-arcane-vial",
+                "org.gnome.calculator",
+                "org.gnome.screenshot",
+                "org.gnome.calendar",
+                "gucharmap",
+                "nixos-manual",
                 "gnome-control-center",
                 "org.gnome.settings",
                 "gnome-tweaks",
@@ -325,6 +332,40 @@ PROFILES = (
         scene=Scene.ARCHIVE,
         floor=Floor.WORKSHOP,
         category_override=Category.SYSTEM,
+    ),
+    ApplicationProfile(
+        # Shares DUEL/COMMONS with communication, because there is nothing left
+        # to share: Floor fills civic bits 0-1 exactly and Scene is validated to
+        # 0..2, so the six profile-visible pairs are all spoken for. Scene.FOCUS
+        # and Floor.SPECIAL are not a seventh -- the Pomodoro overrides whatever
+        # profile is active rather than occupying a pair, and the firmware reads
+        # Floor.SPECIAL directly as its observatory flag, so a profile claiming
+        # it would raise the Observatory over an ordinary window. A distinct
+        # look for games needs a fourth Scene, which is firmware work.
+        #
+        # The profile still earns its keep: the identifier is what the salted
+        # digest is taken from, so every launcher and title collapses to one
+        # focus identity for suppression instead of a stream of unknowns.
+        "games",
+        frozenset(
+            {
+                "steam",
+                "lutris",
+                "net.lutris.lutris",
+                "heroic",
+                "com.heroicgameslauncher.hgl",
+                "bottles",
+                "com.usebottles.bottles",
+                "protontricks",
+                "gamescope",
+                "factorio",
+                "minecraft-launcher",
+                "org.prismlauncher.prismlauncher",
+                "prismlauncher",
+            }
+        ),
+        scene=Scene.DUEL,
+        floor=Floor.COMMONS,
     ),
 )
 

@@ -15,7 +15,16 @@ from arcane_host.adapters import SemanticAdapters
 from arcane_host.browser_bridge import decode_message, read_message, write_reply
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import _ALIASES, PROFILES, normalize_identifier, resolve_profile
-from arcane_host.protocol import Category, Floor, Intensity, Scene, Secondary
+from arcane_host.protocol import (
+    Category,
+    CivicState,
+    Floor,
+    Intensity,
+    Message,
+    Scene,
+    Secondary,
+    build_packet,
+)
 from arcane_host.semantic import SemanticResolver
 
 ROOT = Path(__file__).parents[1]
@@ -281,6 +290,38 @@ class ProfileTableInvariantTests(unittest.TestCase):
             self.assertNotEqual(profile.scene, Scene.FOCUS, profile.identifier)
             self.assertNotEqual(profile.floor, Floor.SPECIAL, profile.identifier)
 
+    def test_every_profile_scene_is_one_the_wire_accepts(self) -> None:
+        """Profiles may only name Scene values encode_report will actually pack.
+
+        The scene field is validated to 0..2, so a profile inventing a fourth
+        would raise at the point of sending rather than at the point of adding.
+        """
+        for profile in PROFILES:
+            build_packet(
+                Message.HEARTBEAT,
+                1,
+                1,
+                profile.scene,
+                0,
+                civic=CivicState(floor=profile.floor),
+            )
+
+    def test_the_profile_visible_pairs_are_exhausted(self) -> None:
+        """Documents why profiles share, so the next addition is not a surprise.
+
+        Floor fills civic bits 0-1 exactly and Scene is capped at three, of which
+        Scene.FOCUS is the Pomodoro's. That leaves six pairs for profiles, and
+        all six are in use -- a new category has to share one, or the firmware
+        has to learn a fourth scene.
+        """
+        available = {
+            (scene, floor)
+            for scene in (Scene.DUEL, Scene.ARCHIVE)
+            for floor in (Floor.COMMONS, Floor.RESEARCH, Floor.WORKSHOP)
+        }
+        occupied = {(profile.scene, profile.floor) for profile in PROFILES}
+        self.assertEqual(occupied, available)
+
     def test_identifiers_are_unique(self) -> None:
         identifiers = [profile.identifier for profile in PROFILES]
         self.assertEqual(len(identifiers), len(set(identifiers)))
@@ -345,6 +386,23 @@ class CinnamonCoverageTests(unittest.TestCase):
             profile = resolve_profile(application)
             self.assertIsNotNone(profile, application)
             self.assertEqual(profile.identifier, identifier, application)
+
+    def test_games_and_launchers_resolve(self) -> None:
+        for application in ("steam", "lutris", "heroic", "bottles", "protontricks", "factorio"):
+            profile = resolve_profile(application)
+            self.assertIsNotNone(profile, application)
+            self.assertEqual(profile.identifier, "games", application)
+
+    def test_small_utilities_fold_into_settings(self) -> None:
+        for application in (
+            "org.gnome.Calculator",
+            "org.gnome.Screenshot",
+            "gucharmap",
+            "onboard",
+            "cinnamon-onscreen-keyboard",
+            "nixos-manual",
+        ):
+            self.assertEqual(resolve_profile(application).identifier, "settings", application)
 
     def test_wm_class_capitalization_and_desktop_suffixes_both_resolve(self) -> None:
         """Producers disagree on spelling; normalization is what reconciles them."""
