@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import shlex
 import struct
 import subprocess
 import unittest
@@ -87,7 +88,7 @@ class BrowserActivityTests(unittest.TestCase):
 
 class OptionalAssetTests(unittest.TestCase):
     def test_bash_composes_prompt_array_debug_trap_and_is_idempotent(self) -> None:
-        hook = ROOT / "bash" / "corne-arcane.bash"
+        hook = shlex.quote(str(ROOT / "bash" / "corne-arcane.bash"))
         program = f"""
 PROMPT_COMMAND=(existing_one existing_two)
 trap ': existing_debug' DEBUG

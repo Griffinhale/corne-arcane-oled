@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -296,6 +297,12 @@ class DesktopMonitor:
                 None,
             )
             self.filter_id = connection.add_filter(self._filter, None)
+            # A monitor that sends anything is terminated by the broker, so a
+            # lost connection must be visible rather than silently deaf.
+            try:
+                connection.connect("closed", self._on_closed)
+            except (AttributeError, TypeError):
+                pass
             self.adapter.monitor_enabled = True
             return True
         except Exception as error:
@@ -361,7 +368,23 @@ class DesktopMonitor:
         except Exception:
             # Monitoring is enrichment; malformed or unfamiliar traffic is ignored.
             self.adapter.counters.parse_failures += 1
-        return message
+        # Consume every eavesdropped message. Returning it lets GDBus route the
+        # copy as if it were addressed here and auto-reply UnknownMethod; a
+        # monitor that sends anything is disconnected by dbus-broker, which
+        # deafens this adapter permanently after the first notification.
+        return None
+
+    def _on_closed(self, connection, remote_peer_vanished, error) -> None:
+        del connection
+        self.adapter.monitor_enabled = False
+        self.adapter.monitor_error = "ConnectionClosed"
+        if self.verbose:
+            print(
+                f"arcane-host: notification monitor connection closed "
+                f"(remote_peer_vanished={remote_peer_vanished}, error={error})",
+                file=sys.stderr,
+                flush=True,
+            )
 
     def close(self) -> None:
         if self.connection is None:

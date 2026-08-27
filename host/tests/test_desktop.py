@@ -97,6 +97,69 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(summary.priority, Priority.CRITICAL)
         self.assertTrue(summary.persistent)
 
+    def test_monitor_consumes_eavesdropped_traffic(self) -> None:
+        """A monitor that returns messages is disconnected by dbus-broker.
+
+        GDBus routes anything the filter returns, so an eavesdropped Notify
+        would be answered with UnknownMethod from the monitor connection. The
+        broker terminates monitors that send, permanently deafening the
+        adapter after the first notification.
+        """
+
+        class Gio:
+            class DBusMessageType:
+                METHOD_CALL = 1
+                METHOD_RETURN = 2
+                SIGNAL = 4
+
+        class Message:
+            def __init__(self, message_type, member=None):
+                self._type = message_type
+                self._member = member
+
+            def get_message_type(self):
+                return self._type
+
+            def get_interface(self):
+                return "org.freedesktop.Notifications"
+
+            def get_member(self):
+                return self._member
+
+            def get_body(self):
+                return None
+
+            def get_serial(self):
+                return 1
+
+            def get_reply_serial(self):
+                return 1
+
+            def get_sender(self):
+                return ":1.20"
+
+            def get_destination(self):
+                return ":1.20"
+
+        monitor = DesktopMonitor(Gio, object(), self.adapter, lambda: 0)
+        for message in (
+            Message(Gio.DBusMessageType.METHOD_CALL, "Notify"),
+            Message(Gio.DBusMessageType.METHOD_RETURN),
+            Message(Gio.DBusMessageType.SIGNAL, "NotificationClosed"),
+            Message(99),
+        ):
+            self.assertIsNone(monitor._filter(None, message, True, None))
+
+    def test_closed_monitor_stops_reporting_as_enabled(self) -> None:
+        class Gio:
+            pass
+
+        monitor = DesktopMonitor(Gio, object(), self.adapter, lambda: 0)
+        self.adapter.monitor_enabled = True
+        monitor._on_closed(object(), True, None)
+        self.assertFalse(self.adapter.monitor_enabled)
+        self.assertEqual(self.adapter.monitor_error, "ConnectionClosed")
+
     def test_monitor_denied_disables_only_adapter(self) -> None:
         class DeniedGio:
             class BusType:
