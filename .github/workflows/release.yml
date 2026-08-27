@@ -1,0 +1,133 @@
+name: Release
+
+# A tag named fw-v* publishes a firmware release. The version lives in the tag
+# and nowhere else in the tree, so there is no second place for it to drift.
+# Running this by hand builds and checks every asset without publishing
+# anything, which is how the pipeline gets tested.
+on:
+  push:
+    tags:
+      - "fw-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Read Vial-QMK pin
+        id: qmk-pin
+        run: echo "revision=$(tr -d '[:space:]' < VIAL_QMK_REVISION)" >> "$GITHUB_OUTPUT"
+
+      - name: Clone pinned Vial-QMK recursively
+        env:
+          QMK_REVISION: ${{ steps.qmk-pin.outputs.revision }}
+        run: |
+          git clone --recurse-submodules https://github.com/vial-kb/vial-qmk.git "$RUNNER_TEMP/vial-qmk"
+          git -C "$RUNNER_TEMP/vial-qmk" checkout --detach "$QMK_REVISION"
+          git -C "$RUNNER_TEMP/vial-qmk" submodule update --init --recursive
+
+      - name: Install Vial-QMK toolchain packages
+        run: |
+          "$RUNNER_TEMP/vial-qmk/util/qmk_install.sh" -y
+
+      - name: Install the QMK CLI
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qmk-venv"
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install qmk
+          "$RUNNER_TEMP/qmk-venv/bin/python" -m pip install \
+              -r "$RUNNER_TEMP/vial-qmk/requirements.txt"
+          echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Confirm the toolchain answers
+        run: |
+          qmk --version
+          arm-none-eabi-gcc --version | head -1
+
+      - name: Build the firmware
+        env:
+          QMK_ROOT: ${{ runner.temp }}/vial-qmk
+        run: make release-build
+
+      # Only the release image ships. The build also produces a diagnostic
+      # image and two pacing candidates that exist for measurement and have
+      # never been flashed, and none of them belong in a download that a
+      # stranger will drag onto a keyboard.
+      - name: Stage the firmware image
+        run: |
+          mkdir -p dist
+          cp artifacts/release/griffin_arcane-release.uf2 dist/corne_arcane.uf2
+          test ! -e dist/griffin_arcane-hp8-candidate.uf2
+          test ! -e dist/griffin_arcane-hp10-candidate.uf2
+          ls -l dist
+
+      # The repository's own test suite runs on every push, so the packaging
+      # build skips its test override and only exercises the install layout.
+      - name: Build the host package
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes debhelper dpkg-dev python3-gi
+          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -b -uc -us
+          cp ../corne-arcane-host_*_all.deb dist/
+
+      - name: Record hashes
+        run: cd dist && sha256sum ./* > SHA256SUMS && cat SHA256SUMS
+
+      - name: Write the release notes
+        env:
+          QMK_REVISION: ${{ steps.qmk-pin.outputs.revision }}
+        run: |
+          {
+            echo "Built from \`${GITHUB_SHA}\` against Vial-QMK \`${QMK_REVISION}\`."
+            echo
+            echo "## What the keyboard image assumes"
+            echo
+            echo "\`corne_arcane.uf2\` is built for a **Corne (crkbd rev1) with RP2040"
+            echo "controllers and both OLEDs fitted**, converted with \`CONVERT_TO=rp2040_ce\`."
+            echo "It will not do the right thing on a different controller conversion, and"
+            echo "it expects both displays to be present."
+            echo
+            echo "Read [docs/flashing.md](docs/flashing.md) before you flash. Bootloader entry"
+            echo "on this board is less obvious than usual, and there is one rule about TRRS"
+            echo "that will cost you hardware if you get it wrong."
+            echo
+            echo "## The optional host package"
+            echo
+            echo "The keyboard is complete without it. The \`.deb\` is architecture independent"
+            echo "and carries its own version, which tracks the host package and not this"
+            echo "firmware tag."
+            echo
+            echo "## Source"
+            echo
+            echo "This firmware is a derivative work of Vial-QMK and is licensed under the"
+            echo "GNU General Public License v2. The complete corresponding source for these"
+            echo "binaries is the tagged commit above, in this repository, including the"
+            echo "attached source archives."
+          } > dist/NOTES.md
+          cat dist/NOTES.md
+
+      - name: Upload build for inspection
+        uses: actions/upload-artifact@v7
+        with:
+          name: corne-arcane-release-candidate
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/fw-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "Firmware $GITHUB_REF_NAME" \
+            --notes-file dist/NOTES.md \
+            dist/corne_arcane.uf2 \
+            dist/corne-arcane-host_*_all.deb \
+            dist/SHA256SUMS

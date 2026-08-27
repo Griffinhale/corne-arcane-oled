@@ -127,6 +127,7 @@ path that could leak content even if something upstream misbehaved.
 - Host daemon and adapters: [`host/README.md`](host/README.md)
 - NixOS specifics: [`BUILD_NOTES_NIXOS.md`](BUILD_NOTES_NIXOS.md)
 - Where the images come from: [`docs/images/README.md`](docs/images/README.md)
+- Patching this, and the one rule about goldens: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Deferred product work: [`docs/backlog.md`](docs/backlog.md)
 
 ## License

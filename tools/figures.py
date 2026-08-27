@@ -175,8 +175,14 @@ def fields_animation(frames, out_dir):
     return animate(cells, 20, 26, font(17), out_dir / "fields.gif", 550)
 
 
-# The repository's social preview. GitHub renders this at 1280x640.
-SOCIAL = ["scenario_duel-idle", "scenario_long-cast", "scenario_impact"]
+# The repository's social preview. GitHub renders this at 1280x640. The three
+# panels are one world at three points in its day: the sun high, the right
+# wizard mid-cast, and the moon up over a different district.
+SOCIAL = [
+    ("sky_commons_day", "the sun at its highest"),
+    ("side_1_voice_3_form_6", "the right wizard casts"),
+    ("sky_commons_night", "the moon is up"),
+]
 SOCIAL_TEXT = [
     ("Corne Arcane", 62, INK, 0),
     ("A deterministic spell-duel world that lives", 21, DIM, 34),
@@ -195,10 +201,19 @@ def social_figure(frames, out_dir):
         y += lead
         drawer.text((72, y), text, fill=fill, font=font(size))
         y += size
+    label_font = font(16)
     x = 566
-    for name in SOCIAL:
+    for name, label in SOCIAL:
         panels = cell(frames, name, name, 3, 10)
-        img.paste(panels, (x, (640 - panels.height) // 2))
+        top = (640 - panels.height) // 2 - 14
+        img.paste(panels, (x, top))
+        drawer.text(
+            (x + panels.width // 2, top + panels.height + 20),
+            label,
+            fill=DIM,
+            font=label_font,
+            anchor="mm",
+        )
         x += panels.width + 22
     path = out_dir / "social-preview.png"
     img.save(path, optimize=True)
