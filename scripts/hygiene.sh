@@ -2,15 +2,24 @@
 set -eu
 
 tracked=$(git ls-files | grep -v '^docs/archive/' || true)
+
+# Prose checks read prose. Images and captures carry no planning language, and a
+# byte sequence inside one is not a sentence, so they are filtered out of every
+# content check below. Path checks still see every tracked file.
+text_only() {
+    [ "$#" -eq 0 ] && return 0
+    grep -Il . "$@" 2>/dev/null || true
+}
+tracked_text=$(text_only $tracked)
 if printf '%s\n' "$tracked" | grep -Eiq '(^|/)(m[0-9]+([._-][0-9]+)?|post-m[0-9]+)[^/]*($|/)'; then
     echo "FAIL hygiene: historical-plan-prefixed tracked path outside docs/archive" >&2
     printf '%s\n' "$tracked" | grep -Ei '(^|/)(m[0-9]+([._-][0-9]+)?|post-m[0-9]+)[^/]*($|/)' >&2
     exit 1
 fi
 
-if [ -n "$tracked" ] && rg -n \
+if [ -n "$tracked_text" ] && rg -n \
     'ARCANE_M1[0-3]|griffin_(anim|hostoled)|\b[Mm]1[0-3]_[A-Za-z0-9_]*' \
-    $tracked; then
+    $tracked_text; then
     echo "FAIL hygiene: historical-plan-prefixed identifier or retired keymap name" >&2
     exit 1
 fi
@@ -18,7 +27,7 @@ fi
 # Active code and documentation describe current invariants. Planning history
 # belongs under docs/archive; protocol-version compatibility language remains
 # valid because this expression targets only planning labels.
-active=$(printf '%s\n' "$tracked" | grep -Ev '^(scripts/hygiene\.sh|\.gitignore)$' || true)
+active=$(printf '%s\n' "$tracked_text" | grep -Ev '^(scripts/hygiene\.sh|\.gitignore)$' || true)
 if [ -n "$active" ] && rg -n -i \
     '\bmilestones?\b|\btracks? [A-Z](?:/[A-Z])*\b|\bwaves? [0-9]+\b|\bM[0-9]+(?:\.[0-9]+)?\b' \
     $active | grep -Ev '(^|[(/])(docs/)?archive/'; then
@@ -36,9 +45,9 @@ if [ -z "$version" ]; then
     echo "FAIL hygiene: no version declared in host/pyproject.toml" >&2
     exit 1
 fi
-restated=$(printf '%s\n' "$tracked" |
+restated=$(printf '%s\n' "$tracked_text" |
     grep -Ev '^(host/pyproject\.toml|debian/changelog)$' |
-    xargs grep -lF -- "$version" 2>/dev/null || true)
+    xargs grep -lIF -- "$version" 2>/dev/null || true)
 if [ -n "$restated" ]; then
     echo "FAIL hygiene: package version $version restated outside host/pyproject.toml" >&2
     printf '%s\n' "$restated" >&2

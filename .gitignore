@@ -41,3 +41,6 @@ artifacts/m13/*.map
 # Python tool caches
 /.mypy_cache/
 /.ruff_cache/
+
+# Python bytecode
+__pycache__/
