@@ -14,10 +14,13 @@ the `griffin` recovery image throughout evaluation.
   rune, familiar, wall, and vortex. Field collision precedes spell collision;
   slot exhaustion resolves immediately. Rune, Familiar, Wall, Vortex, Echo,
   and Bloom are physical-input-reachable derived signatures.
-- Six broad districts—Commons, Research, Workshop, Observatory, Scriptorium,
-  and Studio—share two city voices. DND preserves the focused district and
-  applies QUIET. Only active Pomodoro selects Observatory, whose four stages
-  change at duration quarters (default 1,500 seconds).
+- Eight broad districts—Commons, Research, Workshop, Observatory, Scriptorium,
+  Studio, Arena, and Undercroft—share two city voices. Each is derived from a
+  (civic floor, host scene) pair; none has wire state of its own. DND preserves
+  the focused district and applies QUIET. Only active Pomodoro selects
+  Observatory, whose four stages change at duration quarters (default 1,500
+  seconds). Background media no longer overrides a recognised application, so a
+  focused window keeps its own district while something is playing.
 - Scry is a three-page diegetic World Almanac (City, Duel, Host). Each OLED
   receives its own outlined scroll with explicit labels and local values. It
   unrolls from the centre, moves its reading upward while held, and freezes
@@ -37,7 +40,7 @@ the `griffin` recovery image throughout evaluation.
 
 ## Automated evidence
 
-- The exact visual catalog has 548 hash-pinned scenes. Focused contact sheets
+- The exact visual catalog has 622 hash-pinned scenes. Focused contact sheets
   cover all district/mode/intensity combinations, four Observatory stages,
   three almanac pages, the unroll/held/reroll sequence, maximum crowd moments,
   all seven fields at four zones, and scroll/tab/page Research instruments at
@@ -69,24 +72,31 @@ below that hard stop. `make release-build` creates both unflashed HP candidates;
 `make release-budget` checks all four images. Record exact measurements and
 hashes here only after a clean build.
 
-Clean pinned-QMK build on 2026-07-22:
+Clean pinned-QMK build on 2026-08-27, `arm-none-eabi-gcc 15.2.rel1`:
 
 | Artifact | Flash | Static RAM | Reserve below 96 KiB | SHA-256 (UF2) |
 |---|---:|---:|---:|---|
-| release (8-HP baseline) | 85,040 B | 13,560 B | 13,264 B | `601bf1d87b6be87ca948071d6d8d7a13906ba4e79efa5a9074745810659a468a` |
-| diagnostic | 86,460 B | 13,688 B | 11,844 B | `7b1cf15ce37f68e0165e2bac4f31bddb11354fc4ad64d542cb60e12897b60c40` |
-| 8-HP candidate | 85,040 B | 13,560 B | 13,264 B | `d945648ca3338104fe40269350e3a685f681782b8d24eee2ac36f1d97db60a30` |
-| 10-HP candidate | 85,056 B | 13,560 B | 13,248 B | `25793a9d50ae79eabce7bbb0c7378530e9ce59d339bd1b8523e802e6e4a3c11e` |
+| release (8-HP baseline) | 85,356 B | 13,552 B | 12,948 B | `c57adebbb8bf053082eb062bbef6d044ec781042b2e32b1823e5f12b85bbbc40` |
+| diagnostic | 86,736 B | 13,680 B | 11,568 B | `2a13d894d233905e29c0cbb43154deec6341f7e7fb8f4a90e2cd774f436c07bb` |
+| 8-HP candidate | 85,356 B | 13,552 B | 12,948 B | `e74188cc6f595981d1719e93285e27bf4af502bf4129d2732fc0320d90b41b2c` |
+| 10-HP candidate | 85,364 B | 13,552 B | 12,940 B | `e945374d2beb88be1328286bee6b471dba56d1264873022b752846b81e00beb9` |
 
-The 548-scene golden catalog hash is
-`46850bc8da41c0d51907a0282521161a6260caa31d8b3389158c9a4dd235f571`.
+The compiler is recorded because it moves these numbers: the same tree built
+before the Arena and Undercroft landed measured 84,472 B release flash under
+this compiler, against 85,040 B in the previous row set. The districts
+themselves cost 884 B of flash and no static RAM. Every image keeps at least
+3,376 B below the 88 KiB ceiling and at least 11,568 B below the 96 KiB hard
+stop.
+
+The 622-scene golden catalog hash is
+`da8a70a9e082d9628f07ee4faf5a2a3272ce921e55b282c1b6d3fa0f8c8dfb1c`.
 These are unflashed candidate hashes and do not replace the 0.4 table.
 
 ## Physical gate (all pending)
 
 - [x] Accept or explicitly supersede `physical-checklist.md`; archive its
   evidence without changing the recorded 0.4/recovery artifacts.
-- [ ] Review the six districts, four Observatory stages, all almanac pages,
+- [ ] Review the eight districts, four Observatory stages, all almanac pages,
   maximum crowds, and seven fields/four zones on both OLEDs at desk distance.
 - [ ] Flash identical candidate artifacts to both unpowered, separated halves;
   repeat split timing/stack diagnostics, Vial handoff, sleep/non-wake, stale
