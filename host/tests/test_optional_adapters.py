@@ -8,13 +8,14 @@ import shlex
 import struct
 import subprocess
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from arcane_host.adapters import SemanticAdapters
 from arcane_host.browser_bridge import decode_message, read_message, write_reply
 from arcane_host.policy import NotificationPolicy
-from arcane_host.profiles import resolve_profile
-from arcane_host.protocol import Floor, Intensity, Scene, Secondary
+from arcane_host.profiles import _ALIASES, PROFILES, normalize_identifier, resolve_profile
+from arcane_host.protocol import Category, Floor, Intensity, Scene, Secondary
 from arcane_host.semantic import SemanticResolver
 
 ROOT = Path(__file__).parents[1]
@@ -253,6 +254,102 @@ class BroadProfileTests(unittest.TestCase):
         for application in ("code", "vscodium", "zed", "jetbrains-idea"):
             profile = resolve_profile(application)
             self.assertEqual((profile.scene, profile.floor), (Scene.DUEL, Floor.WORKSHOP))
+
+
+class ProfileTableInvariantTests(unittest.TestCase):
+    def test_alias_sets_are_disjoint(self) -> None:
+        """Two profiles claiming one alias would silently shadow each other.
+
+        _ALIASES is a flat comprehension over PROFILES, so a duplicate does not
+        raise -- whichever profile comes last simply wins, and an application
+        quietly changes scene. Catch it here instead.
+        """
+        counts = Counter(alias for profile in PROFILES for alias in profile.aliases)
+        duplicates = sorted(alias for alias, count in counts.items() if count > 1)
+        self.assertEqual(duplicates, [], f"aliases claimed by more than one profile: {duplicates}")
+        self.assertEqual(len(_ALIASES), sum(len(profile.aliases) for profile in PROFILES))
+
+    def test_profiles_never_claim_the_pomodoro_wire_values(self) -> None:
+        """Scene.FOCUS and Floor.SPECIAL belong to the Observatory ritual.
+
+        semantic.py selects both only while a Pomodoro is running, and the
+        firmware reads Floor.SPECIAL as its observatory flag, so a profile using
+        either would make an ordinary focused window impersonate the ritual.
+        Profiles must draw from what is left.
+        """
+        for profile in PROFILES:
+            self.assertNotEqual(profile.scene, Scene.FOCUS, profile.identifier)
+            self.assertNotEqual(profile.floor, Floor.SPECIAL, profile.identifier)
+
+    def test_identifiers_are_unique(self) -> None:
+        identifiers = [profile.identifier for profile in PROFILES]
+        self.assertEqual(len(identifiers), len(set(identifiers)))
+
+    def test_aliases_are_already_normalized(self) -> None:
+        """Lookup normalizes the incoming value, never the table.
+
+        An alias written with uppercase or an underscore would be unreachable.
+        """
+        for profile in PROFILES:
+            for alias in profile.aliases:
+                self.assertEqual(
+                    alias, normalize_identifier(alias), f"{profile.identifier}/{alias}"
+                )
+
+
+class CinnamonCoverageTests(unittest.TestCase):
+    """Cinnamon reports through the X11 producer, which sends WM_CLASS strings."""
+
+    def test_file_managers_resolve_to_files(self) -> None:
+        for application in ("nemo", "nautilus", "org.gnome.Nautilus", "dolphin", "thunar", "caja"):
+            profile = resolve_profile(application)
+            self.assertIsNotNone(profile, application)
+            self.assertEqual(profile.identifier, "files", application)
+            self.assertEqual((profile.scene, profile.floor), (Scene.ARCHIVE, Floor.COMMONS))
+
+    def test_system_tools_resolve_to_settings(self) -> None:
+        for application in (
+            "cinnamon-settings",
+            "gnome-control-center",
+            "systemsettings",
+            "xfce4-settings-manager",
+            "mintupdate",
+            "synaptic",
+            "timeshift-gtk",
+        ):
+            profile = resolve_profile(application)
+            self.assertIsNotNone(profile, application)
+            self.assertEqual(profile.identifier, "settings", application)
+            self.assertEqual((profile.scene, profile.floor), (Scene.ARCHIVE, Floor.WORKSHOP))
+        # System tools speak for the machine, so their notifications read as
+        # system rather than falling through to OTHER.
+        self.assertEqual(resolve_profile("mintupdate").category_override, Category.SYSTEM)
+
+    def test_mint_and_xfce_applications_reach_their_existing_profiles(self) -> None:
+        expected = {
+            "xed": "scriptorium",
+            "pluma": "scriptorium",
+            "mousepad": "scriptorium",
+            # The X11 class LibreOffice actually reports, whatever the module.
+            "soffice": "scriptorium",
+            "xviewer": "studio",
+            "pix": "studio",
+            "celluloid": "studio",
+            "xfce4-terminal": "terminal",
+            "mate-terminal": "terminal",
+            "hexchat": "communication",
+            "geany": "code",
+            "epiphany": "browser",
+        }
+        for application, identifier in expected.items():
+            profile = resolve_profile(application)
+            self.assertIsNotNone(profile, application)
+            self.assertEqual(profile.identifier, identifier, application)
+
+    def test_wm_class_capitalization_and_desktop_suffixes_both_resolve(self) -> None:
+        """Producers disagree on spelling; normalization is what reconciles them."""
+        for value in ("Nemo", "nemo.desktop", "NEMO", "/usr/share/applications/nemo.desktop"):
+            self.assertEqual(resolve_profile(value).identifier, "files", value)
 
 
 if __name__ == "__main__":

@@ -61,8 +61,23 @@ everything else still works and focus simply stays at its default.
 - GNOME Shell: opt-in, and requires Shell 45 or newer. The extension uses the
   ESM extension API, which GNOME 44 and older cannot load at all.
 - Plain X11: enable `corne-arcane-focus-x11.service`, which needs `xprop` from
-  `x11-utils`. Use this on XFCE, Cinnamon, i3, or Plasma 5.
+  `x11-utils`. Use this on XFCE, Cinnamon, i3, or Plasma 5. It reports the
+  `WM_CLASS` pair and `_GTK_APPLICATION_ID`, which between them cover the
+  spellings the profile table knows.
 - Other Wayland compositors have no producer yet.
+
+An application nothing recognizes still works; it just presents as the default
+scene. To find out which ones those are, run the producer in the foreground and
+use the desktop normally:
+
+```bash
+corne-arcane-focus-x11 --verbose      # prints each identity and what it matched
+```
+
+Anything printed as `UNMATCHED` is a missing alias in
+`arcane_host/profiles.py`. Profiles draw only from the Scene and Floor values
+the firmware already knows, and never `Scene.FOCUS` or `Floor.SPECIAL`, which
+belong to the Pomodoro ritual.
 
 ## Optional adapters
 
