@@ -19,9 +19,20 @@ class Message(IntEnum):
 
 
 class Scene(IntEnum):
+    """Broad activity posture; Raw HID payload byte 0 and split external bits 1-2.
+
+    Two bits is the whole allocation, so REVEL is the last value this enum can
+    ever hold. Scenes are activity categories a profile can be classified into,
+    never per-application identities: DUEL produces, ARCHIVE consults, FOCUS is
+    the Pomodoro ritual, and REVEL is leisure the user has entered and is inside
+    of. The firmware never renders a scene; it pairs one with a Floor to derive
+    a district.
+    """
+
     DUEL = 0
     ARCHIVE = 1
     FOCUS = 2
+    REVEL = 3
 
 
 class Category(IntEnum):
@@ -178,8 +189,8 @@ def build_packet(
         raise ValueError("session must fit uint32")
     if not 0 <= sequence <= 0xFFFF:
         raise ValueError("sequence must fit uint16")
-    if not 0 <= int(scene) < 3:
-        raise ValueError("scene must be in 0..2")
+    if int(scene) not in tuple(Scene):
+        raise ValueError(f"scene must be in 0..{max(Scene)}")
     if summary is not None and notification_count is not None:
         raise ValueError("pass either notification_count or summary")
     if summary is None:

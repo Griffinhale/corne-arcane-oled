@@ -39,6 +39,7 @@ class SemanticResolver:
         self.override = override
         self.focus_scene = Scene.DUEL
         self.focus_floor = Floor.COMMONS
+        self.focus_matched = False
         self.dnd = False
         self.pomodoro = False
         self.pomodoro_stage = Intensity.CALM
@@ -74,6 +75,7 @@ class SemanticResolver:
         *,
         focus_scene: Scene | None = None,
         focus_floor: Floor | None = None,
+        focus_matched: bool | None = None,
         dnd: bool | None = None,
         pomodoro: bool | None = None,
         pomodoro_stage: Intensity | None = None,
@@ -88,6 +90,8 @@ class SemanticResolver:
             self.focus_scene = focus_scene
         if focus_floor is not None:
             self.focus_floor = focus_floor
+        if focus_matched is not None:
+            self.focus_matched = focus_matched
         if dnd is not None:
             self.dnd = dnd
         if pomodoro is not None:
@@ -107,13 +111,19 @@ class SemanticResolver:
         if browser_intensity is not None:
             self.browser_intensity = browser_intensity
         current_summary = self.state.summary if summary is None else summary
+        # Media is a fallback, not an override. It fills in ARCHIVE only when no
+        # profile claimed the focused window, so playing something in the
+        # background can neither hide a recognised application nor forge a
+        # scene/floor pair the firmware reads as a different district -- coding
+        # with music stays the Workshop rather than becoming the Undercroft.
+        # The Pomodoro ritual still outranks everything but an explicit override.
         scene = (
             self.override
             if self.override is not None
             else Scene.FOCUS
             if self.pomodoro
             else Scene.ARCHIVE
-            if self.media_playing
+            if self.media_playing and not self.focus_matched
             else self.focus_scene
         )
         mode = Mode.QUIET if (self.dnd or self.pomodoro) else Mode.NORMAL

@@ -39,6 +39,10 @@ def normalize_identifier(value: str | None) -> str:
 # Floor.SPECIAL are unavailable here: both are owned by the Pomodoro ritual
 # (semantic.py) and read by the firmware as the Observatory flag, so assigning
 # either would make an ordinary window impersonate a ritual.
+#
+# That leaves three scenes over three floors. The firmware derives eight
+# districts from those nine pairs (duel_civic_district in duel_host.h), so the
+# pair a profile picks is the whole of what it controls about presentation.
 PROFILES = (
     ApplicationProfile(
         "browser",
@@ -283,9 +287,12 @@ PROFILES = (
         floor=Floor.COMMONS,
     ),
     ApplicationProfile(
-        # System maintenance, not combat: the one Scene/Floor pair no other
-        # profile occupies, so adjusting the machine reads differently from
-        # working on it.
+        # System maintenance, not combat. ARCHIVE/WORKSHOP is the pair no other
+        # profile occupies, and the firmware now checks the scene before it
+        # short-circuits on the Workshop floor, so adjusting the machine renders
+        # as the Undercroft rather than as another bench beside code and
+        # terminal. Media must not be able to forge this pair -- see the
+        # focus_matched gate in semantic.py.
         "settings",
         frozenset(
             {
@@ -334,18 +341,14 @@ PROFILES = (
         category_override=Category.SYSTEM,
     ),
     ApplicationProfile(
-        # Shares DUEL/COMMONS with communication, because there is nothing left
-        # to share: Floor fills civic bits 0-1 exactly and Scene is validated to
-        # 0..2, so the six profile-visible pairs are all spoken for. Scene.FOCUS
-        # and Floor.SPECIAL are not a seventh -- the Pomodoro overrides whatever
-        # profile is active rather than occupying a pair, and the firmware reads
-        # Floor.SPECIAL directly as its observatory flag, so a profile claiming
-        # it would raise the Observatory over an ordinary window. A distinct
-        # look for games needs a fourth Scene, which is firmware work.
+        # REVEL is what the fourth scene value exists for: leisure the user has
+        # entered, as opposed to producing (DUEL) or consulting (ARCHIVE). Over
+        # the Commons floor it selects the Arena, so a game no longer shares
+        # Commons with every chat window.
         #
-        # The profile still earns its keep: the identifier is what the salted
-        # digest is taken from, so every launcher and title collapses to one
-        # focus identity for suppression instead of a stream of unknowns.
+        # The identifier is also what the salted digest is taken from, so every
+        # launcher and per-game window class collapses to one focus identity for
+        # suppression instead of a stream of unknowns.
         "games",
         frozenset(
             {
@@ -364,7 +367,7 @@ PROFILES = (
                 "prismlauncher",
             }
         ),
-        scene=Scene.DUEL,
+        scene=Scene.REVEL,
         floor=Floor.COMMONS,
     ),
 )

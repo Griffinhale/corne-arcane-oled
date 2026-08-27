@@ -92,6 +92,7 @@ class DaemonRuntime:
                 summary=summary,
                 focus_scene=self.arbiter.scene,
                 focus_floor=self.arbiter.floor,
+                focus_matched=self.arbiter.matched,
             )
             if self.resolver.state.revision != self.last_revision:
                 self.last_revision = self.resolver.state.revision

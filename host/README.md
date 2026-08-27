@@ -77,7 +77,14 @@ corne-arcane-focus-x11 --verbose      # prints each identity and what it matched
 Anything printed as `UNMATCHED` is a missing alias in
 `arcane_host/profiles.py`. Profiles draw only from the Scene and Floor values
 the firmware already knows, and never `Scene.FOCUS` or `Floor.SPECIAL`, which
-belong to the Pomodoro ritual.
+belong to the Pomodoro ritual. That leaves nine pairs, of which seven are taken;
+`Scene.REVEL` is the last value the enum can hold, because the split snapshot
+gives scene exactly two bits. A new category therefore either shares a pair with
+an existing profile or is firmware work.
+
+Matching also decides how a profile competes with background media: something
+playing supplies `Scene.ARCHIVE` only while nothing is recognised, so a
+recognised window keeps its own district with music on.
 
 ## Optional adapters
 

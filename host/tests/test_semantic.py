@@ -44,6 +44,57 @@ class SemanticTests(unittest.TestCase):
         self.assertFalse(resolver.update(pomodoro=True))
         self.assertEqual(resolver.state.revision, revision)
 
+    def test_media_yields_to_a_recognised_window(self) -> None:
+        """Background audio fills in a scene; it does not overwrite one.
+
+        Before this rule, anything playing forced ARCHIVE regardless of focus.
+        Paired with the reordered firmware derivation that would have made
+        coding with music resolve to ARCHIVE/WORKSHOP -- the Undercroft -- and
+        gaming with music resolve to ARCHIVE/COMMONS, the Studio.
+        """
+        resolver = SemanticResolver()
+        # Unmatched window: media still supplies the scene, as it always has.
+        resolver.update(focus_scene=Scene.DUEL, focus_floor=Floor.COMMONS, focus_matched=False)
+        resolver.update(media_playing=True)
+        self.assertEqual(resolver.state.scene, Scene.ARCHIVE)
+        self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+
+        # Recognised windows keep their own pair, and still light the channel.
+        for scene, floor in (
+            (Scene.DUEL, Floor.WORKSHOP),
+            (Scene.REVEL, Floor.COMMONS),
+            (Scene.DUEL, Floor.RESEARCH),
+        ):
+            resolver.update(focus_scene=scene, focus_floor=floor, focus_matched=True)
+            self.assertEqual(resolver.state.scene, scene)
+            self.assertEqual(resolver.state.civic.floor, floor)
+            self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
+
+        # The Pomodoro still outranks both.
+        resolver.update(pomodoro=True)
+        self.assertEqual(resolver.state.scene, Scene.FOCUS)
+        self.assertEqual(resolver.state.civic.floor, Floor.SPECIAL)
+
+    def test_focus_arbiter_reports_whether_it_matched(self) -> None:
+        """An unmatched window and a DUEL/COMMONS profile pick the same pair."""
+        arbiter = FocusArbiter(settle_seconds=0)
+        self.assertFalse(arbiter.matched)
+        arbiter.report("some-unpackaged-thing", None, 0.0)
+        arbiter.poll(0.0)
+        self.assertEqual(
+            (arbiter.scene, arbiter.floor, arbiter.matched), (Scene.DUEL, Floor.COMMONS, False)
+        )
+        arbiter.report("slack", None, 1.0)
+        arbiter.poll(1.0)
+        self.assertEqual(
+            (arbiter.scene, arbiter.floor, arbiter.matched), (Scene.DUEL, Floor.COMMONS, True)
+        )
+        arbiter.report("steam", None, 2.0)
+        arbiter.poll(2.0)
+        self.assertEqual(
+            (arbiter.scene, arbiter.floor, arbiter.matched), (Scene.REVEL, Floor.COMMONS, True)
+        )
+
     def test_canonical_profiles(self) -> None:
         self.assertEqual(resolve_profile("Firefox", None).identifier, "browser")
         self.assertEqual(resolve_profile(None, "org.kde.konsole.desktop").identifier, "terminal")

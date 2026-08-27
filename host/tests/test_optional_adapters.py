@@ -293,8 +293,9 @@ class ProfileTableInvariantTests(unittest.TestCase):
     def test_every_profile_scene_is_one_the_wire_accepts(self) -> None:
         """Profiles may only name Scene values encode_report will actually pack.
 
-        The scene field is validated to 0..2, so a profile inventing a fourth
-        would raise at the point of sending rather than at the point of adding.
+        The scene field is validated against the enum, so a profile inventing a
+        value past REVEL would raise at the point of sending rather than at the
+        point of adding.
         """
         for profile in PROFILES:
             build_packet(
@@ -306,21 +307,56 @@ class ProfileTableInvariantTests(unittest.TestCase):
                 civic=CivicState(floor=profile.floor),
             )
 
-    def test_the_profile_visible_pairs_are_exhausted(self) -> None:
-        """Documents why profiles share, so the next addition is not a surprise.
+    def test_the_scene_enum_can_never_grow_again(self) -> None:
+        """REVEL is the last value the two-bit split allocation can hold.
 
-        Floor fills civic bits 0-1 exactly and Scene is capped at three, of which
-        Scene.FOCUS is the Pomodoro's. That leaves six pairs for profiles, and
-        all six are in use -- a new category has to share one, or the firmware
-        has to learn a fourth scene.
+        DUEL_HOST_CONTEXT_PACK gives scene bits 1-2 of the external byte, so a
+        fifth value could not survive the master-to-slave hop even though the
+        Raw HID payload carries scene as a whole byte.
+        """
+        self.assertEqual(max(Scene), 3)
+        self.assertEqual(len(Scene), 4)
+
+    def test_which_profile_visible_pairs_are_left(self) -> None:
+        """Documents the remaining headroom, so the next addition is not a surprise.
+
+        Floor fills civic bits 0-1 exactly and Scene is now full at four, one of
+        which belongs to the Pomodoro. That leaves nine pairs for profiles.
+        Seven are in use; the two free ones both pair REVEL with a floor whose
+        district REVEL does not currently select, so claiming either is firmware
+        work rather than a host-side edit.
         """
         available = {
             (scene, floor)
-            for scene in (Scene.DUEL, Scene.ARCHIVE)
+            for scene in (Scene.DUEL, Scene.ARCHIVE, Scene.REVEL)
             for floor in (Floor.COMMONS, Floor.RESEARCH, Floor.WORKSHOP)
         }
         occupied = {(profile.scene, profile.floor) for profile in PROFILES}
-        self.assertEqual(occupied, available)
+        self.assertLessEqual(occupied, available)
+        self.assertEqual(
+            available - occupied,
+            {(Scene.REVEL, Floor.RESEARCH), (Scene.REVEL, Floor.WORKSHOP)},
+        )
+
+    def test_the_two_districts_that_need_an_exact_pair(self) -> None:
+        """Arena and Undercroft are the pairs the firmware derivation keys on.
+
+        Both are single-profile pairs, so a stray edit that moved either profile
+        would silently collapse its district back into Commons or Workshop with
+        nothing else failing.
+        """
+        by_identifier = {profile.identifier: profile for profile in PROFILES}
+        self.assertEqual(
+            (by_identifier["games"].scene, by_identifier["games"].floor),
+            (Scene.REVEL, Floor.COMMONS),
+        )
+        self.assertEqual(
+            (by_identifier["settings"].scene, by_identifier["settings"].floor),
+            (Scene.ARCHIVE, Floor.WORKSHOP),
+        )
+        for pair in ((Scene.REVEL, Floor.COMMONS), (Scene.ARCHIVE, Floor.WORKSHOP)):
+            holders = [p.identifier for p in PROFILES if (p.scene, p.floor) == pair]
+            self.assertEqual(len(holders), 1, holders)
 
     def test_identifiers_are_unique(self) -> None:
         identifiers = [profile.identifier for profile in PROFILES]
