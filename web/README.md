@@ -123,7 +123,7 @@ Two numbers make the case:
 
 | | |
 | --- | --- |
-| module size, `-Oz`, stripped | 68 kB |
+| module size, `-Oz`, stripped | 78 kB |
 | imports the module declares | **none** |
 
 The empty import list is the interesting one. The module cannot call the page,

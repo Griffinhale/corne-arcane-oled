@@ -156,8 +156,9 @@ than desk-coloured, and the keyboard's two-panel framing disappears.
 - `--layout desk` two panels with the desk between them, as the review sheets
   and the hardware show it
 - `--layout left`, `--layout right` a single tower
-- `--layout town` a 256x256 city: one wizard tower at the centre, houses either
-  side, a plaza in front, and the hour in the sky
+- `--layout town` a 256x256 city: one wizard tower at the centre, cut away to
+  the storey the host is on, houses and hills either side, a paved plaza in
+  front, and the hour, the weather and the duel in the sky
 - `--size 512x512` a fixed window with the city centred at the largest whole
   pixel scale that fits; `--scale N` instead sizes the window to the city
 - `--no-duels` still champions; `--seed` chooses which city you get
