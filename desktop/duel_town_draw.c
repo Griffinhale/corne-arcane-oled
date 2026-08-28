@@ -1333,23 +1333,39 @@ static void draw_spells(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
         spell_point(side, traj, travel, &x, &y);
 
         /*
-         * The trail follows the real curve, sampled backwards along it, and
-         * fades through the dither rather than simply stopping. A straight
-         * stub behind a thing on an arc was the tell that the old carrier was
-         * a sprite rather than something in flight.
+         * The whole flight, not the head and a smear behind it.
+         *
+         * Eight samples of trail read as a smudge while the frame is moving
+         * and as nothing much at all when it stops -- and stopped is how an
+         * ambient surface shows this world, one still every minute or every
+         * quarter hour. So the path already travelled is drawn end to end,
+         * thinning back toward the balcony it left, and the arc still to come
+         * is dotted in ahead of the head. One frame then says thrown along
+         * this trajectory, this far along, which is a sentence the old
+         * carrier could only say in motion.
+         *
+         * spell_point() already answers for any point on the flight, so this
+         * is a loop bound and a shade level rather than new geometry.
          */
-        for (int t = 1; t <= 8; t++) {
+        for (int t = travel + 6; t <= 255; t += 6) {
+            int ax, ay;
+            spell_point(side, traj, t, &ax, &ay);
+            if (shade_on(ax, ay, 8))
+                px(fb, ax, ay, true);
+        }
+        for (int t = 0; t < travel; t += 3) {
             int tx, ty;
-            spell_point(side, traj, travel - t * 5, &tx, &ty);
-            if (tx == x && ty == y)
-                continue;
-            int tr = radius - t / 3;
+            spell_point(side, traj, t, &tx, &ty);
+            /* How far back down the arc this sample is, which is the whole of
+             * what decides how solid it still looks. */
+            int behind = travel - t;
+            int tr = radius - behind / 20;
             if (tr < 1)
                 tr = 1;
-            /* Solid where it just was, thinning behind: sampled sparsely the
-             * trail came out as a dotted line, which is a different thing
-             * from something moving fast. */
-            shade_disc(fb, tx, ty, tr, 16 - t * 2);
+            int level = 16 - behind / 6;
+            if (level < 5)
+                level = 5;
+            shade_disc(fb, tx, ty, tr, level);
         }
 
         draw_spell_body(fb, x, y, element, radius, lead, frame, (uint32_t)side * 977u + r->seed);
@@ -1534,6 +1550,196 @@ static void draw_fields(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     }
 }
 
+/* ---- what the duel leaves behind ------------------------------------------
+ *
+ * Residue is the world's long memory: four zones along the battlefield axis,
+ * each holding an element and an intensity that saturates at three and decays
+ * over about forty-five seconds. The town has been drawing none of it.
+ *
+ * That matters more here than it does on the panels, because the town is the
+ * layer an ambient surface shows, and an ambient surface samples this world
+ * discontinuously -- one still every minute or every quarter hour. Sampled
+ * that way the world has residue standing 94% of the time and a spell in the
+ * air 29%, so these marks are the likeliest thing a single frame has with
+ * which to say that a duel is going on at all.
+ *
+ * They go where the panels put theirs: on the roofline directly under the
+ * spell lanes, which here is the near row's own silhouette. That is the one
+ * surface at these two positions that is neither already built on nor down in
+ * the plaza's furniture, it is where the flights terminate and where
+ * draw_outcome bursts, and it is against the sky -- which is what a still
+ * frame needs more than anything else. The element vocabulary is the panels'
+ * too, mark for mark, so the two drawings stay opinions about one world.
+ * Void is the same exception it is there: it takes pixels away instead of
+ * adding them, which only works because the roof it bites into is real.
+ */
+
+/*
+ * The four zones on the town's axis. The doorsteps are where the flights
+ * terminate -- TOWER_CX +/- SPELL_REACH, the points draw_outcome bursts over
+ * -- and the middle pair is the panels' own anchor spacing (13/48/207/242 in
+ * battlefield u) carried across onto those two fixed points. Zones 0 and 3
+ * are the only two the self-playing world ever fills; the middle pair is
+ * drawn because the world model has it, not because this caster reaches it.
+ */
+static const int residue_x[SIM_RESIDUE_ZONES] = {
+    TOWER_CX - SPELL_REACH,
+    61,
+    195,
+    TOWER_CX + SPELL_REACH,
+};
+
+/*
+ * The top of the near row's silhouette over one column, so a mark can be put
+ * on the roof rather than at a height guessed near it. Every branch is the
+ * matching branch of draw_near_row read back: a pitch rises half a pixel per
+ * column from the eave, a stepped gable stands three rows per step, and a
+ * parapet is flat six above the eave. Nothing standing there is the ground.
+ */
+static int near_row_roof_y(int x) {
+    for (size_t i = 0; i < sizeof near_row / sizeof near_row[0]; i++) {
+        const town_building_t *b = &near_row[i];
+        int x1 = b->x0 + b->width;
+        if (x < b->x0 || x > x1)
+            continue;
+        int top = GROUND_Y - b->height;
+        int in = x - b->x0 < x1 - x ? x - b->x0 : x1 - x;
+        if (b->roof == 1) {
+            int y = top - 3;
+            for (int s = 1; s < 4; s++)
+                if (s * b->width / 8 <= in)
+                    y = top - 3 - s * 3;
+            return y;
+        }
+        if (b->roof == 2)
+            return top - 6;
+        return top - in / 2;
+    }
+    return GROUND_Y;
+}
+
+/* The half-width of an ellipse of radii (rw, rh) at one offset along the
+ * other axis. The scorch and the pit that eats it are both drawn out of it. */
+static int ellipse_span(int rw, int rh, int off) {
+    int span = 0;
+    while ((span + 1) * (span + 1) * rh * rh + off * off * rw * rw <= rw * rw * rh * rh)
+        span++;
+    return span;
+}
+
+static void draw_residue(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
+    for (uint8_t zone = 0; zone < SIM_RESIDUE_ZONES; zone++) {
+        int intensity = (int)DUEL_RENDER_RESIDUE_INTENSITY(r, zone);
+        if (!intensity)
+            continue;
+        int x = residue_x[zone];
+        int base = near_row_roof_y(x);
+        /* Intensity is the whole of the size: one mark that grows is easier
+         * to read across a room than three marks that differ in kind. */
+        int half = 3 + intensity * 3;
+        uint32_t salt = (uint32_t)zone * 631u + r->seed;
+
+        /* Scorched roof under the mark, drawn first and drawn downwards into
+         * the tiles. Three pixels of shard on a roof that already has courses
+         * and a dormer in it is not a mark; a burnt patch with something
+         * standing in it is -- and it is what void has to bite into. */
+        int rw = half + 2;
+        int rh = 2 + intensity;
+        for (int dy = 0; dy <= rh; dy++) {
+            int span = ellipse_span(rw, rh, dy);
+            for (int dx = -span; dx <= span; dx++)
+                if (shade_on(x + dx, base + dy, 3 + intensity * 2))
+                    px(fb, x + dx, base + dy, true);
+        }
+
+        switch (DUEL_RENDER_RESIDUE_ELEMENT(r, zone)) {
+            case ELEM_FORCE: {
+                /* A rubble mound: broken blocks heaped into a shallow arc,
+                 * highest over the middle, and slates thrown off the pitch. */
+                for (int i = 0; i < 4 + intensity * 5; i++) {
+                    uint32_t h = town_hash(salt, (uint32_t)i);
+                    int dx = (int)(h % (uint32_t)(2 * half + 1)) - half;
+                    int lift = (half - (dx < 0 ? -dx : dx)) / 2;
+                    int by = base - (int)((h >> 7) % (uint32_t)(lift + 1));
+                    int size = 1 + (int)((h >> 11) & 1u);
+                    fill_rect(fb, x + dx, by - size, x + dx + size, by, true);
+                }
+                for (int i = 0; i < intensity; i++) {
+                    uint32_t h = town_hash(salt, (uint32_t)i + 90u);
+                    int dx = (int)(h % (uint32_t)(2 * half + 1)) - half;
+                    line_step(fb, x + dx, base + 1, x + dx + (int)(h >> 8) % 9 - 4, base + rh + 3,
+                              2, 0);
+                }
+                break;
+            }
+            case ELEM_EMBER: {
+                /* A bed of coals with tongues off it. The bed is the whole of
+                 * what a still frame needs; the tongues are what it gains
+                 * when somebody is watching it move. */
+                fill_rect(fb, x - half, base - 1, x + half, base, true);
+                for (int i = 0; i < intensity * 3; i++) {
+                    uint32_t h = town_hash(salt, (uint32_t)i + (frame >> 2));
+                    int dx = (int)(h % (uint32_t)(2 * half + 1)) - half;
+                    int len = 3 + (int)((h >> 6) % (uint32_t)(2 + intensity * 3));
+                    int lean = ((h >> 3) & 1u) ? 1 : -1;
+                    for (int d = 0; d < len; d++)
+                        px(fb, x + dx + (d > len / 2 ? lean : 0), base - 2 - d, true);
+                }
+                for (int i = 0; i < intensity; i++) { /* sparks off the bed */
+                    uint32_t h = town_hash(salt + 7u, (uint32_t)i + (frame >> 3));
+                    px(fb, x + (int)(h % (uint32_t)(2 * half + 1)) - half,
+                       base - 7 - (int)((h >> 9) % 7u), true);
+                }
+                break;
+            }
+            case ELEM_FROST: {
+                /* Shards standing out of a rime crust, and a spire between
+                 * them once the roof has taken enough of it. */
+                for (int s = -1; s <= 1; s += 2) {
+                    int sx = x + s * (half - 2);
+                    int tall = 5 + intensity * 3;
+                    for (int d = 0; d <= tall; d++)
+                        hline(fb, sx - (tall - d) / 3, sx + (tall - d) / 3, base - d);
+                }
+                if (intensity >= 3) {
+                    int tall = 18;
+                    for (int d = 0; d <= tall; d++)
+                        hline(fb, x - (tall - d) / 5, x + (tall - d) / 5, base - d);
+                }
+                for (int dx = -half; dx <= half; dx++) /* the crust */
+                    if (((dx + (int)salt) & 1) == 0)
+                        px(fb, x + dx, base + 1, true);
+                break;
+            }
+            default: {
+                /* ELEM_VOID: a pit. The roof inside it is taken away rather
+                 * than drawn over, so the hole is a hole in the town and not
+                 * a black shape laid on top of one -- which is why the scorch
+                 * above had to be drawn first, and why the rim is the only
+                 * part of this that adds anything. */
+                int pw = half;
+                int ph = 1 + intensity;
+                for (int dy = 0; dy <= ph; dy++) {
+                    int span = ellipse_span(pw, ph, dy);
+                    for (int dx = -span; dx <= span; dx++)
+                        px(fb, x + dx, base + dy, false);
+                    px(fb, x - span, base + dy, true);
+                    px(fb, x + span, base + dy, true);
+                }
+                for (int dx = -pw; dx <= pw; dx++)
+                    px(fb, x + dx, base, true); /* the rim it left */
+                if (intensity >= 2)             /* and what is still going up out of it */
+                    for (int i = 0; i < 4; i++) {
+                        uint32_t h = town_hash(salt, (uint32_t)i + (frame >> 3));
+                        px(fb, x + (int)(h % (uint32_t)(2 * pw + 1)) - pw,
+                           base - 3 - (int)((h >> 8) % 7u), true);
+                    }
+                break;
+            }
+        }
+    }
+}
+
 /* ---- the plaza ----------------------------------------------------------- */
 
 /*
@@ -1687,6 +1893,7 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     draw_hills(fb, r);
     draw_far_row(fb);
     draw_near_row(fb, r, frame);
+    draw_residue(fb, r, frame);
     draw_tower(fb, r, frame);
     draw_wizard(fb, r, frame);
     draw_ward(fb, r, frame);
