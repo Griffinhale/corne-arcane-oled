@@ -1,5 +1,5 @@
 .PHONY: test mechanics-test mechanics-hp-candidates visual-test hp-gate noalloc-check city-lib \
-	web-lib web-parity web-clean release-build release-budget hygiene \
+	web-lib web-parity web-clean swift-parity release-build release-budget hygiene \
 	format format-check lint
 
 # Same rule as C_SOURCES below: a glob, so a new directory of Python has to be
@@ -48,6 +48,14 @@ web-lib:
 # real rather than approximately right.
 web-parity: city-lib web-lib
 	sh ./web/tools/parity.sh
+
+# The third leg of the same gate: the matrix rendered again by the Swift
+# package the iOS app and the widget are built on. Like web-parity, kept out of
+#  so that a Swift toolchain never stands between a contributor and the
+# firmware's own gates. On Linux, swift 5.10.1 (swift-5.10.1-RELEASE) — swift build, swift run city-check is a toolchain
+# that can run it; on macOS the system Swift will do.
+swift-parity: city-lib
+	sh ./apple/tools/parity.sh
 
 web-clean:
 	$(MAKE) -C web clean

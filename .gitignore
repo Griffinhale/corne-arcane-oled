@@ -52,3 +52,8 @@ artifacts/m13/*.map
 
 # Python bytecode
 __pycache__/
+
+# The Swift package's build tree and the directory the third parity leg
+# renders both sides into.
+.build/
+apple/tools/.parity/
