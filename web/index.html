@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The duel city</title>
+<meta name="description" content="A deterministic 1-bit city where two wizards duel. It runs the same C as the keyboard's OLEDs, compiled to WebAssembly. Nobody is playing it.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="city.css">
+</head>
+<body>
+
+<main>
+  <header>
+    <h1>The duel city</h1>
+    <p class="standfirst">
+      Two wizards duelling over a town, at 25 ticks a second, in one bit per
+      pixel. The same C that runs on a keyboard's OLED displays, compiled to
+      WebAssembly and drawn on a canvas.
+      <strong>Nobody is playing it, and it is not reading you.</strong>
+    </p>
+  </header>
+
+  <figure class="stage">
+    <div class="frame" id="frame">
+      <canvas id="city" width="67" height="128"></canvas>
+    </div>
+    <figcaption id="caption">loading the city&hellip;</figcaption>
+  </figure>
+
+  <div class="controls" role="group" aria-label="View controls">
+    <label>
+      <span>canvas</span>
+      <select id="layout">
+        <option value="1">city — both towers</option>
+        <option value="0">desk — as the keyboard sits</option>
+        <option value="2">left — one tower</option>
+        <option value="3">right — one tower</option>
+        <option value="4" selected>town — the wide view</option>
+      </select>
+    </label>
+    <label>
+      <span>district</span>
+      <select id="district"></select>
+    </label>
+    <button id="pause" type="button" aria-pressed="false">pause</button>
+    <button id="reseed" type="button">new seed</button>
+    <button id="share" type="button">copy link to this moment</button>
+  </div>
+
+  <p class="shell-note">
+    Those five are page furniture. None of them reaches the world: the canvas
+    and the pause are the shell's, and the district picker can only name one of
+    the bounded values the firmware itself would accept. There is no control
+    here that <em>plays</em> anything, because there is nothing to play.
+  </p>
+
+  <dl class="stats" id="stats">
+    <div><dt>seed</dt><dd id="stat-seed">—</dd></div>
+    <div><dt>elapsed</dt><dd id="stat-time">—</dd></div>
+    <div><dt>ticks</dt><dd id="stat-ticks">—</dd></div>
+    <div><dt>spells cast</dt><dd id="stat-casts">—</dd></div>
+    <div><dt>damage, in pips</dt><dd id="stat-impacts">—</dd></div>
+    <div><dt>champions felled</dt><dd id="stat-knockdowns">—</dd></div>
+  </dl>
+
+  <section class="prose">
+    <h2>The link is the point</h2>
+    <p>
+      This world is a pure function of two numbers: a seed, and how far in you
+      are. Both are in the address bar. Copy the link and the world you send is
+      the world that arrives — the same spells, in the same order, at the same
+      tick, down to the pixel. Not a recording of it. The same computation,
+      run again on your machine.
+    </p>
+    <p>
+      That claim is tested rather than asserted. The
+      <code>make web-parity</code> gate renders the same seeds, frames and
+      canvases twice — once through this WebAssembly module, once through the
+      native library the Linux desktop shell loads — and fails unless every
+      byte of every frame matches.
+    </p>
+
+    <h2>Nothing is read</h2>
+    <p>
+      The world self-plays. The champions fabricate their own moves from the
+      seed, so there is no input to sample and no reason to ask for any. The
+      compiled module imports <em>nothing</em>: no clock, no network, no
+      storage, no host function at all. You can check that in the console with
+      <code>WebAssembly.Module.imports()</code> — the list is empty. It is not
+      a promise about what this page does with your data. There is no path by
+      which it could have any.
+    </p>
+
+    <h2>What you are looking at</h2>
+    <p>
+      A tower whose lit storey follows what the machine is doing, residents
+      crossing the plaza on a civic clock, couriers, a sky that turns through
+      four phases on a sixteen-step arc — and two champions throwing spells
+      across it, chaining, winding up, landing and occasionally felling one
+      another. A felled champion collapses, gets carried off and is replaced,
+      so the city does not run down.
+    </p>
+    <p>
+      The town view is a 256&times;256 drawing layer. The other four are the
+      keyboard's own 32&times;128 panels, reframed —
+      <a href="canvases.html">every canvas at once, from one seed</a>, if you
+      want to see how little separates them.
+    </p>
+
+    <h2>If you leave this tab</h2>
+    <p>
+      The browser stops calling for frames, and the world stops with it. On
+      your return it resynchronises to now rather than replaying the gap, so
+      the city jumps forward. That is the keyboard's own behaviour, kept
+      deliberately: a device that has been asleep catches up bounded, or it
+      spends the battery it saved.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      One <code>.wasm</code>, one page, no server. Built with standalone
+      <code>clang --target=wasm32 -nostdlib</code>: the core needs exactly two
+      symbols from a C library, <code>memcpy</code> and <code>memset</code>,
+      and this page supplies both.
+    </p>
+  </footer>
+</main>
+
+<script type="module" src="city-page.js"></script>
+</body>
+</html>
