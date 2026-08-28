@@ -1,0 +1,97 @@
+/*
+ * The contact sheet. Its job is to be one legible screenshot, so the layout
+ * rule is that every canvas is scaled by a whole number derived from a single
+ * step -- the panels at twice the town's, because they are half its height --
+ * and the row is aligned on its baseline like type.
+ */
+
+/* The sheet is the one page that wants the whole window: six framings side by
+ * side is the picture, and a 46rem column breaks it into a list. The prose
+ * keeps the measure the rest of the site has. */
+.sheet main { max-width: 100%; }
+
+.sheet header,
+.sheet .controls,
+.sheet .escape,
+.sheet .stats,
+.sheet .prose {
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  /* Kept in step with STRIP_GAP and STRIP_PADDING in canvases-page.js, which
+   * has to subtract them to work out how large a whole-pixel step fits. */
+  gap: 1.75rem 1rem;
+  padding: 1.75rem 1rem;
+  margin-bottom: 1.25rem;
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+/* The margin reset is load-bearing, not tidiness: a <figure> carries 40px of
+ * default margin on each side, which adds 480px to a row of six and is enough
+ * to push the sheet down a whole scale step. */
+.framing {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.framing canvas {
+  align-self: center;
+  /* The desk framing sits on desk grey because the desk continues past the
+   * panels; the rest sit on unlit ground. The renderer decides which. */
+  background: var(--backdrop, #000);
+}
+
+.framing figcaption {
+  margin: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  overflow-wrap: break-word;
+}
+
+.framing .name {
+  display: block;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--ink);
+  background: #16150f;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+.button-link:hover { border-color: #4a463c; }
+
+/* Screenshot mode: everything that is not the world gets out of the way.
+ * The one control that stays is the way back out of it -- it fades until
+ * pointed at, so it costs the screenshot almost nothing. */
+.escape { margin-bottom: 1.25rem; }
+
+.sheet.bare { padding-top: 1rem; }
+.sheet.bare .page-chrome { display: none; }
+.sheet.bare .strip { margin-bottom: 0; border-color: transparent; }
+.sheet.bare .escape { position: fixed; right: 0.75rem; bottom: 0.75rem; margin: 0; }
+.sheet.bare .escape button { opacity: 0.12; transition: opacity 120ms ease; }
+.sheet.bare .escape button:hover,
+.sheet.bare .escape button:focus-visible { opacity: 1; }

@@ -1,0 +1,178 @@
+/*
+ * The page around the city.
+ *
+ * Two rules carry most of the weight: image-rendering:pixelated, so the canvas
+ * is upscaled by whole pixels instead of being smoothed into mush, and a
+ * whole-number scale computed from the renderer's own fit rule, so a lit pixel
+ * is always exactly N screen pixels square.
+ */
+
+:root {
+  color-scheme: dark;
+  --ink: #e8e6e1;
+  --dim: #8b8781;
+  --line: #2a2825;
+  --ground: #000;
+  --accent: #d8cfa8;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 2.5rem 1.25rem 4rem;
+  background: #0a0a09;
+  color: var(--ink);
+  font: 16px/1.65 ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+main { max-width: 46rem; margin: 0 auto; }
+
+h1 {
+  margin: 0 0 0.6rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  margin: 2.25rem 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.standfirst { margin: 0 0 2rem; color: var(--dim); }
+.standfirst strong { color: var(--ink); font-weight: 600; }
+
+/* The stage. The frame paints the renderer's own backdrop grey, which differs
+ * per canvas -- the desk layout sits on desk grey because the desk continues
+ * past the panels, and everything else sits on unlit ground. */
+.stage { margin: 0 0 1.25rem; }
+
+.frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  min-height: 20rem;
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+
+canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+  margin-bottom: 0.9rem;
+}
+
+.controls label { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.controls span {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+select, button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.7rem;
+  color: var(--ink);
+  background: #16150f;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+select:hover, button:hover { border-color: #4a463c; }
+select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+.shell-note {
+  margin: 0 0 1.75rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--dim);
+  border-left: 2px solid var(--line);
+  padding-left: 0.9rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+  padding: 1rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.stats div { display: flex; flex-direction: column; }
+
+.stats dt {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.stats dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.prose p { color: var(--dim); }
+.prose strong, .prose em { color: var(--ink); }
+
+code {
+  padding: 0.05em 0.3em;
+  font-size: 0.9em;
+  background: #16150f;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--ink);
+}
+
+a { color: var(--accent); text-underline-offset: 3px; }
+
+footer {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+.error {
+  padding: 1rem;
+  border: 1px solid #6a2b2b;
+  border-radius: 3px;
+  background: #1a0f0f;
+  color: #e0b4b4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing here animates in CSS; the city is the motion, and the page offers
+   * a pause for exactly this reason. */
+}

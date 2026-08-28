@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One world, every canvas</title>
+<meta name="description" content="The same duel, at the same tick, from one seed, drawn simultaneously as the two keyboard panels, the town, and a watch-shaped crop.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="city.css">
+<link rel="stylesheet" href="canvases.css">
+</head>
+<body class="sheet">
+
+<main>
+  <header class="page-chrome">
+    <h1>One world, every canvas</h1>
+    <p class="standfirst">
+      One seed. One simulation. One tick. Six framings of it, drawn at the same
+      instant. Every canvas below is reading the same world in the same
+      millisecond — they differ because the screens differ, not because the
+      worlds do.
+    </p>
+  </header>
+
+  <div class="strip" id="strip"></div>
+
+  <div class="controls page-chrome" role="group" aria-label="View controls">
+    <button id="pause" type="button" aria-pressed="false">pause</button>
+    <button id="reseed" type="button">new seed</button>
+    <button id="share" type="button">copy link to this moment</button>
+    <a class="button-link" href="index.html">back to the city</a>
+  </div>
+
+  <!-- Kept out of .page-chrome so that it survives its own effect: a button
+       that hides itself has no way back. -->
+  <div class="escape">
+    <button id="bare" type="button" aria-pressed="false">hide everything else</button>
+  </div>
+
+  <dl class="stats page-chrome" id="stats">
+    <div><dt>seed</dt><dd id="stat-seed">—</dd></div>
+    <div><dt>elapsed</dt><dd id="stat-time">—</dd></div>
+    <div><dt>ticks</dt><dd id="stat-ticks">—</dd></div>
+    <div><dt>spells cast</dt><dd id="stat-casts">—</dd></div>
+    <div><dt>damage, in pips</dt><dd id="stat-impacts">—</dd></div>
+    <div><dt>champions felled</dt><dd id="stat-knockdowns">—</dd></div>
+  </dl>
+
+  <section class="prose page-chrome">
+    <h2>What this picture is for</h2>
+    <p>
+      The project's claim is that there is one core and many shells: the world
+      is computed once, and a screen is only a decision about how to frame it.
+      That is easy to say and hard to show in prose, so here it is as an image.
+      Nothing below is a separate program. It is six calls to one render
+      function, differing in a single integer argument.
+    </p>
+
+    <h2>The three kinds of thing here</h2>
+    <p>
+      <strong>The panels</strong> — desk, city, left, right — are the
+      keyboard's own 32&times;128 displays. Every coordinate in that renderer
+      is written against that canvas, so those four are not four drawings.
+      They are one drawing, reframed: both panels with the desk showing between
+      them, both with it unlit, or either one alone. The three columns of gap
+      are kept in every framing that shows both, because that strip is world
+      space — the battlefield axis crosses it and neither panel can show it.
+    </p>
+    <p>
+      <strong>The town</strong> is a second drawing layer on a 256&times;256
+      square, sharing the state and none of the pixels. The lit storey of the
+      tower is the same civic floor the panels light a room on; the sky phase
+      and the sixteen-step arc are the same. It is what the world looks like
+      with room to compose it.
+    </p>
+    <p>
+      <strong>The watch</strong> is neither. It is a crop of the town, taken
+      here in JavaScript from pixels the renderer has already produced. The
+      core has no viewport call — that is a real and deliberate gap, listed as
+      cheap and unbuilt — so this is a shell helping itself to a sub-rectangle,
+      and it is shown as a way of asking what a near-square face would want.
+    </p>
+
+    <h2>Reproducing this exact image</h2>
+    <p>
+      The address bar carries the seed and the tick. Anyone who opens the link
+      replays the same world to the same instant and sees these same pixels —
+      that is what makes this a diagram rather than a screenshot.
+    </p>
+  </section>
+</main>
+
+<script type="module" src="canvases-page.js"></script>
+</body>
+</html>

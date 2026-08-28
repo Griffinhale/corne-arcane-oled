@@ -1,0 +1,24 @@
+# The build context is the browser shell's sources and nothing else.
+.git
+.github
+artifacts
+debian
+docs
+host
+scripts
+tools
+firmware/sim_test
+firmware/keymaps
+*.uf2
+*.bin
+*.elf
+*.o
+
+# Build products, so that a stale one from the developer's machine can never be
+# copied in and served instead of the one this image builds. Without these two
+# lines a local web/duel_city.wasm would land in the context, make would find
+# its target already newer than the sources, skip the compile, and deploy
+# whatever happened to be sitting in the checkout.
+web/duel_city.wasm
+desktop/libcornearcane.so
+web/tools/.parity

@@ -4,6 +4,14 @@ firmware/sim_test/visual_runner
 firmware/sim_test/mechanics_hp_*
 firmware/sim_test/hp_gate_*
 firmware/sim_test/.noalloc.o
+
+# The desktop product's native library (rebuilt by `make city-lib`)
+desktop/libcornearcane.so
+
+# The browser shell's module (rebuilt by `make web-lib`) and the scratch
+# directory the parity gate renders both sides into.
+web/duel_city.wasm
+web/tools/.parity/
 /.scratch/
 artifacts/release/*.map
 # Preserved local planning history, signed acceptance records, and rollback

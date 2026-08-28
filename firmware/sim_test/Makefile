@@ -7,15 +7,8 @@ CFLAGS   ?= -std=c11 -g -O1
 SANFLAGS  = -Wall -Wextra -Werror -fsanitize=address,undefined
 CFLAGS   += $(SANFLAGS) -I../sim
 
-SIM_SRC := ../sim/duel_framebuffer.c ../sim/duel_render.c \
-           ../sim/duel_environment_draw.c ../sim/duel_combat_draw.c \
-           ../sim/duel_overlay_draw.c ../sim/duel_draw.c \
-           ../sim/duel_sim.c ../sim/duel_incantation.c ../sim/duel_combat.c \
-           ../sim/duel_view.c ../sim/duel_proto.c ../sim/duel_host.c \
-           ../sim/duel_diagnostics.c \
-           ../sim/duel_display.c ../sim/duel_resident.c \
-           ../sim/duel_courier.c ../sim/duel_event.c ../sim/duel_runtime.c \
-           ../sim/duel_rgb.c
+SIM_DIR := ../sim
+include ../sim_sources.mk
 HDRS := $(wildcard ../sim/*.h) scenarios.h
 
 test: mechanics-test visual-test noalloc-check

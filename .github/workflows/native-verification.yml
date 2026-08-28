@@ -85,3 +85,34 @@ jobs:
 
       - name: Whitespace errors
         run: git diff --check
+
+  # A separate job, for the same reason `web-parity` is outside `make test`:
+  # the browser build needs a WebAssembly toolchain that nothing else in this
+  # repository wants, and a firmware change should not wait on it or be
+  # reported as broken by it.
+  #
+  # What this protects is the browser's loudest claim. The seed and the tick
+  # are in the URL, so a link promises the recipient the same world, spell for
+  # spell -- and that is only true while the WASM renderer and the native one
+  # agree exactly. Nothing else in CI would notice them drifting apart.
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # clang for the wasm32 target and lld for wasm-ld. Ubuntu builds LLVM
+      # with every target enabled, so the stock clang cross-compiles to
+      # WebAssembly without a separate toolchain; Node comes with the runner.
+      - name: Install the WebAssembly toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential clang lld
+          clang -print-targets | grep -q wasm32
+
+      # Renders every layout, three seeds and 240 frames each through both the
+      # WASM module and the native library, and fails unless all 3600 frames
+      # agree byte for byte. Then checks that arriving at a moment by link is
+      # the same as having watched the world into it.
+      - name: Native and WASM render identically
+        run: make web-parity

@@ -13,14 +13,48 @@ make test            # mechanics, 622 visual scenes, allocation scan, host tests
 make hp-gate         # pinned 8-HP and 10-HP 30-minute workloads
 make mechanics-hp-candidates # full mechanics suite under both geometries
 make hygiene         # active-tree naming and historical-comment policy
+make city-lib        # the desktop product's native library (desktop/)
+make web-lib         # the browser shell's WebAssembly module (web/)
+make web-parity      # native vs WASM, byte for byte -- the browser's gate
 make release-build   # release, diagnostic, and both unflashed HP candidates
 make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check
 ```
 
+The browser shell needs a clang with the `wasm32` target and `wasm-ld`, plus
+Node for the parity harness. That is a heavier ask than the rest of the tree
+needs, so `web-lib` and `web-parity` are deliberately outside `make test`:
+nobody working on the firmware should have to install a WebAssembly toolchain
+to run the firmware's own gates. Run `make web-parity` when changing anything
+the browser build compiles, which is the shared simulation, the desktop
+drawing layers, or `web/` itself.
+
+On a distribution whose clang is wrapped for the host target -- NixOS, for one
+-- use the unwrapped compiler, because the wrapper injects host linker flags
+that `wasm-ld` rejects:
+
+```bash
+nix shell nixpkgs#llvmPackages.clang-unwrapped nixpkgs#lld nixpkgs#nodejs
+```
+
 Use `make format` to apply the repository baseline: Python 3.10 syntax, Ruff
 imports and correctness rules, and 100-column Python/C formatting. Generated
 artifacts, archived documents, layout data, and golden hashes are excluded.
+
+## The browser build's own gate
+
+Determinism is a claim the browser makes out loud: the seed and the tick are
+in the URL, so a link promises the recipient the same world, spell for spell.
+`make web-parity` is what makes that a fact rather than a hope. It renders the
+same matrix -- every layout, three seeds, 240 frames each -- twice, once
+through the WebAssembly module and once through the native library the desktop
+window loads, and fails unless every byte of all 3 600 frames agrees.
+
+Both sides drive the self-playing world, so a divergence in the simulation
+shows up as well as one in the renderer: the run's hashes stop matching partway
+through instead of at the first frame. The matrix lives in
+`web/tools/parity_matrix.json` and is read by both sides, so the two cannot
+drift apart.
 
 ## Golden review
 
