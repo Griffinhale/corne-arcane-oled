@@ -318,6 +318,18 @@ int duel_city_backdrop(int layout) {
  * spell's flight. */
 uint32_t duel_city_frame_interval_ms(void) { return (uint32_t)SIM_TICK_MS; }
 
+/*
+ * One second of frames at that interval.
+ *
+ * Two measurements set it. The floor slide converges in about ten frames --
+ * 29 pixels of 8576 at the arrival frame without a run-up. The outcome flash
+ * takes twelve frames to count itself out, and the first warmed frame arms
+ * one by construction, because a policy that has seen no sequence number yet
+ * sees every sequence number as a change. Twenty-five clears the larger of
+ * the two with margin and costs about a millisecond.
+ */
+int duel_city_seek_warm_frames(void) { return 25; }
+
 typedef struct {
     uint8_t scene;
     uint8_t floor;

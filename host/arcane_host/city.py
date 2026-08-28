@@ -24,7 +24,7 @@ from pathlib import Path
 from .protocol import CivicState, NotificationSummary, Scene
 from .semantic import SemanticState
 
-CITY_ABI = 5
+CITY_ABI = 6
 LIBRARY_NAME = "libcornearcane.so"
 
 
@@ -266,6 +266,8 @@ class CityRenderer:
         library.duel_city_backdrop.restype = ctypes.c_int
         library.duel_city_frame_interval_ms.argtypes = []
         library.duel_city_frame_interval_ms.restype = ctypes.c_uint32
+        library.duel_city_seek_warm_frames.argtypes = []
+        library.duel_city_seek_warm_frames.restype = ctypes.c_int
         library.duel_city_tour_length.argtypes = []
         library.duel_city_tour_length.restype = ctypes.c_int
         library.duel_city_tour_stop.argtypes = [
@@ -303,6 +305,11 @@ class CityRenderer:
     def frame_interval_ms(self) -> int:
         """The world's own cadence, in milliseconds."""
         return self._library.duel_city_frame_interval_ms()
+
+    @property
+    def seek_warm_frames(self) -> int:
+        """Frames a shell arriving at a moment must render, not just simulate."""
+        return self._library.duel_city_seek_warm_frames()
 
     @property
     def fps(self) -> int:

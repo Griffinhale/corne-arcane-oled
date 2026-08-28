@@ -408,6 +408,41 @@ class PresentationPolicyTests(unittest.TestCase):
         self.assertEqual(renderer.frame_interval_ms, 40)
         self.assertEqual(renderer.fps, 25)
 
+    def test_the_run_up_a_seeking_shell_renders_is_the_renderers_decision(self) -> None:
+        renderer = CityRenderer()
+        # A second of frames at the world's own cadence. The number belongs to
+        # the renderer because every shell that arrives at a moment by link
+        # needs the same one, and one that picks its own arrives elsewhere.
+        self.assertEqual(renderer.seek_warm_frames, 25)
+        self.assertEqual(renderer.seek_warm_frames * renderer.frame_interval_ms, 1000)
+
+    def arrive(self, target: int, render_from: int, seed: int = 0x5A) -> bytes:
+        """The frame at `target`, having rendered only from `render_from` on."""
+        renderer = CityRenderer(scale=1, layout=Layout.TOWN)
+        world = renderer.ambient(seed)
+        city = renderer.tour_stop(0, seed)
+        image = b""
+        for frame in range(target + 1):
+            now = frame * renderer.frame_interval_ms
+            world.advance(now)
+            if frame >= render_from:
+                image = renderer.render(city, now, frame, ambient=world)
+        return image
+
+    def test_arriving_at_a_moment_takes_the_run_up_to_match_watching_into_it(self) -> None:
+        # What the run-up is for, and the reason it is policy rather than a
+        # detail of whichever shell noticed first. All three replay the world
+        # tick by tick, so the only difference is what was drawn: the renderer
+        # carries the floor transition and the outcome flash between frames,
+        # and a shell that draws only the frame it wants composes both from a
+        # standing start. Frame 900 is a moment where that shows -- not every
+        # moment is, because the two policies are not always mid-transition.
+        target = 900
+        warm = CityRenderer().seek_warm_frames
+        watched = self.arrive(target, 0)
+        self.assertEqual(self.arrive(target, target - warm), watched)
+        self.assertNotEqual(self.arrive(target, target), watched)
+
     def test_the_tour_visits_every_floor(self) -> None:
         renderer = CityRenderer()
         floors = {renderer.tour_stop(i).civic & 3 for i in range(renderer.tour_length)}

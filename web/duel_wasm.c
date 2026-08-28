@@ -143,6 +143,10 @@ WASM_EXPORT(duel_wasm_frame_interval_ms) uint32_t duel_wasm_frame_interval_ms(vo
     return duel_city_frame_interval_ms();
 }
 
+WASM_EXPORT(duel_wasm_seek_warm_frames) int duel_wasm_seek_warm_frames(void) {
+    return duel_city_seek_warm_frames();
+}
+
 WASM_EXPORT(duel_wasm_backdrop) int duel_wasm_backdrop(int layout) {
     return duel_city_backdrop(layout);
 }

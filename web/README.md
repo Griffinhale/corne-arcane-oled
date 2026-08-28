@@ -53,12 +53,16 @@ Two details are load-bearing and easy to get wrong:
   so a single jump would land in a world that had skipped its own history. A
   simulated hour is ~90 000 ticks and replays in about 22 ms, which is why the
   honest implementation is also the affordable one.
-- **`seek` renders a run-up, not just the world.** The renderer carries the
-  floor-transition policy between frames, which is what makes the tower slide
-  between storeys instead of snapping. Arriving without that history draws the
-  slide from a standing start: measured at 29 pixels of 8576, converging within
-  ten frames. `seek` renders the last second through the cheapest layout, which
-  costs about a millisecond and makes the arrival frame exact.
+- **`seek` renders a run-up, not just the world.** The renderer carries two
+  policies between frames: the floor transition, which is what makes the tower
+  slide between storeys instead of snapping, and the outcome flash, which arms
+  on a sequence number it has not seen before. Arriving without that history
+  draws the slide from a standing start -- measured at 29 pixels of 8576 --
+  and bursts for whatever last happened, however long ago that was. How long
+  the run-up has to be belongs to the renderer rather than to this shell:
+  `duel_city_seek_warm_frames`, twenty-five frames, asked once at load. It is
+  rendered through the cheapest layout, costs about a millisecond, and makes
+  the arrival frame exact.
 
 ## Deploying
 
@@ -172,7 +176,8 @@ the wider port plan lists but this shell does not need.
 The *scale* is still the renderer's decision, not the page's:
 `duel_city_default_scale` and `duel_city_fit_scale` are exported and asked. ABI
 5 moved those rules into C precisely so a second shell would not reimplement
-them and drift, and this is the second shell.
+them and drift, and this is the second shell. ABI 6 moved the seek run-up in
+after the same argument, and for the same reason.
 
 ## Things that will bite
 

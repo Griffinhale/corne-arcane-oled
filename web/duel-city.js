@@ -23,11 +23,6 @@
  * Sharp, 64 kB a frame, and no core change to get it. */
 export const RENDER_SCALE = 1;
 
-/* How much of a run-up seek() renders as well as simulates, so that a world
- * arrived at by link is in the same state as one that was watched into. See
- * seek() for the measurement behind the number. */
-const SEEK_WARM_FRAMES = 25;
-
 export const LAYOUT = Object.freeze({
   DESK: 0,
   CITY: 1,
@@ -70,6 +65,10 @@ export class City {
     this.exports = instance.exports;
     this.abi = this.exports.duel_wasm_abi_version();
     this.frameIntervalMs = this.exports.duel_wasm_frame_interval_ms();
+    /* How much of a run-up seek() renders as well as simulates. Asked rather
+     * than chosen: it is the renderer's policy, and a shell that picks its
+     * own number arrives at a subtly different frame from every other. */
+    this.seekWarmFrames = this.exports.duel_wasm_seek_warm_frames();
     this.tourLength = this.exports.duel_wasm_tour_length();
     this.pixelsPtr = this.exports.duel_wasm_pixels_ptr();
     this.statsPtr = this.exports.duel_wasm_stats_ptr();
@@ -170,16 +169,19 @@ export class City {
    * The last stretch is rendered as well as simulated, because the world is
    * not quite the whole state: the renderer carries the floor-transition
    * policy between frames, which is what makes the tower slide between storeys
-   * instead of snapping. Arriving without it draws the slide from a standing
-   * start -- measured at 29 pixels of 8576, converging within ten frames. Ten
-   * would do; a second of run-up costs about a millisecond and leaves margin.
+   * instead of snapping, and the outcome flash, which arms on a sequence
+   * number it has never seen before. Arriving without either draws the slide
+   * from a standing start -- measured at 29 pixels of 8576 -- and bursts for
+   * whatever last happened, however long ago it was. How long the run-up has
+   * to be is duel_city_seek_warm_frames, asked once at load rather than
+   * decided here, because every shell that seeks needs the same answer.
    * Without this, someone who follows a link sees very slightly different
    * pixels from the person who sent it, which is exactly the promise being
    * made here.
    */
   seek(targetMs) {
     const step = this.frameIntervalMs;
-    const warmFrom = Math.max(0, targetMs - SEEK_WARM_FRAMES * step);
+    const warmFrom = Math.max(0, targetMs - this.seekWarmFrames * step);
     for (let t = this.worldMs + step; t <= targetMs; t += step) {
       this.exports.duel_wasm_advance(t);
       this.worldMs = t;

@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 5
+#define DUEL_CITY_ABI 6
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -168,6 +168,27 @@ int duel_city_backdrop(int layout);
 /* The world's own cadence, so a shell's redraw timer is derived from the
  * simulation rather than guessed alongside it. */
 uint32_t duel_city_frame_interval_ms(void);
+
+/*
+ * How much of a run-up a shell that seeks has to render, and not merely
+ * simulate, before the frame it actually means to show.
+ *
+ * Two policies carry between frames instead of living in the world: the floor
+ * transition that slides the tower between storeys, and the outcome flash,
+ * which arms on a change in the view's sequence number. A shell that jumps
+ * straight to a moment composes both from a standing start -- the slide
+ * begins where it should already have finished, and the first frame after the
+ * jump reads a sequence number it has never seen before and draws an impact
+ * burst for something that may have happened a quarter of an hour ago. A
+ * shell that renders once a minute would draw that burst every single time.
+ *
+ * Rendering this many frames before the target settles both, so it is policy
+ * rather than an implementation detail of whichever shell noticed first. Warm
+ * through the cheapest layout: the two policies are composed before any
+ * layout-specific drawing, so any layout settles them and
+ * DUEL_CITY_LAYOUT_LEFT is a quarter of the pixels of the town.
+ */
+int duel_city_seek_warm_frames(void);
 
 /*
  * A tour of the city with no daemon attached: every civic floor once, so that
