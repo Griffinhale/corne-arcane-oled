@@ -20,6 +20,7 @@ public enum Layout: Int32, CaseIterable, Sendable {
     case left = 2
     case right = 3
     case town = 4
+    case landscape = 5
 }
 
 public struct CityError: Error, CustomStringConvertible {
@@ -33,7 +34,7 @@ public struct CityError: Error, CustomStringConvertible {
         case -2: reason = "scale outside 1..16"
         case -3: reason = "pixel buffer shorter than the geometry"
         case -4: reason = "an input field is outside its enum or bit width"
-        case -5: reason = "layout outside desk/city/left/right/town"
+        case -5: reason = "layout outside desk/city/left/right/town/landscape"
         default: reason = "renderer returned \(code)"
         }
         return "\(what): \(reason)"
@@ -100,8 +101,8 @@ public final class City {
     /* A second buffer for the run-up, which renders through the cheapest
      * layout rather than the one being asked for: the floor transition and
      * the outcome flash are both composed before any layout-specific drawing,
-     * so any layout settles them, and LEFT is 4 kB a frame against the town's
-     * 64. Sized once here so seeking allocates nothing. */
+     * so any layout settles them, and LEFT is 4 kB a frame against the wide
+     * town's 96. Sized once here so seeking allocates nothing. */
     private var warmPixels: [UInt8]
 
     public init(seed: UInt8, layout: Layout = .town, tourStop: Int = 0) throws {

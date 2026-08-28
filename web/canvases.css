@@ -5,7 +5,7 @@
  * and the row is aligned on its baseline like type.
  */
 
-/* The sheet is the one page that wants the whole window: six framings side by
+/* The sheet is the one page that wants the whole window: seven framings side by
  * side is the picture, and a 46rem column breaks it into a list. The prose
  * keeps the measure the rest of the site has. */
 .sheet main { max-width: 100%; }
@@ -35,7 +35,7 @@
 }
 
 /* The margin reset is load-bearing, not tidiness: a <figure> carries 40px of
- * default margin on each side, which adds 480px to a row of six and is enough
+ * default margin on each side, which adds 480px to a row of seven and is enough
  * to push the sheet down a whole scale step. */
 .framing {
   display: flex;

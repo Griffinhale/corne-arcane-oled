@@ -15,8 +15,9 @@ Two ways to run it:
 The default layout is one continuous scene: the space between the two towers
 is world the panels cannot show, so it is drawn unlit rather than as a desk.
 `--layout desk` restores the two-panel view the review sheets use, and
-`--layout left` or `right` shows a single tower. The world is 67x128 whatever
-the layout, so `--size` letterboxes it in the window you ask for.
+`--layout left` or `right` shows a single tower. `town` and `landscape` select
+the renderer's square and wide drawing layers; `--size` fits any of them at a
+whole-pixel scale and letterboxes the remainder.
 
 The live mode *is* the daemon: it builds the same semantic stack and owns the
 same bus name, and the window reads the resolved state the heartbeat already

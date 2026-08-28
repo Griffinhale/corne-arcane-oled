@@ -15,7 +15,7 @@
   <header class="page-chrome">
     <h1>One world, every canvas</h1>
     <p class="standfirst">
-      One seed. One simulation. One tick. Six framings of it, drawn at the same
+      One seed. One simulation. One tick. Seven framings of it, drawn at the same
       instant. Every canvas below is reading the same world in the same
       millisecond — they differ because the screens differ, not because the
       worlds do.
@@ -53,7 +53,7 @@
       is computed once, and a screen is only a decision about how to frame it.
       That is easy to say and hard to show in prose, so here it is as an image.
       Nothing below is a separate program. It is six calls to one render
-      function, differing in a single integer argument.
+      function plus one crop of the square town, all at the same tick.
     </p>
 
     <h2>The three kinds of thing here</h2>
@@ -67,11 +67,12 @@
       space — the battlefield axis crosses it and neither panel can show it.
     </p>
     <p>
-      <strong>The town</strong> is a second drawing layer on a 256&times;256
-      square, sharing the state and none of the pixels. The lit storey of the
-      tower is the same civic floor the panels light a room on; the sky phase
-      and the sixteen-step arc are the same. It is what the world looks like
-      with room to compose it.
+      <strong>The town</strong> has two drawing layers, a 256&times;256 square and
+      a 400&times;240 landscape, sharing the state and none of the pixels. The wide
+      one adds sky, streets, and the full spell lanes at either side; it is not
+      the square stretched or cropped. The lit storey of the tower is the same
+      civic floor the panels light a room on, and the sky phase and celestial
+      arc are the same.
     </p>
     <p>
       <strong>The watch</strong> is neither. It is a crop of the town, taken

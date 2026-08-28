@@ -24,7 +24,7 @@ from pathlib import Path
 from .protocol import CivicState, NotificationSummary, Scene
 from .semantic import SemanticState
 
-CITY_ABI = 6
+CITY_ABI = 7
 LIBRARY_NAME = "libcornearcane.so"
 
 
@@ -36,8 +36,9 @@ class Layout(IntEnum):
     than two screens. LEFT and RIGHT are a single tower. Those four are the
     same 32x128 pixels, reframed.
 
-    TOWN is a second drawing layer on a 256x256 square: one wizard tower at the
-    centre of a small city. It shares the world, not the pixels.
+    TOWN is a second drawing layer on a 256x256 square; LANDSCAPE is its
+    400x240 wide counterpart. Both put one wizard tower at the centre of a
+    small city and share the world, not the pixels.
     """
 
     DESK = 0
@@ -45,6 +46,7 @@ class Layout(IntEnum):
     LEFT = 2
     RIGHT = 3
     TOWN = 4
+    LANDSCAPE = 5
 
 
 # duel_city.h error codes, in the words its callers need.
@@ -53,7 +55,7 @@ _ERRORS = {
     -2: "scale outside 1..16",
     -3: "pixel buffer shorter than the geometry",
     -4: "input field outside its enum or bit width",
-    -5: "layout outside desk/city/left/right",
+    -5: "layout outside desk/city/left/right/town/landscape",
 }
 
 

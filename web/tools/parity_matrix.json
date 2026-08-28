@@ -3,15 +3,15 @@
     "The WASM parity matrix, as data, so the two sides cannot drift apart.",
     "The whole point of the acceptance test is that both run the identical",
     "sequence, and the cheapest way to guarantee that is one definition of it.",
-    "layouts: every one, including TOWN -- a second drawing layer rather than a",
-    "reframing, and so the one most likely to expose a portability difference.",
+    "layouts: every one, including the TOWN and LANDSCAPE drawing layers --",
+    "the two most likely to expose a portability difference.",
     "seeds: zero, a small odd one, and one with the high bit set, since the seed",
     "is a byte and sign-extension is a classic cross-target difference.",
     "frames: 9.6 simulated seconds, long enough that the world has cast and",
     "landed rather than only sampling the opening frame.",
     "tick_ms: SIM_TICK_MS, as duel_city_frame_interval_ms reports it."
   ],
-  "layouts": [0, 1, 2, 3, 4],
+  "layouts": [0, 1, 2, 3, 4, 5],
   "seeds": [0, 7, 129],
   "frames": 240,
   "tick_ms": 40

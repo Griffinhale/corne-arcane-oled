@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 6
+#define DUEL_CITY_ABI 7
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -46,10 +46,11 @@
  * is written against a 32x128 canvas, so 64x128 of drawn pixels plus the gap
  * is the whole of what they can show.
  *
- * TOWN is not a reframing. It is a second drawing layer on a 256x256 square:
+ * TOWN and LANDSCAPE are not reframings. They are drawing layers of their own:
  * one wizard tower at the centre of a small city, with the same world read
- * into a composition the panels have no room for. It shares the state, not
- * the pixels.
+ * into compositions the panels have no room for. TOWN is the 256x256 square;
+ * LANDSCAPE is a 400x240 wide view with more world on either side rather than
+ * a stretched or cropped town. They share the state, not the pixels.
  */
 enum {
     DUEL_CITY_LAYOUT_DESK = 0,
@@ -57,7 +58,8 @@ enum {
     DUEL_CITY_LAYOUT_LEFT = 2,
     DUEL_CITY_LAYOUT_RIGHT = 3,
     DUEL_CITY_LAYOUT_TOWN = 4,
-    DUEL_CITY_LAYOUT_COUNT = 5,
+    DUEL_CITY_LAYOUT_LANDSCAPE = 5,
+    DUEL_CITY_LAYOUT_COUNT = 6,
 };
 
 enum {
@@ -150,8 +152,8 @@ int duel_city_geometry(int layout, int scale, int *width, int *height);
  */
 
 /* The scale to use when nobody asked for one: the largest whole-pixel scale
- * that keeps the image near DUEL_CITY_TARGET_HEIGHT. The panels are 128 tall
- * and the town is 256, so the same rule suits both. */
+ * that keeps the image near DUEL_CITY_TARGET_HEIGHT. The panels are 128 tall,
+ * the square town 256 and the landscape 240, so the same rule suits all. */
 #define DUEL_CITY_TARGET_HEIGHT 512
 int duel_city_default_scale(int layout);
 

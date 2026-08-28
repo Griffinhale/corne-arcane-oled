@@ -11,10 +11,11 @@
  * roofline sits against the horizon, because that is all a one-bit town has
  * to work with.
  *
- * The square is 256x256 and the panels' 32x128 habits do not scale into it.
- * Two rules keep it from reading as a small drawing on a large canvas:
+ * The town is composed at 256x256 or 400x240 and the panels' 32x128 habits do
+ * not scale into either. Two rules keep it from reading as a small drawing on
+ * a large canvas:
  *
- *   - The sky is not background. Roughly the top half of the square is air,
+ *   - The sky is not background. Roughly the top half of the surface is air,
  *     and the spells are what live there -- a cast climbs into it on the arc
  *     its own trajectory names, so the emptiest region of the canvas is the
  *     one the duel is fought across.
@@ -37,30 +38,43 @@
  * The near ground is where the town stands; the far ground sits higher and
  * carries the smaller roofs behind it, and the hills sit higher again. The
  * tower is centred because it is the reason the town is here. */
-#define GROUND_Y     208
-#define FAR_GROUND_Y 196
-#define HILL_BASE_Y  190
-#define TOWER_CX     128
-#define TOWER_HALF   19
-#define TOWER_X0     (TOWER_CX - TOWER_HALF)
-#define TOWER_X1     (TOWER_CX + TOWER_HALF)
-#define TOWER_TOP_Y  64
-#define ROOF_APEX_Y  30
-#define SPIRE_TIP_Y  13
-#define BALCONY_Y    102
-#define BALCONY_HALF 27
+#define TOWN_GROUND_Y 208
+#define CANVAS_W      ((int)fb->width)
+#define CANVAS_H      ((int)fb->height)
+#define GROUND_Y      ((int)fb->ground_y)
+#define FAR_GROUND_Y  (GROUND_Y - 12)
+#define HILL_BASE_Y   (GROUND_Y - 18)
+#define TOWER_CX      ((int)fb->center_x)
+#define TOWN_X(x)     ((x) + TOWER_CX - TOWN_W / 2)
+#define TOWER_HALF    19
+#define TOWER_X0      (TOWER_CX - TOWER_HALF)
+#define TOWER_X1      (TOWER_CX + TOWER_HALF)
+#define TOWER_TOP_Y   64
+#define ROOF_APEX_Y   30
+#define SPIRE_TIP_Y   13
+#define BALCONY_Y     102
+#define BALCONY_HALF  27
 /* The ward dome hangs over the tower's upper half rather than round the
  * balcony: centred on the balcony it apexed inside the roof cone, and the
  * tower -- drawn afterwards -- erased the top of its own shield. */
 #define WARD_CY 124
 #define DOOR_W  7
 
-void town_fb_clear(town_fb_t *fb) { memset(fb->bits, 0, sizeof fb->bits); }
+void town_fb_clear(town_fb_t *fb, int width, int height) {
+    memset(fb, 0, sizeof *fb);
+    fb->width = (uint16_t)width;
+    fb->height = (uint16_t)height;
+    fb->center_x = (uint16_t)(width / 2);
+    /* Keep the square's forty-eight-pixel plaza in both compositions. The
+     * wide view gains sky and streets at the sides; it does not squeeze or
+     * crop the town to fit its shorter surface. */
+    fb->ground_y = (uint16_t)(height - (TOWN_H - TOWN_GROUND_Y));
+}
 
 static void px(town_fb_t *fb, int x, int y, bool on) {
-    if (x < 0 || x >= TOWN_W || y < 0 || y >= TOWN_H)
+    if (x < 0 || x >= CANVAS_W || y < 0 || y >= CANVAS_H)
         return;
-    uint8_t *byte = &fb->bits[y * TOWN_STRIDE + (x >> 3)];
+    uint8_t *byte = &fb->bits[y * TOWN_FB_STRIDE + (x >> 3)];
     uint8_t mask = (uint8_t)(1u << (x & 7));
     if (on)
         *byte |= mask;
@@ -69,9 +83,9 @@ static void px(town_fb_t *fb, int x, int y, bool on) {
 }
 
 bool town_fb_get(const town_fb_t *fb, int x, int y) {
-    if (x < 0 || x >= TOWN_W || y < 0 || y >= TOWN_H)
+    if (x < 0 || x >= (int)fb->width || y < 0 || y >= (int)fb->height)
         return false;
-    return (fb->bits[y * TOWN_STRIDE + (x >> 3)] >> (x & 7)) & 1u;
+    return (fb->bits[y * TOWN_FB_STRIDE + (x >> 3)] >> (x & 7)) & 1u;
 }
 
 static void hline(town_fb_t *fb, int x0, int x1, int y) {
@@ -231,7 +245,7 @@ static bool sky_is_night(uint8_t phase) {
 static void draw_celestial(town_fb_t *fb, uint8_t phase, uint8_t sub, uint32_t frame) {
     int step = phase * 4 + sub;
     int offset = 2 * step - 15;
-    int cx = 26 + step * 13; /* inset, so the corona is not clipped at dawn */
+    int cx = 26 + step * 13 + (CANVAS_W - TOWN_W) * step / 15;
     int cy = 38 + offset * offset * 110 / 225;
 
     if (sky_is_night(phase)) {
@@ -277,7 +291,7 @@ static void draw_stars(town_fb_t *fb, const duel_render_t *r, uint8_t phase, uin
         return;
     for (uint32_t i = 0; i < 70u; i++) {
         uint32_t h = town_hash(r->seed, i);
-        int x = (int)(h % 250u) + 3;
+        int x = (int)(h % (uint32_t)(CANVAS_W - 6)) + 3;
         int y = (int)((h >> 9) % 168u) + 4;
         if (((h >> 20) & 7u) == 0u && ((frame >> 3) + i) % 9u == 0u)
             continue; /* an occasional slow twinkle */
@@ -294,7 +308,7 @@ static void draw_stars(town_fb_t *fb, const duel_render_t *r, uint8_t phase, uin
 
     for (uint32_t c = 0; c < 3u; c++) {
         uint32_t h = town_hash(r->seed ^ 0xC0FFEEu, c);
-        int ox = (int)(h % 170u) + 20;
+        int ox = (int)(h % (uint32_t)(CANVAS_W - 86)) + 20;
         int oy = (int)((h >> 8) % 90u) + 14;
         int px_prev = 0, py_prev = 0;
         int count = 4 + (int)((h >> 17) & 1u);
@@ -330,10 +344,11 @@ static void draw_clouds(town_fb_t *fb, const duel_render_t *r, uint8_t phase, ui
         int speed = 3 + bank;
         int width = lobes * 13 + 14;
         int x0 =
-            (int)((((frame * (uint32_t)speed) >> 6) + (h & 511u)) % (uint32_t)(TOWN_W + 120)) - 60;
+            (int)((((frame * (uint32_t)speed) >> 6) + (h & 511u)) % (uint32_t)(CANVAS_W + 120)) -
+            60;
 
-        int top[TOWN_W];
-        for (int i = 0; i < TOWN_W; i++)
+        int top[LANDSCAPE_W];
+        for (int i = 0; i < CANVAS_W; i++)
             top[i] = -1;
         for (int lobe = 0; lobe < lobes; lobe++) {
             uint32_t g = town_hash(h, (uint32_t)lobe);
@@ -341,7 +356,7 @@ static void draw_clouds(town_fb_t *fb, const duel_render_t *r, uint8_t phase, ui
             int radius = 6 + (int)(g % 4u);
             int cy = base - (int)((g >> 5) % 4u);
             for (int x = cx - radius; x <= cx + radius; x++) {
-                if (x < 0 || x >= TOWN_W)
+                if (x < 0 || x >= CANVAS_W)
                     continue;
                 int dx = x - cx;
                 int rise = 0;
@@ -353,7 +368,7 @@ static void draw_clouds(town_fb_t *fb, const duel_render_t *r, uint8_t phase, ui
             }
         }
         for (int x = x0; x <= x0 + width; x++) {
-            if (x < 0 || x >= TOWN_W || top[x] < 0)
+            if (x < 0 || x >= CANVAS_W || top[x] < 0)
                 continue;
             px(fb, x, top[x], true);
             for (int y = top[x] + 1; y <= base + 2; y++)
@@ -373,7 +388,7 @@ static void draw_birds(town_fb_t *fb, const duel_render_t *r, uint8_t phase, uin
     for (uint32_t i = 0; i < 5u; i++) {
         uint32_t h = town_hash(r->seed, i + 700u);
         int y = 62 + (int)(h % 56u);
-        int x = (int)((((frame >> 3) + (h >> 6)) % (uint32_t)(TOWN_W + 40))) - 20;
+        int x = (int)((((frame >> 3) + (h >> 6)) % (uint32_t)(CANVAS_W + 40))) - 20;
         int flap = (int)(((frame >> 2) + i * 3u) & 3u);
         int rise = flap == 0 || flap == 2 ? 1 : 2;
         px(fb, x, y, true);
@@ -401,7 +416,7 @@ static void draw_hills(town_fb_t *fb, const duel_render_t *r) {
      * which puts it against the sky along its whole length.
      */
     uint32_t seed = r->seed;
-    for (int x = 0; x < TOWN_W; x++) {
+    for (int x = 0; x < CANVAS_W; x++) {
         int far = HILL_BASE_Y - 44 - (isin((uint32_t)x * 2u + seed * 7u) * 14) / 127 -
                   (isin((uint32_t)x * 5u + seed * 3u) * 5) / 127;
         int near = HILL_BASE_Y - 22 - (isin((uint32_t)x * 3u + seed * 11u + 90u) * 11) / 127 -
@@ -419,7 +434,7 @@ static void draw_hills(town_fb_t *fb, const duel_render_t *r) {
      * horizon with a landmark on it is a place rather than a backdrop. */
     /* Clear of the near row's chimneys either side: the spire and a smoking
      * chimney at the same x read as one confused object. */
-    int sx = (r->seed & 1u) ? 224 : 70;
+    int sx = TOWN_X((r->seed & 1u) ? 224 : 70);
     int sy = HILL_BASE_Y - 22 - (isin((uint32_t)sx * 3u + seed * 11u + 90u) * 11) / 127 -
              (isin((uint32_t)sx * 7u + seed) * 4) / 127;
     shade_rect(fb, sx - 3, sy - 16, sx + 3, sy, 9);
@@ -459,7 +474,9 @@ static const town_building_t near_row[] = {
 
 static void draw_far_row(town_fb_t *fb) {
     for (size_t i = 0; i < sizeof far_row / sizeof far_row[0]; i++) {
-        const town_building_t *b = &far_row[i];
+        town_building_t placed = far_row[i];
+        placed.x0 = (int16_t)TOWN_X(placed.x0);
+        const town_building_t *b = &placed;
         int x1 = b->x0 + b->width;
         int top = FAR_GROUND_Y - b->height;
         shade_rect(fb, b->x0, top, x1, FAR_GROUND_Y, 8);
@@ -477,7 +494,7 @@ static void draw_far_row(town_fb_t *fb) {
     }
     /* The far ground itself: a broken line, so it reads as distance rather
      * than as a second street. */
-    for (int x = 0; x < TOWN_W; x += 3)
+    for (int x = 0; x < CANVAS_W; x += 3)
         px(fb, x, FAR_GROUND_Y, true);
 }
 
@@ -508,7 +525,9 @@ static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint32_t frame)
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
     bool night = sky_is_night(DUEL_SECONDARY_SKY_PHASE(r->secondary));
     for (size_t i = 0; i < sizeof near_row / sizeof near_row[0]; i++) {
-        const town_building_t *b = &near_row[i];
+        town_building_t placed = near_row[i];
+        placed.x0 = (int16_t)TOWN_X(placed.x0);
+        const town_building_t *b = &placed;
         int x1 = b->x0 + b->width;
         int top = GROUND_Y - b->height;
         fill_rect(fb, b->x0, top, x1, GROUND_Y, false); /* clear the hills behind */
@@ -1217,11 +1236,13 @@ static int traj_apex(uint8_t traj) {
  * balcony and comes down over the far end of the town: an arc that returned
  * to its launch height left the spell hanging in mid-air at the end of every
  * flight, with nothing under it and nothing to hit. */
-#define SPELL_REACH 96
-#define SPELL_Y0    (BALCONY_Y - 10)
-#define SPELL_Y1    (GROUND_Y - 58)
+#define SPELL_Y0 (BALCONY_Y - 10)
+#define SPELL_Y1 (GROUND_Y - 58)
 
-static void spell_point(uint8_t side, uint8_t traj, int travel, int *out_x, int *out_y) {
+static int spell_reach(const town_fb_t *fb) { return fb->width == LANDSCAPE_W ? 160 : 96; }
+
+static void spell_point(town_fb_t *fb, uint8_t side, uint8_t traj, int travel, int *out_x,
+                        int *out_y) {
     if (travel < 0)
         travel = 0;
     if (travel > 255)
@@ -1233,7 +1254,7 @@ static void spell_point(uint8_t side, uint8_t traj, int travel, int *out_x, int 
          * flight in the town that draws a shape nothing else draws. */
         along = travel <= 127 ? travel * 2 : (255 - travel) * 2;
     }
-    int reach = along * SPELL_REACH / 255;
+    int reach = along * spell_reach(fb) / 255;
     int arc = 4 * along * (255 - along) / 255;
     *out_x = TOWER_CX + (side == SIM_SIDE_L ? reach : -reach);
     /* The ballistic baseline falls as it goes; the arc rides on top of it. */
@@ -1330,7 +1351,7 @@ static void draw_spells(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
         int radius = 2 + (int)magnitude + (int)DUEL_KIND_TIER(spell.kind);
 
         int x, y;
-        spell_point(side, traj, travel, &x, &y);
+        spell_point(fb, side, traj, travel, &x, &y);
 
         /*
          * The whole flight, not the head and a smear behind it.
@@ -1349,13 +1370,13 @@ static void draw_spells(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
          */
         for (int t = travel + 6; t <= 255; t += 6) {
             int ax, ay;
-            spell_point(side, traj, t, &ax, &ay);
+            spell_point(fb, side, traj, t, &ax, &ay);
             if (shade_on(ax, ay, 8))
                 px(fb, ax, ay, true);
         }
         for (int t = 0; t < travel; t += 3) {
             int tx, ty;
-            spell_point(side, traj, t, &tx, &ty);
+            spell_point(fb, side, traj, t, &tx, &ty);
             /* How far back down the arc this sample is, which is the whole of
              * what decides how solid it still looks. */
             int behind = travel - t;
@@ -1418,7 +1439,7 @@ static void draw_outcome(town_fb_t *fb, const duel_render_t *r) {
     if (age < 0)
         age = 0;
     /* Where the flight ends, so the burst is where the spell was. */
-    int x = TOWER_CX + lead * SPELL_REACH;
+    int x = TOWER_CX + lead * spell_reach(fb);
     int y = SPELL_Y1;
 
     switch (kind) {
@@ -1516,7 +1537,7 @@ static void draw_fields(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
         uint8_t kind = (uint8_t)(r->field[slot] & 7u);
         if (kind == FIELD_NONE)
             continue;
-        int cx = slot ? 190 : 66;
+        int cx = TOWER_CX + (slot ? 62 : -62);
         int cy = GROUND_Y - 16;
         switch (kind) {
             case FIELD_STEAM:
@@ -1582,13 +1603,6 @@ static void draw_fields(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
  * are the only two the self-playing world ever fills; the middle pair is
  * drawn because the world model has it, not because this caster reaches it.
  */
-static const int residue_x[SIM_RESIDUE_ZONES] = {
-    TOWER_CX - SPELL_REACH,
-    61,
-    195,
-    TOWER_CX + SPELL_REACH,
-};
-
 /*
  * The top of the near row's silhouette over one column, so a mark can be put
  * on the roof rather than at a height guessed near it. Every branch is the
@@ -1596,9 +1610,11 @@ static const int residue_x[SIM_RESIDUE_ZONES] = {
  * column from the eave, a stepped gable stands three rows per step, and a
  * parapet is flat six above the eave. Nothing standing there is the ground.
  */
-static int near_row_roof_y(int x) {
+static int near_row_roof_y(town_fb_t *fb, int x) {
     for (size_t i = 0; i < sizeof near_row / sizeof near_row[0]; i++) {
-        const town_building_t *b = &near_row[i];
+        town_building_t placed = near_row[i];
+        placed.x0 = (int16_t)TOWN_X(placed.x0);
+        const town_building_t *b = &placed;
         int x1 = b->x0 + b->width;
         if (x < b->x0 || x > x1)
             continue;
@@ -1632,8 +1648,14 @@ static void draw_residue(town_fb_t *fb, const duel_render_t *r, uint32_t frame) 
         int intensity = (int)DUEL_RENDER_RESIDUE_INTENSITY(r, zone);
         if (!intensity)
             continue;
-        int x = residue_x[zone];
-        int base = near_row_roof_y(x);
+        const int x_by_zone[SIM_RESIDUE_ZONES] = {
+            TOWER_CX - spell_reach(fb),
+            TOWN_X(61),
+            TOWN_X(195),
+            TOWER_CX + spell_reach(fb),
+        };
+        int x = x_by_zone[zone];
+        int base = near_row_roof_y(fb, x);
         /* Intensity is the whole of the size: one mark that grows is easier
          * to read across a room than three marks that differ in kind. */
         int half = 3 + intensity * 3;
@@ -1750,8 +1772,8 @@ static void draw_residue(town_fb_t *fb, const duel_render_t *r, uint32_t frame) 
  * most expensive to omit.
  */
 static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
-    hline(fb, 0, TOWN_W - 1, GROUND_Y);
-    hline(fb, 0, TOWN_W - 1, GROUND_Y + 1);
+    hline(fb, 0, CANVAS_W - 1, GROUND_Y);
+    hline(fb, 0, CANVAS_W - 1, GROUND_Y + 1);
 
     /*
      * Paving as joints, not as stones. Drawing each cobble as a filled bar
@@ -1761,16 +1783,16 @@ static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
      * Courses deepen toward the bottom edge, which is the recession.
      */
     int y = GROUND_Y + 7;
-    for (int row = 0; row < 6 && y < TOWN_H; row++) {
+    for (int row = 0; row < 6 && y < CANVAS_H; row++) {
         int depth = 5 + row * 2;
         int gap = 14 + row * 5;
         int offset = (row & 1) ? gap / 2 : 0;
-        for (int x = 0; x < TOWN_W; x += 4)
+        for (int x = 0; x < CANVAS_W; x += 4)
             px(fb, x + (row & 1), y, true); /* the course, broken */
         /* The cross joints are ticks off the course, not full-depth rules.
          * Drawn the full depth they line up row over row into a picket fence,
          * which is a thing standing in the plaza rather than the plaza. */
-        for (int x = offset; x < TOWN_W; x += gap)
+        for (int x = offset; x < CANVAS_W; x += gap)
             vline(fb, x + ((y >> 1) & 3), y + 1, y + 1 + depth / 3);
         y += depth;
     }
@@ -1792,7 +1814,7 @@ static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
 
     /* Market stalls: a striped awning on posts, one either side. */
     for (int i = 0; i < 2; i++) {
-        int sx = i ? 200 : 46;
+        int sx = CANVAS_W == LANDSCAPE_W ? (i ? 304 : 96) : (i ? 200 : 46);
         int sy = GROUND_Y + 22;
         vline(fb, sx - 13, sy - 10, sy + 6);
         vline(fb, sx + 13, sy - 10, sy + 6);
@@ -1808,8 +1830,9 @@ static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
 
     /* Lamps down the front of the square, lit after dusk. */
     bool night = sky_is_night(DUEL_SECONDARY_SKY_PHASE(r->secondary));
-    for (int i = 0; i < 4; i++) {
-        int lx = 20 + i * 72;
+    int lamps = CANVAS_W == LANDSCAPE_W ? 6 : 4;
+    for (int i = 0; i < lamps; i++) {
+        int lx = CANVAS_W == LANDSCAPE_W ? 24 + i * 70 : 20 + i * 72;
         int ly = GROUND_Y + 44;
         vline(fb, lx, ly - 22, ly);
         hline(fb, lx - 2, lx + 2, ly);
@@ -1841,7 +1864,7 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, uint32_t frame
 
     for (int i = 0; i < walkers; i++) {
         uint32_t h = town_hash(r->seed, (uint32_t)i + 40u);
-        int span = TOWN_W + 40;
+        int span = CANVAS_W + 40;
         int speed = 1 + (int)(h & 1u);
         int phase = (int)(((uint32_t)r->civic_phase * (uint32_t)speed + (h >> 4)) % (uint32_t)span);
         int x = (h & 2u) ? phase - 20 : span - phase - 20;

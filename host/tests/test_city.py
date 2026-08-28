@@ -388,18 +388,21 @@ class PresentationPolicyTests(unittest.TestCase):
     def test_the_default_scale_is_the_renderers_decision(self) -> None:
         self.assertEqual(CityRenderer(layout=Layout.CITY).scale, 4)
         self.assertEqual(CityRenderer(layout=Layout.TOWN).scale, 2)
+        self.assertEqual(CityRenderer(layout=Layout.LANDSCAPE).scale, 2)
 
     def test_fit_scale_never_renders_a_fraction_of_a_pixel(self) -> None:
         renderer = CityRenderer(layout=Layout.TOWN)
         self.assertEqual(renderer.fit_scale(512, 512), 2)
         self.assertEqual(renderer.fit_scale(1024, 600), 2)
         self.assertEqual(renderer.fit_scale(10, 10), 1)
+        wide = CityRenderer(layout=Layout.LANDSCAPE)
+        self.assertEqual(wide.fit_scale(800, 480), 2)
 
     def test_the_backdrop_is_the_renderers_decision(self) -> None:
         # The desk continues around the panels; every other layout sits on the
         # same unlit ground its own gap is drawn in.
         self.assertEqual(CityRenderer(layout=Layout.DESK).backdrop, "#303030")
-        for layout in (Layout.CITY, Layout.LEFT, Layout.RIGHT, Layout.TOWN):
+        for layout in (Layout.CITY, Layout.LEFT, Layout.RIGHT, Layout.TOWN, Layout.LANDSCAPE):
             self.assertEqual(CityRenderer(layout=layout).backdrop, "#000000")
 
     def test_the_cadence_comes_from_the_simulation(self) -> None:
@@ -496,6 +499,8 @@ class LayoutRenderTests(unittest.TestCase):
         for layout in (Layout.LEFT, Layout.RIGHT):
             renderer = CityRenderer(scale=1, layout=layout)
             self.assertEqual((renderer.base_width, renderer.base_height), (32, 128))
+        renderer = CityRenderer(scale=1, layout=Layout.LANDSCAPE)
+        self.assertEqual((renderer.base_width, renderer.base_height), (400, 240))
 
     def test_the_city_layout_keeps_the_geometry_and_drops_the_desk(self) -> None:
         desk, city = self.pixels(Layout.DESK), self.pixels(Layout.CITY)
@@ -563,6 +568,19 @@ class TownLayoutTests(unittest.TestCase):
             renderer.render(packed, 16_000, 40, ambient=world),
             renderer.render(packed, 16_000, 40),
         )
+
+    def test_the_landscape_is_a_wide_drawing_layer_not_a_town_crop(self) -> None:
+        renderer = CityRenderer(scale=1, layout=Layout.LANDSCAPE)
+        pixels = renderer.render(resting_input(seed=0x5A), 400_000, 12).partition(b"255\n")[2]
+        self.assertEqual((renderer.base_width, renderer.base_height), (400, 240))
+        self.assertEqual(len(pixels), 400 * 240)
+        self.assertEqual(set(pixels), {0, 255})
+        # Sky, hills, paving and residents are composed through the added
+        # wings; they are not black bars around a square image.
+        left = b"".join(pixels[y * 400 : y * 400 + 64] for y in range(240))
+        right = b"".join(pixels[y * 400 + 336 : (y + 1) * 400] for y in range(240))
+        self.assertGreater(left.count(255), 300)
+        self.assertGreater(right.count(255), 300)
 
 
 class WindowLayoutTests(unittest.TestCase):

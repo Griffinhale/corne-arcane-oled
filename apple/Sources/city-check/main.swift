@@ -120,13 +120,13 @@ func check(_ name: String, _ passed: Bool, _ detail: @autoclosure () -> String =
 }
 
 func runInvariants() {
-    check("abi_is_the_one_this_tree_compiles", City.abi == 6, "reported \(City.abi)")
+    check("abi_is_the_one_this_tree_compiles", City.abi == 7, "reported \(City.abi)")
     check("cadence_comes_from_the_simulation", City.frameIntervalMs == 40)
     check("the_tour_is_every_civic_floor", City.tourLength == 5)
 
     let expected: [Layout: (Int, Int)] = [
         .desk: (67, 128), .city: (67, 128), .left: (32, 128), .right: (32, 128),
-        .town: (256, 256),
+        .town: (256, 256), .landscape: (400, 240),
     ]
     var geometryHolds = true
     for layout in Layout.allCases {
@@ -151,6 +151,20 @@ func runInvariants() {
     /* Only the two values, which is why a Lock Screen widget's monochrome
      * treatment is native here rather than something to fight. */
     check("the_frame_is_one_bit_in_eight_bit_grey", Set(pixels) == Set([0, 255]))
+
+    guard let landscape = try? City(seed: 0x5A, layout: .landscape),
+        let widePixels = try? landscape.render(frame: 12)
+    else { fail("the landscape would not render") }
+    let leftWing = stride(from: 0, to: widePixels.count, by: 400).flatMap {
+        widePixels[$0..<($0 + 64)]
+    }
+    let rightWing = stride(from: 0, to: widePixels.count, by: 400).flatMap {
+        widePixels[($0 + 336)..<($0 + 400)]
+    }
+    check(
+        "the_landscape_is_composed_through_both_wings",
+        widePixels.count == 400 * 240 && leftWing.filter { $0 == 255 }.count > 300
+            && rightWing.filter { $0 == 255 }.count > 300)
 
     let target: UInt32 = 36_000
     func watched() -> [UInt8] {

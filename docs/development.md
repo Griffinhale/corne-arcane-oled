@@ -48,7 +48,7 @@ in the URL, so a link promises the recipient the same world, spell for spell.
 `make web-parity` is what makes that a fact rather than a hope. It renders the
 same matrix -- every layout, three seeds, 240 frames each -- twice, once
 through the WebAssembly module and once through the native library the desktop
-window loads, and fails unless every byte of all 3 600 frames agrees.
+window loads, and fails unless every byte of all 4 320 frames agrees.
 
 Both sides drive the self-playing world, so a divergence in the simulation
 shows up as well as one in the renderer: the run's hashes stop matching partway

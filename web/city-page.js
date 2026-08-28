@@ -41,7 +41,7 @@ function readAddress() {
      * runs -- so the cap is what stops a hostile link from spending a minute
      * of somebody's CPU before the page appears. */
     startMs: Number.isFinite(t) && t > 0 ? Math.min(t, 24 * 60 * 60 * 1000) : 0,
-    layout: Number.isFinite(view) && view >= 0 && view <= 4 ? view : 4,
+    layout: Number.isFinite(view) && view >= 0 && view <= 5 ? view : 4,
     /* Range-checked against the tour once the module is loaded, since only it
      * knows how long the tour is. */
     floor: Number.isFinite(floor) && floor >= 0 ? floor : 0,
@@ -72,7 +72,7 @@ function formatElapsed(ms) {
 
 /* Whole-pixel scaling, using the renderer's own fit rule rather than a second
  * opinion about it. The canvas is always rendered at scale 1 and grown here,
- * so the bytes crossing the boundary stay at 64 kB a frame however large the
+ * so the bytes crossing the boundary stay at most 94 kB a frame however large the
  * city is on screen. */
 function resize() {
   if (!city || !geometry) return;

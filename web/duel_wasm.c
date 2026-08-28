@@ -38,7 +38,7 @@
  * The freestanding contract, in full. -nostdlib means these two are the only
  * things the core needs that the toolchain will not provide, and clang lowers
  * some struct copies to calls of them regardless of the source. Simple byte
- * loops: the buffers here are at most 64 KiB and this runs once per frame.
+ * loops: the buffers here are at most 94 KiB and this runs once per frame.
  */
 void *memcpy(void *dst, const void *src, size_t n) {
     uint8_t *d = (uint8_t *)dst;
@@ -64,13 +64,13 @@ static duel_ambient_t ambient_world;
 static duel_city_input_t city_input;
 
 /*
- * One frame at scale 1, sized for the largest layout. TOWN is 256x256, which
- * is 64 KiB of 8-bit grey; the panel layouts are 67x128 and sit inside it.
+ * One frame at scale 1, sized for the largest layout. LANDSCAPE is 400x240,
+ * which is 96,000 bytes of 8-bit grey; every other layout sits inside it.
  * Scale expansion is the shell's job here -- the browser upscales with CSS,
  * so asking the library for scale 2 would cost 4x the bytes across the
  * boundary to produce pixels the compositor can produce for nothing.
  */
-#define WASM_PIXELS_MAX (256 * 256)
+#define WASM_PIXELS_MAX (400 * 240)
 static uint8_t pixel_buffer[WASM_PIXELS_MAX];
 
 _Static_assert(sizeof(city_input) == 10, "input struct is the wire payload, unpacked");

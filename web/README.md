@@ -33,7 +33,7 @@ for the missing MIME type.
 
 - **parity** -- every layout, three seeds, 240 frames each, rendered by the
   WebAssembly module and by the native library the desktop window loads. All
-  3 600 frames must agree byte for byte. Both sides drive the self-playing
+  4 320 frames must agree byte for byte. Both sides drive the self-playing
   world, so a divergence in the simulation shows up as well as one in the
   renderer.
 - **share** -- arriving at a moment by link must equal having watched the world
@@ -153,7 +153,8 @@ page. It is not a privacy policy; it is the absence of a mechanism.
 
 Every buffer is a file-scope static in `duel_wasm.c`, sized by what the header
 fixes: one `duel_city_state_t`, one `duel_ambient_t`, one `duel_city_input_t`,
-and 64 kB of pixels, which is TOWN at scale 1 and covers every other layout.
+and 96,000 bytes of pixels, which is LANDSCAPE at scale 1 and covers every
+other layout.
 JavaScript reads them by offset. The module's memory footprint is a
 compile-time constant, and there is nothing to free, grow or leak.
 
@@ -168,7 +169,8 @@ path on the next render and is rejected if any field is out of range.
 The library expands to scale internally, which is right for a toolkit that
 wants a finished bitmap and wrong for a browser: TOWN at scale 2 costs 262 kB a
 frame to produce pixels the compositor produces for nothing. So the browser
-renders at scale 1 -- 64 kB a frame for the town, 8.6 kB for the panels --
+renders at scale 1 -- 96 kB for landscape, 64 kB for the square town, 8.6 kB
+for the panels --
 converts grey to RGBA into one reused `ImageData`, and upscales in CSS with
 `image-rendering: pixelated`. Sharp, cheap, and it sidesteps a core change that
 the wider port plan lists but this shell does not need.

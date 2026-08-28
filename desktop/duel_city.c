@@ -73,6 +73,9 @@ static bool layout_plan(int layout, city_layout_t *plan) {
         case DUEL_CITY_LAYOUT_TOWN:
             *plan = (city_layout_t){TOWN_W, TOWN_H, false, false, true, DUEL_CITY_GROUND};
             return true;
+        case DUEL_CITY_LAYOUT_LANDSCAPE:
+            *plan = (city_layout_t){LANDSCAPE_W, LANDSCAPE_H, false, false, true, DUEL_CITY_GROUND};
+            return true;
         default:
             return false;
     }
@@ -185,7 +188,7 @@ typedef void (*row_filler_t)(uint8_t *row, int y, const void *source);
 
 static void expand(const city_layout_t *plan, int scale, uint8_t *pixels, row_filler_t fill,
                    const void *source) {
-    uint8_t row[TOWN_W];
+    uint8_t row[LANDSCAPE_W];
     size_t stride = (size_t)plan->width * (size_t)scale;
     for (int y = 0; y < plan->height; y++) {
         fill(row, y, source);
@@ -226,7 +229,7 @@ static void fill_panel_row(uint8_t *row, int y, const void *source) {
 
 static void fill_town_row(uint8_t *row, int y, const void *source) {
     const town_fb_t *town = source;
-    for (int x = 0; x < TOWN_W; x++)
+    for (int x = 0; x < town->width; x++)
         row[x] = town_fb_get(town, x, y) ? DUEL_CITY_INK : DUEL_CITY_GROUND;
 }
 
@@ -253,9 +256,9 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
     compose(&render, state, &host, input, ambient, elapsed_ms);
 
     if (plan.town) {
-        /* The square layer draws the same projection into its own surface. */
+        /* The town layers draw the same projection into their own surfaces. */
         town_fb_t town;
-        town_fb_clear(&town);
+        town_fb_clear(&town, plan.width, plan.height);
         duel_town_draw(&town, &render, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;

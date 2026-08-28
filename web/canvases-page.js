@@ -1,11 +1,11 @@
 /*
- * canvases-page.js -- one world, drawn six ways at the same instant.
+ * canvases-page.js -- one world, drawn seven ways at the same instant.
  *
  * The page exists to make the core/shell split visible in a single image.
  * So the important property of this file is what it does *not* do: it holds
  * one City, advances it once per frame, and then renders it repeatedly with a
  * different layout argument. There is no second world, no second clock, and no
- * per-canvas state. If the six pictures agree, it is because they are one
+ * per-canvas state. If the seven pictures agree, it is because they are one
  * computation.
  */
 import { City, makeImage, paint } from "./duel-city.js";
@@ -24,12 +24,13 @@ const el = (id) => document.getElementById(id);
 const WATCH = { x: 46, y: 22, width: 164, height: 200 };
 
 /*
- * The six framings. `scaleStep` is a multiplier on one shared whole-number
+ * The seven framings. `scaleStep` is a multiplier on one shared whole-number
  * step, so every canvas grows by whole pixels together and the row stays
  * aligned: the panels are 128 tall against the town's 256, so they take twice
  * the step and the two end up the same height on screen.
  */
 const FRAMINGS = [
+  { layout: 5, name: "landscape", scaleStep: 1, note: "400×240 · its own wide drawing layer" },
   { layout: 4, name: "town", scaleStep: 1, note: "256×256 · its own drawing layer" },
   { key: "watch", name: "watch", scaleStep: 1, note: "164×200 · a crop, taken in JS" },
   { layout: 1, name: "city", scaleStep: 2, note: "67×128 · both, gap unlit" },
@@ -91,13 +92,13 @@ function build() {
 
 /*
  * One step for the whole row, so every canvas is a whole-pixel multiple of the
- * same number and the sheet reads as one picture rather than six.
+ * same number and the sheet reads as one picture rather than seven.
  *
  * The step is chosen by trying the largest and measuring, rather than by
  * predicting it from widths and gaps. Predicting means keeping a copy of the
  * stylesheet's padding in JavaScript and being wrong the first time either
  * changes; measuring asks the question the page actually cares about, which is
- * whether all six ended up on one row. Six layout passes at a resize is
+ * whether all seven ended up on one row. Seven layout passes at a resize is
  * nothing next to being subtly wrong about it.
  *
  * Each figure is also pinned to its canvas's width. Without that the captions
@@ -116,7 +117,7 @@ function applyStep(step) {
   }
 }
 
-/* The row is aligned on its baseline, so the figures have six different tops
+/* The row is aligned on its baseline, so the figures have seven different tops
  * and one shared bottom. It is the bottom that says whether they are on the
  * same row. */
 function onOneRow() {
@@ -138,8 +139,8 @@ function resize() {
 }
 
 function draw() {
-  /* The town is rendered first and kept, because the watch crop reads from it
-   * rather than costing a second render of the same pixels. */
+  /* The town is rendered before the watch and kept, because the watch crop
+   * reads from it rather than costing a second render of the same pixels. */
   let town = null;
   for (const framing of FRAMINGS) {
     if (framing.key === "watch") continue;
@@ -181,8 +182,8 @@ function loop(now) {
   if (steps < 1) return;
   accumulator -= steps * city.frameIntervalMs;
 
-  /* One advance for the whole row. Six renders, one world: this single call is
-   * the entire reason the six pictures agree. */
+  /* One advance for the whole row. Six renders and one crop, one world: this
+   * single call is the entire reason the seven pictures agree. */
   city.advance(city.worldMs + steps * city.frameIntervalMs);
   draw();
   showStats();

@@ -30,22 +30,32 @@
     public struct CityTimelineProvider: TimelineProvider {
         public let seed: UInt8
         public let layout: Layout
+        /// A real wide composition for the one wide widget family. When it is
+        /// absent, every family uses `layout` as before.
+        public let landscapeLayout: Layout?
         /// How far apart the stills are. A quarter of an hour is what the
         /// system will actually honour for a widget that is not the one being
         /// looked at.
         public let spacing: TimeInterval
         /// How many to hand over at once. Every entry is a rendered frame held
-        /// in memory, 64 kB for the town, so this is the trade: a longer
-        /// timeline is fewer wake-ups and more resident bytes.
+        /// in memory, so this is the trade: a longer timeline is fewer wake-ups
+        /// and more resident bytes, 64 kB for a square entry or 96 kB for a
+        /// landscape one.
         public let count: Int
 
         public init(
-            seed: UInt8, layout: Layout = .town, spacing: TimeInterval = 15 * 60, count: Int = 24
+            seed: UInt8, layout: Layout = .town, landscapeLayout: Layout? = nil,
+            spacing: TimeInterval = 15 * 60, count: Int = 24
         ) {
             self.seed = seed
             self.layout = layout
+            self.landscapeLayout = landscapeLayout
             self.spacing = spacing
             self.count = count
+        }
+
+        private func layout(for context: Context) -> Layout {
+            context.family == .systemMedium ? landscapeLayout ?? layout : layout
         }
 
         /*
@@ -68,14 +78,16 @@
         }
 
         public func getSnapshot(in context: Context, completion: @escaping (CityEntry) -> Void) {
-            completion(entries(from: Date(), count: 1).first ?? placeholder(in: context))
+            completion(
+                entries(from: Date(), count: 1, layout: layout(for: context)).first
+                    ?? placeholder(in: context))
         }
 
         public func getTimeline(
             in context: Context, completion: @escaping (Timeline<CityEntry>) -> Void
         ) {
             let now = Date()
-            let made = entries(from: now, count: count)
+            let made = entries(from: now, count: count, layout: layout(for: context))
             completion(.init(entries: made, policy: .after(made.last?.date ?? now)))
         }
 
@@ -86,7 +98,7 @@
         /// that will kill you for it. `City.timeline` advances continuously
         /// and snapshots at each boundary instead, so a day costs one day's
         /// ticks rather than ninety-six partial replays of one.
-        private func entries(from date: Date, count: Int) -> [CityEntry] {
+        private func entries(from date: Date, count: Int, layout: Layout) -> [CityEntry] {
             let anchor = anchor(for: date)
             let step = UInt32(City.frameIntervalMs)
             let elapsed = UInt32(max(0, date.timeIntervalSince(anchor)) * 1000)
@@ -123,7 +135,7 @@
                     Image(decorative: image, scale: 1)
                         .interpolation(.none)
                         .resizable()
-                        .aspectRatio(contentMode: .fill)
+                        .aspectRatio(contentMode: .fit)
                 }
             }
         }

@@ -20,7 +20,7 @@
  * wants a finished bitmap and wrong for a browser: TOWN at scale 2 is 262 kB a
  * frame to produce pixels the compositor produces for nothing. So the browser
  * always renders at scale 1 and upscales in CSS with image-rendering:pixelated.
- * Sharp, 64 kB a frame, and no core change to get it. */
+ * Sharp, at most 94 kB a frame, and no core change to get it. */
 export const RENDER_SCALE = 1;
 
 export const LAYOUT = Object.freeze({
@@ -29,6 +29,7 @@ export const LAYOUT = Object.freeze({
   LEFT: 2,
   RIGHT: 3,
   TOWN: 4,
+  LANDSCAPE: 5,
 });
 
 export const LAYOUT_NAMES = Object.freeze({
@@ -37,6 +38,7 @@ export const LAYOUT_NAMES = Object.freeze({
   2: "left",
   3: "right",
   4: "town",
+  5: "landscape",
 });
 
 /* duel_city.h's DUEL_CITY_ERR_*, in the words a page can show. */
@@ -45,7 +47,7 @@ const ERRORS = {
   "-2": "scale outside 1..16",
   "-3": "pixel buffer shorter than the geometry",
   "-4": "an input field is outside its enum or bit width",
-  "-5": "layout outside desk/city/left/right/town",
+  "-5": "layout outside desk/city/left/right/town/landscape",
 };
 
 export class CityError extends Error {}
@@ -247,7 +249,7 @@ export class City {
  *
  * The renderer's output is one byte a pixel and a canvas wants four, so this
  * is the only per-pixel work the shell does. The ImageData is allocated once
- * and written in place, because allocating 64 kB a frame at 25 Hz is how a
+ * and written in place, because allocating 94 kB a frame at 25 Hz is how a
  * page that should idle at nothing instead keeps a collector busy.
  */
 export function makeImage(width, height) {

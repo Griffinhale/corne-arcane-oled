@@ -53,14 +53,15 @@ Swift, which ships no `libIndexStore.so` for SwiftPM's test discovery.
 
 ## Wiring the Xcode targets
 
-1. New Xcode project, iOS App, SwiftUI. Delete its generated
-   `ContentView.swift` and `…App.swift`.
-2. File → Add Package Dependencies → Add Local… → this repository. Add the
-   `CityKit` product to the app target. There are no `unsafeFlags` anywhere in
-   `Package.swift`, which is what makes that possible.
-3. Add `apple/App/CityApp.swift` to the app target.
-4. File → New → Target → Widget Extension. Delete its generated sources, add
-   `apple/Widget/CityWidget.swift`, and add `CityKit` to that target too.
+Open `apple/CorneArcane.xcodeproj`. Its `CorneArcane` app target embeds the
+`CityWidgetExtension` target, and both link the `CityKit` product from this
+repository as a local Swift package. The targets contain only
+`apple/App/CityApp.swift` and `apple/Widget/CityWidget.swift`, respectively;
+all shared implementation stays in CityKit.
+
+Simulator builds sign locally. For a device or archive, choose a development
+team for both targets in Xcode; no machine-specific team identifier is stored
+in the project.
 
 Device arm64 and Apple Silicon simulator arm64 are the same code. Nothing in
 `firmware/sim` is endian- or width-sensitive and there are no floats anywhere.
@@ -86,25 +87,21 @@ pair are not wanted.
   here. It is why a share link takes its position from the world's tick count
   and not from the wall clock.
 - **Seek replays tick by tick and renders a run-up.** How long the run-up is
-  belongs to the renderer -- `duel_city_seek_warm_frames`, ABI 6 -- not to this
+  belongs to the renderer -- `duel_city_seek_warm_frames`, introduced in ABI 6 -- not to this
   shell. Without it a shell that renders once a quarter hour draws an impact
   burst for something that happened fourteen minutes ago, every single time.
 - **Render at scale 1 and magnify in the view layer.** `.interpolation(.none)`
   is the browser's `image-rendering: pixelated`. `duel_city_fit_scale(TOWN,
   390, 844)` returns 1 on a phone in logical points anyway.
 
-## The landscape gap
+## Landscape
 
-Nothing here is landscape. DESK and CITY are 67x128, LEFT and RIGHT are 32x128,
-TOWN is square. StandBy is landscape and `systemMedium` is 2:1, which is why
-`CityWidget` claims only the square families.
-
-Either letterbox the town or add a layout -- and adding one is ABI-visible:
-`DUEL_CITY_LAYOUT_COUNT`, `duel_city_geometry`, `duel_city_backdrop`,
-`duel_city_default_scale`, `duel_city_fit_scale`, and a new column in the parity
-matrix, which all three legs then walk. Worth doing once if e-ink follows: a
-400x240 landscape layout renders at scale 2 into exactly 800x480, which is the
-7.5" panel.
+ABI 7 adds `LANDSCAPE`, a 400x240 drawing layer with more world on either side
+of the tower. It is not a stretched or cropped `TOWN`: the sky, hills, streets,
+plaza, residents and spell lanes are composed across the wider surface. The
+widget asks for it only in `systemMedium`; `systemSmall` and `systemLarge` keep
+the 256x256 town. At the renderer's default scale of 2 it is exactly 800x480,
+which also fits the 7.5" e-ink panel the layout was sized for.
 
 ## Host semantics
 
