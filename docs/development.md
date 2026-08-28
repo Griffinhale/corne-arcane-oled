@@ -13,6 +13,7 @@ make test            # mechanics, 622 visual scenes, allocation scan, host tests
 make hp-gate         # pinned 8-HP and 10-HP 30-minute workloads
 make mechanics-hp-candidates # full mechanics suite under both geometries
 make hygiene         # active-tree naming and historical-comment policy
+make city-lib        # the desktop product's native library (desktop/)
 make release-build   # release, diagnostic, and both unflashed HP candidates
 make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check

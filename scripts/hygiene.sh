@@ -35,6 +35,24 @@ if [ -n "$active" ] && rg -n -i \
     exit 1
 fi
 
+# The desktop product is host-only and must never reach the flash image.
+# desktop/ is compiled by its own Makefile into a shared object; QMK compiles
+# the explicit SRC list in firmware/rules.mk and nothing else. There are
+# exactly two ways that could silently stop being true, so both are checked:
+# rules.mk gaining a reference, and a firmware source including a desktop
+# header. The dependency runs one way only, desktop -> firmware/sim.
+if grep -q 'desktop' firmware/rules.mk; then
+    echo "FAIL hygiene: firmware/rules.mk references desktop/; that code is not flashed" >&2
+    exit 1
+fi
+inbound=$(grep -rl 'duel_city\.h\|duel_ambient\.h\|duel_town\.h' firmware/sim \
+    firmware/keymap.c firmware/config.h 2>/dev/null || true)
+if [ -n "$inbound" ]; then
+    echo "FAIL hygiene: firmware source includes a desktop-only header" >&2
+    printf '%s\n' "$inbound" >&2
+    exit 1
+fi
+
 # The package version is declared once, in host/pyproject.toml. Documentation
 # names the package rather than restating the number, so a release is a single
 # edit and cannot leave contradictory versions behind. dpkg requires the version

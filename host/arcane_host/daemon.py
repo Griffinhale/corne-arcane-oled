@@ -93,7 +93,20 @@ def _run_dry(heartbeat: HidHeartbeat, once: bool) -> int:
         time.sleep(0.02)
 
 
-def run(args: argparse.Namespace) -> int:
+def run(args: argparse.Namespace, *, presenter_factory: Callable | None = None) -> int:
+    """Run the daemon.
+
+    ``presenter_factory`` lets one in-process reader ride along on the semantic
+    stack -- today the desktop city window. It is called with (GLib, runtime,
+    resolver) once the main loop exists, and whatever it returns is owned and
+    closed by the runtime. Readers never produce semantics and never touch the
+    HID endpoint, so there is still exactly one consumer of the shared
+    interface.
+    """
+    if presenter_factory is not None and args.dry_run:
+        print("arcane-host: --dry-run has no main loop to present from", file=sys.stderr)
+        return 2
+
     salt = secrets.token_bytes(16)
 
     def identifier_digest(value: str) -> bytes:
@@ -175,6 +188,8 @@ def run(args: argparse.Namespace) -> int:
         resolver, policy, runtime.wake, pomodoro_duration=args.pomodoro_duration
     )
     runtime.bind_adapters(adapters)
+    if presenter_factory is not None:
+        runtime.own(presenter_factory(GLib, runtime, resolver))
 
     if override is None:
         runtime.own(FocusService(Gio, connection, arbiter, changed=runtime.wake))

@@ -112,9 +112,82 @@ content, history, forms, referrers, or typed text. An absent bus, denied
 permission, missing native host, or extension restart disables only that
 adapter.
 
+## Desktop city window
+
+A window that shows the city on a machine whose keyboard has no displays. It
+covers the screenless keyboard and both non-split cases at once, and is the
+reference implementation any later platform can read.
+
+On the keyboard, key positions never leave the firmware, and sampling them on
+a desktop is exactly the access this project refuses, so the window reads no
+input at all. The tower, its floor, the sky, the resident, and whatever the
+notification summary sends walking through are derived from the same bounded
+enums the daemon already sends over Raw HID.
+
+The champions duel anyway. With no hands at the keys the world would stand
+still, so the window runs the firmware's own simulation driven by a caster
+that fabricates its own key positions from a seeded generator: real chains,
+compiled by the real incantation compiler, from invented input. A seed replays
+a city exactly, and the world never runs down -- a felled champion is carried
+off and the roster walks a replacement in. `--no-duels` stills them and leaves
+only the host's semantics moving.
+
+The renderer lives in `desktop/`, which is the desktop product: its own
+drawing layers and autonomous world, compiled natively over the simulation the
+firmware also compiles. None of it is flashed. QMK compiles the explicit list
+in `firmware/rules.mk`, the dependency runs one way only (`desktop` reads
+`firmware/sim`, never the reverse), and `make hygiene` fails if either stops
+being true, so the desktop costs the firmware image nothing. It is not packaged
+yet, so the window runs from a checkout:
+
+```bash
+make city-lib                                  # from the repository root
+cd host
+python3 -m arcane_host.city_window --tour      # no daemon, no bus, no keyboard
+python3 -m arcane_host.city_window             # follow the live daemon
+```
+
+By default the window is one continuous scene. The three columns between the
+two towers are world the panels cannot show -- the battlefield axis crosses
+them and nothing is ever drawn there -- so on a desktop they are unlit rather
+than desk-coloured, and the keyboard's two-panel framing disappears.
+
+- `--layout city` one scene, the default
+- `--layout desk` two panels with the desk between them, as the review sheets
+  and the hardware show it
+- `--layout left`, `--layout right` a single tower
+- `--layout town` a 256x256 city: one wizard tower at the centre, houses either
+  side, a plaza in front, and the hour in the sky
+- `--size 512x512` a fixed window with the city centred at the largest whole
+  pixel scale that fits; `--scale N` instead sizes the window to the city
+- `--no-duels` still champions; `--seed` chooses which city you get
+
+With no scale asked for, each layout takes the largest whole-pixel scale that
+keeps the window about 512 tall, so the panels come up at 4x and the town at
+2x without a flag.
+
+The first four layouts are the same pixels reframed. Every coordinate behind
+them is written against a 32x128 canvas, so 67x128 is all they can show and a
+squarer window letterboxes rather than revealing more city.
+
+`town` is a second drawing layer rather than a reframing, on a square canvas of
+its own. It reads the same projection -- the floor decides which storey is lit,
+the sky phase decides the hour, the civic clock paces the residents crossing
+the plaza, and a spell in flight is the same spell, arcing out over the roofs
+instead of across a desk. It shares the world, not the pixels.
+
+The live mode is the daemon: it builds the same semantic stack in the same
+process, so nothing new consumes the shared Raw HID interface. It also claims
+the same bus name, so stop `corne-arcane-host.service` first or focus reporting
+will go to the running service instead. Arguments the window does not recognise
+are handed to the daemon unchanged, so `--scale 5 --verbose` works.
+
+Set `CORNE_ARCANE_CITY_LIB` to load the shared library from somewhere else.
+
 ## Tasks
 
 - Run host tests: `./run_tests.sh`
+- Show the city with no keyboard: `python -m arcane_host.city_window --tour`
 - Exercise one offline exchange: `python -m arcane_host.daemon --dry-run --once --session 1`
 - Check the Debian layout: `make install DESTDIR=/tmp/stage PREFIX=/usr`
 - Observe physical acceptance metrics: `corne-arcane-diagnostics --observe 300 --json`

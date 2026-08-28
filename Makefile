@@ -1,11 +1,11 @@
-.PHONY: test mechanics-test mechanics-hp-candidates visual-test hp-gate noalloc-check release-build release-budget hygiene \
+.PHONY: test mechanics-test mechanics-hp-candidates visual-test hp-gate noalloc-check city-lib release-build release-budget hygiene \
 	format format-check lint
 
 PYTHON_SOURCES := $(shell find host/arcane_host host/tests tools -type f -name '*.py' | sort)
-C_SOURCES := $(shell find firmware -type f \( -name '*.c' -o -name '*.h' \) \
+C_SOURCES := $(shell find firmware desktop -type f \( -name '*.c' -o -name '*.h' \) \
 	! -name 'corne_arcane_layout.h' | sort)
 
-test: mechanics-test visual-test noalloc-check
+test: mechanics-test visual-test noalloc-check city-lib
 	cd host && ./run_tests.sh
 
 mechanics-test:
@@ -22,6 +22,11 @@ hp-gate:
 
 noalloc-check:
 	$(MAKE) -C firmware/sim_test noalloc-check
+
+# The desktop product's native library. Built as part of `test` so the host
+# tests that exercise the renderer actually run.
+city-lib:
+	$(MAKE) -C desktop
 
 release-build:
 	sh ./scripts/release_build.sh
