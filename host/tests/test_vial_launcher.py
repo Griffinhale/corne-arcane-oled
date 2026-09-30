@@ -308,6 +308,11 @@ class ForkingVialTests(unittest.TestCase):
         # Waiting stopped; the leftover is not killed on a normal exit.
         self.assertEqual(len(vial_launcher.group_members(int(self.pgid_file.read_text()))), 1)
 
+    def test_signal_exit_code(self) -> None:
+        """A Vial killed by SIGSEGV exits 139, as a shell reports it, not 245."""
+        vial = self.fake_vial("true", then="kill -SEGV $$")
+        self.assertEqual(vial_launcher.run_vial([str(vial)], []), 128 + signal.SIGSEGV)
+
     def test_interrupted_launch_stops_the_whole_group(self) -> None:
         vial = self.fake_vial("sleep 30", then="sleep 30")
 

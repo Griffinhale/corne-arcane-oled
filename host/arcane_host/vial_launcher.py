@@ -160,7 +160,8 @@ def run_vial(command: list[str], args: list[str]) -> int:
         status = process.wait()
         wait_for_group(process.pid, IDLE_GROUP_LIMIT)
         finished = True
-        return status
+        # Popen reports a signal death as -N; exit as a shell would, with 128+N.
+        return 128 - status if status < 0 else status
     finally:
         if process is not None and not finished:
             if process.poll() is None:
