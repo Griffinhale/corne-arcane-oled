@@ -400,6 +400,10 @@ static void test_host_protocol_current_payload_and_ordering(void) {
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
     EXPECT(!duel_host_packet_valid(&bad));
     bad = heartbeat;
+    bad.payload_len = DUEL_HOST_PAYLOAD_LEN + 1u; /* exact length, not a minimum */
+    bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
+    EXPECT(!duel_host_packet_valid(&bad));
+    bad = heartbeat;
     bad.version = 2; /* production Raw HID v2 is a strict reject */
     bad.crc = duel_crc8(&bad, offsetof(duel_host_packet_t, crc));
     EXPECT(!duel_host_packet_valid(&bad));
