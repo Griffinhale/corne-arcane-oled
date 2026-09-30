@@ -15,6 +15,42 @@ while devices appear and disappear:
 systemctl --user stop corne-arcane-host.service corne-arcane-focus-x11.service
 ```
 
+## Building the image
+
+The firmware builds inside a [Vial-QMK](https://github.com/vial-kb/vial-qmk)
+checkout at the revision in [`VIAL_QMK_REVISION`](../VIAL_QMK_REVISION). These
+are the steps CI runs. Vial-QMK uses submodules, so clone it recursively:
+
+```bash
+git clone --recurse-submodules https://github.com/vial-kb/vial-qmk ~/src/vial-qmk
+git -C ~/src/vial-qmk checkout --detach "$(cat VIAL_QMK_REVISION)"
+git -C ~/src/vial-qmk submodule update --init --recursive
+```
+
+Vial-QMK's own installer sets up the ARM toolchain (`arm-none-eabi-gcc`) and
+the system packages for your distribution:
+
+```bash
+~/src/vial-qmk/util/qmk_install.sh
+```
+
+The installer puts the Python side in with `pip install --user`, which recent
+Debian and Ubuntu releases refuse as an externally managed environment, and it
+never installs the `qmk` command itself. Use a virtual environment instead:
+
+```bash
+python3 -m venv ~/.venvs/qmk
+~/.venvs/qmk/bin/python -m pip install qmk
+~/.venvs/qmk/bin/python -m pip install -r ~/src/vial-qmk/requirements.txt
+export PATH="$HOME/.venvs/qmk/bin:$PATH"
+qmk --version && arm-none-eabi-gcc --version | head -1
+```
+
+`host/install_firmware.sh` copies the keymap into the checkout with `rsync`, so
+install that too if your system lacks it. On NixOS, `corne.nix` supplies the
+tooling; see [`BUILD_NOTES_NIXOS.md`](../BUILD_NOTES_NIXOS.md). If the checkout
+is not at `~/src/vial-qmk`, set `QMK_ROOT` when you build.
+
 ## The one rule that breaks hardware
 
 **Never connect or disconnect TRRS while either half is USB-powered.** Power

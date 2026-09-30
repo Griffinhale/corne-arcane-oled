@@ -56,13 +56,15 @@ You need a Corne (crkbd rev1) with RP2040 controllers and both OLEDs, plus a
 [`VIAL_QMK_REVISION`](VIAL_QMK_REVISION).
 
 ```bash
-git clone https://github.com/vial-kb/vial-qmk ~/src/vial-qmk
+git clone --recurse-submodules https://github.com/vial-kb/vial-qmk ~/src/vial-qmk
 git -C ~/src/vial-qmk checkout "$(cat VIAL_QMK_REVISION)"
-./host/install_firmware.sh        # syncs firmware/ into the QMK tree
-make release-build                # UF2 + ELF + map, with resource budgets
+git -C ~/src/vial-qmk submodule update --init --recursive
+make release-build                # syncs firmware/ into the QMK tree, then builds
 ```
 
-`firmware/` is the source of truth; it is a keymap, not a standalone tree.
+This needs the QMK CLI, the ARM toolchain and `rsync`; the setup steps are in
+[`docs/flashing.md`](docs/flashing.md#building-the-image). `firmware/` is the
+source of truth; it is a keymap, not a standalone tree.
 
 Then follow [`docs/flashing.md`](docs/flashing.md). The bootloader entry on
 this board is less obvious than usual, and there is one rule about TRRS that
