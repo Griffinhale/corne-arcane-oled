@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from typing import Any, Callable
 
@@ -60,6 +61,10 @@ class DaemonRuntime:
         self._owned.append(resource)
         return resource
 
+    def _debug(self, message: str) -> None:
+        if self.verbose:
+            print(f"arcane-host: {message}", file=sys.stderr, flush=True)
+
     def set_bus_owner(self, owner_id: int) -> None:
         self.owner_id = owner_id
 
@@ -117,8 +122,8 @@ class DaemonRuntime:
         if self.source_id:
             try:
                 self.GLib.source_remove(self.source_id)
-            except Exception:
-                pass
+            except Exception as error:
+                self._debug(f"removing tick source failed ({error})")
         self.source_id = self.GLib.idle_add(self.tick)
 
     def run(self) -> None:
@@ -138,16 +143,16 @@ class DaemonRuntime:
         if self.source_id:
             try:
                 self.GLib.source_remove(self.source_id)
-            except Exception:
-                pass
+            except Exception as error:
+                self._debug(f"removing tick source failed ({error})")
             self.source_id = 0
         for resource in reversed(self._owned):
             close = getattr(resource, "close", None)
             if close is not None:
                 try:
                     close()
-                except Exception:
-                    pass
+                except Exception as error:
+                    self._debug(f"closing {type(resource).__name__} failed ({error})")
         self._owned.clear()
         if self.owner_id:
             self.Gio.bus_unown_name(self.owner_id)

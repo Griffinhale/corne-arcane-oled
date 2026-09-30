@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import sys
 import time
 from typing import Callable, Protocol
 
@@ -48,6 +50,34 @@ class DryRunTransport:
         pass
 
 
+# What the journal says about the keyboard link. One line per change of kind,
+# at any verbosity: a keyboard that stays unplugged is one line, not one per
+# retry. Messages name the condition and the fix, never report contents.
+LINK_CONNECTED = "connected"
+LINK_ABSENT = "absent"
+LINK_DENIED = "denied"
+LINK_SEVERAL = "several"
+LINK_FAILED = "failed"
+
+UDEV_HINT = (
+    "check that the 60-corne-arcane.rules udev rule is installed, "
+    "then unplug and replug the keyboard"
+)
+
+
+def link_state(error: BaseException) -> tuple[str, str]:
+    """Classify a connect failure as (state, message) for the journal."""
+    if isinstance(error, PermissionError) or getattr(error, "errno", None) == errno.EACCES:
+        return LINK_DENIED, f"keyboard found but not readable ({error}); {UDEV_HINT}"
+    if isinstance(error, RuntimeError):
+        text = str(error)
+        if text.startswith("multiple "):
+            return LINK_SEVERAL, text
+        if text.startswith("no "):
+            return LINK_ABSENT, f"no keyboard found ({text}); waiting for it"
+    return LINK_FAILED, f"keyboard link failed ({error}); retrying"
+
+
 class HidHeartbeat:
     """Reconnectable HELLO/heartbeat state machine with injectable I/O."""
 
@@ -86,6 +116,7 @@ class HidHeartbeat:
         self.heartbeats = 0
         self.notifications = 0
         self.notify_pending = False
+        self.link: str | None = None
 
     def _exchange(self, device: HidTransport, report: bytes) -> None:
         device.send(report)
@@ -97,6 +128,12 @@ class HidHeartbeat:
         if self.verbose:
             print(f"arcane-host: {message}", flush=True)
 
+    def _set_link(self, state: str, message: str) -> None:
+        if state != self.link:
+            self.link = state
+            # stderr: stdout carries the reports in --dry-run.
+            print(f"arcane-host: {message}", file=sys.stderr, flush=True)
+
     def _disconnect(self, now: float, error: BaseException | None = None) -> None:
         if self.device is not None:
             try:
@@ -106,6 +143,7 @@ class HidHeartbeat:
         self.device = None
         self.next_connect = now + self.retry_interval
         if error is not None:
+            self._set_link(LINK_ABSENT, f"keyboard disconnected ({error}); waiting for it")
             self._log(f"HID disconnected ({error}); retrying in {self.retry_interval:g}s")
 
     def _connect(self, now: float) -> None:
@@ -137,11 +175,13 @@ class HidHeartbeat:
                 pass
             self.device = None
             self.next_connect = now + self.retry_interval
+            self._set_link(*link_state(error))
             self._log(f"HID unavailable ({error}); retrying in {self.retry_interval:g}s")
             return
         self.device = device
         self.next_heartbeat = now + 0.1
         self.notify_pending = False
+        self._set_link(LINK_CONNECTED, f"keyboard connected ({getattr(device, 'path', 'Raw HID')})")
         self._log(f"connected session=0x{self.session:08x}")
 
     def tick(self, now: float) -> bool:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from .adapters import SemanticAdapters
@@ -11,10 +12,18 @@ class DBusAdapterHub:
     """Subscribe to standard property signals; any missing service is isolated."""
 
     def __init__(
-        self, Gio, session, system, adapters: SemanticAdapters, timer_unit: str | None = None
+        self,
+        Gio,
+        session,
+        system,
+        adapters: SemanticAdapters,
+        timer_unit: str | None = None,
+        verbose: bool = False,
     ):
         self.Gio = Gio
         self.adapters = adapters
+        self.verbose = verbose
+        self._reported: set[str] = set()
         self.timer_unit = timer_unit
         self.subscriptions: list[tuple[Any, int]] = []
         self._players: dict[str, bool] = {}
@@ -42,8 +51,8 @@ class DBusAdapterHub:
                 callback,
             )
             self.subscriptions.append((connection, subscription))
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("property signals", error)
 
     def _subscribe_name_owners(self, connection, callback=None) -> None:
         try:
@@ -57,8 +66,8 @@ class DBusAdapterHub:
                 callback or self._name_owner_changed,
             )
             self.subscriptions.append((connection, subscription))
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("name-owner signals", error)
 
     @staticmethod
     def _lookup(changed, key: str):
@@ -112,13 +121,13 @@ class DBusAdapterHub:
                 if not str(name).startswith("org.mpris.MediaPlayer2."):
                     continue
                 self._prime_player(session, str(name))
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("prime media players", error)
 
         try:
             self._prime_notifications(session)
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("prime notifications", error)
 
         if self.timer_unit:
             path = f"/org/freedesktop/systemd1/unit/{self._unit_path_fragment(self.timer_unit)}"
@@ -140,14 +149,14 @@ class DBusAdapterHub:
                     else None
                 )
                 self.adapters.pomodoro(self._pomodoro_active, remaining, active_state == "failed")
-            except Exception:
-                self.adapters.counters.errors += 1
+            except Exception as error:
+                self._failed("prime pomodoro timer", error)
 
         if system is not None:
             try:
                 self._prime_network(system)
-            except Exception:
-                self.adapters.counters.errors += 1
+            except Exception as error:
+                self._failed("prime network", error)
 
     def _prime_player(self, session, name: str) -> None:
         try:
@@ -163,8 +172,8 @@ class DBusAdapterHub:
                 "Playing" if any(self._players.values()) else "Paused",
                 str(track_id) if track_id else None,
             )
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("media player", error)
 
     def _prime_notifications(self, session) -> None:
         notifications = self._proxy(
@@ -189,8 +198,8 @@ class DBusAdapterHub:
                 )
                 if self._unpack(active.get_cached_property("Vpn")):
                     active_vpns.add(str(path))
-            except Exception:
-                self.adapters.counters.errors += 1
+            except Exception as error:
+                self._failed("VPN state", error)
         self._vpn_paths = active_vpns
 
     def _prime_network(self, system) -> None:
@@ -226,8 +235,8 @@ class DBusAdapterHub:
                     self.adapters.media("Playing" if any(self._players.values()) else "Paused")
             elif name == "org.freedesktop.Notifications" and new_owner:
                 self._prime_notifications(connection)
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("session name owners", error)
 
     def _system_name_owner_changed(
         self, connection, sender, path, interface, signal, parameters
@@ -237,8 +246,8 @@ class DBusAdapterHub:
             name, _old_owner, new_owner = parameters.unpack()
             if name == "org.freedesktop.NetworkManager" and new_owner:
                 self._prime_network(connection)
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("system name owners", error)
 
     def _session_properties(self, connection, sender, path, interface, signal, parameters) -> None:
         del connection, interface, signal
@@ -283,8 +292,8 @@ class DBusAdapterHub:
                     remaining,
                     active_state == "failed",
                 )
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("session properties", error)
 
     def _system_properties(self, connection, sender, path, interface, signal, parameters) -> None:
         del sender, interface, signal
@@ -309,13 +318,32 @@ class DBusAdapterHub:
                     else:
                         self._vpn_paths.discard(path)
                     self.adapters.network(self._connectivity, bool(self._vpn_paths))
-        except Exception:
-            self.adapters.counters.errors += 1
+        except Exception as error:
+            self._failed("system properties", error)
+
+    def _failed(self, where: str, error: Exception) -> None:
+        """Count an adapter failure; say so once per site, or every time with --verbose.
+
+        Only the exception type is printed, even verbose: a D-Bus error or a
+        parse failure can quote the property value it choked on, such as a
+        media title.
+        """
+        self.adapters.counters.errors += 1
+        if self.verbose or where not in self._reported:
+            self._reported.add(where)
+            print(
+                f"arcane-host: D-Bus adapter {where} failed ({type(error).__name__})",
+                file=sys.stderr,
+            )
 
     def close(self) -> None:
         for connection, subscription in self.subscriptions:
             try:
                 connection.signal_unsubscribe(subscription)
-            except Exception:
-                pass
+            except Exception as error:
+                if self.verbose:
+                    print(
+                        f"arcane-host: D-Bus unsubscribe failed ({type(error).__name__})",
+                        file=sys.stderr,
+                    )
         self.subscriptions.clear()

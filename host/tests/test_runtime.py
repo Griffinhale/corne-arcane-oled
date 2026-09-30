@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import errno
+import io
 import unittest
+from contextlib import redirect_stderr
 
 from arcane_host.adapters import SemanticAdapters
+from arcane_host.dbus_adapters import DBusAdapterHub
 from arcane_host.focus import FocusArbiter
+from arcane_host.heartbeat import HidHeartbeat
 from arcane_host.policy import NotificationPolicy
+from arcane_host.protocol import Scene
 from arcane_host.runtime import DaemonRuntime
 from arcane_host.semantic import SemanticResolver
 
@@ -142,6 +148,112 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(closed, [True])
         self.assertEqual(FakeGio.unowned, [7])
         self.assertTrue(heartbeat.closed)
+
+
+class EchoDevice:
+    """Echoes each report, or fails every send once unplugged."""
+
+    path = "/dev/hidraw-fake"
+
+    def __init__(self) -> None:
+        self.unplugged = False
+        self.last = b""
+
+    def send(self, report: bytes) -> None:
+        if self.unplugged:
+            raise OSError(errno.ENODEV, "No such device")
+        self.last = report
+
+    def receive(self, timeout: float) -> bytes:
+        del timeout
+        return self.last
+
+    def close(self) -> None:
+        pass
+
+
+class LinkStateTests(unittest.TestCase):
+    """What the journal says about the keyboard at default verbosity."""
+
+    def setUp(self) -> None:
+        self.outcomes: list = []
+        self.now = 0.0
+
+        def factory():
+            outcome = self.outcomes.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+
+        self.heartbeat = HidHeartbeat(lambda: Scene.DUEL, factory, lambda: 7, retry_interval=0.0)
+        self.stderr = io.StringIO()
+
+    def tick(self, count: int = 1) -> None:
+        with redirect_stderr(self.stderr):
+            for _ in range(count):
+                self.now += 1.0
+                self.heartbeat.tick(self.now)
+
+    def lines(self) -> list[str]:
+        return self.stderr.getvalue().splitlines()
+
+    def test_link_state_logged_once(self) -> None:
+        missing = RuntimeError("no Corne Raw HID interface found (USB 4653:0001)")
+        device = EchoDevice()
+        self.outcomes = [missing, missing, device, missing, missing, EchoDevice()]
+        self.tick(3)  # absent twice, then plugged in
+        self.tick(2)  # heartbeats
+        device.unplugged = True
+        self.tick(3)  # the send fails, then absent twice
+        self.tick(1)  # plugged back in
+        lines = self.lines()
+        self.assertEqual(len(lines), 4, lines)
+        self.assertIn("no keyboard found", lines[0])
+        self.assertIn("keyboard connected (/dev/hidraw-fake)", lines[1])
+        self.assertIn("keyboard disconnected", lines[2])
+        self.assertIn("keyboard connected", lines[3])
+        self.assertEqual(self.outcomes, [])
+
+    def test_eacces_hint(self) -> None:
+        denied = PermissionError(errno.EACCES, "Permission denied", "/dev/hidraw3")
+        self.outcomes = [denied, denied, denied]
+        self.tick(3)
+        lines = self.lines()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("60-corne-arcane.rules", lines[0])
+        self.assertIn("replug", lines[0])
+
+    def test_several_devices_named(self) -> None:
+        several = RuntimeError("multiple QMK Raw HID interfaces found: /dev/a, /dev/b")
+        self.outcomes = [several, several]
+        self.tick(2)
+        self.assertEqual(self.lines(), [f"arcane-host: {several}"])
+
+
+class AdapterFailureTests(unittest.TestCase):
+    def test_failure_reported_once_per_site_without_its_text(self) -> None:
+        class Refusing:
+            def signal_subscribe(self, *_args):
+                raise ValueError("Track title that must not be logged")
+
+        class Gio:
+            class DBusSignalFlags:
+                NONE = 0
+
+        adapters = SemanticAdapters(SemanticResolver(), NotificationPolicy(), lambda: None)
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            hub = DBusAdapterHub(Gio, Refusing(), None, adapters)
+            hub._failed("property signals", ValueError("Track title that must not be logged"))
+        lines = stderr.getvalue().splitlines()
+        self.assertEqual(
+            lines,
+            [
+                "arcane-host: D-Bus adapter property signals failed (ValueError)",
+                "arcane-host: D-Bus adapter name-owner signals failed (ValueError)",
+            ],
+        )
+        self.assertEqual(adapters.counters.errors, 3)
 
 
 if __name__ == "__main__":

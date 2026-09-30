@@ -229,7 +229,11 @@ def run(args: argparse.Namespace, *, presenter_factory: Callable | None = None) 
                 flush=True,
             )
 
-    runtime.own(DBusAdapterHub(Gio, connection, system_connection, adapters, args.pomodoro_unit))
+    runtime.own(
+        DBusAdapterHub(
+            Gio, connection, system_connection, adapters, args.pomodoro_unit, args.verbose
+        )
+    )
 
     # Claimed synchronously and with DO_NOT_QUEUE, after every service is
     # exported (systemd treats Type=dbus as started once the name appears) and

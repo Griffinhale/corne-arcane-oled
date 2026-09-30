@@ -220,8 +220,10 @@ class KWinBridgeLoader:
                 1000,
                 None,
             )
-        except Exception:
-            pass
+        except Exception as error:
+            # Expected on the first load, when there is no script to unload.
+            if self.verbose:
+                print(f"arcane-host: KWin unloadScript skipped ({error})", file=sys.stderr)
         try:
             result = self.connection.call_sync(
                 KWIN_SERVICE,
