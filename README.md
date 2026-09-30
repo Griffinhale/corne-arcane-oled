@@ -38,13 +38,15 @@ or additionally install the optional Linux daemon](docs/images/setup.svg)
 ### 1. See it without a keyboard
 
 The whole simulation, renderer, and visual catalog build and run
-natively. No hardware, no QMK checkout:
+natively. No hardware, no QMK checkout. You need a C compiler with
+AddressSanitizer and UBSan (gcc or clang), GNU make, binutils (`nm`), and
+Python 3 with Pillow:
 
 ```bash
 make test                                               # mechanics, visuals, allocation, host
 firmware/sim_test/visual_runner --dump-pgm /tmp/frames   # every scene as an image
 python3 tools/contact_sheet.py /tmp/frames sheet         # contact sheets to page through
-python3 tools/figures.py /tmp/frames docs/images         # the figures on this page
+python3 tools/figures.py /tmp/frames /tmp/figures        # the figures on this page
 ```
 
 That is the fastest way to see what this actually looks like.

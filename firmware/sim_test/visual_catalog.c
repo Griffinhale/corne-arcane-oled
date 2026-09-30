@@ -1,9 +1,11 @@
+#include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "duel_draw.h"
 #include "duel_courier.h"
@@ -1224,8 +1226,14 @@ static int verify_golden(const char *path) {
 }
 
 int main(int argc, char **argv) {
-    if (argc == 3 && !strcmp(argv[1], "--dump-pgm"))
+    if (argc == 3 && !strcmp(argv[1], "--dump-pgm")) {
         dump_dir = argv[2];
+        /* The README sends a first run to /tmp/frames, which does not exist yet. */
+        if (mkdir(dump_dir, 0755) != 0 && errno != EEXIST) {
+            perror(dump_dir);
+            return 1;
+        }
+    }
     build_catalog();
     if (dump_dir)
         return 0;
