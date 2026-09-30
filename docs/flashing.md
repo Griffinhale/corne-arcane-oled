@@ -171,8 +171,9 @@ cp crkbd_rev1_vial_rp2040_ce.uf2 ~/corne-recovery.uf2
 ```
 
 If the board already runs firmware you trust, the UF2 you flashed it with works
-just as well; keep a copy outside `artifacts/`, which the next build
-overwrites.
+just as well; keep a copy outside `artifacts/`. A rebuild keeps the image it
+replaces as `griffin_arcane-release.prev.uf2`, but only one: the build after
+that overwrites it.
 
 To recover, flash that file to both halves using the sequence above. Having it
 on disk before you change anything is what makes this a two-minute problem

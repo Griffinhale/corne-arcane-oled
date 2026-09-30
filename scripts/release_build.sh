@@ -27,6 +27,12 @@ mkdir -p "$out"
 
 stage() {
     name=$1
+    # Keep the image this build replaces: it is the one a user would roll back
+    # to, and docs/flashing.md tells them to keep a known-good UF2.
+    if [ -f "$out/$name.uf2" ]; then
+        mv "$out/$name.uf2" "$out/$name.prev.uf2"
+        echo "release-build: previous image kept as $out/$name.prev.uf2"
+    fi
     cp "$build.elf" "$out/$name.elf"
     cp "$build.uf2" "$out/$name.uf2"
     if [ -f "$build.map" ]; then
@@ -44,4 +50,5 @@ qmk compile -kb crkbd/rev1 -km griffin_arcane \
     -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
 stage griffin_arcane-diagnostic
 
-sha256sum "$out"/griffin_arcane-*.elf "$out"/griffin_arcane-*.uf2
+sha256sum "$out"/griffin_arcane-release.elf "$out"/griffin_arcane-diagnostic.elf \
+    "$out"/griffin_arcane-release.uf2 "$out"/griffin_arcane-diagnostic.uf2
