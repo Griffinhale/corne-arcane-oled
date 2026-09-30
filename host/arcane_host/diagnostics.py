@@ -320,7 +320,11 @@ def _json_value(value: DiagnosticSnapshot | Observation) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        with ExclusiveHidOwnership(service_handoff=not args.no_service_handoff):
+        with ExclusiveHidOwnership(
+            service_handoff=not args.no_service_handoff,
+            holder="corne-arcane-diagnostics",
+            device=args.device,
+        ):
             with Device(choose_device(args.device)) as device:
                 result: DiagnosticSnapshot | Observation
                 if args.observe is None:

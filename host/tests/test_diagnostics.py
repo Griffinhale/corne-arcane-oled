@@ -338,7 +338,7 @@ class MainTests(unittest.TestCase):
         seen: list[bool] = []
 
         class RecordingOwnership(NullOwnership):
-            def __init__(self, *, service_handoff: bool):
+            def __init__(self, *, service_handoff: bool, **_kwargs: object):
                 seen.append(service_handoff)
 
         with (

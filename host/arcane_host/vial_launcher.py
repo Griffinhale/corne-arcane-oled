@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         # Resolve before taking ownership, so a missing Vial never stops the daemon.
         command = resolve_vial()
-        with ExclusiveHidOwnership():
+        with ExclusiveHidOwnership(holder="Vial (corne-arcane-vial)"):
             result = run_vial(command, args)
     except OwnershipSignal as interrupted:
         result = 128 + interrupted.signum
