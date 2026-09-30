@@ -1,9 +1,11 @@
-# The Apple shell
+# The Apple shells
 
-The third shell, after the desktop window and the browser. It shows the
+An iPhone app with a Home Screen widget, and an Apple Watch app with
+complications, all built on one Swift package (`CityKit`) over the same C the
+keyboard runs. They follow the desktop window and the browser. They show the
 **city**, never the duel, for the reason the other two do: on the keyboard key
-positions never leave the firmware, a phone has no keyboard to read, and
-nothing here samples input. The world plays itself.
+positions never leave the firmware, a phone or watch has no keyboard to read,
+and nothing here samples input. The world plays itself.
 
 Read `web/README.md` first. The browser shell is the closest precedent and
 almost every decision transfers unchanged.

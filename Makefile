@@ -50,10 +50,10 @@ web-parity: city-lib web-lib
 	sh ./web/tools/parity.sh
 
 # The third leg of the same gate: the matrix rendered again by the Swift
-# package the iOS app and the widget are built on. Like web-parity, kept out of
-#  so that a Swift toolchain never stands between a contributor and the
-# firmware's own gates. On Linux, swift 5.10.1 (swift-5.10.1-RELEASE) — swift build, swift run city-check is a toolchain
-# that can run it; on macOS the system Swift will do.
+# package the iOS app, the widget and the watch app are built on. Like
+# web-parity, kept out of `test` so that a Swift toolchain never stands between
+# a contributor and the firmware's own gates. On Linux, run it inside
+# `nix-shell apple/shell.nix`; on macOS the system Swift will do.
 swift-parity: city-lib
 	sh ./apple/tools/parity.sh
 

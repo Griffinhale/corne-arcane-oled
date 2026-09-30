@@ -105,6 +105,32 @@ If focus never seems to change anything, you probably have no focus producer:
 KWin and GNOME Shell report from inside the compositor, but a plain X11 session
 needs the opt-in `corne-arcane-focus-x11` service.
 
+## The same world, off the keyboard
+
+The keyboard is the product. The simulation under it is plain C11 with no
+allocation, no floats and no time reads, so it also compiles unchanged for
+four other shells. None of them read keystrokes: with no hands at the keys, the
+champions generate their own input from a seed and the city plays itself.
+
+| Shell | Where | What it is |
+| --- | --- | --- |
+| Desktop window | [`desktop/`](desktop/), [`host/README.md`](host/README.md#desktop-city-window) | The city for a keyboard without displays, following the daemon's focus signals |
+| Browser | [`web/`](web/README.md) | The same C compiled to WebAssembly; the seed and tick in the URL reproduce a world exactly |
+| iPhone and widget | [`apple/`](apple/README.md) | A SwiftUI app with a Home Screen widget, and a wide ambient layout while charging in landscape |
+| Apple Watch | [`apple/`](apple/README.md#full-watch-app) | An animated watch app plus complications, cropped for the 40 mm screen |
+
+The ports are held to the firmware, not to each other. `make web-parity`
+renders a shared matrix (every layout, three seeds, 240 frames) through the
+native library and through WebAssembly and fails unless all 4,320 frames match
+byte for byte; `make swift-parity` runs the same matrix through the Swift
+package the iPhone and watch apps are built on. None of this is flashed:
+`desktop/` reads `firmware/sim`, never the reverse, and `make hygiene` fails if
+that changes.
+
+The root `Dockerfile` builds only the browser shell and `Package.swift` is the
+Swift package for the Apple shells; both sit at the root because their tools
+expect them there.
+
 ## How it works
 
 ![Key positions feed the master half's simulation, which renders its own
@@ -125,6 +151,8 @@ path that could leak content even if something upstream misbehaved.
 - Build, test, format, review goldens: [`docs/development.md`](docs/development.md)
 - Flashing and recovery: [`docs/flashing.md`](docs/flashing.md)
 - Host daemon and adapters: [`host/README.md`](host/README.md)
+- The browser shell: [`web/README.md`](web/README.md)
+- The iPhone, widget and watch shells: [`apple/README.md`](apple/README.md)
 - NixOS specifics: [`BUILD_NOTES_NIXOS.md`](BUILD_NOTES_NIXOS.md)
 - Where the images come from: [`docs/images/README.md`](docs/images/README.md)
 - Patching this, and the one rule about goldens: [`CONTRIBUTING.md`](CONTRIBUTING.md)
