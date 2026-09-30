@@ -15,10 +15,10 @@ Depends: ${misc:Depends},
          dbus-user-session
 Suggests: x11-utils
 Description: privacy-redacted desktop semantics for a Corne Arcane keyboard
- Sends bounded desktop and browser activity semantics to a Corne v3 RP2040
- keyboard running the griffin_arcane firmware, over QMK Raw HID. The keyboard
- is fully functional without this package; it only enriches what the OLEDs
- show.
+ Sends bounded desktop and browser activity semantics to a Corne (crkbd rev1,
+ RP2040) keyboard running the griffin_arcane firmware, over QMK Raw HID. The
+ keyboard is fully functional without this package; it only enriches what the
+ OLEDs show.
  .
  Adapters report enums, durations, counters and salted digests. Window titles,
  URLs, page content, command text, file paths and typed text are never read
@@ -28,4 +28,4 @@ Description: privacy-redacted desktop semantics for a Corne Arcane keyboard
  Focus reporting needs a producer. GNOME Shell 45 or newer and KWin under
  Plasma 6 are supported; on other desktops focus semantics stay at their
  default and everything else still works. dbus-user-session is required
- because the daemon runs as a D-Bus-activated systemd user service.
+ because the daemon runs as a systemd user service (Type=dbus).

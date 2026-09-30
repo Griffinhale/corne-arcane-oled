@@ -6,7 +6,7 @@
 # are the only difference between them.
 #
 #   PREFIX   installation prefix       Debian: /usr        Nix: $out
-#   DESTDIR  staging root              Debian: debian/tmp  Nix: empty
+#   DESTDIR  staging root              Debian: debian/corne-arcane-host  Nix: empty
 #   PYTHON   interpreter the commands exec
 #
 # PREFIX is substituted into generated files, DESTDIR is not: a staged install

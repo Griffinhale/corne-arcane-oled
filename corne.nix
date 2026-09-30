@@ -1,6 +1,6 @@
 { config, pkgs, lib, ... }:
 
-# Corne v3 (RP2040) QMK/Vial toolchain, flashing access, and the current
+# Corne (crkbd rev1, RP2040) QMK/Vial toolchain, flashing access, and the current
 # privacy-redacted notification/focus host service. Import this file directly from the
 # checkout: package sources are resolved relative to it.
 

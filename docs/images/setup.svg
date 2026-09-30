@@ -76,7 +76,7 @@
   <!-- lane 3 -->
   <rect class="opt" x="740" y="30" width="330" height="580"/>
   <text class="t n" x="766" y="72">3</text>
-  <text class="t h" x="796" y="66">Optional: add the city</text>
+  <text class="t h" x="796" y="66">Optional: steer the city</text>
   <text class="t d" x="796" y="88">Linux desktop, on top of step 2</text>
 
   <rect class="step" x="764" y="112" width="282" height="58"/>
@@ -90,8 +90,8 @@
   <rect class="step" x="764" y="286" width="282" height="58"/>
   <text class="t b" x="780" y="308">Plain X11 session only:</text>
   <text class="t m" x="780" y="330">corne-arcane-focus-x11</text>
-  <text class="t d" x="764" y="368">KWin and GNOME Shell report from</text>
-  <text class="t d" x="764" y="388">inside the compositor already.</text>
+  <text class="t d" x="764" y="368">KWin reports focus on its own;</text>
+  <text class="t d" x="764" y="388">GNOME 45+ needs the extension.</text>
 
   <text class="t g" x="764" y="424">The tower shows a Workshop while you</text>
   <text class="t g" x="764" y="444">write code, an Arena while you play,</text>

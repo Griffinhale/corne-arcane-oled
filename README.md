@@ -21,9 +21,9 @@ squared and mechanical on the right.
 
 <img src="docs/images/rooms.gif" alt="The eight district rooms in turn, each drawn on both halves" width="300">
 
-The keyboard is complete offline. An optional Linux daemon adds the city: it
-tells the keyboard what kind of thing you are doing, in enums and counters
-only, and the tower changes floor around you.
+The keyboard is complete offline, city included. An optional Linux daemon
+steers it: it tells the keyboard what kind of thing you are doing, in enums
+and counters only, and the tower changes floor around you.
 
 Which row you type on picks the element. How varied the burst is decides the
 form, the size, and how strong a ward you are holding while you type it. A

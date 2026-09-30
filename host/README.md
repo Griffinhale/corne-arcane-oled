@@ -42,8 +42,8 @@ sudo apt install ../corne-arcane-host_*.deb
 systemctl --user enable --now corne-arcane-host.service
 ```
 
-`dbus-user-session` is required, not optional: the daemon is a D-Bus-activated
-user service and the diagnostics and Vial handoff both use `systemctl --user`.
+`dbus-user-session` is required, not optional: the daemon is a systemd user
+service (Type=dbus) and the diagnostics and Vial handoff both use `systemctl --user`.
 It is present by default on desktop installs and absent on minimal ones.
 
 To install without building a package, `make install PREFIX=/usr` places the

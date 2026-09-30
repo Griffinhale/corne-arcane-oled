@@ -3,8 +3,9 @@
 %:
 	dh $@
 
-# The repository's top-level Makefile drives firmware simulation tests and needs
-# a QMK checkout, so the default build and clean steps are deliberately empty.
+# The repository's top-level Makefile builds and runs the firmware simulation
+# suites, which the host package does not ship, so the default build and clean
+# steps are deliberately empty.
 override_dh_auto_build:
 
 override_dh_auto_clean:
