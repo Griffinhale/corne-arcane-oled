@@ -10,7 +10,7 @@ Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 ```bash
 make lint            # Ruff plus Python/C formatting checks
 make test            # mechanics, the visual catalog, allocation scan, host tests
-make hygiene         # active-tree naming and historical-comment policy
+make hygiene         # repository conventions (see scripts/hygiene.sh)
 make city-lib        # the desktop product's native library (desktop/)
 make web-lib         # the browser shell's WebAssembly module (web/)
 make web-parity      # native vs WASM, byte for byte -- the browser's gate
@@ -37,7 +37,7 @@ nix shell nixpkgs#llvmPackages.clang-unwrapped nixpkgs#lld nixpkgs#nodejs
 
 Use `make format` to apply the repository baseline: Python 3.10 syntax, Ruff
 imports and correctness rules, and 100-column Python/C formatting. Generated
-artifacts, archived documents, layout data, and golden hashes are excluded.
+artifacts, layout data, and golden hashes are excluded.
 
 ## The browser build's own gate
 
@@ -115,9 +115,10 @@ Flashing hardware is a separate procedure; see [`flashing.md`](flashing.md).
 a checkout at any other revision and prints the deliberate development
 override and pin-update options. The scheduled firmware workflow clones that
 revision recursively, builds both images, enforces the same budgets, and keeps
-ELF, UF2, map, hash, and budget evidence for 14 days. Workflow artifacts are
-build evidence only: they are never a GitHub release and never replace the
-signed physical checklist.
+ELF, UF2, map, hash, and budget files for 14 days. Those files record a build;
+they are not a published release, and they do not show the firmware works on
+a keyboard. That still takes the checks in
+[`flashing.md`](flashing.md#checking-it-worked).
 
 ## Safe module extraction
 
@@ -140,6 +141,5 @@ When moving code across modules:
 Code comments explain the current invariant, ownership rule, ordering
 constraint, wire allocation, or reason a surprising implementation is needed.
 They do not narrate when a feature landed, which planning stream owned it, or
-what an earlier implementation looked like. Preserve useful implementation
-history under `docs/archive/`; keep active documentation about the current
-system and compatibility requirements.
+what an earlier implementation looked like. That history is in `git log`;
+keep documentation about the current system and compatibility requirements.

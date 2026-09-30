@@ -4,12 +4,13 @@ The optional host package sends bounded, privacy-redacted desktop and browser
 activity semantics to `griffin_arcane`. Firmware remains fully functional when
 it is absent.
 
-Public commands and identities remain `corne-arcane-host`,
-`corne-arcane-event`, `corne-arcane-diagnostics`, `corne-arcane-vial`,
-`io.github.Griffinhale.CorneArcane`, and `corne-arcane-host.service`.
-`corne-arcane-focus-x11` is new and opt-in.
+The package provides the `corne-arcane-host`, `corne-arcane-event`,
+`corne-arcane-diagnostics` and `corne-arcane-vial` commands, the
+`io.github.Griffinhale.CorneArcane` D-Bus name, and the
+`corne-arcane-host.service` user unit. `corne-arcane-focus-x11` is an opt-in
+focus producer for X11 sessions.
 
-Raw HID v3 retains the 32-byte report/eight-byte payload and adds secondary
+Raw HID v3 is a 32-byte report with an eight-byte payload, including secondary
 activity values for scroll, tab selection, and page events. The generic method
 is usable without Firefox:
 
@@ -191,7 +192,7 @@ Set `CORNE_ARCANE_CITY_LIB` to load the shared library from somewhere else.
 - Show the city with no keyboard: `python -m arcane_host.city_window --tour`
 - Exercise one offline exchange: `python -m arcane_host.daemon --dry-run --once --session 1`
 - Check the Debian layout: `make install DESTDIR=/tmp/stage PREFIX=/usr`
-- Observe physical acceptance metrics: `corne-arcane-diagnostics --observe 300 --json`
+- Watch live metrics from the keyboard: `corne-arcane-diagnostics --observe 300 --json`
 - Launch Vial safely: `corne-arcane-vial`
 
 Diagnostics stop and later restore an active host service for a query or
