@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -12,6 +13,7 @@ from unittest.mock import patch
 from arcane_host.adapters import SemanticAdapters
 from arcane_host.daemon import default_kwin_script
 from arcane_host.dbus_contract import (
+    BUS_NAME,
     EVENTS_INTERFACE,
     INJECT_SYNTHETIC,
     KWIN_SERVICE,
@@ -34,6 +36,15 @@ from arcane_host.protocol import (
     Secondary,
 )
 from arcane_host.semantic import SemanticResolver
+
+try:
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+except (ImportError, ValueError):  # pragma: no cover - environment dependent
+    Gio = None
+    GLib = None
 
 
 class FakeDevice:
@@ -417,6 +428,71 @@ class KWinDefaultPathTests(unittest.TestCase):
     def test_environment_override_wins(self) -> None:
         with patch.dict(os.environ, {"CORNE_ARCANE_KWIN_SCRIPT": "/elsewhere/main.js"}):
             self.assertEqual(default_kwin_script(), Path("/elsewhere/main.js"))
+
+
+HOST_DIR = Path(__file__).resolve().parents[1]
+
+
+@unittest.skipUnless(
+    Gio is not None and shutil.which("dbus-daemon"), "needs PyGObject and dbus-daemon"
+)
+class SecondInstanceTests(unittest.TestCase):
+    """A second daemon on a private bus, never the desktop's own session bus."""
+
+    def setUp(self) -> None:
+        self.bus = subprocess.Popen(
+            ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(self.bus.wait)
+        self.addCleanup(self.bus.terminate)
+        self.address = self.bus.stdout.readline().strip()
+        self.bus.stdout.close()
+        self.holder = Gio.DBusConnection.new_for_address_sync(
+            self.address,
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+            None,
+            None,
+        )
+        self.addCleanup(self.holder.close_sync, None)
+
+    def test_name_taken_exits(self) -> None:
+        reply = self.holder.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "RequestName",
+            GLib.Variant("(su)", (BUS_NAME, 4)),
+            GLib.VariantType("(u)"),
+            Gio.DBusCallFlags.NONE,
+            1000,
+            None,
+        ).unpack()[0]
+        self.assertEqual(reply, 1)
+        env = dict(
+            os.environ,
+            DBUS_SESSION_BUS_ADDRESS=self.address,
+            DBUS_SYSTEM_BUS_ADDRESS=self.address,
+            PYTHONDONTWRITEBYTECODE="1",
+        )
+        started = time.monotonic()
+        # An explicit device path that does not exist: if the name check ever
+        # regressed, the heartbeat would fail to open this, not a real keyboard.
+        result = subprocess.run(
+            [sys.executable, "-m", "arcane_host.daemon", "--device", "/nonexistent/hidraw"],
+            cwd=HOST_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        elapsed = time.monotonic() - started
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn(f"{BUS_NAME} is already owned by", result.stderr)
+        self.assertIn(f"pid {os.getpid()}", result.stderr)
+        self.assertLess(elapsed, 5.0)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,11 @@ from .semantic import SemanticResolver
 
 SCENES = {scene.name.lower(): scene for scene in Scene}
 
+# org.freedesktop.DBus.RequestName flag and replies, from the D-Bus specification.
+_DBUS_NAME_FLAG_DO_NOT_QUEUE = 0x4
+_DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER = 1
+_DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER = 4
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -226,30 +231,81 @@ def run(args: argparse.Namespace, *, presenter_factory: Callable | None = None) 
 
     runtime.own(DBusAdapterHub(Gio, connection, system_connection, adapters, args.pomodoro_unit))
 
-    def name_acquired(bus_connection, name) -> None:
-        del name
-        if override is None:
-            runtime.own(
-                KWinBridgeLoader(
-                    Gio,
-                    GLib,
-                    bus_connection,
-                    args.kwin_script or default_kwin_script(),
-                    args.verbose,
-                )
-            )
-
-    runtime.set_bus_owner(
-        Gio.bus_own_name_on_connection(
-            connection,
-            BUS_NAME,
-            Gio.BusNameOwnerFlags.NONE,
-            name_acquired,
-            None,
+    # Claimed synchronously and with DO_NOT_QUEUE, after every service is
+    # exported (systemd treats Type=dbus as started once the name appears) and
+    # before the first tick. A second instance must not wait in line while it
+    # opens the keyboard, or the two take the endpoint from each other every
+    # retry; call_sync does not run the main loop, so a loser never ticks.
+    if not _request_bus_name(Gio, GLib, connection):
+        holder = _name_holder(Gio, GLib, connection)
+        runtime.close()
+        print(
+            f"arcane-host: {BUS_NAME} is already owned by {holder}, so another daemon "
+            "is running. Stop it first: systemctl --user stop corne-arcane-host.service",
+            file=sys.stderr,
         )
-    )
+        return 1
+    if override is None:
+        runtime.own(
+            KWinBridgeLoader(
+                Gio,
+                GLib,
+                connection,
+                args.kwin_script or default_kwin_script(),
+                args.verbose,
+            )
+        )
     runtime.run()
     return 0
+
+
+def _bus_call(Gio, GLib, connection, method: str, arguments, reply: str):
+    return connection.call_sync(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        method,
+        arguments,
+        GLib.VariantType(reply),
+        Gio.DBusCallFlags.NONE,
+        1000,
+        None,
+    ).unpack()[0]
+
+
+def _request_bus_name(Gio, GLib, connection) -> bool:
+    """Own BUS_NAME now or report that someone else does. The name goes with the connection."""
+    reply = _bus_call(
+        Gio,
+        GLib,
+        connection,
+        "RequestName",
+        GLib.Variant("(su)", (BUS_NAME, _DBUS_NAME_FLAG_DO_NOT_QUEUE)),
+        "(u)",
+    )
+    return reply in (_DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER, _DBUS_REQUEST_NAME_REPLY_ALREADY_OWNER)
+
+
+def _name_holder(Gio, GLib, connection) -> str:
+    """Name the process that owns BUS_NAME, for the message a second instance prints."""
+    try:
+        owner = _bus_call(
+            Gio, GLib, connection, "GetNameOwner", GLib.Variant("(s)", (BUS_NAME,)), "(s)"
+        )
+    except Exception:
+        return "another process"
+    try:
+        pid = _bus_call(
+            Gio,
+            GLib,
+            connection,
+            "GetConnectionUnixProcessID",
+            GLib.Variant("(s)", (owner,)),
+            "(u)",
+        )
+    except Exception:
+        return owner
+    return f"{owner} (pid {pid})"
 
 
 def main() -> int:
