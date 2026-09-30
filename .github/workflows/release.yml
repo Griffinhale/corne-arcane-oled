@@ -56,15 +56,12 @@ jobs:
         run: make release-build
 
       # Only the release image ships. The build also produces a diagnostic
-      # image and two pacing candidates that exist for measurement and have
-      # never been flashed, and none of them belong in a download that a
-      # stranger will drag onto a keyboard.
+      # image, which does not belong in a download that a stranger will drag
+      # onto a keyboard.
       - name: Stage the firmware image
         run: |
           mkdir -p dist
           cp artifacts/release/griffin_arcane-release.uf2 dist/corne_arcane.uf2
-          test ! -e dist/griffin_arcane-hp8-candidate.uf2
-          test ! -e dist/griffin_arcane-hp10-candidate.uf2
           ls -l dist
 
       # The repository's own test suite runs on every push, so the packaging

@@ -36,10 +36,6 @@ measure() {
             growth_flash_limit=$diagnostic_flash_growth_limit
             growth_ram_limit=$diagnostic_ram_growth_limit
             ;;
-        *-hp8-candidate.elf|*-hp10-candidate.elf)
-            growth_flash_limit=$release_flash_growth_limit
-            growth_ram_limit=$release_ram_growth_limit
-            ;;
         *)
             echo "FAIL release-budget: unknown image class: $image" >&2
             return 1
@@ -65,6 +61,4 @@ measure() {
 
 measure artifacts/release/griffin_arcane-release.elf
 measure artifacts/release/griffin_arcane-diagnostic.elf
-measure artifacts/release/griffin_arcane-hp8-candidate.elf
-measure artifacts/release/griffin_arcane-hp10-candidate.elf
 echo "PASS release-budget"

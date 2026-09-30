@@ -10,13 +10,11 @@ Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 ```bash
 make lint            # Ruff plus Python/C formatting checks
 make test            # mechanics, 622 visual scenes, allocation scan, host tests
-make hp-gate         # pinned 8-HP and 10-HP 30-minute workloads
-make mechanics-hp-candidates # full mechanics suite under both geometries
 make hygiene         # active-tree naming and historical-comment policy
 make city-lib        # the desktop product's native library (desktop/)
 make web-lib         # the browser shell's WebAssembly module (web/)
 make web-parity      # native vs WASM, byte for byte -- the browser's gate
-make release-build   # release, diagnostic, and both unflashed HP candidates
+make release-build   # release and diagnostic images
 make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check
 ```
@@ -102,8 +100,6 @@ clean pinned-QMK build, `arm-none-eabi-gcc 15.2.rel1`:
 |---|---:|---:|---:|
 | release | 85,356 B | 13,552 B | 12,948 B |
 | diagnostic | 86,736 B | 13,680 B | 11,568 B |
-| 8-HP candidate | 85,356 B | 13,552 B | 12,948 B |
-| 10-HP candidate | 85,364 B | 13,552 B | 12,940 B |
 
 Record the compiler alongside any figure you compare against: it moves these
 numbers more than most changes do. The binding constraint is the 88 KiB flash
@@ -131,7 +127,7 @@ When moving code across modules:
 4. Keep private cross-module calls in an internal header; avoid making helpers
    public merely to satisfy tests.
 5. Run sanitizer mechanics tests and exact visual goldens before and after the
-   extraction, then build release, diagnostic, and HP A/B candidates and
+   extraction, then build the release and diagnostic images and
    compare resource use.
 6. Commit formatting separately from semantic or structural edits.
 

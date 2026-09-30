@@ -310,7 +310,7 @@ static void test_damage_heal_ward_and_status(void) {
                                     STATUS_NONE, INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0);
     w.wiz[0].hp = SIM_MAX_HP - 3u;
     land_spell(&w, 0, heal);
-    EXPECT(w.wiz[0].hp == SIM_MAX_HP); /* max-3 + 4 clamps for both candidates */
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP); /* max-3 + 4 clamps at max */
 
     uint32_t burn = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 3,
                                     STATUS_BURNING, INTERACT_SOLID, TEMPO_RAPID, TREND_STEADY, 0);

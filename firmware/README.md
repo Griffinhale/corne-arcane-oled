@@ -8,7 +8,7 @@ checkout with `../host/install_firmware.sh`; it becomes
 
 - Native mechanics, visual, and allocation checks: `make -C sim_test test`
 - Full repository verification: `make -C .. test`
-- Release, diagnostic, and unflashed HP candidates: `make -C .. release-build`
+- Release and diagnostic images: `make -C .. release-build`
 - Size and reserve gate: `make -C .. release-budget`
 
 The simulation, split ownership, rendering layers, and dependency rules are in

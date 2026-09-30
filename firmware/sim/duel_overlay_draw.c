@@ -238,21 +238,8 @@ static void scry_fraction(const scry_scroll_t *scroll, int virtual_y, uint8_t va
 }
 
 static void scry_hp_fraction(const scry_scroll_t *scroll, int virtual_y, uint8_t hp) {
-    char fraction[6] = {0};
-    int cursor = 0;
-    if (hp >= 10u) {
-        fraction[cursor++] = '1';
-        fraction[cursor++] = '0';
-    } else {
-        fraction[cursor++] = (char)('0' + hp);
-    }
-    fraction[cursor++] = '/';
-    if (SIM_MAX_HP >= 10) {
-        fraction[cursor++] = '1';
-        fraction[cursor++] = '0';
-    } else {
-        fraction[cursor++] = (char)('0' + SIM_MAX_HP);
-    }
+    _Static_assert(SIM_MAX_HP < 10, "scry health fraction prints single digits");
+    char fraction[4] = {(char)('0' + hp), '/', (char)('0' + SIM_MAX_HP), 0};
     scry_text(scroll, virtual_y, fraction);
 }
 
@@ -425,8 +412,7 @@ void duel_overlay_draw_attunement(duel_fb_t *fb, const duel_render_t *r,
 }
 
 /* Diegetic HP: 2x2 lit windows stacked as the shaft's lower tier, two columns
- * (gapward x7-8, outer x3-4). The candidate constant selects four rows for
- * 8 HP or five rows for 10 HP. Each row fills gapward then outward,
+ * (gapward x7-8, outer x3-4), four rows for 8 HP. Each row fills gapward then outward,
  * bottom-up, so damage darkens the shaft from the top. Single source for the
  * clear, fill, and lost-window flash sites. */
 static void hp_window_xy(int i, bool is_left, int *px, int *py) {

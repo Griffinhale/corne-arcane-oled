@@ -1,4 +1,4 @@
-.PHONY: test mechanics-test mechanics-hp-candidates visual-test hp-gate noalloc-check city-lib \
+.PHONY: test mechanics-test visual-test noalloc-check city-lib \
 	web-lib web-parity web-clean swift-parity release-build release-budget hygiene \
 	format format-check lint
 
@@ -18,14 +18,8 @@ test: mechanics-test visual-test noalloc-check city-lib
 mechanics-test:
 	$(MAKE) -C firmware/sim_test mechanics-test
 
-mechanics-hp-candidates:
-	$(MAKE) -C firmware/sim_test mechanics-hp-candidates
-
 visual-test:
 	$(MAKE) -C firmware/sim_test visual-test
-
-hp-gate:
-	$(MAKE) -C firmware/sim_test hp-gate
 
 noalloc-check:
 	$(MAKE) -C firmware/sim_test noalloc-check

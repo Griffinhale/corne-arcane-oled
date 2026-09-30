@@ -28,16 +28,6 @@ mechanics_runner: $(MECHANICS_SRC) test_harness.h test_support.h $(SIM_SRC) $(HD
 mechanics-test: mechanics_runner
 	ASAN_OPTIONS=detect_leaks=0 ./mechanics_runner
 
-mechanics_hp_8: $(MECHANICS_SRC) test_harness.h test_support.h $(SIM_SRC) $(HDRS)
-	$(CC) $(CFLAGS) -DSIM_MAX_HP=8 -o $@ $(filter %.c,$^)
-
-mechanics_hp_10: $(MECHANICS_SRC) test_harness.h test_support.h $(SIM_SRC) $(HDRS)
-	$(CC) $(CFLAGS) -DSIM_MAX_HP=10 -o $@ $(filter %.c,$^)
-
-mechanics-hp-candidates: mechanics_hp_8 mechanics_hp_10
-	ASAN_OPTIONS=detect_leaks=0 ./mechanics_hp_8
-	ASAN_OPTIONS=detect_leaks=0 ./mechanics_hp_10
-
 visual_runner: visual_catalog.c scenarios.c $(SIM_SRC) $(HDRS)
 	$(RUNNER_RECIPE)
 
@@ -46,16 +36,6 @@ visual-test: visual_runner
 
 visual-golden: visual_runner
 	ASAN_OPTIONS=detect_leaks=0 ./visual_runner --write-golden golden/visual_current.hashes
-
-hp_gate_8: hp_gate.c $(SIM_SRC) $(HDRS)
-	$(CC) $(CFLAGS) -DSIM_MAX_HP=8 -o $@ $(filter %.c,$^)
-
-hp_gate_10: hp_gate.c $(SIM_SRC) $(HDRS)
-	$(CC) $(CFLAGS) -DSIM_MAX_HP=10 -o $@ $(filter %.c,$^)
-
-hp-gate: hp_gate_8 hp_gate_10
-	ASAN_OPTIONS=detect_leaks=0 ./hp_gate_8
-	ASAN_OPTIONS=detect_leaks=0 ./hp_gate_10
 
 # The allocation-free contract covers every allocating entry point, not just
 # the big four; compile with the same warning set as the tests so this target
@@ -71,6 +51,6 @@ noalloc-check:
 	done; echo "PASS noalloc-check"
 
 clean:
-	rm -f mechanics_runner mechanics_hp_8 mechanics_hp_10 visual_runner hp_gate_8 hp_gate_10 .noalloc.o
+	rm -f mechanics_runner visual_runner .noalloc.o
 
-.PHONY: test mechanics-test mechanics-hp-candidates visual-test visual-golden hp-gate noalloc-check clean
+.PHONY: test mechanics-test visual-test visual-golden noalloc-check clean

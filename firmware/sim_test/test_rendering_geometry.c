@@ -75,8 +75,7 @@ static void test_render_interaction_combine_solid_parity(void) {
 }
 
 /* Mirrors hp_window_xy: 2x2 lit windows, gapward column x7-8, outer x3-4,
- * rows bottom-up from y56. HP 8 uses four rows through y44; HP 10 adds the
- * supported fifth candidate row at y40. */
+ * rows bottom-up from y56. HP 8 uses four rows through y44. */
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
     int canonical_x = (hp_index & 1) ? 3 : 7;
     int px = is_left ? canonical_x : DUEL_CANVAS_W - 2 - canonical_x;

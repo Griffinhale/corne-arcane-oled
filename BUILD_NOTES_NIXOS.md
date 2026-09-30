@@ -46,22 +46,15 @@ cd ~/src/vial-qmk
 qmk compile -kb crkbd/rev1 -km griffin_arcane -e CONVERT_TO=rp2040_ce
 qmk compile -kb crkbd/rev1 -km griffin_arcane \
   -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
-qmk compile -kb crkbd/rev1 -km griffin_arcane \
-  -e CONVERT_TO=rp2040_ce -e ARCANE_HP=8
-qmk compile -kb crkbd/rev1 -km griffin_arcane \
-  -e CONVERT_TO=rp2040_ce -e ARCANE_HP=10
 ```
 
 `griffin_arcane` contains the current v12 world, host semantics, secure Vial
 support, OLED, RGB Matrix, and four persistent dynamic keymap layers.
-`ARCANE_HP` exists only for the 8/10 physical pacing gate. `griffin` remains
-the recovery image.
+`griffin` remains the recovery image.
 
 Use `make release-build` to produce neutral files under `artifacts/release/`
-and `make release-budget` to enforce the resource ceilings. The two HP images
-are an unresolved A/B experiment in combat pacing, not release candidates;
-flash `griffin_arcane-release.uf2` unless you are deliberately running that
-comparison.
+and `make release-budget` to enforce the resource ceilings. Flash
+`griffin_arcane-release.uf2`.
 
 ## Device access
 

@@ -73,9 +73,7 @@ enum { POSE_IDLE = 0, POSE_CAST = 1, POSE_RECOVER = 2 };
 
 #define SIM_CAST_TICKS    12 /* tap pose stays raised through the 10-tick wind-up */
 #define SIM_RECOVER_TICKS 3
-#ifndef SIM_MAX_HP
-#define SIM_MAX_HP 8 /* Preserved baseline while the physical 8/10 A/B gate is pending. */
-#endif
+#define SIM_MAX_HP        8 /* four rows of two lit windows in the tower shaft */
 
 /* ---- combat -------------------------------------------------------------
  * The battlefield is one 8-bit axis: u = 0 at the left wizard, 255 at the
