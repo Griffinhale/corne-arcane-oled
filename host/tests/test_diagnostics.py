@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import io
 import json
 import struct
@@ -9,6 +10,7 @@ from dataclasses import replace
 from unittest.mock import patch
 
 from arcane_host import diagnostics
+from arcane_host.city import candidate_paths
 from arcane_host.diagnostics import (
     DIAGNOSTIC_PAGES,
     DIAGNOSTIC_RESPONSE,
@@ -383,6 +385,31 @@ class EchoOnly(Silent):
 class TtyStream(io.StringIO):
     def isatty(self) -> bool:
         return True
+
+
+def wire_constant_lookup() -> ctypes.CDLL | None:
+    for path in candidate_paths():
+        if path.is_file():
+            library = ctypes.CDLL(str(path))
+            library.duel_city_wire_constant.argtypes = [ctypes.c_char_p]
+            library.duel_city_wire_constant.restype = ctypes.c_long
+            return library
+    return None
+
+
+@unittest.skipUnless(wire_constant_lookup(), "libcornearcane.so is not built; run `make city-lib`")
+class CContractTests(unittest.TestCase):
+    def test_diagnostic_constants_match_c(self) -> None:
+        library = wire_constant_lookup()
+        for python, name in (
+            (DIAGNOSTIC_VERSION, "DIAG_VERSION"),
+            (DIAGNOSTIC_PAGES, "DIAG_PAGES"),
+            (diagnostics.DIAGNOSTIC_REQUEST, "MSG_DIAG_REQUEST"),
+            (DIAGNOSTIC_RESPONSE, "MSG_DIAG_RESPONSE"),
+            (diagnostics.FIXED_SPLIT_CADENCE, "DIAG_FLAG_FIXED_SPLIT_CADENCE"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(python, library.duel_city_wire_constant(name.encode()))
 
 
 class FailureAndProgressTests(unittest.TestCase):

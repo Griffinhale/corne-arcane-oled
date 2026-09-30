@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "duel_civic.h"
+#include "duel_diagnostics.h"
 #include "duel_draw.h"
 #include "duel_framebuffer.h"
 #include "duel_host.h"
@@ -34,6 +35,42 @@ _Static_assert(sizeof(duel_floor_policy_t) <= sizeof(duel_city_state_t),
 static const sim_world_t resting_world;
 
 int duel_city_abi_version(void) { return DUEL_CITY_ABI; }
+
+long duel_city_wire_constant(const char *name) {
+    static const struct {
+        const char *name;
+        long value;
+    } constants[] = {
+        {"REPORT_SIZE", DUEL_HOST_REPORT_SIZE},
+        {"MAGIC0", DUEL_HOST_MAGIC0},
+        {"MAGIC1", DUEL_HOST_MAGIC1},
+        {"VERSION", DUEL_HOST_VERSION},
+        {"PAYLOAD_SIZE", DUEL_HOST_PAYLOAD_SIZE},
+        {"MSG_HELLO", DUEL_HOST_MSG_HELLO},
+        {"MSG_HEARTBEAT", DUEL_HOST_MSG_HEARTBEAT},
+        {"MSG_NOTIFY", DUEL_HOST_MSG_NOTIFY},
+        {"CATEGORY_COUNT", DUEL_HOST_CATEGORY_COUNT},
+        {"PRIORITY_COUNT", DUEL_HOST_PRIORITY_COUNT},
+        {"SCENE_COUNT", DUEL_HOST_SCENE_COUNT},
+        {"DIAG_VERSION", DUEL_HOST_DIAG_VERSION},
+        {"DIAG_PAGES", DUEL_HOST_DIAG_PAGES},
+        {"MSG_DIAG_REQUEST", DUEL_HOST_MSG_DIAG_REQUEST},
+        {"MSG_DIAG_RESPONSE", DUEL_HOST_MSG_DIAG_RESPONSE},
+        {"DIAG_FLAG_FIXED_SPLIT_CADENCE", DUEL_HOST_DIAG_FLAG_FIXED_SPLIT_CADENCE},
+    };
+    if (!name)
+        return -1;
+    /* No strcmp: the wasm build's freestanding <string.h> has only memcpy and
+     * memset, and this file is compiled there too. */
+    for (size_t i = 0; i < sizeof constants / sizeof constants[0]; i++) {
+        const char *a = constants[i].name, *b = name;
+        while (*a && *a == *b)
+            a++, b++;
+        if (*a == *b)
+            return constants[i].value;
+    }
+    return -1;
+}
 
 void duel_city_state_init(duel_city_state_t *state) {
     if (state)

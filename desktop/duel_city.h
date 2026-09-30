@@ -139,6 +139,12 @@ duel_ambient_stats_t duel_ambient_stats(const duel_ambient_t *ambient);
 
 int duel_city_abi_version(void);
 
+/* A wire constant from duel_host.h or duel_diagnostics.h, by its name without
+ * the DUEL_HOST_ prefix ("VERSION", "MSG_HELLO", ...), or -1 for an unknown
+ * name. The Python host restates these; its tests read them from here so a
+ * change on one side cannot pass unnoticed. Not used by any renderer. */
+long duel_city_wire_constant(const char *name);
+
 /* Pixel size of one rendered image in this layout at this scale. Returns an
  * error code without touching the outputs if either argument is out of
  * range. */

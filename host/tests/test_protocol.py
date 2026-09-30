@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import ctypes
 import unittest
 
+from arcane_host.city import candidate_paths
 from arcane_host.protocol import (
+    MAGIC,
+    PAYLOAD_SIZE,
+    REPORT_SIZE,
+    VERSION,
     Category,
     CivicState,
     Floor,
@@ -17,6 +23,64 @@ from arcane_host.protocol import (
     crc8,
     hidraw_frame,
 )
+
+
+def load_c() -> ctypes.CDLL | None:
+    """The firmware's own validator and constants, via the desktop library."""
+    for path in candidate_paths():
+        if path.is_file():
+            library = ctypes.CDLL(str(path))
+            library.duel_city_wire_constant.argtypes = [ctypes.c_char_p]
+            library.duel_city_wire_constant.restype = ctypes.c_long
+            library.duel_host_packet_valid.argtypes = [ctypes.c_char_p]
+            library.duel_host_packet_valid.restype = ctypes.c_bool
+            return library
+    return None
+
+
+C = load_c()
+requires_c = unittest.skipUnless(C, "libcornearcane.so is not built; run `make city-lib`")
+
+
+@requires_c
+class CContractTests(unittest.TestCase):
+    """Python's restated wire constants and packets, judged by the C that receives them."""
+
+    def c(self, name: str) -> int:
+        value = C.duel_city_wire_constant(name.encode())
+        self.assertNotEqual(value, -1, f"C does not export {name}")
+        return value
+
+    def test_constants_match_c(self) -> None:
+        self.assertEqual(REPORT_SIZE, self.c("REPORT_SIZE"))
+        self.assertEqual(MAGIC, (self.c("MAGIC0"), self.c("MAGIC1")))
+        self.assertEqual(VERSION, self.c("VERSION"))
+        self.assertEqual(PAYLOAD_SIZE, self.c("PAYLOAD_SIZE"))
+        for message in Message:
+            self.assertEqual(message, self.c(f"MSG_{message.name}"))
+        self.assertEqual(len(Category), self.c("CATEGORY_COUNT"))
+        self.assertEqual(len(Priority), self.c("PRIORITY_COUNT"))
+        self.assertEqual(len(Scene), self.c("SCENE_COUNT"))
+        self.assertEqual(C.duel_city_wire_constant(b"NO_SUCH_CONSTANT"), -1)
+
+    def test_c_validator_accepts(self) -> None:
+        civic = CivicState(Floor.WORKSHOP, Mode.URGENT, Intensity.BUSY, Secondary.SYSTEM)
+        summary = NotificationSummary(15, Category.SECURITY, Priority.CRITICAL, 7, True)
+        packets = [build_packet(Message.HELLO, 0x11223344, 0, Scene.ARCHIVE, 2)]
+        for message in Message:
+            for scene in Scene:
+                packets.append(build_packet(message, 7, 65535, scene, 0, civic=civic))
+            packets.append(build_packet(message, 0xFFFFFFFF, 1, Scene.FOCUS, summary=summary))
+        for report in packets:
+            with self.subTest(report=report.hex()):
+                self.assertTrue(C.duel_host_packet_valid(report))
+
+        # The validator is not a rubber stamp: a version Python does not send
+        # is refused even with a correct CRC.
+        wrong = bytearray(packets[0])
+        wrong[2] = VERSION + 1
+        wrong[-1] = crc8(wrong[:-1])
+        self.assertFalse(C.duel_host_packet_valid(bytes(wrong)))
 
 
 class ProtocolTests(unittest.TestCase):
