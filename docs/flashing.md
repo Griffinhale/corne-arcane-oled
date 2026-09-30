@@ -5,8 +5,9 @@ handedness-specific, so there is one file and you copy it twice.
 
 ## Before you start
 
-Export your Vial layout and keep a known-good image reachable. `griffin` is the
-stable recovery keymap in the Vial-QMK tree; `griffin_arcane` is this project.
+Save your Vial layout (see below) and keep a known-good image reachable.
+`griffin` is the stable recovery keymap in the Vial-QMK tree; `griffin_arcane`
+is this project.
 
 Stop the host daemon if you run it, so it is not rediscovering the keyboard
 while devices appear and disappear:
@@ -14,6 +15,24 @@ while devices appear and disappear:
 ```bash
 systemctl --user stop corne-arcane-host.service corne-arcane-focus-x11.service
 ```
+
+## Your keymap and reflashing
+
+**Flashing a new build resets the keymap to the default.** Any change you made
+in Vial is lost. Vial-QMK gives every build a random build ID and stores it
+next to the keymap on the keyboard. At startup the firmware compares the two,
+and when they differ it treats the stored keymap as invalid and writes the
+compiled default over it. That happens on every reflash, even of the same
+source.
+
+So save your layout before you flash and load it back after:
+
+1. In Vial, **File → Save current layout** and keep the `.vil` file.
+2. Flash both halves as described below.
+3. In Vial, **File → Load saved layout** and pick that file.
+
+The compiled default is committed as [`firmware/default.vil`](../firmware/default.vil).
+Load it to get back to a clean layout without reflashing.
 
 ## Building the image
 

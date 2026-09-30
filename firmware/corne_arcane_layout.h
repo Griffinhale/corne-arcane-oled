@@ -1,8 +1,9 @@
 #pragma once
 
-// Static default captured from the corne-arcane.vil export in the project
-// parent's directory. The unified firmware uses it both as the compiled
-// default and as the seed for persistent dynamic-keymap EEPROM.
+// Static default keymap. The unified firmware uses it both as the compiled
+// default and as the seed for persistent dynamic-keymap EEPROM. The same
+// layout is committed as firmware/default.vil for loading into Vial; change
+// the two together.
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     [0] = LAYOUT_split_3x6_3(
         KC_ESC,  KC_Q,    KC_W,    KC_E,    KC_R,    KC_T,                   KC_Y,    KC_U,    KC_I,    KC_O,    KC_P,    KC_BSPC,
