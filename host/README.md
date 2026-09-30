@@ -46,9 +46,16 @@ systemctl --user enable --now corne-arcane-host.service
 service (Type=dbus) and the diagnostics and Vial handoff both use `systemctl --user`.
 It is present by default on desktop installs and absent on minimal ones.
 
-To install without building a package, `make install PREFIX=/usr` places the
-same layout directly. Unplug and replug the keyboard afterwards so the udev
-rule applies.
+To install without building a package, run this from the repository root:
+
+```bash
+sudo make -C host install PREFIX=/usr
+```
+
+It places the same layout directly. Keep `PREFIX=/usr`: the default,
+`/usr/local`, puts the Firefox native-messaging manifest and the udev rule
+where Firefox and udev do not look. Unplug and replug the keyboard afterwards
+so the udev rule applies.
 
 Debian has no `vial` package -- Vial ships as an AppImage -- so tell
 `corne-arcane-vial` where it is. Put the path, or a whole command such as
@@ -123,6 +130,35 @@ sends exactly event kind and intensity; it never reads or sends URLs, titles,
 content, history, forms, referrers, or typed text. An absent bus, denied
 permission, missing native host, or extension restart disables only that
 adapter.
+
+## Stop and uninstall
+
+Stop the services first, in your own session:
+
+```bash
+systemctl --user disable --now corne-arcane-host.service corne-arcane-focus-x11.service
+```
+
+Then undo whatever you turned on from the list above:
+
+- Shell hooks: delete the line that sources `corne-arcane.zsh` or
+  `corne-arcane.bash` from `~/.zshrc` or `~/.bashrc`, or the Fish `conf.d`
+  link. Do this before removing the package, or every new shell reports a
+  missing file.
+- GNOME: `gnome-extensions disable corne-arcane-focus@griffinhale.github.io`,
+  and remove the copy or link under `~/.local/share/gnome-shell/extensions/`
+  if you made one.
+- Firefox: remove the extension from `about:addons`.
+- Vial location: `rm -r ~/.config/corne-arcane` if you created it.
+
+Finally remove the files, the same way you installed them:
+
+```bash
+sudo apt remove corne-arcane-host            # Debian package
+sudo make -C host uninstall PREFIX=/usr      # make install, same PREFIX
+```
+
+On NixOS, drop the `corne.nix` import and rebuild.
 
 ## Desktop city window
 

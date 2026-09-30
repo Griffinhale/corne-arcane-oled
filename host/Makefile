@@ -41,7 +41,7 @@ COMMANDS = \
 	vial:vial_launcher \
 	focus-x11:focus_x11
 
-.PHONY: install install-lib install-commands install-units install-assets install-udev
+.PHONY: install install-lib install-commands install-units install-assets install-udev uninstall
 
 install: install-lib install-commands install-units install-assets install-udev
 
@@ -108,3 +108,21 @@ install-assets:
 install-udev:
 	install -D -m 0644 udev/60-corne-arcane.rules \
 		"$(DESTDIR)$(UDEVDIR)/60-corne-arcane.rules"
+
+# Removes exactly what install places, with the same PREFIX and DESTDIR. The
+# per-user steps (disabling units, shell hook lines, the GNOME and Firefox
+# extensions) are in README.md under "Stop and uninstall".
+uninstall:
+	rm -rf "$(DESTDIR)$(LIBDIR)"
+	@for entry in $(COMMANDS); do \
+		rm -f "$(DESTDIR)$(BINDIR)/corne-arcane-$${entry%%:*}"; \
+	done
+	@for unit in $(UNITS); do \
+		rm -f "$(DESTDIR)$(UNITDIR)/$$unit.service"; \
+	done
+	rm -f "$(DESTDIR)$(MOZILLADIR)/io.github.griffinhale.corne_arcane.json"
+	rm -rf "$(DESTDIR)$(DATADIR)/kwin/scripts/cornearcane"
+	rm -rf "$(DESTDIR)$(DATADIR)/gnome-shell/extensions/$(GNOME_UUID)"
+	rm -rf "$(DESTDIR)$(DATADIR)/corne-arcane"
+	rm -f "$(DESTDIR)$(DATADIR)/applications/corne-arcane-vial.desktop"
+	rm -f "$(DESTDIR)$(UDEVDIR)/60-corne-arcane.rules"
