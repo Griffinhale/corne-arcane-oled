@@ -53,7 +53,16 @@ That is the fastest way to see what this actually looks like.
 
 ### 2. Put it on the keyboard
 
-You need a Corne (crkbd rev1) with RP2040 controllers and both OLEDs, plus a
+You need a Corne (crkbd rev1) with RP2040 controllers and both OLEDs.
+
+The short way is to download the image. Each `fw-v*` tag publishes a release on
+the [releases page](https://github.com/Griffinhale/corne-arcane-oled/releases)
+with `corne_arcane.uf2`, the host `.deb`, and `SHA256SUMS`. If one is listed
+there, take `corne_arcane.uf2` and go straight to
+[`docs/flashing.md`](docs/flashing.md). If the page is empty, build the image
+yourself.
+
+To build it you also need a
 [Vial-QMK](https://github.com/vial-kb/vial-qmk) checkout at the revision in
 [`VIAL_QMK_REVISION`](VIAL_QMK_REVISION).
 
@@ -92,8 +101,9 @@ enums first, so there is nothing to filter out later. See
 [`host/README.md`](host/README.md) for what each adapter can and cannot see.
 
 Install on NixOS by importing [`corne.nix`](corne.nix); on Debian or Ubuntu
-build the package with `dpkg-buildpackage -b -uc -us`. Both drive one install
-layout defined in [`host/Makefile`](host/Makefile), so they cannot drift apart.
+install the `.deb` from a release, or build it with
+`dpkg-buildpackage -b -uc -us`. Both drive one install layout defined in
+[`host/Makefile`](host/Makefile), so they cannot drift apart.
 
 ```bash
 corne-arcane-event browser scroll 1              # send one activity event by hand

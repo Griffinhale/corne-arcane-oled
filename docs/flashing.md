@@ -34,6 +34,25 @@ So save your layout before you flash and load it back after:
 The compiled default is committed as [`firmware/default.vil`](../firmware/default.vil).
 Load it to get back to a clean layout without reflashing.
 
+## Getting the image
+
+There are two ways to get the same firmware, and they name the file
+differently:
+
+| Route | File | Where it comes from |
+|---|---|---|
+| Download | `corne_arcane.uf2` | a `fw-v*` release on the [releases page](https://github.com/Griffinhale/corne-arcane-oled/releases) |
+| Local build | `artifacts/release/griffin_arcane-release.uf2` | `make release-build`, below |
+
+Downloading is the short way. Check the file against the release's
+`SHA256SUMS` before you flash it:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+If the releases page lists no release yet, build the image.
+
 ## Building the image
 
 The firmware builds inside a [Vial-QMK](https://github.com/vial-kb/vial-qmk)
@@ -100,7 +119,8 @@ make release-build        # writes artifacts/release/griffin_arcane-release.uf2
 
 1. Unplug USB. **Disconnect TRRS.**
 2. Hold BOOT on the first controller and plug in USB. `RPI-RP2` mounts.
-3. Copy `artifacts/release/griffin_arcane-release.uf2` onto it.
+3. Copy the image onto it: `corne_arcane.uf2` from a release, or
+   `artifacts/release/griffin_arcane-release.uf2` from your own build.
 4. Unplug USB.
 5. Repeat steps 2–4 on the second controller with the **same file**.
 6. Reconnect TRRS while both halves are unpowered.

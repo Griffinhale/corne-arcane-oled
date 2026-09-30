@@ -133,7 +133,9 @@ revision recursively, builds both images, enforces the same budgets, and keeps
 ELF, UF2, map, hash, and budget files for 14 days. Those files record a build;
 they are not a published release, and they do not show the firmware works on
 a keyboard. That still takes the checks in
-[`flashing.md`](flashing.md#checking-it-worked).
+[`flashing.md`](flashing.md#checking-it-worked). Published releases come from
+`fw-v*` tags through `.github/workflows/release.yml`, which renames the release
+image to `corne_arcane.uf2`.
 
 ## Safe module extraction
 
