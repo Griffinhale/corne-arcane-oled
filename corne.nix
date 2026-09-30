@@ -30,6 +30,18 @@ in
       default = 1500;
       description = "Pomodoro duration in seconds used for Observatory quarter stages.";
     };
+    firefoxBridge = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Make the Firefox bridge's native host visible to Firefox.
+
+        This adds the package to programs.firefox.nativeMessagingHosts, which
+        only the NixOS Firefox wrapper reads, so it takes effect with
+        programs.firefox.enable = true. The extension itself is unsigned and is
+        loaded by hand; host/README.md says how.
+      '';
+    };
     x11FocusProducer = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -69,6 +81,9 @@ in
     # `udevadm test /sys/class/hidraw/hidrawN` that the rule matches at 60 and
     # that 73-seat-late.rules then runs the uaccess builtin.
     services.udev.packages = [ corneArcaneHost ];
+
+    programs.firefox.nativeMessagingHosts.packages =
+      lib.mkIf cfg.firefoxBridge [ corneArcaneHost ];
 
     systemd.user.services.corne-arcane-host = {
       description = "Corne Arcane focus, notification policy, and Raw HID heartbeat";

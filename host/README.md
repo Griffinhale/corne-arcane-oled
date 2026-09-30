@@ -128,9 +128,8 @@ Nothing below is auto-enabled by the package.
 - GNOME: explicitly install or link
   `share/gnome-shell/extensions/corne-arcane-focus@griffinhale.github.io`, then
   enable that UUID through GNOME Extensions.
-- Firefox: explicitly install the extension assets under
-  `share/corne-arcane/firefox`. The packaged native-messaging manifest invokes
-  `corne-arcane-browser-bridge`.
+- Firefox: load the extension under `share/corne-arcane/firefox`; see
+  [Firefox](#firefox) below.
 
 Shell hooks report only monotonic duration, integer status, and normalized
 repository state. GNOME reports only application/desktop identifiers, and the
@@ -139,6 +138,45 @@ sends exactly event kind and intensity; it never reads or sends URLs, titles,
 content, history, forms, referrers, or typed text. An absent bus, denied
 permission, missing native host, or extension restart disables only that
 adapter.
+
+### Firefox
+
+The Firefox bridge has two parts. The extension watches for scrolls, tab
+switches and page loads. The native host, `corne-arcane-browser-bridge`, passes
+them to the daemon. The package installs the host and its manifest. You load
+the extension yourself.
+
+The extension is not signed, and ordinary Firefox releases only keep signed
+extensions. So on those it loads as a temporary add-on, and **Firefox drops it
+at every restart**. You load it again after each restart. Firefox ESR,
+Developer Edition and Nightly can keep it if you set
+`xpinstall.signatures.required` to `false` in `about:config`.
+
+1. Find the extension folder:
+
+   ```bash
+   echo "$(dirname "$(readlink -f "$(command -v corne-arcane-browser-bridge)")")/../share/corne-arcane/firefox"
+   ```
+
+2. Open `about:debugging#/runtime/this-firefox`, click **Load Temporary
+   Add-on...**, and pick `manifest.json` in that folder.
+3. Switch tabs once. The extension starts the native host on the first event,
+   so this should now print a process:
+
+   ```bash
+   pgrep -af corne-arcane-browser-bridge
+   ```
+
+Firefox finds the host through its manifest,
+`io.github.griffinhale.corne_arcane.json`. The Debian package and
+`make -C host install PREFIX=/usr` put it in
+`/usr/lib/mozilla/native-messaging-hosts`, where Firefox looks. On NixOS, set
+`services.corne-arcane-host.firefoxBridge = true;`. That hands the host to
+the Firefox wrapper, so it needs `programs.firefox.enable = true;` too. A
+Firefox you installed another way will not see it.
+
+Snap and Flatpak builds of Firefox may not see hosts under `/usr/lib/mozilla`
+at all. That is untested.
 
 ## Stop and uninstall
 
@@ -157,7 +195,8 @@ Then undo whatever you turned on from the list above:
 - GNOME: `gnome-extensions disable corne-arcane-focus@griffinhale.github.io`,
   and remove the copy or link under `~/.local/share/gnome-shell/extensions/`
   if you made one.
-- Firefox: remove the extension from `about:addons`.
+- Firefox: a temporary add-on is gone after a restart. If you kept it, remove
+  it from `about:addons`.
 - Vial location: `rm -r ~/.config/corne-arcane` if you created it.
 
 Finally remove the files, the same way you installed them:
