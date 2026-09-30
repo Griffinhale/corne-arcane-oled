@@ -1,6 +1,16 @@
 #!/usr/bin/env sh
 set -eu
 
+# Checked first: without these the size parse below fails as a bogus budget
+# overrun. On NixOS the qmk wrapper keeps them off the outer PATH.
+for tool in arm-none-eabi-size arm-none-eabi-readelf; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "FAIL release-budget: $tool not found on PATH" >&2
+        echo "Install ARM GNU Toolchain (see scripts/budget.env), or on NixOS run inside nix-shell -p gcc-arm-embedded." >&2
+        exit 1
+    }
+done
+
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 # shellcheck source=budget.env
 . "$root/scripts/budget.env"
