@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import signal
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -238,6 +241,99 @@ class HandleTests(unittest.TestCase):
 
         self.assertEqual(order, ["enter", "exit"])
         self.assertIn("could not start", stderr.getvalue())
+
+
+class ForkingVialTests(unittest.TestCase):
+    """Real processes: a fake Vial that forks its window off and exits at once."""
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        self.pgid_file = self.root / "pgid"
+        self.addCleanup(self._reap)
+        patcher = patch.object(vial_launcher, "notify_failure")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _reap(self) -> None:
+        try:
+            os.killpg(int(self.pgid_file.read_text()), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
+
+    def fake_vial(self, window: str, then: str = "exit 0") -> Path:
+        """The launched process records its group, backgrounds window, then runs then."""
+        script = self.root / "vial"
+        script.write_text(f'#!/bin/sh\necho $$ > "{self.pgid_file}"\n( {window} ) &\n{then}\n')
+        script.chmod(0o755)
+        return script
+
+    def test_forking_vial_waits(self) -> None:
+        done = self.root / "done"
+        vial = self.fake_vial(f'sleep 0.6; echo closed > "{done}"')
+        seen_at_exit: list[bool] = []
+
+        class Guard:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def __enter__(self) -> None:
+                pass
+
+            def __exit__(self, *_args: object) -> None:
+                # The service comes back here; the window must be gone by now.
+                seen_at_exit.append(done.exists())
+
+        with (
+            patch.object(vial_launcher, "resolve_vial", return_value=[str(vial)]),
+            patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
+        ):
+            self.assertEqual(vial_launcher.main([]), 0)
+        self.assertEqual(seen_at_exit, [True])
+        self.assertEqual(vial_launcher.group_members(int(self.pgid_file.read_text())), ())
+
+    def test_leftover_without_keyboard_is_capped_and_warned(self) -> None:
+        vial = self.fake_vial("sleep 30")
+        stderr = io.StringIO()
+        started = time.monotonic()
+        with (
+            patch.object(vial_launcher, "IDLE_GROUP_LIMIT", 0.3),
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(vial_launcher.run_vial([str(vial)], []), 0)
+        self.assertLess(time.monotonic() - started, 5.0)
+        self.assertIn("1 leftover Vial process(es) hold no keyboard", stderr.getvalue())
+        # Waiting stopped; the leftover is not killed on a normal exit.
+        self.assertEqual(len(vial_launcher.group_members(int(self.pgid_file.read_text()))), 1)
+
+    def test_interrupted_launch_stops_the_whole_group(self) -> None:
+        vial = self.fake_vial("sleep 30", then="sleep 30")
+
+        def interrupt(signum: int, _frame: object) -> None:
+            raise hid_ownership.OwnershipSignal(signum)
+
+        previous = signal.signal(signal.SIGUSR1, interrupt)
+        self.addCleanup(signal.signal, signal.SIGUSR1, previous)
+        timer = threading.Timer(0.5, os.kill, (os.getpid(), signal.SIGUSR1))
+        timer.start()
+        self.addCleanup(timer.cancel)
+        with self.assertRaises(hid_ownership.OwnershipSignal):
+            vial_launcher.run_vial([str(vial)], [])
+        self.assertEqual(vial_launcher.group_members(int(self.pgid_file.read_text())), ())
+
+    def test_group_members_reads_pgrp_and_skips_zombies(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for pid, stat in (
+                (10, "10 (vial) S 1 10 10"),
+                (11, "11 (a) b) S 10 10 10"),
+                (12, "12 (sh) Z 10 10 10"),
+                (13, "13 (other) S 1 13 13"),
+            ):
+                (root / str(pid)).mkdir()
+                (root / str(pid) / "stat").write_text(stat + " 0 0\n")
+            self.assertEqual(vial_launcher.group_members(10, root), (10, 11))
 
 
 class VialResolutionTests(unittest.TestCase):

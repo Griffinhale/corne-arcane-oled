@@ -5,13 +5,18 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-from .hid_ownership import ExclusiveHidOwnership, OwnershipSignal
+from .hid_ownership import ExclusiveHidOwnership, OwnershipSignal, hidraw_handles
 
 ENV_VAR = "CORNE_ARCANE_VIAL_BIN"
+# How long Vial's leftover processes may run without the keyboard open before
+# the launcher stops waiting for them and hands the keyboard back.
+IDLE_GROUP_LIMIT = 30.0
 
 
 class VialNotFound(RuntimeError):
@@ -80,26 +85,92 @@ def notify_failure(message: str) -> None:
         pass
 
 
+def group_members(pgid: int, proc_root: Path = Path("/proc")) -> tuple[int, ...]:
+    """Live processes in process group pgid, from /proc/*/stat; zombies excluded."""
+    members: list[int] = []
+    try:
+        entries = tuple(proc_root.iterdir())
+    except OSError:
+        return ()
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            # Fields after the parenthesised comm: state ppid pgrp ...
+            fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+        except (OSError, IndexError):
+            continue
+        if len(fields) > 2 and fields[0] != "Z" and fields[2] == str(pgid):
+            members.append(int(entry.name))
+    return tuple(sorted(members))
+
+
+def wait_for_group(
+    pgid: int,
+    idle_limit: float = IDLE_GROUP_LIMIT,
+    poll: float = 0.2,
+    proc_root: Path = Path("/proc"),
+) -> None:
+    """Wait until Vial's process group is empty.
+
+    A Vial that forks and exits leaves the real window in the group. While any
+    member holds a hidraw node the wait has no limit: that is Vial in use. Members
+    that hold none are waited for only idle_limit seconds, then left running.
+    """
+    last_busy = time.monotonic()
+    while members := group_members(pgid, proc_root):
+        now = time.monotonic()
+        if any(hidraw_handles(pid, proc_root) for pid in members):
+            last_busy = now
+        elif now - last_busy >= idle_limit:
+            print(
+                f"corne-arcane-vial: {len(members)} leftover Vial process(es) hold no keyboard "
+                f"after {idle_limit:g} s; restoring the service anyway",
+                file=sys.stderr,
+            )
+            return
+        time.sleep(poll)
+
+
+def _stop_group(pgid: int) -> None:
+    for signum, grace in ((signal.SIGTERM, 2.0), (signal.SIGKILL, 2.0)):
+        try:
+            os.killpg(pgid, signum)
+        except ProcessLookupError:
+            return
+        deadline = time.monotonic() + grace
+        while group_members(pgid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+
+
 def run_vial(command: list[str], args: list[str]) -> int:
     process: subprocess.Popen[bytes] | None = None
+    finished = False
     try:
         try:
-            process = subprocess.Popen((*command, *args))
+            # Its own session, so a Vial that forks and exits still leaves a
+            # process group to wait on (process_group= needs Python 3.11).
+            process = subprocess.Popen((*command, *args), start_new_session=True)
         except FileNotFoundError as missing:
             # Found a moment ago, gone now. The daemon has already been handed
             # off, so say it is coming back.
             raise RuntimeError(
                 f"could not start Vial ({command[0]!r}); the service will be restored"
             ) from missing
-        return process.wait()
+        status = process.wait()
+        wait_for_group(process.pid, IDLE_GROUP_LIMIT)
+        finished = True
+        return status
     finally:
-        if process is not None and process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=2.0)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
+        if process is not None and not finished:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            _stop_group(process.pid)
 
 
 def main(argv: list[str] | None = None) -> int:
