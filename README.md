@@ -107,13 +107,16 @@ install the `.deb` from a release, or build it with
 
 ```bash
 corne-arcane-event browser scroll 1              # send one activity event by hand
-corne-arcane-diagnostics --observe 300 --json    # watch live metrics
+corne-arcane-diagnostics --observe 300 --json    # compare metrics over 5 minutes
 corne-arcane-vial                                # launch Vial for keymap edits
 ```
 
 Vial, diagnostics, and the daemon share one Raw HID endpoint, so
 `corne-arcane-vial` hands it over and restores the previous service state
-afterward. Use it instead of launching Vial directly.
+afterward. Use it instead of launching Vial directly. Diagnostics does the
+same: the daemon is stopped for the whole `--observe` window, so the displays
+stop following your desktop until it ends. Metrics need firmware built with
+`ARCANE_DIAGNOSTICS=yes`.
 
 If focus never seems to change anything, you probably have no focus producer:
 KWin and GNOME Shell report from inside the compositor, but a plain X11 session

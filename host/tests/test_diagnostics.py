@@ -352,5 +352,96 @@ class MainTests(unittest.TestCase):
         self.assertEqual(seen, [False])
 
 
+class Silent:
+    """A device that never answers: the wrong node, or firmware without VIA."""
+
+    def send(self, _report: bytes) -> None:
+        pass
+
+    def receive(self, _timeout: float) -> bytes:
+        raise TimeoutError("timed out waiting for Raw HID input report")
+
+    def close(self) -> None:
+        pass
+
+
+class EchoOnly(Silent):
+    """A release build: VIA echoes the request and no page follows."""
+
+    request = b""
+
+    def send(self, report: bytes) -> None:
+        self.request = report
+
+    def receive(self, timeout: float) -> bytes:
+        if self.request:
+            report, self.request = self.request, b""
+            return report
+        return super().receive(timeout)
+
+
+class TtyStream(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+class FailureAndProgressTests(unittest.TestCase):
+    def run_main(self, device: object, argv: list[str], stderr: io.StringIO) -> tuple[int, str]:
+        @contextlib.contextmanager
+        def opened(_path: str):
+            yield device
+
+        output = io.StringIO()
+        with (
+            patch.object(diagnostics, "ExclusiveHidOwnership", NullOwnership),
+            patch.object(diagnostics, "choose_device", return_value="/dev/hidraw0"),
+            patch.object(diagnostics, "Device", opened),
+            contextlib.redirect_stdout(output),
+            contextlib.redirect_stderr(stderr),
+        ):
+            status = diagnostics.main(argv)
+        return status, output.getvalue()
+
+    def test_distinct_timeouts(self) -> None:
+        with self.assertRaises(diagnostics.NoEchoError):
+            query(Silent(), timeout=0.05, nonce=1)
+        with self.assertRaises(diagnostics.NoMetricsError):
+            query(EchoOnly(), timeout=0.05, nonce=1)
+
+        wrong_device, release = io.StringIO(), io.StringIO()
+        self.assertEqual(self.run_main(Silent(), ["--timeout", "0.05"], wrong_device)[0], 1)
+        self.assertEqual(self.run_main(EchoOnly(), ["--timeout", "0.05"], release)[0], 1)
+        self.assertIn("did not answer", wrong_device.getvalue())
+        self.assertNotIn("ARCANE_DIAGNOSTICS", wrong_device.getvalue())
+        self.assertIn("sent no metrics", release.getvalue())
+        self.assertIn("ARCANE_DIAGNOSTICS=yes", release.getvalue())
+
+    def test_countdown_tty_only(self) -> None:
+        argv = ["--observe", "0.3", "--json"]
+        piped = io.StringIO()
+        status, stdout = self.run_main(FakeDevice(), argv, piped)
+        self.assertIn(status, (0, 2))
+        self.assertEqual(piped.getvalue(), "")
+        json.loads(stdout)
+
+        tty = TtyStream()
+        status, stdout = self.run_main(FakeDevice(), argv, tty)
+        self.assertIn(status, (0, 2))
+        self.assertIn("daemon paused: 1 s left", tty.getvalue())
+        self.assertTrue(tty.getvalue().endswith("\r\033[K"))
+        # The countdown goes to stderr only; stdout is still one JSON document.
+        self.assertEqual(stdout, json.dumps(json.loads(stdout), sort_keys=True) + "\n")
+
+    def test_observe_reports_seconds_left(self) -> None:
+        seen: list[float] = []
+        with (
+            patch.object(diagnostics, "query", return_value=snapshot()),
+            patch.object(diagnostics.time, "sleep"),
+            patch.object(diagnostics.time, "monotonic", side_effect=[0.0, 0.0, 1.0, 2.5, 3.0]),
+        ):
+            diagnostics.observe(FakeDevice(), 3.0, progress=seen.append)
+        self.assertEqual(seen, [3.0, 2.0, 0.5, 0.0])
+
+
 if __name__ == "__main__":
     unittest.main()

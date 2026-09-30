@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import secrets
 import struct
 import sys
 import time
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .heartbeat import HidTransport
 from .hid_ownership import ExclusiveHidOwnership, OwnershipSignal
@@ -192,20 +193,37 @@ def decode_pages(page0: bytes, page1: bytes, page2: bytes) -> DiagnosticSnapshot
     )
 
 
+class NoEchoError(TimeoutError):
+    """Nothing answered the request: not this keyboard, or not this firmware."""
+
+
+class NoMetricsError(TimeoutError):
+    """The keyboard echoed the request but sent no page: a release build."""
+
+
 def _read_page(device: HidTransport, page: int, nonce: int, timeout: float) -> bytes:
     request = build_request(page, nonce)
     device.send(request)
     deadline = time.monotonic() + timeout
-    echo = device.receive(timeout)
+    try:
+        echo = device.receive(timeout)
+    except TimeoutError:
+        raise NoEchoError(f"no VIA echo for diagnostic page {page}") from None
     if echo != request:
-        raise ValueError(f"diagnostic page {page} received a mismatched VIA echo")
+        raise ValueError(
+            f"diagnostic page {page} received a mismatched VIA echo; "
+            "is --device the Corne running this firmware?"
+        )
     last_error: ValueError | None = None
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             detail = f" ({last_error})" if last_error else ""
-            raise TimeoutError(f"timed out waiting for diagnostic page {page}{detail}")
-        report = device.receive(remaining)
+            raise NoMetricsError(f"timed out waiting for diagnostic page {page}{detail}")
+        try:
+            report = device.receive(remaining)
+        except TimeoutError:
+            continue
         try:
             return parse_response(report, page=page, nonce=nonce)
         except ValueError as error:
@@ -261,11 +279,24 @@ def evaluate_observation(before: DiagnosticSnapshot, after: DiagnosticSnapshot) 
     )
 
 
-def observe(device: HidTransport, seconds: float, *, timeout: float = 1.0) -> Observation:
+def observe(
+    device: HidTransport,
+    seconds: float,
+    *,
+    timeout: float = 1.0,
+    progress: Callable[[float], None] | None = None,
+) -> Observation:
+    """Snapshot, wait seconds, snapshot again; progress gets the seconds left, then 0."""
     if seconds <= 0:
         raise ValueError("observation duration must be positive")
     before = query(device, timeout=timeout)
-    time.sleep(seconds)
+    deadline = time.monotonic() + seconds
+    while (remaining := deadline - time.monotonic()) > 0:
+        if progress is not None:
+            progress(remaining)
+        time.sleep(min(1.0, remaining))
+    if progress is not None:
+        progress(0.0)
     after = query(device, timeout=timeout)
     return evaluate_observation(before, after)
 
@@ -317,6 +348,15 @@ def _json_value(value: DiagnosticSnapshot | Observation) -> dict[str, Any]:
     return asdict(value)
 
 
+def _countdown(remaining: float) -> None:
+    """One rewritten stderr line; stdout, and so --json, never sees it."""
+    if remaining > 0:
+        sys.stderr.write(f"\robserving, daemon paused: {math.ceil(remaining)} s left ")
+    else:
+        sys.stderr.write("\r\033[K")
+    sys.stderr.flush()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -330,10 +370,21 @@ def main(argv: list[str] | None = None) -> int:
                 if args.observe is None:
                     result = query(device, timeout=args.timeout)
                 else:
-                    result = observe(device, args.observe, timeout=args.timeout)
-    except TimeoutError as error:
+                    progress = (
+                        _countdown if sys.stderr is not None and sys.stderr.isatty() else None
+                    )
+                    result = observe(device, args.observe, timeout=args.timeout, progress=progress)
+    except NoEchoError as error:
         print(
-            "corne-arcane-diagnostics: no metrics response; "
+            "corne-arcane-diagnostics: the device did not answer; "
+            "check that --device is the Corne and that it runs this firmware "
+            f"({error})",
+            file=sys.stderr,
+        )
+        return 1
+    except NoMetricsError as error:
+        print(
+            "corne-arcane-diagnostics: the keyboard answered but sent no metrics; "
             "flash firmware built with ARCANE_DIAGNOSTICS=yes "
             f"({error})",
             file=sys.stderr,
