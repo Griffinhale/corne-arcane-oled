@@ -158,6 +158,39 @@ systemctl --user start corne-arcane-host.service
 corne-arcane-diagnostics
 ```
 
+## Updating
+
+Update the firmware first, then the daemon. A newer daemon can send values
+that older firmware rejects, and the displays then show the host as offline
+while those values are in play. So flash both halves before upgrading the
+daemon.
+
+1. Stop the daemon, as in [Before you start](#before-you-start), and save your
+   Vial layout: the flash resets it.
+2. Get the new image. From a release, download the new `corne_arcane.uf2` and
+   check it against `SHA256SUMS`. From source, pull, then check whether
+   `VIAL_QMK_REVISION` changed. If it did, move the checkout to it:
+
+   ```bash
+   git pull
+   git -C ~/src/vial-qmk fetch
+   git -C ~/src/vial-qmk checkout --detach "$(cat VIAL_QMK_REVISION)"
+   git -C ~/src/vial-qmk submodule update --init --recursive
+   make release-build
+   ```
+
+   The build keeps the image it replaces as
+   `artifacts/release/griffin_arcane-release.prev.uf2`. That is your way back
+   if the new one misbehaves.
+3. Flash both halves with [the sequence](#the-sequence) and load your layout
+   back in Vial.
+4. Upgrade the host package the way you installed it: a new `.deb`,
+   `sudo make -C host install PREFIX=/usr`, or `nixos-rebuild` with `corne.nix`.
+   Then start the daemon and run `corne-arcane-diagnostics`.
+
+The `.deb` has its own version number. It follows the host package, not the
+`fw-v*` firmware tags, so the two numbers will not match.
+
 ## Recovery
 
 The recovery image is Vial-QMK's own `vial` keymap for this board. It has

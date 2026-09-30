@@ -18,6 +18,12 @@ is usable without Firefox:
 corne-arcane-event browser scroll 1
 ```
 
+The daemon and the firmware must both speak Raw HID v3 (`VERSION` in
+`arcane_host/protocol.py`, `DUEL_HOST_VERSION` in `firmware/sim/duel_host.h`).
+Within v3 a newer daemon can still send a value that older firmware rejects,
+so update the firmware first: flash both halves before upgrading the daemon.
+[`../docs/flashing.md`](../docs/flashing.md#updating) has the full sequence.
+
 The Observatory ritual uses a 1,500-second Pomodoro by default. Configure it
 with `--pomodoro-duration SECONDS`, or `services.corne-arcane-host.pomodoroDuration`
 when importing `corne.nix`.
