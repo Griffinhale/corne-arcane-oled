@@ -6,7 +6,7 @@ interface, and the wrapped `corne-arcane-vial` launcher. The unwrapped Vial
 executable is deliberately absent from the normal system profile.
 
 ```nix
-imports = [ /home/griffin/dev/corne-arcane-oled/corne.nix ];
+imports = [ /path/to/corne-arcane-oled/corne.nix ];
 
 services.corne-arcane-host = {
   enable = true;
@@ -32,8 +32,8 @@ systemctl --user status corne-arcane-focus-x11.service
 corne-arcane-focus-x11 --verbose   # prints each identity and what it matched
 ```
 
-Apply the host configuration with the machine's usual NixOS deployment
-workflow. Whether it is currently deployed is machine-local state.
+Apply it with `sudo nixos-rebuild switch`, or however the machine is normally
+deployed.
 
 ## Firmware checkout
 
@@ -41,31 +41,23 @@ The expected Vial-QMK checkout is `~/src/vial-qmk`; override it with
 `QMK_ROOT=/path/to/vial-qmk` when running repository scripts.
 
 ```bash
-./host/install_firmware.sh
-cd ~/src/vial-qmk
-qmk compile -kb crkbd/rev1 -km griffin_arcane -e CONVERT_TO=rp2040_ce
-qmk compile -kb crkbd/rev1 -km griffin_arcane \
-  -e CONVERT_TO=rp2040_ce -e ARCANE_DIAGNOSTICS=yes
+make release-build    # syncs firmware/ into the QMK tree and builds both images
+make release-budget   # checks flash and RAM against the resource ceilings
 ```
 
-`griffin_arcane` contains the current v12 world, host semantics, secure Vial
-support, OLED, RGB Matrix, and four persistent dynamic keymap layers.
+The images land in `artifacts/release/`. Flash `griffin_arcane-release.uf2`;
+`griffin_arcane-diagnostic.uf2` is the same firmware with the diagnostics
+build flag on. The `griffin_arcane` keymap carries the duel, host semantics,
+secure Vial support, OLED, RGB Matrix, and four dynamic keymap layers.
 `griffin` remains the recovery image.
-
-Use `make release-build` to produce neutral files under `artifacts/release/`
-and `make release-budget` to enforce the resource ceilings. Flash
-`griffin_arcane-release.uf2`.
 
 ## Device access
 
-`corne.nix` takes the udev rule from the package, as `60-corne-arcane.rules`,
-instead of writing it inline. `services.udev.extraRules` lands in
-`99-local.rules`, and systemd consumes the `uaccess` tag from a match in
-`73-seat-late.rules` that udev has already evaluated by then, so the inline rule
-this file previously described granted nothing. Access came from
-`qmk-udev-rules`' blanket hidraw rule instead, which
-`hardware.keyboard.qmk.enable` still installs and which is also what covers the
-RP2040 bootloader when flashing.
+`corne.nix` installs the package's udev rule as `60-corne-arcane.rules` rather
+than through `services.udev.extraRules`. Rules there land in `99-local.rules`,
+after `73-seat-late.rules` has already acted on the `uaccess` tag, so they
+would grant nothing. `hardware.keyboard.qmk.enable` installs `qmk-udev-rules`,
+which covers the RP2040 bootloader when flashing.
 
 ```bash
 udevadm test /sys/class/hidraw/hidrawN   # rule matches at 60, uaccess then runs
@@ -82,14 +74,9 @@ corne-arcane-vial
 
 Do not start the raw `vial` binary while the daemon is active: Vial and the
 daemon share QMK's single Raw HID endpoint, so the wrapped launcher stops the
-daemon, hands off, and restores it on exit. The full handoff contract, the
-`./result/bin/corne-arcane-vial` fallback for before the rebuilt profile is
-active, and the older-generation caveat are in the top-level `README.md`
-§Persistent Vial remapping. The keyboard keeps typing and simulating offline
-while the daemon is paused.
-
-The service retains its D-Bus, event-client, diagnostics, udev, and command
-identities. The package version is declared in `host/pyproject.toml`.
+daemon, hands off, and restores it on exit. The keyboard keeps typing and
+simulating offline while the daemon is paused. The commands and their options
+are in [`host/README.md`](host/README.md).
 
 ## Flashing
 
