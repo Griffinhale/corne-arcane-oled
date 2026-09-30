@@ -10,7 +10,7 @@ A fixed-tick simulation runs on the master half at 25 Hz. Key *positions*,
 never keycodes and never characters, feed a combat model with elemental
 residue, field effects, wards, and aftermath that persists across duels. Both
 displays render live state from a 32-byte snapshot crossing the TRRS link. The
-slave half never recomputes the world, it only draws what it is sent.
+slave half never recomputes the world; it only draws what it receives.
 
 ## Beneath the duel is a city
 
@@ -81,11 +81,11 @@ The keyboard is complete without it. The daemon reports what *kind* of thing
 has focus, so the tower shows a Workshop while you write code, an Arena while
 you play something, an Observatory during a Pomodoro.
 
-It reports enums, counters, durations, and salted digests. Not window titles,
-URLs, file paths, command lines, notification bodies, or typed text. None of
-those enter retained state or either wire protocol, and that is a property of
-how the code is built, not something a filter strips out later. See [`host/README.md`](host/README.md) for what each adapter can
-and cannot see.
+It reports enums, counters, durations, and salted digests. Window titles,
+URLs, file paths, command lines, notification bodies and typed text never enter
+retained state or either wire protocol: the host reduces everything to bounded
+enums first, so there is nothing to filter out later. See
+[`host/README.md`](host/README.md) for what each adapter can and cannot see.
 
 Install on NixOS by importing [`corne.nix`](corne.nix); on Debian or Ubuntu
 build the package with `dpkg-buildpackage -b -uc -us`. Both drive one install
@@ -119,7 +119,7 @@ champions generate their own input from a seed and the city plays itself.
 | iPhone and widget | [`apple/`](apple/README.md) | A SwiftUI app with a Home Screen widget, and a wide ambient layout while charging in landscape |
 | Apple Watch | [`apple/`](apple/README.md#full-watch-app) | An animated watch app plus complications, cropped for the 40 mm screen |
 
-The ports are held to the firmware, not to each other. `make web-parity`
+Every port is checked against the native build. `make web-parity`
 renders a shared matrix (every layout, three seeds, 240 frames) through the
 native library and through WebAssembly and fails unless all 4,320 frames match
 byte for byte; `make swift-parity` runs the same matrix through the Swift
@@ -137,12 +137,9 @@ expect them there.
 display and sends a 32-byte snapshot over TRRS to the slave half; an optional
 Linux daemon sends 32-byte enum-only heartbeats over USB](docs/images/architecture.svg)
 
-Two design commitments run through all of it. The simulation is
-deterministic. Fixed ticks, integer math, no allocation, and no time reads
-inside mechanics mean a given input sequence always produces the same frames,
-which is why a catalog of exact framebuffer hashes can be a test. And privacy is structural: the host
-normalizes to bounded enums before anything is retained, so there is no code
-path that could leak content even if something upstream misbehaved.
+The simulation is deterministic. Fixed ticks, integer math, no allocation and
+no time reads inside mechanics mean a given input sequence always produces the
+same frames, which is why a catalog of exact framebuffer hashes works as a test.
 
 - How casting works, in depth: [`docs/duel.md`](docs/duel.md)
 - Vocabulary: [`docs/glossary.md`](docs/glossary.md)
