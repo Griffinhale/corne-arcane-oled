@@ -39,16 +39,29 @@ visual-golden: visual_runner
 
 # The allocation-free contract covers every allocating entry point, not just
 # the big four; compile with the same warning set as the tests so this target
-# cannot pass code the test build would reject.
+# cannot pass code the test build would reject. The shells are held to it too:
+# the desktop library and the WebAssembly module both claim never to allocate.
+# duel_wasm.c builds here natively only to be scanned, so the wasm-only
+# export_name attribute a native compiler ignores is not an error.
 NOALLOC_SYMS := malloc|calloc|realloc|free|aligned_alloc|posix_memalign|reallocarray|strdup|strndup|asprintf|vasprintf
+NOALLOC_CFLAGS := -std=c11 -O1 -Wall -Wextra -Werror -I../sim
+SHELL_SRC := $(wildcard ../../desktop/*.c) ../../web/duel_wasm.c
+SHELL_CFLAGS := -I../../desktop -I../../web -I../../web/freestanding -ffreestanding -Wno-attributes
 noalloc-check:
 	@trap 'rm -f .noalloc.o' EXIT; \
-	for f in $(SIM_SRC); do \
-		$(CC) -std=c11 -O1 -Wall -Wextra -Werror -I../sim -c $$f -o .noalloc.o || exit 1; \
+	scan() { \
 		if nm .noalloc.o | grep -qE ' U ($(NOALLOC_SYMS))$$'; then \
-			echo "FAIL noalloc-check: $$f references the allocator"; exit 1; \
+			echo "FAIL noalloc-check: $$1 references the allocator"; exit 1; \
 		fi; \
-	done; echo "PASS noalloc-check"
+	}; \
+	for f in $(SIM_SRC); do \
+		$(CC) $(NOALLOC_CFLAGS) -c $$f -o .noalloc.o || exit 1; scan $$f; \
+	done; \
+	echo "PASS noalloc-check: $(words $(SIM_SRC)) simulation sources"; \
+	for f in $(SHELL_SRC); do \
+		$(CC) $(NOALLOC_CFLAGS) $(SHELL_CFLAGS) -c $$f -o .noalloc.o || exit 1; scan $$f; \
+		echo "PASS noalloc-check: $${f#../../}"; \
+	done
 
 clean:
 	rm -f mechanics_runner visual_runner .noalloc.o
