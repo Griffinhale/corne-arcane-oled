@@ -12,8 +12,8 @@ in
   options.services.corne-arcane-host = {
     enable = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Run the Corne Arcane focus and notification daemon in Plasma sessions.";
+      default = false;
+      description = "Install the Corne Arcane tools, udev access and focus and notification daemon. Nothing in this module applies until this is set.";
     };
     desktopNotifications = lib.mkOption {
       type = lib.types.bool;
@@ -49,10 +49,11 @@ in
     };
   };
 
-  config = {
+  config = lib.mkIf cfg.enable {
     environment.systemPackages = with pkgs; [
       qmk        # qmk CLI (compile / flash); pulls python + build deps
       dfu-util   # generic DFU flashing fallback
+      gcc-arm-embedded # arm-none-eabi-size for make release-budget
       corneArcaneHost # daemon tools plus the exclusive-ownership Vial launcher
     ];
 
@@ -69,7 +70,7 @@ in
     # that 73-seat-late.rules then runs the uaccess builtin.
     services.udev.packages = [ corneArcaneHost ];
 
-    systemd.user.services.corne-arcane-host = lib.mkIf cfg.enable {
+    systemd.user.services.corne-arcane-host = {
       description = "Corne Arcane focus, notification policy, and Raw HID heartbeat";
       wantedBy = [ "graphical-session.target" ];
       partOf = [ "graphical-session.target" ];
@@ -90,7 +91,7 @@ in
     # next focus change repairs the state -- but the first one would otherwise
     # sit wrong until the user happened to switch windows.
     systemd.user.services.corne-arcane-focus-x11 =
-      lib.mkIf (cfg.enable && cfg.x11FocusProducer) {
+      lib.mkIf cfg.x11FocusProducer {
         description = "Corne Arcane X11 focus producer";
         wantedBy = [ "graphical-session.target" ];
         partOf = [ "graphical-session.target" ];
