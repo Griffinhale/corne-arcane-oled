@@ -139,12 +139,22 @@ def take_lock(path: Path, holder: str) -> int:
     return fd
 
 
+def restore_marker_path() -> Path:
+    """Present while a guard owes the daemon a restart; holds that guard's name."""
+    return lock_path().with_name("restore-service")
+
+
 class ExclusiveHidOwnership:
     """Hold the keyboard alone: take the lock, stop an active daemon, wait for the node.
 
     The lock keeps the tools that share this guard (the Vial launcher,
     diagnostics) from overlapping; the /proc scan catches anything else that
     has the node open. On exit the daemon's prior active state is restored.
+
+    A guard that stops the daemon leaves a marker beside the lock until it has
+    restarted it. SIGKILL skips that restart, so a later guard that finds the
+    marker while holding the lock -- which proves the old holder is gone --
+    takes the debt over and restarts the daemon on its own exit.
     """
 
     def __init__(
@@ -160,6 +170,7 @@ class ExclusiveHidOwnership:
         self.holder = holder or Path(sys.argv[0]).name
         self.device = device
         self._restore_service = False
+        self._owns_marker = False
         self._lock_fd = -1
         self._previous_handlers: dict[int, signal.Handlers] = {}
 
@@ -172,9 +183,24 @@ class ExclusiveHidOwnership:
         try:
             self._lock_fd = take_lock(lock_path(), self.holder)
             node = chosen_node(self.device)
+            marker = restore_marker_path()
+            try:
+                stale = marker.read_text().strip()
+            except FileNotFoundError:
+                stale = ""
+            if stale:
+                print(
+                    f"{SERVICE} was left stopped by {stale}; restarting it on exit", file=sys.stderr
+                )
             stopped = False
-            if self.service_handoff and service_is_active():
+            active = self.service_handoff and service_is_active()
+            if active or stale:
                 self._restore_service = True
+                # Written before the stop, so no kill can land between the
+                # daemon going down and the debt being recorded.
+                marker.write_text(f"{self.holder} (pid {os.getpid()})\n")
+                self._owns_marker = True
+            if active:
                 stop_service()
                 stopped = True
             if node is not None:
@@ -191,6 +217,10 @@ class ExclusiveHidOwnership:
         try:
             if self._restore_service:
                 start_service()
+            # Kept when the restart failed, so the next guard tries again.
+            if self._owns_marker:
+                restore_marker_path().unlink(missing_ok=True)
+                self._owns_marker = False
         except (OSError, RuntimeError, subprocess.SubprocessError) as error:
             restore_error = error
         finally:
