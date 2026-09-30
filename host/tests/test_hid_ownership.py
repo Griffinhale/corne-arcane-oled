@@ -26,6 +26,7 @@ class LockTests(unittest.TestCase):
             ("lock_path", lambda: self.lock),
             ("chosen_node", lambda _explicit=None: None),
             ("service_is_active", lambda: False),
+            ("pause_daemon", lambda _label: None),
         ):
             patcher = patch.object(hid_ownership, name, side_effect=value)
             patcher.start()
@@ -98,6 +99,7 @@ class RestoreMarkerTests(unittest.TestCase):
         for name, value in (
             ("lock_path", lambda: lock),
             ("chosen_node", lambda _explicit=None: None),
+            ("pause_daemon", lambda _label: None),
         ):
             patcher = patch.object(hid_ownership, name, side_effect=value)
             patcher.start()
@@ -115,6 +117,7 @@ class RestoreMarkerTests(unittest.TestCase):
                 "-c",
                 "import sys; from arcane_host import hid_ownership as h; "
                 "h.chosen_node = lambda _explicit=None: None; h.SYSTEMCTL = sys.argv[1]; "
+                "h.pause_daemon = lambda _label: None; "
                 "g = h.ExclusiveHidOwnership(holder='Vial (corne-arcane-vial)'); g.__enter__(); "
                 "print('held', flush=True); sys.stdin.read()",
                 str(self.systemctl),

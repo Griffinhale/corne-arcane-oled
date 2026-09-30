@@ -25,6 +25,7 @@ class OwnershipGuardTests(unittest.TestCase):
             ("lock_path", lambda: lock),
             ("chosen_node", lambda _explicit=None: Path("/dev/hidraw-test")),
             ("wait_for_hidraw_release", lambda _node, _timeout: None),
+            ("pause_daemon", lambda _label: None),
         ):
             patcher = patch.object(hid_ownership, name, side_effect=value)
             patcher.start()

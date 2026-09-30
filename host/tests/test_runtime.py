@@ -67,6 +67,8 @@ class FakeHeartbeat:
         self.sent = sent
         self.notify_requests = 0
         self.closed = False
+        self.device = None
+        self.link = None
 
     def tick(self, _now):
         return self.sent

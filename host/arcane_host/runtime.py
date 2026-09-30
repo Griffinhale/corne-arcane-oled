@@ -51,6 +51,9 @@ class DaemonRuntime:
         self.in_tick = False
         self.wake_pending = False
         self.owner_id = 0
+        self.paused_by = ""
+        self._status_listeners: list[Callable[[tuple[str, str, bool, str]], None]] = []
+        self._last_status: tuple[str, str, bool, str] | None = None
         self._owned: list[Any] = []
         self._closed = False
 
@@ -68,10 +71,53 @@ class DaemonRuntime:
     def set_bus_owner(self, owner_id: int) -> None:
         self.owner_id = owner_id
 
+    @property
+    def paused(self) -> bool:
+        return bool(self.paused_by)
+
+    def status(self) -> tuple[str, str, bool, str]:
+        """(link, device, paused, owner), as the Control interface reports it."""
+        if self.paused:
+            return ("paused", "", True, self.paused_by)
+        device = self.heartbeat.device
+        path = "" if device is None else str(getattr(device, "path", ""))
+        return (self.heartbeat.link or "starting", path, False, "")
+
+    def add_status_listener(self, listener: Callable[[tuple[str, str, bool, str]], None]) -> None:
+        self._status_listeners.append(listener)
+
+    def _publish_status(self) -> None:
+        status = self.status()
+        if status == self._last_status:
+            return
+        self._last_status = status
+        for listener in tuple(self._status_listeners):
+            listener(status)
+
+    def pause(self, owner: str) -> None:
+        """Close the keyboard now and keep it closed until resume()."""
+        self.paused_by = owner or "unnamed client"
+        self.heartbeat.close()
+        # Forget the link, so the reconnect after resume() is logged again.
+        self.heartbeat.link = None
+        print(f"arcane-host: keyboard lent to {self.paused_by}", file=sys.stderr, flush=True)
+        self._publish_status()
+
+    def resume(self) -> None:
+        if not self.paused:
+            return
+        self.paused_by = ""
+        self.heartbeat.next_connect = 0.0
+        print("arcane-host: keyboard returned; reconnecting", file=sys.stderr, flush=True)
+        self._publish_status()
+        self.wake()
+
     def _deadline_delay_ms(self, now: float) -> int:
         if self.adapters is None:
             raise RuntimeError("semantic adapters are not bound")
-        deadlines = [self.heartbeat.next_deadline(now), now + 1.0]
+        # Paused, the heartbeat's reconnect deadline is always due; it must not
+        # turn into a 1 ms spin.
+        deadlines = [now + 1.0] if self.paused else [self.heartbeat.next_deadline(now), now + 1.0]
         focus_deadline = None if self.focus_override else self.arbiter.next_deadline()
         policy_deadline = None if self.fixed_summary is not None else self.policy.next_deadline(now)
         adapter_deadline = self.adapters.next_deadline(now)
@@ -102,7 +148,8 @@ class DaemonRuntime:
             if self.resolver.state.revision != self.last_revision:
                 self.last_revision = self.resolver.state.revision
                 self.heartbeat.request_notify()
-            sent = self.heartbeat.tick(now)
+            sent = False if self.paused else self.heartbeat.tick(now)
+            self._publish_status()
             if sent and self.once:
                 self.loop.quit()
                 return False

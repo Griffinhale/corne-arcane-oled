@@ -58,3 +58,40 @@ EVENTS_XML = f"""
   </interface>
 </node>
 """
+
+# Control: read the keyboard link and lend it out without stopping the unit.
+# Status is (link, device, paused, owner). link is one of CONTROL_LINKS; device
+# is the hidraw path while connected, else ""; owner is the label the pausing
+# client gave, else "". Nothing here carries desktop content.
+CONTROL_INTERFACE = "io.github.Griffinhale.CorneArcane.Control"
+STATUS = "Status"
+PAUSE = "Pause"
+RESUME = "Resume"
+STATUS_CHANGED = "StatusChanged"
+STATUS_SIGNATURE = "(ssbs)"
+CONTROL_BUSY = f"{CONTROL_INTERFACE}.Busy"
+CONTROL_LINKS = ("starting", "connected", "absent", "denied", "several", "failed", "paused")
+OWNER_LABEL_MAX = 80
+
+CONTROL_XML = f"""
+<node>
+  <interface name='{CONTROL_INTERFACE}'>
+    <method name='{STATUS}'>
+      <arg type='s' name='link' direction='out'/>
+      <arg type='s' name='device' direction='out'/>
+      <arg type='b' name='paused' direction='out'/>
+      <arg type='s' name='owner' direction='out'/>
+    </method>
+    <method name='{PAUSE}'>
+      <arg type='s' name='owner' direction='in'/>
+    </method>
+    <method name='{RESUME}'/>
+    <signal name='{STATUS_CHANGED}'>
+      <arg type='s' name='link'/>
+      <arg type='s' name='device'/>
+      <arg type='b' name='paused'/>
+      <arg type='s' name='owner'/>
+    </signal>
+  </interface>
+</node>
+"""

@@ -14,7 +14,7 @@ from typing import Callable
 from .adapters import SemanticAdapters
 from .dbus_adapters import DBusAdapterHub
 from .dbus_contract import BUS_NAME
-from .dbus_services import EventService, FocusService, KWinBridgeLoader
+from .dbus_services import ControlService, EventService, FocusService, KWinBridgeLoader
 from .desktop import DesktopMonitor, DesktopNotificationAdapter
 from .focus import FocusArbiter
 from .heartbeat import DryRunTransport, HidHeartbeat, HidTransport
@@ -209,6 +209,7 @@ def run(args: argparse.Namespace, *, presenter_factory: Callable | None = None) 
     if override is None:
         runtime.own(FocusService(Gio, connection, arbiter, changed=runtime.wake))
     runtime.own(EventService(Gio, connection, policy, arbiter, adapters, runtime.wake))
+    runtime.own(ControlService(Gio, GLib, connection, runtime))
 
     if not args.no_desktop_notifications:
         desktop_adapter = DesktopNotificationAdapter(policy, salt, arbiter.matches_focused)

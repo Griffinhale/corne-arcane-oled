@@ -10,6 +10,9 @@ from typing import Callable
 from .adapters import SemanticAdapters
 from .dbus_contract import (
     CLEAR_NOTIFICATIONS,
+    CONTROL_BUSY,
+    CONTROL_INTERFACE,
+    CONTROL_XML,
     EVENTS_INTERFACE,
     EVENTS_XML,
     FOCUS_INTERFACE,
@@ -17,10 +20,16 @@ from .dbus_contract import (
     INJECT_SYNTHETIC,
     KWIN_SERVICE,
     OBJECT_PATH,
+    OWNER_LABEL_MAX,
+    PAUSE,
     REPORT_ACTIVE_WINDOW,
     REPORT_BROWSER_ACTIVITY,
     REPORT_REPOSITORY_STATE,
     REPORT_TERMINAL_COMPLETION,
+    RESUME,
+    STATUS,
+    STATUS_CHANGED,
+    STATUS_SIGNATURE,
     RepositoryState,
 )
 from .focus import FocusArbiter
@@ -172,6 +181,94 @@ class EventService:
         invocation.return_dbus_error(f"{EVENTS_INTERFACE}.UnknownMethod", method)
 
     def close(self) -> None:
+        if self.registration_id:
+            self.connection.unregister_object(self.registration_id)
+            self.registration_id = 0
+
+
+def owner_label(text: str) -> str:
+    """A client's self-chosen name, bounded and printable, for Status and the journal."""
+    printable = "".join(ch if ch.isprintable() else "?" for ch in text)
+    return printable[:OWNER_LABEL_MAX]
+
+
+class ControlService:
+    """Status, Pause and Resume for the keyboard link, without stopping the unit.
+
+    A pause belongs to the caller's bus connection. If that connection goes
+    away -- the client exited, crashed or was killed -- the link resumes by
+    itself, so no client can leave the keyboard orphaned.
+    """
+
+    def __init__(self, Gio, GLib, connection, runtime) -> None:
+        self.Gio = Gio
+        self.GLib = GLib
+        self.connection = connection
+        self.runtime = runtime
+        self.watch_id = 0
+        info = Gio.DBusNodeInfo.new_for_xml(CONTROL_XML)
+        self.registration_id = connection.register_object(
+            OBJECT_PATH, info.interfaces[0], self._method_call, None, None
+        )
+        runtime.add_status_listener(self._emit)
+
+    def _emit(self, status: tuple[str, str, bool, str]) -> None:
+        if not self.registration_id:
+            return
+        try:
+            self.connection.emit_signal(
+                None,
+                OBJECT_PATH,
+                CONTROL_INTERFACE,
+                STATUS_CHANGED,
+                self.GLib.Variant(STATUS_SIGNATURE, status),
+            )
+        except Exception as error:
+            print(f"arcane-host: StatusChanged not sent ({type(error).__name__})", file=sys.stderr)
+
+    def _unwatch(self) -> None:
+        if self.watch_id:
+            self.Gio.bus_unwatch_name(self.watch_id)
+            self.watch_id = 0
+
+    def _pauser_vanished(self, _connection, _name) -> None:
+        self._unwatch()
+        self.runtime.resume()
+
+    def _method_call(
+        self, connection, sender, path, interface, method, parameters, invocation
+    ) -> None:
+        del connection, path, interface
+        if method == STATUS:
+            invocation.return_value(self.GLib.Variant(STATUS_SIGNATURE, self.runtime.status()))
+            return
+        if method == PAUSE:
+            if self.runtime.paused:
+                invocation.return_dbus_error(
+                    CONTROL_BUSY, f"the keyboard is lent to {self.runtime.paused_by}"
+                )
+                return
+            (label,) = parameters.unpack()
+            self.runtime.pause(owner_label(label))
+            if sender:
+                self.watch_id = self.Gio.bus_watch_name_on_connection(
+                    self.connection,
+                    sender,
+                    self.Gio.BusNameWatcherFlags.NONE,
+                    None,
+                    self._pauser_vanished,
+                )
+            invocation.return_value(None)
+            return
+        if method == RESUME:
+            self._unwatch()
+            self.runtime.resume()
+            invocation.return_value(None)
+            return
+        invocation.return_dbus_error(f"{CONTROL_INTERFACE}.UnknownMethod", method)
+
+    def close(self) -> None:
+        self._unwatch()
         if self.registration_id:
             self.connection.unregister_object(self.registration_id)
             self.registration_id = 0

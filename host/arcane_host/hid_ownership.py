@@ -10,7 +10,9 @@ import sys
 import time
 from pathlib import Path
 from types import FrameType
+from typing import Any
 
+from .dbus_contract import BUS_NAME, CONTROL_BUSY, CONTROL_INTERFACE, OBJECT_PATH, PAUSE, RESUME
 from .hidraw import choose_device
 
 SERVICE = os.environ.get("CORNE_ARCANE_SERVICE", "corne-arcane-host.service")
@@ -51,6 +53,64 @@ def stop_service() -> None:
 
 def start_service() -> None:
     _systemctl("start", SERVICE, check=True)
+
+
+CONTROL_TIMEOUT_MS = 1000
+
+
+def pause_daemon(label: str) -> Any | None:
+    """Ask a running daemon to lend the keyboard over its Control interface.
+
+    Returns the bus connection the pause is tied to -- the daemon resumes by
+    itself when it closes -- or None when no daemon answers, so the caller
+    falls back to systemctl. A daemon that has already lent the keyboard to
+    someone else is an error, not a fallback.
+    """
+    try:
+        import gi
+
+        gi.require_version("Gio", "2.0")
+        from gi.repository import Gio, GLib
+    except (ImportError, ValueError):
+        return None
+    try:
+        connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        connection.call_sync(
+            BUS_NAME,
+            OBJECT_PATH,
+            CONTROL_INTERFACE,
+            PAUSE,
+            GLib.Variant("(s)", (label,)),
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            CONTROL_TIMEOUT_MS,
+            None,
+        )
+    except GLib.Error as error:
+        if Gio.DBusError.get_remote_error(error) == CONTROL_BUSY:
+            Gio.DBusError.strip_remote_error(error)
+            raise RuntimeError(f"{error.message}; close it first") from None
+        return None
+    return connection
+
+
+def resume_daemon(connection: Any) -> None:
+    from gi.repository import Gio, GLib
+
+    try:
+        connection.call_sync(
+            BUS_NAME,
+            OBJECT_PATH,
+            CONTROL_INTERFACE,
+            RESUME,
+            None,
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            CONTROL_TIMEOUT_MS,
+            None,
+        )
+    except GLib.Error as error:
+        raise RuntimeError(f"daemon did not resume: {error.message}") from None
 
 
 def hidraw_handles(pid: int, proc_root: Path = Path("/proc")) -> tuple[Path, ...]:
@@ -149,7 +209,9 @@ class ExclusiveHidOwnership:
 
     The lock keeps the tools that share this guard (the Vial launcher,
     diagnostics) from overlapping; the /proc scan catches anything else that
-    has the node open. On exit the daemon's prior active state is restored.
+    has the node open. A running daemon is asked to pause over D-Bus, which
+    keeps the unit up and ends with this process; one that does not answer is
+    stopped with systemctl. On exit the daemon's prior state is restored.
 
     A guard that stops the daemon leaves a marker beside the lock until it has
     restarted it. SIGKILL skips that restart, so a later guard that finds the
@@ -171,6 +233,7 @@ class ExclusiveHidOwnership:
         self.device = device
         self._restore_service = False
         self._owns_marker = False
+        self._pause_bus: Any | None = None
         self._lock_fd = -1
         self._previous_handlers: dict[int, signal.Handlers] = {}
 
@@ -192,8 +255,11 @@ class ExclusiveHidOwnership:
                 print(
                     f"{SERVICE} was left stopped by {stale}; restarting it on exit", file=sys.stderr
                 )
-            stopped = False
-            active = self.service_handoff and service_is_active()
+            active = False
+            if self.service_handoff:
+                self._pause_bus = pause_daemon(f"{self.holder} (pid {os.getpid()})")
+                active = self._pause_bus is None and service_is_active()
+            stopped = self._pause_bus is not None
             if active or stale:
                 self._restore_service = True
                 # Written before the stop, so no kill can land between the
@@ -215,6 +281,9 @@ class ExclusiveHidOwnership:
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
         restore_error: BaseException | None = None
         try:
+            if self._pause_bus is not None:
+                bus, self._pause_bus = self._pause_bus, None
+                resume_daemon(bus)
             if self._restore_service:
                 start_service()
             # Kept when the restart failed, so the next guard tries again.

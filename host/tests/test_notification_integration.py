@@ -7,13 +7,19 @@ tests using fake Gio objects, and invisible on dbus-daemon, which tolerates the
 same mistake. This exercises the real path, so run it against both bus
 implementations: Debian 12 defaults to dbus-daemon and Debian 13 to dbus-broker.
 
-Skipped unless PyGObject and a session bus are both present.
+It never touches the desktop's own session bus. By default it starts a private
+dbus-daemon. To try dbus-broker, point CORNE_ARCANE_TEST_BUS_ADDRESS at a
+disposable broker's address. Skipped without PyGObject, or without dbus-daemon
+when no address is given.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import unittest
+from unittest.mock import patch
 
 from arcane_host.desktop import DesktopMonitor, DesktopNotificationAdapter
 from arcane_host.policy import NotificationPolicy
@@ -51,24 +57,40 @@ STUB_XML = """
 NOTIFICATION_COUNT = 3
 
 
-def _session_bus_available() -> bool:
-    return Gio is not None and bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS"))
+TEST_BUS_ENV = "CORNE_ARCANE_TEST_BUS_ADDRESS"
 
 
-@unittest.skipUnless(_session_bus_available(), "needs PyGObject and a session bus")
+def _test_bus_available() -> bool:
+    return Gio is not None and bool(os.environ.get(TEST_BUS_ENV) or shutil.which("dbus-daemon"))
+
+
+@unittest.skipUnless(_test_bus_available(), "needs PyGObject and dbus-daemon")
 class NotificationMonitorLiveBusTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.connection = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        address = os.environ.get(TEST_BUS_ENV)
+        if not address:
+            bus = subprocess.Popen(
+                ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            self.addCleanup(bus.wait)
+            self.addCleanup(bus.terminate)
+            address = bus.stdout.readline().strip()
+            bus.stdout.close()
+        # The monitor finds the session bus through the environment.
+        patcher = patch.dict(os.environ, {"DBUS_SESSION_BUS_ADDRESS": address})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        flags = (
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION
+        )
+        self.connection = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
+        self.addCleanup(self.connection.close_sync, None)
         # A separate connection sends the notifications, as a real application
         # would; the adapter correlates a Notify with its reply by (peer, serial).
-        address = Gio.dbus_address_get_for_bus_sync(Gio.BusType.SESSION, None)
-        self.client = Gio.DBusConnection.new_for_address_sync(
-            address,
-            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
-            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-            None,
-            None,
-        )
+        self.client = Gio.DBusConnection.new_for_address_sync(address, flags, None, None)
         self.addCleanup(self.client.close_sync, None)
         self.replies: list[int] = []
         self.adapter = DesktopNotificationAdapter(
@@ -106,9 +128,8 @@ class NotificationMonitorLiveBusTests(unittest.TestCase):
         )
         acquired: list[bool] = []
         lost: list[bool] = []
-        # DO_NOT_QUEUE, never REPLACE: on a real desktop the session's own
-        # notification server owns this name, and stealing it would silence the
-        # user's notifications. Skip there and run under dbus-run-session.
+        # DO_NOT_QUEUE, never REPLACE: if a supplied bus already has a
+        # notification server, stealing its name would silence it. Skip there.
         self._name_id = Gio.bus_own_name_on_connection(
             self.connection,
             NOTIFICATIONS_NAME,
@@ -122,8 +143,8 @@ class NotificationMonitorLiveBusTests(unittest.TestCase):
         )
         if lost:
             self.skipTest(
-                "a notification server already owns org.freedesktop.Notifications; "
-                "run this suite under dbus-run-session for an isolated bus"
+                "a notification server already owns org.freedesktop.Notifications "
+                f"on the bus in {TEST_BUS_ENV}"
             )
 
     def _collect_reply(self, source, result, _user_data) -> None:
