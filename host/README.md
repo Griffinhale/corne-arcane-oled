@@ -33,14 +33,17 @@ also set `services.corne-arcane-host.x11FocusProducer = true;` -- NixOS builds
 user units from module definitions instead of from the package, so the
 producer's unit ships but is not declared without it.
 
-On Debian or Ubuntu, build the package from a checkout:
+On Debian or Ubuntu, build the package from the repository root of a checkout:
 
 ```bash
-sudo apt install devscripts debhelper python3-gi dbus-user-session
+sudo apt install build-essential debhelper python3-gi dbus-user-session
 dpkg-buildpackage -b -uc -us
 sudo apt install ../corne-arcane-host_*.deb
 systemctl --user enable --now corne-arcane-host.service
 ```
+
+Unplug and replug the keyboard after the package installs, so its udev rule
+applies to the device.
 
 `dbus-user-session` is required, not optional: the daemon is a systemd user
 service (Type=dbus) and the diagnostics and Vial handoff both use `systemctl --user`.
