@@ -1,15 +1,46 @@
 #!/usr/bin/env sh
 set -eu
 
-tracked=$(git ls-files | grep -v '^docs/archive/' || true)
+# A check that cannot run must not read as a check that passed. Outside a
+# work tree, or without ripgrep, every content check below would silently find
+# nothing, so both are required up front.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "FAIL hygiene: not inside a git work tree" >&2
+    exit 1
+fi
+if ! command -v rg >/dev/null 2>&1; then
+    echo "FAIL hygiene: ripgrep (rg) is not installed" >&2
+    exit 1
+fi
+tracked=$(git ls-files)
+if [ -z "$tracked" ]; then
+    echo "FAIL hygiene: git ls-files listed no tracked files" >&2
+    exit 1
+fi
+
+# rg exits 0 on a match and 1 on none; anything else means it did not search.
+# Prints the matches and returns 0 on a match, returns 1 on none, and stops the
+# script on an error.
+rg_match() {
+    status=0
+    matches=$(rg "$@") || status=$?
+    case $status in
+    0) printf '%s\n' "$matches" ;;
+    1) return 1 ;;
+    *)
+        echo "FAIL hygiene: rg exited $status; the check did not run" >&2
+        exit 1
+        ;;
+    esac
+}
 
 # Planning lives on disk, not in the repository: DAGs, the backlog and handoff
 # notes are gitignored, and this catches one that was force-added or tracked
 # before the ignore rule existed.
 planning='^docs/(dags|planning)/|^docs/backlog\.md$|(^|/)[^/]*HANDOFF[^/]*\.md$'
-if git ls-files | grep -Eq "$planning"; then
+if printf '%s\n' "$tracked" | grep -Eq "$planning"; then
     echo "FAIL hygiene: local planning file is tracked; it belongs on disk only" >&2
-    git ls-files | grep -E "$planning" >&2
+    printf '%s\n' "$tracked" | grep -E "$planning" >&2
     exit 1
 fi
 
@@ -22,26 +53,26 @@ text_only() {
 }
 tracked_text=$(text_only $tracked)
 if printf '%s\n' "$tracked" | grep -Eiq '(^|/)(m[0-9]+([._-][0-9]+)?|post-m[0-9]+)[^/]*($|/)'; then
-    echo "FAIL hygiene: historical-plan-prefixed tracked path outside docs/archive" >&2
+    echo "FAIL hygiene: historical-plan-prefixed tracked path" >&2
     printf '%s\n' "$tracked" | grep -Ei '(^|/)(m[0-9]+([._-][0-9]+)?|post-m[0-9]+)[^/]*($|/)' >&2
     exit 1
 fi
 
-if [ -n "$tracked_text" ] && rg -n \
+if [ -n "$tracked_text" ] && rg_match -n \
     'ARCANE_M1[0-3]|griffin_(anim|hostoled)|\b[Mm]1[0-3]_[A-Za-z0-9_]*' \
     $tracked_text; then
     echo "FAIL hygiene: historical-plan-prefixed identifier or retired keymap name" >&2
     exit 1
 fi
 
-# Active code and documentation describe current invariants. Planning history
-# belongs under docs/archive; protocol-version compatibility language remains
-# valid because this expression targets only planning labels.
+# Active code and documentation describe current invariants, not planning
+# history. Protocol-version compatibility language remains valid because this
+# expression targets only planning labels.
 active=$(printf '%s\n' "$tracked_text" | grep -Ev '^(scripts/hygiene\.sh|\.gitignore)$' || true)
-if [ -n "$active" ] && rg -n -i \
+if [ -n "$active" ] && rg_match -n -i \
     '\bmilestones?\b|\btracks? [A-Z](?:/[A-Z])*\b|\bwaves? [0-9]+\b|\bM[0-9]+(?:\.[0-9]+)?\b' \
-    $active | grep -Ev '(^|[(/])(docs/)?archive/'; then
-    echo "FAIL hygiene: historical planning language outside docs/archive" >&2
+    $active; then
+    echo "FAIL hygiene: historical planning language" >&2
     exit 1
 fi
 
