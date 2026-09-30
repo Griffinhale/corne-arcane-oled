@@ -23,6 +23,57 @@ public struct CityFrame: Sendable {
     public let pixels: [UInt8]
     public let width: Int
     public let height: Int
+
+    public init(
+        worldMs: UInt32, frame: UInt32, pixels: [UInt8], width: Int, height: Int
+    ) {
+        self.worldMs = worldMs
+        self.frame = frame
+        self.pixels = pixels
+        self.width = width
+        self.height = height
+    }
+}
+
+/// A pixel-aligned window into a rendered frame.
+///
+/// Small ambient surfaces need a deliberate composition, not a scaled-down
+/// town. Keeping the crop in source pixels preserves the renderer verbatim
+/// while allowing each shell to choose the part of the world its shape can
+/// actually carry.
+public struct CityPixelRect: Equatable, Sendable {
+    public let x: Int
+    public let y: Int
+    public let width: Int
+    public let height: Int
+
+    public init(x: Int, y: Int, width: Int, height: Int) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+}
+
+extension CityFrame {
+    /// Return a source-pixel crop, or `nil` when the rectangle leaves the
+    /// frame. This is presentation after rendering: it cannot alter renderer
+    /// parity or the deterministic world named by `worldMs`.
+    public func cropped(to rect: CityPixelRect) -> CityFrame? {
+        guard rect.x >= 0, rect.y >= 0, rect.width > 0, rect.height > 0,
+            rect.x + rect.width <= width, rect.y + rect.height <= height
+        else { return nil }
+
+        var cropped: [UInt8] = []
+        cropped.reserveCapacity(rect.width * rect.height)
+        for row in rect.y..<(rect.y + rect.height) {
+            let start = row * width + rect.x
+            cropped.append(contentsOf: pixels[start..<(start + rect.width)])
+        }
+        return CityFrame(
+            worldMs: worldMs, frame: frame, pixels: cropped,
+            width: rect.width, height: rect.height)
+    }
 }
 
 extension City {
@@ -80,6 +131,30 @@ extension City {
                 bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width,
                 space: CGColorSpaceCreateDeviceGray(),
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                provider: provider, decode: nil,
+                shouldInterpolate: false, intent: .defaultIntent)
+        }
+
+        /// White renderer pixels as opaque white and black renderer pixels as
+        /// transparent. Accessory widgets need this alpha-bearing form because
+        /// watch faces tint artwork by replacing its colour while preserving
+        /// alpha; an opaque black rectangle would obscure the face instead.
+        public var templateImage: CGImage? {
+            var rgba = [UInt8](repeating: 0, count: pixels.count * 4)
+            for (index, pixel) in pixels.enumerated() {
+                let offset = index * 4
+                rgba[offset] = pixel
+                rgba[offset + 1] = pixel
+                rgba[offset + 2] = pixel
+                rgba[offset + 3] = pixel
+            }
+            guard let provider = CGDataProvider(data: Data(rgba) as CFData) else { return nil }
+            let bitmap = CGBitmapInfo.byteOrder32Big.union(
+                CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
+            return CGImage(
+                width: width, height: height,
+                bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: bitmap,
                 provider: provider, decode: nil,
                 shouldInterpolate: false, intent: .defaultIntent)
         }

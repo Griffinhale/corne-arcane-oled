@@ -12,6 +12,14 @@
 		A10000000000000000000003 /* CityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* CityKit */; };
 		A10000000000000000000004 /* CityKit in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* CityKit */; };
 		A10000000000000000000005 /* CityWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* CityWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000006 /* ChargingCityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ChargingCityView.swift */; };
+		B10000000000000000000001 /* CorneArcaneWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* CorneArcaneWatchApp.swift */; };
+		B10000000000000000000002 /* CorneArcaneWatchWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* CorneArcaneWatchWidget.swift */; };
+		B10000000000000000000003 /* CityKit in Frameworks */ = {isa = PBXBuildFile; productRef = B90000000000000000000001 /* CityKit */; };
+		B10000000000000000000004 /* CorneArcaneWatchWidgetExtension.appex in Embed Watch Extensions */ = {isa = PBXBuildFile; fileRef = B20000000000000000000005 /* CorneArcaneWatchWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B10000000000000000000005 /* CityKit in Frameworks */ = {isa = PBXBuildFile; productRef = B90000000000000000000002 /* CityKit */; };
+		B10000000000000000000006 /* WatchCityDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* WatchCityDriver.swift */; };
+		B10000000000000000000007 /* WatchCityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* WatchCityView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -21,6 +29,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = A70000000000000000000002;
 			remoteInfo = CityWidgetExtension;
+		};
+		B30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A40000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B70000000000000000000002;
+			remoteInfo = CorneArcaneWatchWidgetExtension;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -36,6 +51,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B50000000000000000000004 /* Embed Watch Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B10000000000000000000004 /* CorneArcaneWatchWidgetExtension.appex in Embed Watch Extensions */,
+			);
+			name = "Embed Watch Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +70,14 @@
 		A20000000000000000000003 /* CorneArcane.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CorneArcane.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000004 /* CityWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CityWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000006 /* ChargingCityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChargingCityView.swift; sourceTree = "<group>"; };
+		B20000000000000000000001 /* CorneArcaneWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorneArcaneWatchApp.swift; sourceTree = "<group>"; };
+		B20000000000000000000002 /* CorneArcaneWatchWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorneArcaneWatchWidget.swift; sourceTree = "<group>"; };
+		B20000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B20000000000000000000004 /* CorneArcaneWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CorneArcaneWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000005 /* CorneArcaneWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CorneArcaneWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000006 /* WatchCityDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCityDriver.swift; sourceTree = "<group>"; };
+		B20000000000000000000007 /* WatchCityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCityView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +97,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B50000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000005 /* CityKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000003 /* CityKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -71,6 +121,8 @@
 			children = (
 				A60000000000000000000002 /* App */,
 				A60000000000000000000003 /* Widget */,
+				B60000000000000000000001 /* WatchApp */,
+				B60000000000000000000002 /* WatchWidget */,
 				A60000000000000000000004 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* CityApp.swift */,
+				A20000000000000000000006 /* ChargingCityView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -97,8 +150,29 @@
 			children = (
 				A20000000000000000000003 /* CorneArcane.app */,
 				A20000000000000000000004 /* CityWidgetExtension.appex */,
+				B20000000000000000000004 /* CorneArcaneWatch.app */,
+				B20000000000000000000005 /* CorneArcaneWatchWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B60000000000000000000001 /* WatchApp */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000001 /* CorneArcaneWatchApp.swift */,
+				B20000000000000000000006 /* WatchCityDriver.swift */,
+				B20000000000000000000007 /* WatchCityView.swift */,
+			);
+			path = WatchApp;
+			sourceTree = "<group>";
+		};
+		B60000000000000000000002 /* WatchWidget */ = {
+			isa = PBXGroup;
+			children = (
+				B20000000000000000000002 /* CorneArcaneWatchWidget.swift */,
+				B20000000000000000000003 /* Info.plist */,
+			);
+			path = WatchWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -146,6 +220,48 @@
 			productReference = A20000000000000000000004 /* CityWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B70000000000000000000001 /* CorneArcaneWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B80000000000000000000005 /* Build configuration list for PBXNativeTarget "CorneArcaneWatch" */;
+			buildPhases = (
+				B50000000000000000000001 /* Sources */,
+				B50000000000000000000002 /* Frameworks */,
+				B50000000000000000000003 /* Resources */,
+				B50000000000000000000004 /* Embed Watch Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B30000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = CorneArcaneWatch;
+			packageProductDependencies = (
+				B90000000000000000000002 /* CityKit */,
+			);
+			productName = CorneArcaneWatch;
+			productReference = B20000000000000000000004 /* CorneArcaneWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B70000000000000000000002 /* CorneArcaneWatchWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B80000000000000000000006 /* Build configuration list for PBXNativeTarget "CorneArcaneWatchWidgetExtension" */;
+			buildPhases = (
+				B50000000000000000000005 /* Sources */,
+				B50000000000000000000006 /* Frameworks */,
+				B50000000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = CorneArcaneWatchWidgetExtension;
+			packageProductDependencies = (
+				B90000000000000000000001 /* CityKit */,
+			);
+			productName = CorneArcaneWatchWidgetExtension;
+			productReference = B20000000000000000000005 /* CorneArcaneWatchWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -160,6 +276,12 @@
 						CreatedOnToolsVersion = 26.2;
 					};
 					A70000000000000000000002 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					B70000000000000000000001 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					B70000000000000000000002 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
@@ -183,6 +305,8 @@
 			targets = (
 				A70000000000000000000001 /* CorneArcane */,
 				A70000000000000000000002 /* CityWidgetExtension */,
+				B70000000000000000000001 /* CorneArcaneWatch */,
+				B70000000000000000000002 /* CorneArcaneWatchWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -202,6 +326,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B50000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -210,6 +348,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* CityApp.swift in Sources */,
+				A10000000000000000000006 /* ChargingCityView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -221,6 +360,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B50000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000001 /* CorneArcaneWatchApp.swift in Sources */,
+				B10000000000000000000006 /* WatchCityDriver.swift in Sources */,
+				B10000000000000000000007 /* WatchCityView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B50000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B10000000000000000000002 /* CorneArcaneWatchWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -228,6 +385,11 @@
 			isa = PBXTargetDependency;
 			target = A70000000000000000000002 /* CityWidgetExtension */;
 			targetProxy = A30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+		B30000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B70000000000000000000002 /* CorneArcaneWatchWidgetExtension */;
+			targetProxy = B30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -445,6 +607,116 @@
 			};
 			name = Release;
 		};
+		B80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Corne Arcane";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = town.corne.arcane.city.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		B80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Corne Arcane";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKWatchOnly = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = town.corne.arcane.city.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		B80000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = town.corne.arcane.city.watchkitapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Debug;
+		};
+		B80000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = WatchWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = town.corne.arcane.city.watchkitapp.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "watchos watchsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -475,6 +747,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		B80000000000000000000005 /* Build configuration list for PBXNativeTarget "CorneArcaneWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B80000000000000000000001 /* Debug */,
+				B80000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B80000000000000000000006 /* Build configuration list for PBXNativeTarget "CorneArcaneWatchWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B80000000000000000000003 /* Debug */,
+				B80000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -491,6 +781,16 @@
 			productName = CityKit;
 		};
 		A90000000000000000000002 /* CityKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90000000000000000000003 /* XCLocalSwiftPackageReference ".." */;
+			productName = CityKit;
+		};
+		B90000000000000000000001 /* CityKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A90000000000000000000003 /* XCLocalSwiftPackageReference ".." */;
+			productName = CityKit;
+		};
+		B90000000000000000000002 /* CityKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A90000000000000000000003 /* XCLocalSwiftPackageReference ".." */;
 			productName = CityKit;

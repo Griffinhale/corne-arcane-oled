@@ -91,6 +91,8 @@
                         .aspectRatio(contentMode: .fit)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("A monochrome wizard's city playing itself")
             .onAppear { driver.start() }
             .onDisappear { driver.stop() }
         }

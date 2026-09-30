@@ -1,9 +1,9 @@
 /*
- * The app target's whole contents.
+ * The app target's entry point.
  *
  * Everything else is in CityKit, which builds on Linux as well and is what the
  * parity leg checks. This file exists because @main has to live in the target
- * Xcode builds, and it should stay this size.
+ * Xcode builds; the device-only charging presentation sits beside it.
  */
 
 import CityKit
@@ -17,10 +17,10 @@ struct CityApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if let driver = try? CityDriver(seed: Self.seed, layout: .town) {
-                CityView(driver: driver)
-                    .background(.black)
-                    .ignoresSafeArea()
+            if let town = try? CityDriver(seed: Self.seed, layout: .town),
+                let landscape = try? CityDriver(seed: Self.seed, layout: .landscape)
+            {
+                ChargingCityView(town: town, landscape: landscape)
             } else {
                 Text("the renderer refused this state")
             }

@@ -39,6 +39,9 @@ artifacts/m13/*.map
 # Editor / OS noise
 *~
 .DS_Store
+/.swiftpm/xcode/xcuserdata/
+apple/CorneArcane.xcodeproj/project.xcworkspace/xcuserdata/
+apple/CorneArcane.xcodeproj/xcuserdata/
 
 # Agent worktrees (auto-managed)
 .claude/worktrees/

@@ -9,8 +9,8 @@
  *
  * The thing an ambient surface takes away is the animated vocabulary --
  * drifting smoke, the rippling pennant, a motion trail. What carries a still
- * frame is the persistent channels, and they are well populated: sampled a
- * quarter of an hour apart, this world has residue standing in about 94% of
+ * frame is the persistent channels, and they are well populated: sampled five
+ * minutes apart, this world has residue standing in about 94% of
  * stills, a spell in the air in 29%, a ward up in 36%, and a non-idle stance
  * in 20%. The city is never dead, which was the fear.
  */
@@ -25,6 +25,12 @@
         public let date: Date
         public let worldMs: UInt32
         public let image: CGImage?
+
+        public init(date: Date, worldMs: UInt32, image: CGImage?) {
+            self.date = date
+            self.worldMs = worldMs
+            self.image = image
+        }
     }
 
     public struct CityTimelineProvider: TimelineProvider {
@@ -33,9 +39,9 @@
         /// A real wide composition for the one wide widget family. When it is
         /// absent, every family uses `layout` as before.
         public let landscapeLayout: Layout?
-        /// How far apart the stills are. A quarter of an hour is what the
-        /// system will actually honour for a widget that is not the one being
-        /// looked at.
+        /// How far apart the stills are. Five minutes gives the system enough
+        /// pre-rendered moments to refresh promptly when it grants the widget
+        /// another display opportunity.
         public let spacing: TimeInterval
         /// How many to hand over at once. Every entry is a rendered frame held
         /// in memory, so this is the trade: a longer timeline is fewer wake-ups
@@ -45,7 +51,7 @@
 
         public init(
             seed: UInt8, layout: Layout = .town, landscapeLayout: Layout? = nil,
-            spacing: TimeInterval = 15 * 60, count: Int = 24
+            spacing: TimeInterval = 5 * 60, count: Int = 24
         ) {
             self.seed = seed
             self.layout = layout
@@ -55,7 +61,13 @@
         }
 
         private func layout(for context: Context) -> Layout {
-            context.family == .systemMedium ? landscapeLayout ?? layout : layout
+            #if os(watchOS)
+                /* System widget families do not exist on watchOS. A watch
+                 * extension supplies its own accessory-family compositions. */
+                return layout
+            #else
+                return context.family == .systemMedium ? landscapeLayout ?? layout : layout
+            #endif
         }
 
         /*
@@ -106,7 +118,7 @@
             guard let city = try? City(seed: seed, layout: layout) else { return [] }
             /* The first entry is now, and the rest follow at the spacing, so
              * the widget shows the current world rather than one starting a
-             * quarter of an hour from now. */
+             * five minutes from now. */
             let boundaries = (0..<max(count, 1)).map { index -> UInt32 in
                 let offset = UInt32(Double(index) * spacing * 1000)
                 return start + (offset / step) * step
@@ -138,6 +150,8 @@
                         .aspectRatio(contentMode: .fit)
                 }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("A monochrome wizard's city playing itself")
         }
     }
 

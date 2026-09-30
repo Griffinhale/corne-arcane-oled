@@ -15,9 +15,9 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A70000000000000000000001"
-               BuildableName = "CorneArcane.app"
-               BlueprintName = "CorneArcane"
+               BlueprintIdentifier = "B70000000000000000000001"
+               BuildableName = "CorneArcaneWatch.app"
+               BlueprintName = "CorneArcaneWatch"
                ReferencedContainer = "container:CorneArcane.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -44,9 +44,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A70000000000000000000001"
-            BuildableName = "CorneArcane.app"
-            BlueprintName = "CorneArcane"
+            BlueprintIdentifier = "B70000000000000000000001"
+            BuildableName = "CorneArcaneWatch.app"
+            BlueprintName = "CorneArcaneWatch"
             ReferencedContainer = "container:CorneArcane.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -61,9 +61,9 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A70000000000000000000001"
-            BuildableName = "CorneArcane.app"
-            BlueprintName = "CorneArcane"
+            BlueprintIdentifier = "B70000000000000000000001"
+            BuildableName = "CorneArcaneWatch.app"
+            BlueprintName = "CorneArcaneWatch"
             ReferencedContainer = "container:CorneArcane.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

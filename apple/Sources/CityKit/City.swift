@@ -174,11 +174,31 @@ public final class City {
     /// The last stretch is rendered as well as simulated. See
     /// `duel_city_seek_warm_frames` for why, and for how long.
     public func seek(to targetMs: UInt32) throws {
+        try seek(to: targetMs, cancellationCheck: {})
+    }
+
+    /// Replay with a cooperative cancellation point for shells that perform a
+    /// long cold seek away from their presentation executor. Cancellation is
+    /// checked during the simulation-only run-up, then the short render warm-up
+    /// is completed atomically so a resumed seek cannot skip part of the
+    /// renderer-state settling sequence.
+    public func seek(
+        to targetMs: UInt32, cancellationCheck: () throws -> Void
+    ) throws {
         let step = City.frameIntervalMs
         let warmFrom = targetMs > City.seekWarmFrames * step
             ? targetMs - City.seekWarmFrames * step : 0
         var t = worldMs
+        var ticksUntilCancellationCheck: UInt32 = 1_024
+        try cancellationCheck()
         while t < targetMs {
+            if t < warmFrom {
+                if ticksUntilCancellationCheck == 0 {
+                    try cancellationCheck()
+                    ticksUntilCancellationCheck = 1_024
+                }
+                ticksUntilCancellationCheck -= 1
+            }
             t += step
             advance(to: t)
             if t >= warmFrom { try renderWarmUp(t, t / step) }
