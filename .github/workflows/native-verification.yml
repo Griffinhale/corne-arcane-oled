@@ -132,3 +132,26 @@ jobs:
       # the same as having watched the world into it.
       - name: Native and WASM render identically
         run: make web-parity
+
+  # The third parity leg: the Swift package the iPhone app, the widget and the
+  # watch app are built on, rendering the same matrix as the native library.
+  # Its own job for the same reason as `browser`, and on macOS because that is
+  # where the system Swift is; Linux needs `nix-shell apple/shell.nix`. Only
+  # CityKit and city-check build here: no Xcode app, no signing.
+  apple:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Cache the Swift build
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: swift-${{ runner.os }}-${{ hashFiles('Package.swift', 'apple/Sources/**', 'desktop/**', 'firmware/sim/**') }}
+          restore-keys: swift-${{ runner.os }}-
+
+      - name: Native and Swift render identically
+        run: |
+          swift --version
+          make city-lib swift-parity
