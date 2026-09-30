@@ -5,9 +5,9 @@ handedness-specific, so there is one file and you copy it twice.
 
 ## Before you start
 
-Save your Vial layout (see below) and keep a known-good image reachable.
-`griffin` is the stable recovery keymap in the Vial-QMK tree; `griffin_arcane`
-is this project.
+Save your Vial layout (see below) and have a recovery image on disk before the
+first flash; [Recovery](#recovery) says how to build one. `griffin_arcane` is
+this project's keymap.
 
 Stop the host daemon if you run it, so it is not rediscovering the keyboard
 while devices appear and disappear:
@@ -140,6 +140,20 @@ corne-arcane-diagnostics
 
 ## Recovery
 
-Flash the recovery keymap to both halves using the identical sequence above.
-Keeping one known-good UF2 on disk before you change anything is what makes
-this a two-minute problem instead of a bad evening.
+The recovery image is Vial-QMK's own `vial` keymap for this board. It has
+none of this project's code, so it is a plain working keyboard. Build it once,
+before your first flash, in the same pinned checkout:
+
+```bash
+cd ~/src/vial-qmk
+qmk compile -kb crkbd/rev1 -km vial -e CONVERT_TO=rp2040_ce
+cp crkbd_rev1_vial_rp2040_ce.uf2 ~/corne-recovery.uf2
+```
+
+If the board already runs firmware you trust, the UF2 you flashed it with works
+just as well; keep a copy outside `artifacts/`, which the next build
+overwrites.
+
+To recover, flash that file to both halves using the sequence above. Having it
+on disk before you change anything is what makes this a two-minute problem
+instead of a bad evening.

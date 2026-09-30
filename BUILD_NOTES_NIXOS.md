@@ -48,8 +48,8 @@ make release-budget   # checks flash and RAM against the resource ceilings
 The images land in `artifacts/release/`. Flash `griffin_arcane-release.uf2`;
 `griffin_arcane-diagnostic.uf2` is the same firmware with the diagnostics
 build flag on. The `griffin_arcane` keymap carries the duel, host semantics,
-secure Vial support, OLED, RGB Matrix, and four dynamic keymap layers.
-`griffin` remains the recovery image.
+secure Vial support, OLED, RGB Matrix, and four dynamic keymap layers. For a
+recovery image, see [`docs/flashing.md`](docs/flashing.md#recovery).
 
 ## Device access
 
