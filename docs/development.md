@@ -19,6 +19,21 @@ make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check
 ```
 
+What each target needs before you run it:
+
+| Target | Needs |
+|---|---|
+| `make test` | a C11 compiler with ASan/UBSan, GNU make, Python 3.10 or newer. The notification integration test also wants PyGObject and a session bus, and skips without them. |
+| `make lint` | Ruff and clang-format at the versions in `requirements-dev.txt` |
+| `make hygiene` | ripgrep (`rg`) and a git checkout. It fails without either rather than pass. |
+| `make city-lib` | a C11 compiler |
+| `make web-lib`, `make web-parity` | clang with the `wasm32` target, `wasm-ld`, Node and Python. On Nix, `llvmPackages.clang-unwrapped` (see below). |
+| `make swift-parity` | Swift: `nix-shell apple/shell.nix` on Linux, the system Swift on macOS |
+| `make release-build` | the `qmk` CLI and a Vial-QMK checkout at `VIAL_QMK_REVISION`, found through `QMK_ROOT` |
+| `make release-budget` | `arm-none-eabi-size`, from gcc-arm-embedded |
+| `python3 -m arcane_host.city_window` | tkinter (`python3-tk` on Debian) |
+| `tools/contact_sheet.py`, `tools/figures.py` | Pillow (`python3-pil` on Debian) |
+
 The browser shell needs a clang with the `wasm32` target and `wasm-ld`, plus
 Node for the parity harness. That is a heavier ask than the rest of the tree
 needs, so `web-lib` and `web-parity` are deliberately outside `make test`:
