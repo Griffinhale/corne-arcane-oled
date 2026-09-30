@@ -87,8 +87,8 @@ down.
 beam, chain, singularity, or conjure. How many are available is gated by
 complexity.
 
-**Golden**. A committed hash of an exact framebuffer. The catalog holds 622 of
-them, and they are reviewed as images instead of regenerated on failure.
+**Golden**. A committed hash of an exact framebuffer. The catalog holds one per
+scene, and they are reviewed as images instead of regenerated on failure.
 
 **Half**. One side of the keyboard. The **master** is the half connected to
 USB, and it runs the simulation. The **slave** renders what it is sent and
@@ -145,7 +145,7 @@ Advances on each replacement and carries the *doctrine* affinity with it.
 the ground. Also a long-lived *field* kind.
 
 **Scene**. One named case in the visual catalog, with a committed framebuffer
-hash. There are 622.
+hash.
 
 **Scry**. The chord of both layer thumbs with no other key held, which unrolls
 the *almanac*. Presentation only: it adds no wire state, does not pause combat,

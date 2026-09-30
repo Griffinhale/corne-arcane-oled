@@ -9,7 +9,7 @@ Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 
 ```bash
 make lint            # Ruff plus Python/C formatting checks
-make test            # mechanics, 622 visual scenes, allocation scan, host tests
+make test            # mechanics, the visual catalog, allocation scan, host tests
 make hygiene         # active-tree naming and historical-comment policy
 make city-lib        # the desktop product's native library (desktop/)
 make web-lib         # the browser shell's WebAssembly module (web/)
@@ -56,8 +56,8 @@ drift apart.
 
 ## Golden review
 
-`firmware/sim_test/golden/visual_current.hashes` contains 622 exact framebuffer
-scenes. Build a reviewable sheet with:
+`firmware/sim_test/golden/visual_current.hashes` contains one exact framebuffer
+hash per scene in the visual catalog. Build a reviewable sheet with:
 
 ```bash
 firmware/sim_test/visual_runner --dump-pgm /tmp/frames
@@ -68,6 +68,10 @@ python3 tools/contact_sheet.py /tmp/frames sheet --only district_
 reviewable dump/contact sheet, inspect the changed scenes and protected regions,
 and establish that the visual change is intentional. Update the golden only in
 the same change that explains and tests the new presentation contract.
+
+```bash
+make -C firmware/sim_test visual-golden   # only after the sheet is reviewed
+```
 
 The figures in the documentation come from the same dump, so a reviewed visual
 change is also a figure change:

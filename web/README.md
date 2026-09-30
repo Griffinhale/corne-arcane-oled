@@ -213,5 +213,5 @@ after the same argument, and for the same reason.
 - **Only bounded integer enums cross the boundary.** No text, no bitmaps, no
   framebuffers on a wire.
 - **`firmware/sim` is not modified, and `firmware/rules.mk` gains no reference
-  to this directory.** `make hygiene` fails if it does. The 622 pre-existing
-  golden scenes stay byte identical.
+  to this directory.** `make hygiene` fails if it does. Every existing
+  golden scene stays byte identical.

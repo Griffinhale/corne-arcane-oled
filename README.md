@@ -37,7 +37,7 @@ or additionally install the optional Linux daemon](docs/images/setup.svg)
 
 ### 1. See it without a keyboard
 
-The whole simulation, renderer, and 622-scene visual catalog build and run
+The whole simulation, renderer, and visual catalog build and run
 natively. No hardware, no QMK checkout:
 
 ```bash
@@ -120,9 +120,8 @@ champions generate their own input from a seed and the city plays itself.
 | Apple Watch | [`apple/`](apple/README.md#full-watch-app) | An animated watch app plus complications, cropped for the 40 mm screen |
 
 Every port is checked against the native build. `make web-parity`
-renders a shared matrix (every layout, three seeds, 240 frames) through the
-native library and through WebAssembly and fails unless all 4,320 frames match
-byte for byte; `make swift-parity` runs the same matrix through the Swift
+renders a shared matrix of layouts and seeds through the native library and
+through WebAssembly and fails unless every frame matches byte for byte; `make swift-parity` runs the same matrix through the Swift
 package the iPhone and watch apps are built on. None of this is flashed:
 `desktop/` reads `firmware/sim`, never the reverse, and `make hygiene` fails if
 that changes.

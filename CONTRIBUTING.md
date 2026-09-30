@@ -9,8 +9,8 @@ accident.
 
 ## Goldens are reviewed, never regenerated
 
-`firmware/sim_test/golden/visual_current.hashes` holds 622 exact framebuffer
-hashes. When a visual test fails, the failure is the point. It is telling you
+`firmware/sim_test/golden/visual_current.hashes` holds one exact framebuffer
+hash per scene in the visual catalog. When a visual test fails, the failure is the point. It is telling you
 that a rendering change happened, and the job is to look at that change and
 decide whether it was intended.
 
@@ -23,14 +23,21 @@ python3 tools/contact_sheet.py /tmp/frames sheet --only <the changed scene>
 ```
 
 A golden moves only in the same change that explains the new presentation
-contract and tests it. The same applies to the figures in the documentation,
-which come from that dump through `tools/figures.py` and should be regenerated
-in the change that moves the goldens.
+contract and tests it. Once the contact sheet shows the change is the one you
+meant, rewrite the hashes and commit them with that change:
+
+```bash
+make -C firmware/sim_test visual-golden
+```
+
+The same applies to the figures in the documentation, which come from that
+dump through `tools/figures.py` and should be regenerated in the change that
+moves the goldens.
 
 ## Running the checks
 
 ```bash
-make test      # mechanics, 622 visual scenes, allocation scan, host tests
+make test      # mechanics, the visual catalog, allocation scan, host tests
 make lint      # ruff and clang-format
 make hygiene   # repository conventions
 ```

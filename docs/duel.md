@@ -277,7 +277,7 @@ Fixed 40 ms ticks, integer arithmetic, no allocation, no time reads inside the
 mechanics, and a fixed phase order per tick. The same starting state and the
 same ordered stream of inputs and events produce a bit-identical world.
 
-That is what makes a catalog of 622 exact framebuffer hashes a usable test, and
+That is what makes a catalog of exact framebuffer hashes a usable test, and
 it is why every figure in this documentation is regenerated from source instead
 of captured.
 

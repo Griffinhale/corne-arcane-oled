@@ -110,9 +110,8 @@ jobs:
           sudo apt-get install --yes build-essential clang lld
           clang -print-targets | grep -q wasm32
 
-      # Renders every layout, three seeds and 240 frames each through both the
-      # WASM module and the native library, and fails unless all 3600 frames
-      # agree byte for byte. Then checks that arriving at a moment by link is
+      # Renders the shared parity matrix through both the WASM module and the
+      # native library, and fails unless every frame agrees byte for byte. Then checks that arriving at a moment by link is
       # the same as having watched the world into it.
       - name: Native and WASM render identically
         run: make web-parity
