@@ -39,7 +39,8 @@ COMMANDS = \
 	diagnostics:diagnostics \
 	browser-bridge:browser_bridge \
 	vial:vial_launcher \
-	focus-x11:focus_x11
+	focus-x11:focus_x11 \
+	keymap:keymap_profiles
 
 .PHONY: install install-lib install-commands install-units install-assets install-udev uninstall
 
@@ -53,7 +54,7 @@ install-lib:
 
 # Each command is a small stub that puts the private library directory on the
 # path and calls the module's existing main(). Generating them from COMMANDS
-# keeps the five public names declared in exactly one place.
+# keeps the public names declared in exactly one place.
 install-commands:
 	install -d "$(DESTDIR)$(BINDIR)"
 	@for entry in $(COMMANDS); do \
