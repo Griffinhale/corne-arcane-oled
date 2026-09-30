@@ -58,3 +58,10 @@ __pycache__/
 # renders both sides into.
 .build/
 apple/tools/.parity/
+
+# Local planning: DAGs, backlog and handoff notes stay on disk. scripts/hygiene.sh
+# fails if any of these paths is tracked.
+docs/dags/
+docs/planning/
+docs/backlog.md
+*HANDOFF*.md

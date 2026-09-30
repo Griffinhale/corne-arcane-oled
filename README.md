@@ -153,7 +153,6 @@ same frames, which is why a catalog of exact framebuffer hashes works as a test.
 - NixOS specifics: [`BUILD_NOTES_NIXOS.md`](BUILD_NOTES_NIXOS.md)
 - Where the images come from: [`docs/images/README.md`](docs/images/README.md)
 - Patching this, and the one rule about goldens: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Deferred product work: [`docs/backlog.md`](docs/backlog.md)
 
 ## License
 

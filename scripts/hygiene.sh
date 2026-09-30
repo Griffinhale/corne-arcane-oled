@@ -3,6 +3,16 @@ set -eu
 
 tracked=$(git ls-files | grep -v '^docs/archive/' || true)
 
+# Planning lives on disk, not in the repository: DAGs, the backlog and handoff
+# notes are gitignored, and this catches one that was force-added or tracked
+# before the ignore rule existed.
+planning='^docs/(dags|planning)/|^docs/backlog\.md$|(^|/)[^/]*HANDOFF[^/]*\.md$'
+if git ls-files | grep -Eq "$planning"; then
+    echo "FAIL hygiene: local planning file is tracked; it belongs on disk only" >&2
+    git ls-files | grep -E "$planning" >&2
+    exit 1
+fi
+
 # Prose checks read prose. Images and captures carry no planning language, and a
 # byte sequence inside one is not a sentence, so they are filtered out of every
 # content check below. Path checks still see every tracked file.
