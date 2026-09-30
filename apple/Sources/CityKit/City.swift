@@ -186,7 +186,8 @@ public final class City {
         to targetMs: UInt32, cancellationCheck: () throws -> Void
     ) throws {
         let step = City.frameIntervalMs
-        let warmFrom = targetMs > City.seekWarmFrames * step
+        let warmFrom =
+            targetMs > City.seekWarmFrames * step
             ? targetMs - City.seekWarmFrames * step : 0
         var t = worldMs
         var ticksUntilCancellationCheck: UInt32 = 1_024

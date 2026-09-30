@@ -61,10 +61,11 @@
             let now = (elapsed / step) * step
             city.advance(to: now)
             guard let pixels = try? city.render(frame: now / step) else { return }
-            image = CityFrame(
-                worldMs: now, frame: now / step, pixels: pixels,
-                width: city.width, height: city.height
-            ).image
+            image =
+                CityFrame(
+                    worldMs: now, frame: now / step, pixels: pixels,
+                    width: city.width, height: city.height
+                ).image
         }
     }
 

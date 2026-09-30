@@ -64,8 +64,9 @@ private struct WatchCityProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WatchCityEntry) -> Void) {
-        completion(entries(from: Date(), count: 1, family: context.family).first
-            ?? Self.previewEntry(for: context.family))
+        completion(
+            entries(from: Date(), count: 1, family: context.family).first
+                ?? Self.previewEntry(for: context.family))
     }
 
     func getTimeline(
@@ -198,20 +199,22 @@ struct CorneArcaneWatchWidget: Widget {
     #Preview("Rectangular · accented") {
         WatchCityEntryView(
             entry: WatchCityProvider.previewEntry(for: .accessoryRectangular),
-            previewFamily: .accessoryRectangular)
-            .environment(\.widgetRenderingMode, .accented)
-            .tint(.purple)
-            .frame(width: 150, height: 64)
-            .background(.black)
+            previewFamily: .accessoryRectangular
+        )
+        .environment(\.widgetRenderingMode, .accented)
+        .tint(.purple)
+        .frame(width: 150, height: 64)
+        .background(.black)
     }
 
     #Preview("Circular · accented") {
         WatchCityEntryView(
             entry: WatchCityProvider.previewEntry(for: .accessoryCircular),
-            previewFamily: .accessoryCircular)
-            .environment(\.widgetRenderingMode, .accented)
-            .tint(.purple)
-            .frame(width: 58, height: 58)
-            .background(.black)
+            previewFamily: .accessoryCircular
+        )
+        .environment(\.widgetRenderingMode, .accented)
+        .tint(.purple)
+        .frame(width: 58, height: 58)
+        .background(.black)
     }
 #endif

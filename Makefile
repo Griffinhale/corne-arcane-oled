@@ -1,6 +1,6 @@
 .PHONY: test mechanics-test visual-test noalloc-check city-lib \
 	web-lib web-parity web-clean swift-parity release-build release-budget hygiene \
-	format format-check lint
+	format format-check lint lint-js lint-swift
 
 # Same rule as C_SOURCES below: a glob, so a new directory of Python has to be
 # named here or it quietly stops being linted.
@@ -11,6 +11,13 @@ PYTHON_SOURCES := $(shell find host/arcane_host host/tests tools web/tools -type
 # once already, when desktop/ moved out from under firmware/.
 C_SOURCES := $(shell find firmware desktop web -type f \( -name '*.c' -o -name '*.h' \) \
 	! -name 'corne_arcane_layout.h' | sort)
+# The browser pages and tools, the GNOME, KWin and Firefox adapters. Same glob
+# rule: JavaScript anywhere else has to be named here.
+JS_SOURCES := $(shell find web host -type f \( -name '*.js' -o -name '*.mjs' \) \
+	! -path 'web/tools/.parity/*' | sort)
+SWIFT_SOURCES := Package.swift $(shell find apple -type f -name '*.swift' | sort)
+# The swift-format release lint-swift is measured against; CI builds this tag.
+SWIFT_FORMAT_VERSION := 510.1.0
 
 test: mechanics-test visual-test noalloc-check city-lib
 	cd host && ./run_tests.sh
@@ -73,4 +80,25 @@ format-check:
 	ruff format --check $(PYTHON_SOURCES)
 	clang-format --dry-run --Werror $(C_SOURCES)
 
-lint: format-check
+lint: format-check lint-js
+
+# A syntax check, not a style check. Files go in on stdin because
+# `node --check FILE` passes any file it takes for an ES module -- an .mjs,
+# or a .js with an import -- without parsing it. A file with a top-level import or
+# export, or any .mjs, is checked as a module; the rest as scripts.
+lint-js:
+	@command -v node >/dev/null || { echo "FAIL lint-js: node not found; install Node.js 22 or later" >&2; exit 1; }
+	@node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 22 ? 1 : 0)' || \
+		{ echo "FAIL lint-js: Node.js 22 or later is required, found $$(node --version)" >&2; exit 1; }
+	@for f in $(JS_SOURCES); do \
+		case $$f in *.mjs) type=module ;; *) type=commonjs ;; esac; \
+		if grep -qE '^(import|export)[ {*]' "$$f"; then type=module; fi; \
+		node --input-type=$$type --check < "$$f" || { echo "FAIL lint-js: $$f" >&2; exit 1; }; \
+	done
+	@echo "PASS lint-js: $(words $(JS_SOURCES)) files"
+
+# Needs a Swift toolchain, so it is not part of lint; the Swift CI job runs it.
+lint-swift:
+	@swift-format --version | grep -qx '$(SWIFT_FORMAT_VERSION)' || \
+		{ echo "FAIL lint-swift: swift-format $(SWIFT_FORMAT_VERSION) is required" >&2; exit 1; }
+	swift-format lint --strict --configuration .swift-format $(SWIFT_SOURCES)

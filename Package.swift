@@ -20,7 +20,7 @@ let package = Package(
     // current widget families need.
     platforms: [.iOS(.v17), .macOS(.v14), .watchOS(.v10)],
     products: [
-        .library(name: "CityKit", targets: ["CityKit"]),
+        .library(name: "CityKit", targets: ["CityKit"])
     ],
     targets: [
         // The renderer itself. Swift's C interop is native, so there is no

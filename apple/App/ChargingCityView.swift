@@ -51,7 +51,8 @@ private final class DevicePowerState: ObservableObject {
     }
 
     private func refresh() {
-        hasExternalPower = forcedForPreview || device.batteryState == .charging
+        hasExternalPower =
+            forcedForPreview || device.batteryState == .charging
             || device.batteryState == .full
     }
 }
@@ -64,7 +65,8 @@ struct ChargingCityView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let chargingLandscape = power.hasExternalPower
+            let chargingLandscape =
+                power.hasExternalPower
                 && geometry.size.width > geometry.size.height
 
             Group {

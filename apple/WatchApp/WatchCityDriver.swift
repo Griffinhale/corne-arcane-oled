@@ -44,7 +44,8 @@ private actor WatchCityRenderer {
 
     func render(_ moment: WatchWorldMoment) throws -> WatchRenderedMoment {
         do {
-            let needsNewWorld = city == nil || worldAnchor != moment.anchor
+            let needsNewWorld =
+                city == nil || worldAnchor != moment.anchor
                 || moment.worldMs < worldMs
             if needsNewWorld {
                 let city = try City(seed: 0x5A, layout: .town)
@@ -66,7 +67,8 @@ private actor WatchCityRenderer {
         guard let city else { throw WatchCityRenderError.invalidCrop }
         let frame = moment.worldMs / City.frameIntervalMs
         let pixels = try city.render(frame: frame)
-        guard let crop = CityFrame(
+        guard
+            let crop = CityFrame(
                 worldMs: moment.worldMs,
                 frame: frame,
                 pixels: pixels,
@@ -156,11 +158,11 @@ final class WatchCityDriver {
             pendingPausedStill = true
             if !isRendering { scheduleFrame() }
         }
-#if DEBUG
-        if wasPlaying {
-            print("CORNE_WATCH_PAUSED world_ms=\(worldMs)")
-        }
-#endif
+        #if DEBUG
+            if wasPlaying {
+                print("CORNE_WATCH_PAUSED world_ms=\(worldMs)")
+            }
+        #endif
     }
 
     /// Tear down presentation when the view itself leaves the hierarchy. No
@@ -174,11 +176,11 @@ final class WatchCityDriver {
         renderTask?.cancel()
         timer?.invalidate()
         timer = nil
-#if DEBUG
-        if wasPlaying {
-            print("CORNE_WATCH_PAUSED world_ms=\(worldMs)")
-        }
-#endif
+        #if DEBUG
+            if wasPlaying {
+                print("CORNE_WATCH_PAUSED world_ms=\(worldMs)")
+            }
+        #endif
     }
 
     private func scheduleFrame() {
@@ -209,7 +211,8 @@ final class WatchCityDriver {
         isRendering = false
         renderTask = nil
 
-        let mayPublish = !wasCancelled
+        let mayPublish =
+            !wasCancelled
             && (presentationState == .active
                 || (presentationState == .paused && pendingPausedStill))
         if mayPublish, let rendered, let image = rendered.frame.image {
@@ -218,16 +221,16 @@ final class WatchCityDriver {
             hasRenderedCurrentMoment = true
             pendingPausedStill = false
             if presentationState == .active, activationStartedAt != nil {
-#if DEBUG
-                let activationStartedAt = activationStartedAt!
-                let elapsedMs =
-                    (ProcessInfo.processInfo.systemUptime - activationStartedAt) * 1_000
-                let formattedElapsedMs = String(format: "%.1f", elapsedMs)
-                print(
-                    "CORNE_WATCH_READY world_ms=\(rendered.moment.worldMs) "
-                        + "activation_ms=\(formattedElapsedMs)"
-                )
-#endif
+                #if DEBUG
+                    let activationStartedAt = activationStartedAt!
+                    let elapsedMs =
+                        (ProcessInfo.processInfo.systemUptime - activationStartedAt) * 1_000
+                    let formattedElapsedMs = String(format: "%.1f", elapsedMs)
+                    print(
+                        "CORNE_WATCH_READY world_ms=\(rendered.moment.worldMs) "
+                            + "activation_ms=\(formattedElapsedMs)"
+                    )
+                #endif
                 self.activationStartedAt = nil
             }
         }
@@ -252,9 +255,11 @@ final class WatchCityDriver {
          * moment it was requested. Catch up once immediately; ordinary fast
          * renders remain paced solely by the 10 fps wake-up timer. */
         let current = Self.worldMoment(at: now(), calendar: calendar)
-        let movedBackward = current.anchor == rendered.moment.anchor
+        let movedBackward =
+            current.anchor == rendered.moment.anchor
             && current.worldMs < rendered.moment.worldMs
-        let fellBehind = current.anchor != rendered.moment.anchor || movedBackward
+        let fellBehind =
+            current.anchor != rendered.moment.anchor || movedBackward
             || current.worldMs - rendered.moment.worldMs >= Self.presentationIntervalMs
         if fellBehind { scheduleFrame() }
     }
@@ -283,9 +288,9 @@ final class WatchCityDriver {
         ).cropped(to: crop)?.image
     }
 
-#if DEBUG
-    static func previewImage(worldMs: UInt32 = 7_200_000) -> CGImage? {
-        standaloneImage(worldMs: worldMs)
-    }
-#endif
+    #if DEBUG
+        static func previewImage(worldMs: UInt32 = 7_200_000) -> CGImage? {
+            standaloneImage(worldMs: worldMs)
+        }
+    #endif
 }

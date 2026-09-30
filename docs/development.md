@@ -8,7 +8,8 @@ versions are in `requirements-dev.txt`. Firmware builds use the configured
 Vial-QMK checkout, `crkbd/rev1`, and `CONVERT_TO=rp2040_ce`.
 
 ```bash
-make lint            # Ruff plus Python/C formatting checks
+make lint            # Ruff, Python/C formatting, and a JavaScript syntax check
+make lint-swift      # swift-format, at the version pinned in Makefile
 make test            # mechanics, the visual catalog, allocation scan, host tests
 make hygiene         # repository conventions (see scripts/hygiene.sh)
 make city-lib        # the desktop product's native library (desktop/)
@@ -23,8 +24,9 @@ What each target needs before you run it:
 
 | Target | Needs |
 |---|---|
-| `make test` | a C11 compiler with ASan/UBSan, GNU make, Python 3.10 or newer. The notification integration test also wants PyGObject and a session bus, and skips without them. |
-| `make lint` | Ruff and clang-format at the versions in `requirements-dev.txt` |
+| `make test` | a C11 compiler with ASan/UBSan, GNU make, Python 3.10 or newer. The D-Bus tests also want PyGObject and `dbus-daemon`, and skip without them; each starts its own private bus. |
+| `make lint` | Ruff and clang-format at the versions in `requirements-dev.txt`, and Node.js 22 or later |
+| `make lint-swift` | swift-format at `SWIFT_FORMAT_VERSION` in `Makefile`, built from that tag with a Swift toolchain |
 | `make hygiene` | ripgrep (`rg`) and a git checkout. It fails without either rather than pass. |
 | `make city-lib` | a C11 compiler |
 | `make web-lib`, `make web-parity` | clang with the `wasm32` target, `wasm-ld`, Node and Python. On Nix, `llvmPackages.clang-unwrapped` (see below). |

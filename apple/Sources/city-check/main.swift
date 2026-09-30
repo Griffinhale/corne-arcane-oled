@@ -318,9 +318,11 @@ func runInvariants() {
     check("the_frame_is_one_bit_in_eight_bit_grey", Set(pixels) == Set([0, 255]))
 
     let watchRect = CityPixelRect(x: 54, y: 38, width: 148, height: 72)
-    guard let watchFrame = CityFrame(
-        worldMs: city.worldMs, frame: 12, pixels: pixels, width: city.width, height: city.height
-    ).cropped(to: watchRect) else { fail("the watch crop would not compose") }
+    guard
+        let watchFrame = CityFrame(
+            worldMs: city.worldMs, frame: 12, pixels: pixels, width: city.width, height: city.height
+        ).cropped(to: watchRect)
+    else { fail("the watch crop would not compose") }
     check("a_watch_composition_is_a_source_pixel_crop", watchFrame.pixels.count == 148 * 72)
     check(
         "a_watch_crop_keeps_renderer_pixels",
