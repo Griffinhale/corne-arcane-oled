@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import signal
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -102,6 +103,29 @@ class OwnershipGuardTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "failed to restore"):
                 with hid_ownership.ExclusiveHidOwnership():
                     pass
+
+
+class ServiceStateTests(unittest.TestCase):
+    @staticmethod
+    def _is_active(returncode: int) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess((), returncode, stdout="", stderr="")
+
+    def test_missing_unit_is_inactive(self) -> None:
+        """The daemon is optional; without its unit, is-active exits 4, not 3."""
+        with patch.object(hid_ownership, "_systemctl", return_value=self._is_active(4)):
+            self.assertFalse(hid_ownership.service_is_active())
+
+    def test_active_and_inactive_codes(self) -> None:
+        for returncode, active in ((0, True), (3, False)):
+            with patch.object(
+                hid_ownership, "_systemctl", return_value=self._is_active(returncode)
+            ):
+                self.assertIs(hid_ownership.service_is_active(), active)
+
+    def test_other_codes_fail_closed(self) -> None:
+        with patch.object(hid_ownership, "_systemctl", return_value=self._is_active(1)):
+            with self.assertRaisesRegex(RuntimeError, "systemctl exited 1"):
+                hid_ownership.service_is_active()
 
 
 class LauncherTests(unittest.TestCase):

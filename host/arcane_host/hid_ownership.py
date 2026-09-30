@@ -34,7 +34,9 @@ def service_is_active() -> bool:
     result = _systemctl("is-active", "--quiet", SERVICE)
     if result.returncode == 0:
         return True
-    if result.returncode == 3:
+    # 3 is inactive; 4 is no such unit, which is how an install without the
+    # optional daemon looks. Neither holds the keyboard.
+    if result.returncode in (3, 4):
         return False
     detail = result.stderr.strip() or f"systemctl exited {result.returncode}"
     raise RuntimeError(f"cannot determine daemon state: {detail}")
