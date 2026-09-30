@@ -129,6 +129,13 @@ class ServiceStateTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Tests never depend on a real Vial, and never notify the real desktop.
+        for name, value in (("resolve_vial", ["/opt/vial"]), ("notify_failure", None)):
+            patcher = patch.object(vial_launcher, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_launcher_runs_inside_shared_guard(self) -> None:
         order: list[str] = []
 
@@ -144,11 +151,11 @@ class LauncherTests(unittest.TestCase):
             patch.object(
                 vial_launcher,
                 "run_vial",
-                side_effect=lambda args: order.append(f"vial:{args[0]}") or 0,
+                side_effect=lambda command, args: order.append(f"{command[0]}:{args[0]}") or 0,
             ),
         ):
             self.assertEqual(vial_launcher.main(["--verbose"]), 0)
-        self.assertEqual(order, ["enter", "vial:--verbose", "exit"])
+        self.assertEqual(order, ["enter", "/opt/vial:--verbose", "exit"])
 
     def test_signal_status_and_restore_failure_are_reported(self) -> None:
         class SignalGuard:
@@ -186,12 +193,8 @@ class HandleTests(unittest.TestCase):
             (fd / "4").symlink_to("/tmp/ordinary")
             self.assertEqual(hid_ownership.hidraw_handles(77, root), (Path("/dev/hidraw4"),))
 
-    def test_missing_vial_binary_is_reported_actionably_and_hands_back(self) -> None:
-        """Debian has no vial package, so the default name usually resolves to nothing.
-
-        The daemon has already been stopped by the time Popen runs, so the
-        failure has to name the fix and the guard still has to restore service.
-        """
+    def test_vial_vanishing_after_lookup_still_hands_back(self) -> None:
+        """Vial was found, then Popen could not start it: the daemon is already stopped."""
         order: list[str] = []
 
         class Guard:
@@ -203,16 +206,100 @@ class HandleTests(unittest.TestCase):
 
         stderr = io.StringIO()
         with (
+            patch.object(vial_launcher, "resolve_vial", return_value=["/opt/vial"]),
             patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
             patch.object(vial_launcher.subprocess, "Popen", side_effect=FileNotFoundError()),
+            patch.object(vial_launcher, "notify_failure"),
             contextlib.redirect_stderr(stderr),
         ):
             self.assertEqual(vial_launcher.main([]), 1)
 
         self.assertEqual(order, ["enter", "exit"])
+        self.assertIn("could not start", stderr.getvalue())
+
+
+class VialResolutionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._config = tempfile.TemporaryDirectory()
+        self.addCleanup(self._config.cleanup)
+        self.config_home = Path(self._config.name)
+        env = {"XDG_CONFIG_HOME": str(self.config_home)}
+        patcher = patch.dict(vial_launcher.os.environ, env, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _write_config(self, text: str) -> None:
+        path = self.config_home / "corne-arcane" / "vial"
+        path.parent.mkdir(parents=True)
+        path.write_text(text)
+
+    def test_missing_vial_no_stop(self) -> None:
+        """No Vial anywhere: fail before touching the daemon, and say so on the desktop."""
+        stderr = io.StringIO()
+        with (
+            patch.object(vial_launcher.shutil, "which", return_value=None),
+            patch.object(vial_launcher, "ExclusiveHidOwnership") as guard,
+            patch.object(hid_ownership, "_systemctl") as systemctl,
+            patch.object(vial_launcher, "notify_failure") as notify,
+            contextlib.redirect_stderr(stderr),
+        ):
+            self.assertEqual(vial_launcher.main([]), 1)
+        guard.assert_not_called()
+        systemctl.assert_not_called()
+        notify.assert_called_once()
         message = stderr.getvalue()
-        self.assertIn("CORNE_ARCANE_VIAL_BIN", message)
         self.assertIn("not found", message)
+        self.assertIn("CORNE_ARCANE_VIAL_BIN", message)
+        self.assertIn("corne-arcane/vial", message)
+
+    def test_bin_with_args(self) -> None:
+        """A Flatpak install is a command with arguments, not a single path."""
+        vial_launcher.os.environ["CORNE_ARCANE_VIAL_BIN"] = "flatpak run xyz.Vial"
+        with patch.object(vial_launcher.shutil, "which", return_value="/usr/bin/flatpak"):
+            self.assertEqual(vial_launcher.resolve_vial(), ["/usr/bin/flatpak", "run", "xyz.Vial"])
+
+    def test_path_with_spaces_is_one_word(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            appimage = Path(directory) / "My Apps" / "Vial.AppImage"
+            appimage.parent.mkdir()
+            appimage.write_text("")
+            appimage.chmod(0o755)
+            vial_launcher.os.environ["CORNE_ARCANE_VIAL_BIN"] = str(appimage)
+            self.assertEqual(vial_launcher.resolve_vial(), [str(appimage)])
+
+    def test_config_file_is_read_when_the_environment_is_silent(self) -> None:
+        """Menu launches do not see shell exports, so the config file has to work alone."""
+        self._write_config("# where Vial lives\n\n~/Apps/Vial.AppImage --no-sandbox\n")
+        home = str(Path.home())
+        with patch.object(vial_launcher.shutil, "which", side_effect=lambda word: word):
+            self.assertEqual(
+                vial_launcher.resolve_vial(), [f"{home}/Apps/Vial.AppImage", "--no-sandbox"]
+            )
+
+    def test_environment_wins_over_config(self) -> None:
+        self._write_config("/from/config\n")
+        vial_launcher.os.environ["CORNE_ARCANE_VIAL_BIN"] = "/from/env"
+        with patch.object(vial_launcher.shutil, "which", side_effect=lambda word: word):
+            self.assertEqual(vial_launcher.resolve_vial(), ["/from/env"])
+
+    def test_default_is_vial_on_path(self) -> None:
+        with patch.object(vial_launcher.shutil, "which", return_value="/usr/bin/vial") as which:
+            self.assertEqual(vial_launcher.resolve_vial(), ["/usr/bin/vial"])
+        which.assert_called_once_with("vial")
+
+    def test_notification_only_without_a_terminal(self) -> None:
+        with (
+            patch.object(vial_launcher.sys.stderr, "isatty", return_value=True),
+            patch.object(vial_launcher.subprocess, "run") as run,
+        ):
+            vial_launcher.notify_failure("x")
+        run.assert_not_called()
+        with (
+            patch.object(vial_launcher.sys.stderr, "isatty", return_value=False),
+            patch.object(vial_launcher.subprocess, "run", side_effect=FileNotFoundError()) as run,
+        ):
+            vial_launcher.notify_failure("x")
+        self.assertEqual(run.call_args.args[0][0], "notify-send")
 
 
 if __name__ == "__main__":

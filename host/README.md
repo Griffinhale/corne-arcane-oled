@@ -50,9 +50,20 @@ To install without building a package, `make install PREFIX=/usr` places the
 same layout directly. Unplug and replug the keyboard afterwards so the udev
 rule applies.
 
-Debian has no `vial` package -- Vial ships as an AppImage -- so set
-`CORNE_ARCANE_VIAL_BIN` to its path before using `corne-arcane-vial`. Nix pins
-this automatically. `CORNE_ARCANE_SYSTEMCTL`, `CORNE_ARCANE_SERVICE`, and
+Debian has no `vial` package -- Vial ships as an AppImage -- so tell
+`corne-arcane-vial` where it is. Put the path, or a whole command such as
+`flatpak run <app id>`, on one line in `~/.config/corne-arcane/vial`:
+
+```bash
+mkdir -p ~/.config/corne-arcane
+echo ~/Applications/Vial.AppImage > ~/.config/corne-arcane/vial
+```
+
+The file works for menu launches too. `CORNE_ARCANE_VIAL_BIN` overrides it, but
+a shell export does not reach the application menu; set it in
+`~/.config/environment.d/` if you want it there. If Vial cannot be found, the
+launcher stops before pausing the daemon and says so in a desktop
+notification. Nix pins this automatically. `CORNE_ARCANE_SYSTEMCTL`, `CORNE_ARCANE_SERVICE`, and
 `CORNE_ARCANE_KWIN_SCRIPT` already default correctly on Debian.
 
 ## Focus producers
