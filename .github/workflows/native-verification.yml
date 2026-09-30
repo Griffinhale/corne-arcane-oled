@@ -20,7 +20,7 @@ jobs:
       - name: Install native dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes build-essential python3-gi python3-venv ripgrep
+          sudo apt-get install --yes build-essential dbus python3-gi python3-venv ripgrep
           python3 -m venv --system-site-packages .venv
           .venv/bin/python -m pip install --requirement requirements-dev.txt
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
@@ -33,14 +33,15 @@ jobs:
 
       # The notification adapter eavesdrops with BecomeMonitor, and the failure
       # mode it had was invisible to unit tests and invisible on dbus-daemon.
-      # Exercise the real path on a throwaway bus. dbus-run-session launches
-      # dbus-daemon, which is what Debian 12 ships; dbus-broker, Debian 13's
-      # default, needs a systemd user session and is exercised on real desktops.
+      # The test starts its own throwaway dbus-daemon, which is what Debian 12
+      # ships; dbus-broker, Debian 13's default, needs a systemd user session
+      # and is exercised on real desktops. Locally it skips without PyGObject
+      # or dbus-daemon; here the variable turns that skip into a failure.
       - name: Notification monitor on a live session bus
+        env:
+          CORNE_ARCANE_REQUIRE_LIVE_BUS: "1"
         run: |
-          sudo apt-get install --yes dbus
-          cd host && dbus-run-session -- python3 -m unittest \
-            discover -s tests -k NotificationMonitorLiveBus -v
+          cd host && python3 -m unittest discover -s tests -k NotificationMonitorLiveBus -v
 
       - name: Repository hygiene
         run: make hygiene

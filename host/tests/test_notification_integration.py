@@ -10,7 +10,8 @@ implementations: Debian 12 defaults to dbus-daemon and Debian 13 to dbus-broker.
 It never touches the desktop's own session bus. By default it starts a private
 dbus-daemon. To try dbus-broker, point CORNE_ARCANE_TEST_BUS_ADDRESS at a
 disposable broker's address. Skipped without PyGObject, or without dbus-daemon
-when no address is given.
+when no address is given -- unless CORNE_ARCANE_REQUIRE_LIVE_BUS=1, as in CI,
+where every reason to skip is a failure instead.
 """
 
 from __future__ import annotations
@@ -58,15 +59,29 @@ NOTIFICATION_COUNT = 3
 
 
 TEST_BUS_ENV = "CORNE_ARCANE_TEST_BUS_ADDRESS"
+REQUIRE_ENV = "CORNE_ARCANE_REQUIRE_LIVE_BUS"
 
 
-def _test_bus_available() -> bool:
-    return Gio is not None and bool(os.environ.get(TEST_BUS_ENV) or shutil.which("dbus-daemon"))
+def _missing() -> str | None:
+    """Why this test cannot run here, or None when it can."""
+    if Gio is None:
+        return "needs PyGObject"
+    if not (os.environ.get(TEST_BUS_ENV) or shutil.which("dbus-daemon")):
+        return "needs dbus-daemon"
+    return None
 
 
-@unittest.skipUnless(_test_bus_available(), "needs PyGObject and dbus-daemon")
 class NotificationMonitorLiveBusTests(unittest.TestCase):
+    def skipTest(self, reason: str) -> None:
+        # A skip exits 0, so where a live bus is required it must fail instead.
+        if os.environ.get(REQUIRE_ENV) == "1":
+            self.fail(f"{REQUIRE_ENV}=1 but the live-bus test would skip: {reason}")
+        super().skipTest(reason)
+
     def setUp(self) -> None:
+        missing = _missing()
+        if missing:
+            self.skipTest(missing)
         address = os.environ.get(TEST_BUS_ENV)
         if not address:
             bus = subprocess.Popen(
