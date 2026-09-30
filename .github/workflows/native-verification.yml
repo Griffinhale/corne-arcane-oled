@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          # Whitespace errors diffs against origin/main, which a shallow clone lacks.
+          fetch-depth: 0
 
       - name: Install native dependencies
         run: |
@@ -86,8 +89,19 @@ jobs:
           print('Gio and GLib typelibs available')
           "
 
+      # A fresh checkout has no working-tree changes, so a bare `git diff
+      # --check` always passed. Check the commits being pushed or proposed.
       - name: Whitespace errors
-        run: git diff --check
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          base="origin/$BASE_REF"
+          # A push to main is already in origin/main; check what the push added.
+          if git merge-base --is-ancestor HEAD "$base" && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base=$BEFORE
+          fi
+          git diff --check "$(git merge-base "$base" HEAD)" HEAD
 
   # A separate job, for the same reason `web-parity` is outside `make test`:
   # the browser build needs a WebAssembly toolchain that nothing else in this
