@@ -15,6 +15,8 @@ import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { City, LAYOUT, LAYOUT_NAMES } from "../duel-city.js";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const matrix = JSON.parse(readFileSync(join(here, "parity_matrix.json"), "utf8"));
 
@@ -27,8 +29,23 @@ mkdirSync(out, { recursive: true });
 
 const bytes = readFileSync(join(here, "..", "duel_city.wasm"));
 // No imports: the module asks the host for nothing, not even a clock.
+// Through the page's own loader first: it refuses a module whose ABI is not
+// the one duel-city.js was written for.
+await City.fromBytes(bytes);
 const { instance } = await WebAssembly.instantiate(bytes, {});
 const api = instance.exports;
+
+// duel-city.js restates DUEL_CITY_LAYOUT_* by hand; the module is the judge.
+// Every value it names renders, and the next one is DUEL_CITY_ERR_LAYOUT.
+const layouts = Object.values(LAYOUT).sort((a, b) => a - b);
+layouts.forEach((value, index) => {
+  if (value !== index) throw new Error(`LAYOUT is not 0..n-1: ${layouts}`);
+  if (api.duel_wasm_geometry(value) < 0) throw new Error(`module rejects layout ${value}`);
+  if (LAYOUT_NAMES[value] === undefined) throw new Error(`LAYOUT_NAMES lacks ${value}`);
+});
+if (api.duel_wasm_geometry(layouts.length) !== -5) {
+  throw new Error(`module accepts layout ${layouts.length}, which LAYOUT does not name`);
+}
 const heap = () => new Uint8Array(api.memory.buffer);
 
 const lines = [];

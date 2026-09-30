@@ -17,6 +17,7 @@
  * diff to compare.
  */
 
+import CCorneArcaneCity
 import CityKit
 import Foundation
 
@@ -285,7 +286,12 @@ func check(_ name: String, _ passed: Bool, _ detail: @autoclosure () -> String =
 }
 
 func runInvariants() {
-    check("abi_is_the_one_this_tree_compiles", City.abi == 7, "reported \(City.abi)")
+    check(
+        "abi_is_the_one_this_tree_compiles", City.abi == expectedCityABI,
+        "reported \(City.abi), CityKit expects \(expectedCityABI)")
+    check(
+        "layouts_come_from_the_header",
+        Layout.allCases.map(\.rawValue) == Array(0..<Int32(DUEL_CITY_LAYOUT_COUNT)))
     check("cadence_comes_from_the_simulation", City.frameIntervalMs == 40)
     check("the_tour_is_every_civic_floor", City.tourLength == 5)
 

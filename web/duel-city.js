@@ -23,6 +23,11 @@
  * Sharp, at most 94 kB a frame, and no core change to get it. */
 export const RENDER_SCALE = 1;
 
+/* The duel_city.h DUEL_CITY_ABI this file was written against. A module built
+ * from another revision is refused rather than half-understood: the layout
+ * numbers and error codes below are only right for this one. */
+export const EXPECTED_ABI = 7;
+
 export const LAYOUT = Object.freeze({
   DESK: 0,
   CITY: 1,
@@ -66,6 +71,12 @@ export class City {
   constructor(instance) {
     this.exports = instance.exports;
     this.abi = this.exports.duel_wasm_abi_version();
+    if (this.abi !== EXPECTED_ABI) {
+      throw new CityError(
+        `duel_city.wasm speaks city ABI ${this.abi}, this page expects ${EXPECTED_ABI}; ` +
+          "rebuild it with make web-lib from the same revision",
+      );
+    }
     this.frameIntervalMs = this.exports.duel_wasm_frame_interval_ms();
     /* How much of a run-up seek() renders as well as simulates. Asked rather
      * than chosen: it is the renderer's policy, and a shell that picks its

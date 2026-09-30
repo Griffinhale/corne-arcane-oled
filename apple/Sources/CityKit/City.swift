@@ -14,13 +14,46 @@
 
 import CCorneArcaneCity
 
-public enum Layout: Int32, CaseIterable, Sendable {
-    case desk = 0
-    case city = 1
-    case left = 2
-    case right = 3
-    case town = 4
-    case landscape = 5
+/// DUEL_CITY_LAYOUT_*, with the numbers taken from duel_city.h rather than
+/// restated: Swift raw values must be literals, so the mapping is spelled out.
+public enum Layout: CaseIterable, Sendable, RawRepresentable {
+    case desk
+    case city
+    case left
+    case right
+    case town
+    case landscape
+
+    public var rawValue: Int32 {
+        switch self {
+        case .desk: return Int32(DUEL_CITY_LAYOUT_DESK)
+        case .city: return Int32(DUEL_CITY_LAYOUT_CITY)
+        case .left: return Int32(DUEL_CITY_LAYOUT_LEFT)
+        case .right: return Int32(DUEL_CITY_LAYOUT_RIGHT)
+        case .town: return Int32(DUEL_CITY_LAYOUT_TOWN)
+        case .landscape: return Int32(DUEL_CITY_LAYOUT_LANDSCAPE)
+        }
+    }
+
+    public init?(rawValue: Int32) {
+        guard let layout = Layout.allCases.first(where: { $0.rawValue == rawValue }) else {
+            return nil
+        }
+        self = layout
+    }
+}
+
+/// The DUEL_CITY_ABI this file was written against. A library built from
+/// another revision is refused when a City is made.
+public let expectedCityABI = 7
+
+public struct CityABIMismatch: Error, CustomStringConvertible {
+    public let found: Int
+
+    public var description: String {
+        "the city library speaks ABI \(found), CityKit expects \(expectedCityABI); "
+            + "rebuild both from the same revision"
+    }
 }
 
 public struct CityError: Error, CustomStringConvertible {
@@ -30,11 +63,12 @@ public struct CityError: Error, CustomStringConvertible {
     public var description: String {
         let reason: String
         switch code {
-        case -1: reason = "null pointer passed to the renderer"
-        case -2: reason = "scale outside 1..16"
-        case -3: reason = "pixel buffer shorter than the geometry"
-        case -4: reason = "an input field is outside its enum or bit width"
-        case -5: reason = "layout outside desk/city/left/right/town/landscape"
+        case Int32(DUEL_CITY_ERR_ARG): reason = "null pointer passed to the renderer"
+        case Int32(DUEL_CITY_ERR_SCALE): reason = "scale outside 1..\(DUEL_CITY_MAX_SCALE)"
+        case Int32(DUEL_CITY_ERR_BUFFER): reason = "pixel buffer shorter than the geometry"
+        case Int32(DUEL_CITY_ERR_INPUT): reason = "an input field is outside its enum or bit width"
+        case Int32(DUEL_CITY_ERR_LAYOUT):
+            reason = "layout outside desk/city/left/right/town/landscape"
         default: reason = "renderer returned \(code)"
         }
         return "\(what): \(reason)"
@@ -106,6 +140,7 @@ public final class City {
     private var warmPixels: [UInt8]
 
     public init(seed: UInt8, layout: Layout = .town, tourStop: Int = 0) throws {
+        guard City.abi == expectedCityABI else { throw CityABIMismatch(found: City.abi) }
         self.seed = seed
         self.layout = layout
         let size = try City.geometry(layout)
