@@ -81,7 +81,17 @@ def default_kwin_script() -> Path:
     configured = os.environ.get("CORNE_ARCANE_KWIN_SCRIPT")
     if configured:
         return Path(configured)
-    return Path(__file__).resolve().parents[1] / "kwin" / "contents" / "code" / "main.js"
+    # Installed, this module is PREFIX/lib/corne-arcane-host/arcane_host/daemon.py
+    # and host/Makefile puts the script under PREFIX/share. From a checkout it is
+    # host/arcane_host/daemon.py beside host/kwin. The installed path is also the
+    # one named when neither exists.
+    here = Path(__file__).resolve()
+    installed = here.parents[3] / "share/kwin/scripts/cornearcane/contents/code/main.js"
+    checkout = here.parents[1] / "kwin" / "contents" / "code" / "main.js"
+    for candidate in (installed, checkout):
+        if candidate.is_file():
+            return candidate
+    return installed
 
 
 def _run_dry(heartbeat: HidHeartbeat, once: bool) -> int:

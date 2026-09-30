@@ -59,6 +59,9 @@ jobs:
           grep -qx 'ExecStart=/usr/bin/corne-arcane-host' "$unit"
           grep -q '"/usr/bin/corne-arcane-browser-bridge"' "$manifest"
           grep -q 'TAG+="uaccess"' "$rule"
+          # The daemon finds the KWin bridge at PREFIX/share relative to its
+          # own install; tests/test_daemon.py checks the lookup, this the file.
+          test -f "$stage/usr/share/kwin/scripts/cornearcane/contents/code/main.js"
           # Assets another program finds by globbing a search path belong in
           # lib/, never share/. Debian and NixOS use the same directories.
           test ! -e "$stage/usr/share/systemd"

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from arcane_host.adapters import SemanticAdapters
+from arcane_host.daemon import default_kwin_script
 from arcane_host.dbus_contract import (
     EVENTS_INTERFACE,
     INJECT_SYNTHETIC,
@@ -368,6 +372,51 @@ class KWinRestartTests(unittest.TestCase):
             starts = [call for call in connection.calls if call[3] == "run"]
             self.assertEqual(len(loads), 2)
             self.assertEqual(len(starts), 2)
+
+
+class KWinDefaultPathTests(unittest.TestCase):
+    HOST = Path(__file__).resolve().parents[1]
+
+    @unittest.skipUnless(shutil.which("make"), "make is not installed")
+    def test_kwin_default_path_installed(self) -> None:
+        """The staged daemon's own default must name the script make install placed."""
+        with tempfile.TemporaryDirectory() as stage:
+            subprocess.run(
+                ("make", "-s", "-C", str(self.HOST), "install", f"DESTDIR={stage}", "PREFIX=/usr"),
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            libdir = Path(stage) / "usr" / "lib" / "corne-arcane-host"
+            env = {k: v for k, v in os.environ.items() if k != "CORNE_ARCANE_KWIN_SCRIPT"}
+            env["PYTHONPATH"] = str(libdir)
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            resolved = subprocess.run(
+                (
+                    sys.executable,
+                    "-c",
+                    "from arcane_host.daemon import default_kwin_script; "
+                    "print(default_kwin_script())",
+                ),
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=stage,
+            ).stdout.strip()
+            installed = Path(stage) / "usr/share/kwin/scripts/cornearcane/contents/code/main.js"
+            self.assertTrue(installed.is_file())
+            self.assertEqual(Path(resolved), installed)
+
+    def test_source_checkout_uses_its_own_script(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CORNE_ARCANE_KWIN_SCRIPT", None)
+            self.assertEqual(
+                default_kwin_script(), self.HOST / "kwin" / "contents" / "code" / "main.js"
+            )
+
+    def test_environment_override_wins(self) -> None:
+        with patch.dict(os.environ, {"CORNE_ARCANE_KWIN_SCRIPT": "/elsewhere/main.js"}):
+            self.assertEqual(default_kwin_script(), Path("/elsewhere/main.js"))
 
 
 if __name__ == "__main__":
