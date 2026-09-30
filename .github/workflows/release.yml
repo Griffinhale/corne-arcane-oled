@@ -45,6 +45,18 @@ jobs:
               -r "$RUNNER_TEMP/vial-qmk/requirements.txt"
           echo "$RUNNER_TEMP/qmk-venv/bin" >> "$GITHUB_PATH"
 
+      # qmk_install.sh brings whatever arm-none-eabi-gcc the distribution
+      # ships, and budget figures move by hundreds of bytes between compilers.
+      # Put the toolchain pinned in scripts/budget.env first on PATH.
+      - name: Install the pinned ARM toolchain
+        run: |
+          . scripts/budget.env
+          curl -fsSL -o "$RUNNER_TEMP/arm-gcc.tar.xz" "$ARM_GCC_URL"
+          echo "$ARM_GCC_SHA256  $RUNNER_TEMP/arm-gcc.tar.xz" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/arm-gcc"
+          tar -xJf "$RUNNER_TEMP/arm-gcc.tar.xz" -C "$RUNNER_TEMP/arm-gcc" --strip-components=1
+          echo "$RUNNER_TEMP/arm-gcc/bin" >> "$GITHUB_PATH"
+
       - name: Confirm the toolchain answers
         run: |
           qmk --version
@@ -54,6 +66,11 @@ jobs:
         env:
           QMK_ROOT: ${{ runner.temp }}/vial-qmk
         run: make release-build
+
+      # The same gate the scheduled firmware workflow runs, against the same
+      # pinned compiler: nothing ships that the budget would refuse.
+      - name: Enforce resource budgets
+        run: make release-budget
 
       # Only the release image ships. The build also produces a diagnostic
       # image, which does not belong in a download that a stranger will drag
