@@ -62,6 +62,8 @@ install-lib:
 	install -d "$(DESTDIR)$(LIBDIR)"
 	cp -r arcane_host "$(DESTDIR)$(LIBDIR)/"
 	find "$(DESTDIR)$(LIBDIR)" -name '__pycache__' -type d -prune -exec rm -rf {} +
+	# cp -r keeps the checkout's modes, which a umask-077 clone makes private.
+	find "$(DESTDIR)$(LIBDIR)" -type d -exec chmod 0755 {} +
 	find "$(DESTDIR)$(LIBDIR)" -type f -name '*.py' -exec chmod 0644 {} +
 	@if [ -f "$(CITY_LIB)" ]; then \
 		install -m 0755 "$(CITY_LIB)" "$(DESTDIR)$(LIBDIR)/arcane_host/libcornearcane.so"; \
@@ -112,6 +114,7 @@ install-assets:
 	chmod 0644 "$(DESTDIR)$(MOZILLADIR)/io.github.griffinhale.corne_arcane.json"
 	install -d "$(DESTDIR)$(DATADIR)/kwin/scripts/cornearcane"
 	cp -r kwin/contents kwin/metadata.json "$(DESTDIR)$(DATADIR)/kwin/scripts/cornearcane/"
+	chmod -R u=rwX,go=rX "$(DESTDIR)$(DATADIR)/kwin/scripts/cornearcane"
 	install -d "$(DESTDIR)$(DATADIR)/gnome-shell/extensions/$(GNOME_UUID)"
 	install -m 0644 gnome/metadata.json gnome/extension.js \
 		"$(DESTDIR)$(DATADIR)/gnome-shell/extensions/$(GNOME_UUID)/"

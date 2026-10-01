@@ -93,5 +93,33 @@ class AutostartEntryTests(unittest.TestCase):
                 self.assertFalse(installed.exists())
 
 
+class InstallPermissionTests(unittest.TestCase):
+    """A checkout cloned under umask 077 (or kept 0770) still installs world-readable."""
+
+    @unittest.skipUnless(shutil.which("make"), "make is not installed")
+    def test_private_checkout_installs_readable(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "host"
+            shutil.copytree(
+                HOST, source, ignore=shutil.ignore_patterns("tests", "__pycache__", "*.so")
+            )
+            for path in (source, *source.rglob("*")):
+                path.chmod(0o700 if path.is_dir() else 0o600)
+            stage = Path(directory) / "stage"
+            subprocess.run(
+                ("make", "-s", "-C", str(source), "install", f"DESTDIR={stage}", "PREFIX=/usr"),
+                check=True,
+                capture_output=True,
+            )
+            for path in (stage / "usr").rglob("*"):
+                mode = path.stat().st_mode & 0o777
+                name = path.relative_to(stage)
+                if path.is_dir():
+                    self.assertEqual(mode, 0o755, f"{name} is {mode:o}")
+                else:
+                    self.assertEqual(mode & 0o644, 0o644, f"{name} is {mode:o}")
+                    self.assertFalse(mode & 0o022, f"{name} is {mode:o}")
+
+
 if __name__ == "__main__":
     unittest.main()
