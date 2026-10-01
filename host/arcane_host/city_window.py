@@ -33,6 +33,7 @@ import time
 from typing import Callable
 
 from .app_controls import Controls, ControlsPanel
+from .app_settings import Settings, SettingsWindow
 from .city import CityInput, CityRenderer, Layout, city_input, resting_input
 from .dbus_contract import (
     BUS_NAME,
@@ -337,8 +338,21 @@ def follow_service(
 ) -> None:
     """Draw what the service reports, its link state, and the controls under it."""
     controls = controls or Controls(view)
+    settings = Settings(controls)
+    settings_window: SettingsWindow | None = None
+
+    def open_settings() -> None:
+        nonlocal settings_window
+        if settings_window is None or settings_window.closed:
+            settings_window = SettingsWindow(window.tk, window.root, settings)
+
     panel = ControlsPanel(
-        window.tk, window.root, controls, background=window.renderer.backdrop, ink=CAPTION_INK
+        window.tk,
+        window.root,
+        controls,
+        background=window.renderer.backdrop,
+        ink=CAPTION_INK,
+        on_settings=open_settings,
     )
     window.attach(panel)
 
@@ -346,6 +360,8 @@ def follow_service(
         view.pump()
         window.set_caption(view.caption())
         panel.refresh()
+        if settings_window is not None:
+            settings_window.refresh()
         return view.city(window.seed)
 
     try:

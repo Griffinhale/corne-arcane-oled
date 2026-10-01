@@ -128,6 +128,8 @@ class Controls:
         self.pending = False
         self.vial: _Child | None = None
         self.observation: _Child | None = None
+        # A keymap save or load started from the settings window (app_settings).
+        self.keymap: _Child | None = None
         self.observe_until = 0.0
         self.locked_by: str | None = None
         self._lock_checked = -math.inf
@@ -174,6 +176,7 @@ class Controls:
             and self.other_owner is None
             and self.vial is None
             and self.observation is None
+            and self.keymap is None
         )
 
     def remaining(self) -> int | None:
@@ -275,7 +278,7 @@ class Controls:
         if now - self._lock_checked >= LOCK_POLL_SECONDS:
             self._lock_checked = now
             self.locked_by = lock_holder(self.lock)
-            if self.vial is not None or self.observation is not None:
+            if any(child is not None for child in (self.vial, self.observation, self.keymap)):
                 # Our own children hold it; that is not someone else.
                 self.locked_by = None
         if self.vial is not None:
@@ -312,7 +315,8 @@ class Controls:
         return self.observation.error() or f"Diagnostics exited {code}"
 
     def close(self) -> None:
-        """Stop an observation (its guard restores the service); leave Vial open."""
+        """Stop an observation (its guard restores the service). Leave Vial open,
+        and let a keymap write finish rather than cut it off halfway."""
         if self.observation is not None:
             self.observation.process.terminate()
             try:
@@ -322,15 +326,26 @@ class Controls:
                 self.observation.process.wait()
             self.observation.close()
             self.observation = None
-        if self.vial is not None:
-            self.vial.close()
-            self.vial = None
+        for name in ("vial", "keymap"):
+            child = getattr(self, name)
+            if child is not None:
+                child.close()
+                setattr(self, name, None)
 
 
 class ControlsPanel:
     """The Tk row under the city: buttons, an observation length, a message."""
 
-    def __init__(self, tk, master, controls: Controls, *, background: str, ink: str) -> None:
+    def __init__(
+        self,
+        tk,
+        master,
+        controls: Controls,
+        *,
+        background: str,
+        ink: str,
+        on_settings: Callable[[], None] | None = None,
+    ) -> None:
         self.controls = controls
         self.frame = tk.Frame(master, background=background)
         self.pause_button = tk.Button(self.frame, text="Pause keyboard", command=self._toggle)
@@ -345,7 +360,12 @@ class ControlsPanel:
         self.message = tk.Label(
             master, text="", background=background, foreground=ink, wraplength=360
         )
-        for widget in (self.pause_button, self.vial_button, self.observe_button, self.minutes_box):
+        widgets = [self.pause_button, self.vial_button, self.observe_button, self.minutes_box]
+        self.settings_button = None
+        if on_settings is not None:
+            self.settings_button = tk.Button(self.frame, text="Settings", command=on_settings)
+            widgets.append(self.settings_button)
+        for widget in widgets:
             widget.pack(side="left", padx=3)
 
     def pack(self) -> None:
