@@ -58,8 +58,13 @@ It is present by default on desktop installs and absent on minimal ones.
 To install without building a package, run this from the repository root:
 
 ```bash
+make city-lib
 sudo make -C host install PREFIX=/usr
 ```
+
+`make city-lib` builds the city app's native library, which the install puts
+beside the Python code. Skip it and every command but `corne-arcane` still
+works; the install warns that the app will not start.
 
 It places the same layout directly. Keep `PREFIX=/usr`: the default,
 `/usr/local`, puts the Firefox native-messaging manifest and the udev rule
@@ -233,15 +238,16 @@ drawing layers and autonomous world, compiled natively over the simulation the
 firmware also compiles. None of it is flashed. QMK compiles the explicit list
 in `firmware/rules.mk`, the dependency runs one way only (`desktop` reads
 `firmware/sim`, never the reverse), and `make hygiene` fails if either stops
-being true, so the desktop costs the firmware image nothing. It is not packaged
-yet, so the window runs from a checkout:
+being true, so the desktop costs the firmware image nothing. The packages build
+it and install it as `corne-arcane`, with a menu entry:
 
 ```bash
-make city-lib                                  # from the repository root
-cd host
-python3 -m arcane_host.city_window --tour      # no daemon, no bus, no keyboard
-python3 -m arcane_host.city_window             # follow the live daemon
+corne-arcane            # follow the running service
+corne-arcane --tour     # walk the districts: no service, no bus, no keyboard
 ```
+
+From a checkout, run `make city-lib` at the repository root, then
+`python3 -m arcane_host.city_window` in `host/`.
 
 By default the window is one continuous scene. The three columns between the
 two towers are world the panels cannot show -- the battlefield axis crosses
@@ -273,18 +279,38 @@ the sky phase decides the hour, the civic clock paces the residents crossing
 the plaza, and a spell in flight is the same spell, arcing out over the roofs
 instead of across a desk. It shares the world, not the pixels.
 
-The live mode is the daemon: it builds the same semantic stack in the same
-process, so nothing new consumes the shared Raw HID interface. It also claims
-the same bus name, so stop `corne-arcane-host.service` first or focus reporting
-will go to the running service instead. Arguments the window does not recognise
-are handed to the daemon unchanged, so `--scale 5 --verbose` works.
+The app is a client of `corne-arcane-host.service`, never a second daemon. It
+reads the service's Control interface (below) for the world the keyboard is
+being sent and for the keyboard link, which it names under the image:
+connected, no keyboard found, lent to Vial, and so on. It never opens the
+keyboard. With the service stopped, the city is drawn offline and the line
+says the service is not running.
 
 Set `CORNE_ARCANE_CITY_LIB` to load the shared library from somewhere else.
+
+### Control interface
+
+The service exports `io.github.Griffinhale.CorneArcane.Control` at
+`/io/github/Griffinhale/CorneArcane` on the session bus:
+
+- `Status() -> (link, device, paused, owner)`. `link` is one of `starting`,
+  `connected`, `absent`, `denied`, `several`, `failed` or `paused`.
+- `Pause(owner)` closes the keyboard so another tool can open it, and
+  `Resume()` takes it back. A pause belongs to the caller's bus connection and
+  ends when that connection closes. So a one-off `gdbus call ... Pause` gives
+  the keyboard back as soon as `gdbus` exits; hold a pause from a running
+  client. A second `Pause` fails with `Control.Busy`.
+- `World() -> (yyyyyyyy)`: the eight bytes the keyboard is being sent (scene,
+  notification count, category, priority, age, persistent, civic, secondary).
+  They are small integers only; no title, path or message text exists at this
+  level.
+- Signals `StatusChanged` and `WorldChanged` carry the same values when they
+  change.
 
 ## Tasks
 
 - Run host tests: `./run_tests.sh`
-- Show the city with no keyboard: `python -m arcane_host.city_window --tour`
+- Show the city with no keyboard: `corne-arcane --tour`
 - Exercise one offline exchange: `python -m arcane_host.daemon --dry-run --once --session 1`
 - Check the Debian layout: `make install DESTDIR=/tmp/stage PREFIX=/usr`
 - Watch live metrics from the keyboard: `corne-arcane-diagnostics --observe 300 --json`

@@ -78,6 +78,9 @@ property unpacking, reconnects, and fail-soft integration. `runtime.py` owns
 GLib deadlines, wake coalescing, polling, semantic revision detection,
 heartbeat dispatch, and deterministic cleanup. `daemon.py` only constructs
 dependencies, acquires the bus, and starts the runtime.
+The desktop city app (`city_window.py`, installed as `corne-arcane`) is a client
+of the running service: it reads the Control interface's link status and the
+world bytes the heartbeat carries, and never opens the keyboard.
 
 Every Raw HID write is a request/response exchange. A valid VIA echo must arrive
 before the next heartbeat is scheduled. A timeout, mismatch, short read, or

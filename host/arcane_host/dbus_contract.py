@@ -72,6 +72,14 @@ STATUS_SIGNATURE = "(ssbs)"
 CONTROL_BUSY = f"{CONTROL_INTERFACE}.Busy"
 CONTROL_LINKS = ("starting", "connected", "absent", "denied", "several", "failed", "paused")
 OWNER_LABEL_MAX = 80
+# World is the eight bytes every heartbeat already carries to the keyboard, so
+# a desktop view draws the city the keyboard shows without a daemon of its own:
+# scene, notification count, category, priority, age, persistent, civic and
+# secondary. Integer enums only; no title, path or notification text exists at
+# this level. WorldChanged fires when the resolved state changes.
+WORLD = "World"
+WORLD_CHANGED = "WorldChanged"
+WORLD_SIGNATURE = "(yyyyyyyy)"
 
 CONTROL_XML = f"""
 <node>
@@ -86,11 +94,31 @@ CONTROL_XML = f"""
       <arg type='s' name='owner' direction='in'/>
     </method>
     <method name='{RESUME}'/>
+    <method name='{WORLD}'>
+      <arg type='y' name='scene' direction='out'/>
+      <arg type='y' name='notifCount' direction='out'/>
+      <arg type='y' name='category' direction='out'/>
+      <arg type='y' name='priority' direction='out'/>
+      <arg type='y' name='age' direction='out'/>
+      <arg type='y' name='persistent' direction='out'/>
+      <arg type='y' name='civic' direction='out'/>
+      <arg type='y' name='secondary' direction='out'/>
+    </method>
     <signal name='{STATUS_CHANGED}'>
       <arg type='s' name='link'/>
       <arg type='s' name='device'/>
       <arg type='b' name='paused'/>
       <arg type='s' name='owner'/>
+    </signal>
+    <signal name='{WORLD_CHANGED}'>
+      <arg type='y' name='scene'/>
+      <arg type='y' name='notifCount'/>
+      <arg type='y' name='category'/>
+      <arg type='y' name='priority'/>
+      <arg type='y' name='age'/>
+      <arg type='y' name='persistent'/>
+      <arg type='y' name='civic'/>
+      <arg type='y' name='secondary'/>
     </signal>
   </interface>
 </node>

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import ctypes
 import io
 import os
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -20,6 +25,7 @@ from arcane_host.city import (
     city_input,
     resting_input,
 )
+from arcane_host.dbus_contract import BUS_NAME, CONTROL_INTERFACE, OBJECT_PATH, PAUSE
 from arcane_host.protocol import (
     Category,
     CivicState,
@@ -32,6 +38,7 @@ from arcane_host.protocol import (
     Secondary,
 )
 from arcane_host.semantic import SemanticState
+from test_dbus_control import HOST_DIR, EchoKeyboard, Gio, GLib, holds, wait_until
 
 
 def library_available() -> bool:
@@ -201,6 +208,12 @@ class FakeWidget:
     def place(self, **kwargs) -> None:
         self.placed = kwargs
 
+    def cget(self, name):
+        return self.kwargs.get(name)
+
+    def configure(self, **kwargs) -> None:
+        self.kwargs.update(kwargs)
+
 
 class FakeRoot(FakeWidget):
     def __init__(self, *args, **kwargs) -> None:
@@ -262,6 +275,7 @@ class FakeRenderer:
         self.worlds = []
         self.backdrop = "#123456"
         self.fps = 25
+        self.width = 201
 
     def tour_stop(self, index, seed=0) -> CityInput:
         return CityInput(scene=index % 4, seed=seed)
@@ -274,39 +288,6 @@ class FakeRenderer:
     def render(self, packed, elapsed_ms, frame, ambient=None) -> bytes:
         self.calls.append((packed.civic, elapsed_ms, frame, ambient))
         return b"pixels"
-
-
-class FakeGLib:
-    def __init__(self) -> None:
-        self.added = []
-        self.removed = []
-        self.next_id = 1
-
-    def timeout_add(self, delay, callback) -> int:
-        self.added.append((delay, callback))
-        self.next_id += 1
-        return self.next_id - 1
-
-    def source_remove(self, source_id) -> None:
-        self.removed.append(source_id)
-
-
-class FakeLoop:
-    def __init__(self) -> None:
-        self.quits = 0
-
-    def quit(self) -> None:
-        self.quits += 1
-
-
-class FakeRuntime:
-    def __init__(self) -> None:
-        self.loop = FakeLoop()
-
-
-class FakeResolver:
-    def __init__(self) -> None:
-        self.state = SemanticState()
 
 
 def build_window(clock=None, **kwargs) -> city_window.CityWindow:
@@ -344,41 +325,6 @@ class CityWindowTests(unittest.TestCase):
         window.draw_state(SemanticState())
         self.assertTrue(window.root.destroyed)
         self.assertEqual(window.renderer.calls, [])
-
-
-class RuntimePresenterTests(unittest.TestCase):
-    def presenter(self, fps=25):
-        glib, runtime, resolver = FakeGLib(), FakeRuntime(), FakeResolver()
-        window = build_window()
-        return city_window.RuntimePresenter(glib, runtime, resolver, window, fps=fps), glib
-
-    def test_redraw_timer_matches_the_requested_cadence(self) -> None:
-        presenter, glib = self.presenter(fps=25)
-        self.assertEqual(glib.added[0][0], 40)
-        self.assertEqual(glib.added[0][1], presenter.tick)
-
-    def test_tick_draws_and_keeps_the_timer(self) -> None:
-        presenter, _ = self.presenter()
-        self.assertTrue(presenter.tick())
-        self.assertEqual(presenter.window.frames, 1)
-
-    def test_tick_stops_once_the_window_is_gone(self) -> None:
-        presenter, _ = self.presenter()
-        presenter.window.close()
-        self.assertFalse(presenter.tick())
-
-    def test_closing_the_window_stops_the_daemon_loop(self) -> None:
-        presenter, _ = self.presenter()
-        presenter.window.root.close_callback()
-        self.assertTrue(presenter.window.closed)
-        self.assertEqual(presenter.runtime.loop.quits, 1)
-
-    def test_close_releases_the_timer(self) -> None:
-        presenter, glib = self.presenter()
-        source_id = glib.added and 1
-        presenter.close()
-        self.assertEqual(glib.removed, [source_id])
-        self.assertTrue(presenter.window.closed)
 
 
 @requires_library
@@ -479,7 +425,7 @@ class LayoutTests(unittest.TestCase):
             city_window.parse_args(["--scale", "4", "--size", "256x256"])
 
     def test_the_default_layout_is_one_continuous_scene(self) -> None:
-        args, _ = city_window.parse_args([])
+        args = city_window.parse_args([])
         self.assertEqual(args.layout, "city")
 
 
@@ -622,8 +568,8 @@ class AmbientWindowTests(unittest.TestCase):
         self.assertEqual(window.renderer.calls[0][3], None)
 
     def test_duels_are_on_by_default_and_can_be_turned_off(self) -> None:
-        self.assertTrue(city_window.parse_args([])[0].duels)
-        self.assertFalse(city_window.parse_args(["--no-duels"])[0].duels)
+        self.assertTrue(city_window.parse_args([]).duels)
+        self.assertFalse(city_window.parse_args(["--no-duels"]).duels)
 
 
 @requires_library
@@ -675,10 +621,11 @@ class AmbientWorldTests(unittest.TestCase):
 
 
 class ArgumentTests(unittest.TestCase):
-    def test_unknown_arguments_are_left_for_the_daemon(self) -> None:
-        args, rest = city_window.parse_args(["--scale", "6", "--verbose", "--device", "/dev/x"])
-        self.assertEqual(args.scale, 6)
-        self.assertEqual(rest, ["--verbose", "--device", "/dev/x"])
+    def test_daemon_arguments_are_refused(self) -> None:
+        # The window runs no daemon, so there is nothing to hand them to.
+        self.assertEqual(city_window.parse_args(["--scale", "6"]).scale, 6)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            city_window.parse_args(["--verbose", "--device", "/dev/x"])
 
     def test_out_of_range_window_options_are_refused(self) -> None:
         for argv in (
@@ -692,15 +639,218 @@ class ArgumentTests(unittest.TestCase):
                 city_window.parse_args(argv)
 
 
-class DaemonPresenterTests(unittest.TestCase):
-    def test_dry_run_refuses_a_presenter_instead_of_ignoring_it(self) -> None:
-        from arcane_host import daemon
+# Follows the service for a second the way the window does, then prints its line.
+FOLLOWER = """
+import time
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+from arcane_host.city_window import ServiceView
+view = ServiceView(Gio, GLib, Gio.bus_get_sync(Gio.BusType.SESSION, None))
+deadline = time.monotonic() + 1.0
+while time.monotonic() < deadline:
+    view.pump()
+    time.sleep(0.02)
+print(view.caption())
+"""
 
-        args = daemon.parse_args(["--dry-run", "--once"])
-        stderr = io.StringIO()
-        with contextlib.redirect_stderr(stderr):
-            self.assertEqual(daemon.run(args, presenter_factory=lambda *_: None), 2)
-        self.assertIn("no main loop", stderr.getvalue())
+
+class CaptionTests(unittest.TestCase):
+    def test_each_link_state_has_words(self) -> None:
+        caption = city_window.link_caption
+        self.assertEqual(caption(None), city_window.NO_SERVICE)
+        self.assertEqual(caption(("connected", "/dev/hidraw3", False, "")), "Keyboard connected")
+        self.assertEqual(caption(("absent", "", False, "")), "No keyboard found")
+        self.assertEqual(
+            caption(("paused", "", True, "Vial (pid 9)")), "Keyboard lent to Vial (pid 9)"
+        )
+        for link in ("starting", "connected", "absent", "denied", "several", "failed"):
+            self.assertNotIn(":", caption((link, "", False, "")), link)
+
+    def test_the_caption_line_is_only_there_when_asked_for(self) -> None:
+        self.assertIsNone(build_window().caption)
+        window = build_window(caption=True)
+        self.assertEqual(window.caption.packed, {"padx": 12, "pady": (0, 8)})
+        window.set_caption("Keyboard connected")
+        self.assertEqual(window.caption.cget("text"), "Keyboard connected")
+        build_window().set_caption("ignored")
+
+
+class NoPrivateDaemonTests(unittest.TestCase):
+    def test_no_private_daemon(self) -> None:
+        """The window module reaches neither the daemon nor the keyboard."""
+        tree = ast.parse(Path(city_window.__file__).read_text())
+        imported = {
+            node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        } | {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        for module in ("daemon", "heartbeat", "hidraw", "runtime", "hid_ownership"):
+            self.assertNotIn(module, imported)
+        self.assertFalse(hasattr(city_window, "RuntimePresenter"))
+
+
+@unittest.skipUnless(
+    Gio is not None and shutil.which("dbus-daemon"), "needs PyGObject and dbus-daemon"
+)
+class ServiceViewTests(unittest.TestCase):
+    """The window's client against a real daemon on a private bus; the keyboard is a pty."""
+
+    def setUp(self) -> None:
+        bus = subprocess.Popen(
+            ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(bus.wait)
+        self.addCleanup(bus.terminate)
+        self.address = bus.stdout.readline().strip()
+        bus.stdout.close()
+        self.keyboard = EchoKeyboard()
+        self.addCleanup(self.keyboard.close)
+        runtime = tempfile.TemporaryDirectory()
+        self.addCleanup(runtime.cleanup)
+        self.env = dict(
+            os.environ,
+            DBUS_SESSION_BUS_ADDRESS=self.address,
+            DBUS_SYSTEM_BUS_ADDRESS=self.address,
+            XDG_RUNTIME_DIR=runtime.name,
+            CORNE_ARCANE_SYSTEMCTL="false",
+            PYTHONDONTWRITEBYTECODE="1",
+        )
+        self.view = city_window.ServiceView(Gio, GLib, self.connect())
+        self.addCleanup(self.view.close)
+        self.daemon = None
+
+    def connect(self):
+        connection = Gio.DBusConnection.new_for_address_sync(
+            self.address,
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT
+            | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
+            None,
+            None,
+        )
+        self.addCleanup(lambda: connection.is_closed() or connection.close_sync(None))
+        return connection
+
+    def start_daemon(self) -> None:
+        self.daemon = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "arcane_host.daemon",
+                "--device",
+                self.keyboard.path,
+                "--no-desktop-notifications",
+            ],
+            cwd=HOST_DIR,
+            env=self.env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self.addCleanup(self.stop_daemon)
+
+    def stop_daemon(self) -> None:
+        if self.daemon is None or self.daemon.poll() is not None:
+            return
+        self.daemon.terminate()
+        try:
+            self.daemon.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self.daemon.kill()
+            self.daemon.wait()
+
+    def settle(self, condition, timeout: float = 10.0) -> bool:
+        def pumped() -> bool:
+            self.view.pump()
+            return condition()
+
+        return wait_until(pumped, timeout)
+
+    def test_link_state_shown(self) -> None:
+        self.view.pump()
+        self.assertEqual(self.view.caption(), city_window.NO_SERVICE)
+        self.assertEqual(self.view.city(0x5A).online, 0)
+
+        self.start_daemon()
+        self.assertTrue(
+            self.settle(
+                lambda: self.view.status is not None and self.view.status[0] == "connected"
+            ),
+            f"never saw the link: {self.view.status}",
+        )
+        self.assertTrue(self.settle(lambda: self.view.world is not None, 2.0))
+        self.assertEqual(self.view.caption(), "Keyboard connected")
+        self.assertEqual((self.view.city(0x5A).online, self.view.city(0x5A).seed), (1, 0x5A))
+
+        # Another client borrows the keyboard: the line says who has it.
+        borrower = self.connect()
+        borrower.call_sync(
+            BUS_NAME,
+            OBJECT_PATH,
+            CONTROL_INTERFACE,
+            PAUSE,
+            GLib.Variant("(s)", ("Vial (pid 1)",)),
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            1000,
+            None,
+        )
+        self.assertTrue(
+            self.settle(lambda: self.view.caption() == "Keyboard lent to Vial (pid 1)", 3.0),
+            self.view.caption(),
+        )
+
+        self.stop_daemon()
+        self.assertTrue(self.settle(lambda: self.view.status is None, 5.0))
+        self.assertEqual(self.view.caption(), city_window.NO_SERVICE)
+        self.assertEqual(self.view.city(0x5A).online, 0)
+
+    def test_following_the_service_starts_no_second_heartbeat(self) -> None:
+        self.start_daemon()
+        self.assertTrue(
+            self.settle(lambda: self.view.status is not None and self.view.status[0] == "connected")
+        )
+        # The window's client, in a process of its own, following the service.
+        client = subprocess.run(
+            [sys.executable, "-c", FOLLOWER],
+            cwd=HOST_DIR,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertEqual(client.stdout.strip(), "Keyboard connected", client.stderr)
+        # Outside this test (which holds both ends of the pty), only the
+        # service has the keyboard open, and it still owns the bus name.
+        holders = {
+            int(entry)
+            for entry in os.listdir("/proc")
+            if entry.isdigit()
+            and int(entry) != os.getpid()
+            and holds(int(entry), self.keyboard.path)
+        }
+        self.assertEqual(holders, {self.daemon.pid})
+        bus = self.connect()
+
+        def ask(method: str, argument: str, reply: str):
+            return bus.call_sync(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                method,
+                GLib.Variant("(s)", (argument,)),
+                GLib.VariantType(reply),
+                Gio.DBusCallFlags.NONE,
+                1000,
+                None,
+            ).unpack()[0]
+
+        owner = ask("GetNameOwner", BUS_NAME, "(s)")
+        self.assertEqual(ask("GetConnectionUnixProcessID", owner, "(u)"), self.daemon.pid)
 
 
 if __name__ == "__main__":

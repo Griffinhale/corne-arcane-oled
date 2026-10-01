@@ -3,12 +3,13 @@
 %:
 	dh $@
 
-# The repository's top-level Makefile builds and runs the firmware simulation
-# suites, which the host package does not ship, so the default build and clean
-# steps are deliberately empty.
+# Only the city app's native library is built; the firmware simulation suites
+# behind the top-level Makefile's default target are not shipped.
 override_dh_auto_build:
+	$(MAKE) city-lib
 
 override_dh_auto_clean:
+	$(MAKE) -C desktop clean
 
 override_dh_auto_test:
 	cd host && ./run_tests.sh

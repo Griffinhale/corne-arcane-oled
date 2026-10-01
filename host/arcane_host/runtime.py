@@ -11,7 +11,7 @@ from .focus import FocusArbiter
 from .heartbeat import HidHeartbeat
 from .policy import NotificationPolicy
 from .protocol import NotificationSummary
-from .semantic import SemanticResolver
+from .semantic import SemanticResolver, world_bytes
 
 
 class DaemonRuntime:
@@ -54,6 +54,7 @@ class DaemonRuntime:
         self.paused_by = ""
         self._status_listeners: list[Callable[[tuple[str, str, bool, str]], None]] = []
         self._last_status: tuple[str, str, bool, str] | None = None
+        self._world_listeners: list[Callable[[tuple[int, ...]], None]] = []
         self._owned: list[Any] = []
         self._closed = False
 
@@ -93,6 +94,13 @@ class DaemonRuntime:
         self._last_status = status
         for listener in tuple(self._status_listeners):
             listener(status)
+
+    def world(self) -> tuple[int, ...]:
+        """The eight payload bytes the keyboard is being sent, as World reports them."""
+        return world_bytes(self.resolver.state)
+
+    def add_world_listener(self, listener: Callable[[tuple[int, ...]], None]) -> None:
+        self._world_listeners.append(listener)
 
     def pause(self, owner: str) -> None:
         """Close the keyboard now and keep it closed until resume()."""
@@ -148,6 +156,9 @@ class DaemonRuntime:
             if self.resolver.state.revision != self.last_revision:
                 self.last_revision = self.resolver.state.revision
                 self.heartbeat.request_notify()
+                world = self.world()
+                for listener in tuple(self._world_listeners):
+                    listener(world)
             sent = False if self.paused else self.heartbeat.tick(now)
             self._publish_status()
             if sent and self.once:

@@ -25,6 +25,25 @@ class SemanticState:
     revision: int = 0
 
 
+def world_bytes(state: SemanticState) -> tuple[int, int, int, int, int, int, int, int]:
+    """The eight payload bytes a heartbeat carries, in payload order.
+
+    The renderer's input and the Control interface's World both start here, so
+    the keyboard, the desktop view and the bus read one packing.
+    """
+    summary = state.summary
+    return (
+        int(state.scene),
+        summary.count,
+        int(summary.category),
+        int(summary.priority),
+        summary.age,
+        1 if summary.persistent else 0,
+        state.civic.civic_byte(),
+        state.civic.secondary_byte(),
+    )
+
+
 class SemanticResolver:
     """Resolve adapter inputs with one explicit scene-precedence policy.
 

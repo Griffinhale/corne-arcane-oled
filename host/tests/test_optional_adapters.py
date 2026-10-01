@@ -202,10 +202,11 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
         would ship a command that fails at import rather than at build time.
         """
         makefile = (ROOT / "Makefile").read_text()
-        entries = dict(re.findall(r"^\t([a-z0-9-]+):([a-z0-9_]+) *\\?$", makefile, re.MULTILINE))
+        entries = dict(re.findall(r"^\t([a-z0-9-]*):([a-z0-9_]+) *\\?$", makefile, re.MULTILINE))
         self.assertEqual(
-            {f"corne-arcane-{suffix}" for suffix in entries},
+            {"corne-arcane" + (f"-{suffix}" if suffix else "") for suffix in entries},
             {
+                "corne-arcane",
                 "corne-arcane-host",
                 "corne-arcane-event",
                 "corne-arcane-diagnostics",

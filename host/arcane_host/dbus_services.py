@@ -30,6 +30,9 @@ from .dbus_contract import (
     STATUS,
     STATUS_CHANGED,
     STATUS_SIGNATURE,
+    WORLD,
+    WORLD_CHANGED,
+    WORLD_SIGNATURE,
     RepositoryState,
 )
 from .focus import FocusArbiter
@@ -193,7 +196,8 @@ def owner_label(text: str) -> str:
 
 
 class ControlService:
-    """Status, Pause and Resume for the keyboard link, without stopping the unit.
+    """Status, Pause and Resume for the keyboard link, without stopping the unit,
+    and World for views that draw what the keyboard is sent.
 
     A pause belongs to the caller's bus connection. If that connection goes
     away -- the client exited, crashed or was killed -- the link resumes by
@@ -211,8 +215,9 @@ class ControlService:
             OBJECT_PATH, info.interfaces[0], self._method_call, None, None
         )
         runtime.add_status_listener(self._emit)
+        runtime.add_world_listener(self._emit_world)
 
-    def _emit(self, status: tuple[str, str, bool, str]) -> None:
+    def _signal(self, name: str, signature: str, value: tuple) -> None:
         if not self.registration_id:
             return
         try:
@@ -220,11 +225,17 @@ class ControlService:
                 None,
                 OBJECT_PATH,
                 CONTROL_INTERFACE,
-                STATUS_CHANGED,
-                self.GLib.Variant(STATUS_SIGNATURE, status),
+                name,
+                self.GLib.Variant(signature, value),
             )
         except Exception as error:
-            print(f"arcane-host: StatusChanged not sent ({type(error).__name__})", file=sys.stderr)
+            print(f"arcane-host: {name} not sent ({type(error).__name__})", file=sys.stderr)
+
+    def _emit(self, status: tuple[str, str, bool, str]) -> None:
+        self._signal(STATUS_CHANGED, STATUS_SIGNATURE, status)
+
+    def _emit_world(self, world: tuple[int, ...]) -> None:
+        self._signal(WORLD_CHANGED, WORLD_SIGNATURE, world)
 
     def _unwatch(self) -> None:
         if self.watch_id:
@@ -259,6 +270,9 @@ class ControlService:
                     self._pauser_vanished,
                 )
             invocation.return_value(None)
+            return
+        if method == WORLD:
+            invocation.return_value(self.GLib.Variant(WORLD_SIGNATURE, self.runtime.world()))
             return
         if method == RESUME:
             self._unwatch()

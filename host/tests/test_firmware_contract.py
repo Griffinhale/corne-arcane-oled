@@ -22,7 +22,7 @@ def code_pattern(snippet: str) -> str:
 
 
 @unittest.skipUnless(
-    (ROOT / "firmware").is_dir(),
+    (ROOT / "firmware" / "rules.mk").is_file(),
     "full-repository firmware contract is outside the host-only package source",
 )
 class UnifiedFirmwareContractTests(unittest.TestCase):

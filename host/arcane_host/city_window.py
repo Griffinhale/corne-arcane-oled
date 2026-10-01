@@ -9,8 +9,13 @@ exactly the access this project refuses, so nothing here reads input.
 
 Two ways to run it:
 
-    corne-arcane-city                 follow the live daemon in this process
-    corne-arcane-city --tour          walk the districts with no daemon at all
+    corne-arcane              follow the running service
+    corne-arcane --tour       walk the districts with no service at all
+
+The window is a client of corne-arcane-host.service, never a second daemon: it
+reads the service's Control interface for the keyboard link and the world the
+keyboard is being sent, and it never opens the keyboard. With no service on
+the bus it shows the city offline and says so under the image.
 
 The default layout is one continuous scene: the space between the two towers
 is world the panels cannot show, so it is drawn unlit rather than as a desk.
@@ -18,11 +23,6 @@ is world the panels cannot show, so it is drawn unlit rather than as a desk.
 `--layout left` or `right` shows a single tower. `town` and `landscape` select
 the renderer's square and wide drawing layers; `--size` fits any of them at a
 whole-pixel scale and letterboxes the remainder.
-
-The live mode *is* the daemon: it builds the same semantic stack and owns the
-same bus name, and the window reads the resolved state the heartbeat already
-drives. Arguments this command does not recognise are handed to the daemon
-unchanged, so `corne-arcane-city --scale 5 --verbose` works as expected.
 """
 
 from __future__ import annotations
@@ -32,8 +32,21 @@ import sys
 import time
 from typing import Callable
 
-from .city import CityInput, CityRenderer, Layout, city_input
+from .city import CityInput, CityRenderer, Layout, city_input, resting_input
+from .dbus_contract import (
+    BUS_NAME,
+    CONTROL_INTERFACE,
+    OBJECT_PATH,
+    STATUS,
+    STATUS_CHANGED,
+    STATUS_SIGNATURE,
+    WORLD,
+    WORLD_CHANGED,
+    WORLD_SIGNATURE,
+)
 from .semantic import SemanticState
+
+CAPTION_INK = "#9aa3b2"
 
 
 class CityWindow:
@@ -47,6 +60,7 @@ class CityWindow:
         size: tuple[int, int] | None = None,
         seed: int = 0,
         duels: bool = True,
+        caption: bool = False,
         title: str = "Corne Arcane",
         renderer: CityRenderer | None = None,
         tk=None,
@@ -56,6 +70,7 @@ class CityWindow:
 
         ``size`` fixes the window and centres the city in it; without it the
         window hugs the image. ``duels`` starts the self-playing world.
+        ``caption`` adds a line of text under the image, for the link state.
         """
         if tk is None:
             import tkinter
@@ -81,11 +96,26 @@ class CityWindow:
         self.label = tk.Label(
             self.root, image=self.photo, background=backdrop, borderwidth=0, highlightthickness=0
         )
+        self.caption = None
+        if caption:
+            # Wrapped at the image's width, so a longer line never widens the
+            # window and slides the city sideways.
+            self.caption = tk.Label(
+                self.root,
+                text="",
+                background=backdrop,
+                foreground=CAPTION_INK,
+                wraplength=renderer.width,
+            )
         if size is None:
             self.label.pack(padx=12, pady=12)
+            if self.caption is not None:
+                self.caption.pack(padx=12, pady=(0, 8))
         else:
             self.root.geometry(f"{size[0]}x{size[1]}")
             self.label.place(relx=0.5, rely=0.5, anchor="center")
+            if self.caption is not None:
+                self.caption.place(relx=0.5, rely=1.0, anchor="s", y=-6)
 
     def bind_close(self, callback: Callable[[], None]) -> None:
         self.root.protocol("WM_DELETE_WINDOW", callback)
@@ -117,6 +147,12 @@ class CityWindow:
     def draw_state(self, state: SemanticState, *, online: bool = True) -> None:
         self.draw(city_input(state, online=online, seed=self.seed))
 
+    def set_caption(self, text: str) -> None:
+        if self.closed or self.caption is None:
+            return
+        if self.caption.cget("text") != text:
+            self.caption.configure(text=text)
+
     def close(self) -> None:
         if self.closed:
             return
@@ -133,50 +169,139 @@ class CityWindow:
             pass
 
 
-class RuntimePresenter:
-    """Drives a CityWindow from the daemon's GLib loop at a fixed cadence.
+# What the link line says, for each Control link state.
+LINK_CAPTIONS = {
+    "starting": "Connecting to the keyboard",
+    "connected": "Keyboard connected",
+    "absent": "No keyboard found",
+    "denied": "Keyboard found, but not allowed to open it",
+    "several": "Several keyboards found; give the service --device",
+    "failed": "Keyboard link failed; retrying",
+}
+NO_SERVICE = "Service not running, so the city is offline"
 
-    The window is a reader, not a source: it samples whatever the resolver has
-    settled on at its own redraw rate, so animation stays smooth while the
-    semantic stack keeps its own event-driven schedule.
+
+def link_caption(status: tuple[str, str, bool, str] | None) -> str:
+    if status is None:
+        return NO_SERVICE
+    link, _device, paused, owner = status
+    if paused:
+        return f"Keyboard lent to {owner}"
+    return LINK_CAPTIONS.get(link, f"Keyboard: {link}")
+
+
+class ServiceView:
+    """What the running service reports: the keyboard link and the world it sends.
+
+    A client, not a daemon. It reads the Control interface and its signals and
+    never opens the keyboard or sends a heartbeat, so the service's heartbeat
+    stays the only one. Until the service answers, and after it goes away,
+    ``status`` and ``world`` are None and the city is drawn offline.
     """
 
-    def __init__(self, GLib, runtime, resolver, window: CityWindow, *, fps: int | None = None):
+    CALL_TIMEOUT_MS = 1000
+
+    def __init__(self, Gio, GLib, connection) -> None:
+        self.Gio = Gio
         self.GLib = GLib
-        self.runtime = runtime
-        self.resolver = resolver
-        self.window = window
-        self.interval_ms = max(1, round(1000 / (fps or window.renderer.fps)))
-        self.source_id = GLib.timeout_add(self.interval_ms, self.tick)
-        window.bind_close(self.quit)
+        self.connection = connection
+        self.status: tuple[str, str, bool, str] | None = None
+        self.world: tuple[int, ...] | None = None
+        self._subscriptions = [
+            connection.signal_subscribe(
+                BUS_NAME,
+                CONTROL_INTERFACE,
+                name,
+                OBJECT_PATH,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                handler,
+            )
+            for name, handler in (
+                (STATUS_CHANGED, self._status_changed),
+                (WORLD_CHANGED, self._world_changed),
+            )
+        ]
+        self._watch_id = Gio.bus_watch_name_on_connection(
+            connection, BUS_NAME, Gio.BusNameWatcherFlags.NONE, self._appeared, self._vanished
+        )
 
-    def tick(self) -> bool:
-        if self.window.closed:
-            self.source_id = 0
-            return False
-        try:
-            # Always online: these semantics are resolved in this process, not
-            # relayed from a keyboard. A machine with no keyboard attached is
-            # the case this window exists for, so an absent device must never
-            # empty the city.
-            self.window.draw_state(self.resolver.state, online=True)
-        except Exception:
-            self.quit()
-            raise
-        return True
+    def _status_changed(self, *args) -> None:
+        self.status = tuple(args[-1].unpack())
 
-    def quit(self) -> None:
-        self.window.close()
-        self.runtime.loop.quit()
+    def _world_changed(self, *args) -> None:
+        self.world = tuple(args[-1].unpack())
+
+    def _appeared(self, _connection, _name, _owner) -> None:
+        self._fetch(STATUS, STATUS_SIGNATURE, "status")
+        self._fetch(WORLD, WORLD_SIGNATURE, "world")
+
+    def _vanished(self, _connection, _name) -> None:
+        self.status = None
+        self.world = None
+
+    def _fetch(self, method: str, signature: str, attribute: str) -> None:
+        def done(connection, result) -> None:
+            try:
+                value = connection.call_finish(result).unpack()
+            except self.GLib.Error:
+                # A service older than World still reports its link; the city
+                # then rests until a WorldChanged arrives.
+                return
+            setattr(self, attribute, tuple(value))
+
+        self.connection.call(
+            BUS_NAME,
+            OBJECT_PATH,
+            CONTROL_INTERFACE,
+            method,
+            None,
+            self.GLib.VariantType(signature),
+            self.Gio.DBusCallFlags.NO_AUTO_START,
+            self.CALL_TIMEOUT_MS,
+            None,
+            done,
+        )
+
+    def pump(self) -> None:
+        """Deliver whatever the bus has sent, without blocking the window."""
+        context = self.GLib.MainContext.default()
+        while context.iteration(False):
+            pass
+
+    def city(self, seed: int) -> CityInput:
+        if self.world is None:
+            return resting_input(online=self.status is not None, seed=seed)
+        return CityInput(*self.world, online=1, seed=seed & 0xFF)
+
+    def caption(self) -> str:
+        return link_caption(self.status)
 
     def close(self) -> None:
-        if self.source_id:
-            try:
-                self.GLib.source_remove(self.source_id)
-            except Exception:
-                pass
-            self.source_id = 0
-        self.window.close()
+        for subscription in self._subscriptions:
+            self.connection.signal_unsubscribe(subscription)
+        self._subscriptions = []
+        if self._watch_id:
+            self.Gio.bus_unwatch_name(self._watch_id)
+            self._watch_id = 0
+
+
+def present(
+    window: CityWindow, next_input: Callable[[], CityInput], *, fps: int | None = None
+) -> None:
+    """Redraw at the simulation's cadence until the window closes."""
+    interval_ms = max(1, round(1000 / (fps or window.renderer.fps)))
+
+    def step() -> None:
+        if window.closed:
+            return
+        window.draw(next_input())
+        if not window.closed:
+            window.schedule(interval_ms, step)
+
+    window.bind_close(window.close)
+    window.schedule(0, step)
+    window.root.mainloop()
 
 
 def run_tour(window: CityWindow, *, fps: int | None = None, dwell: float = 6.0) -> None:
@@ -185,20 +310,23 @@ def run_tour(window: CityWindow, *, fps: int | None = None, dwell: float = 6.0) 
     The stops are the renderer's, so a second shell walks the same tour rather
     than inventing its own and drifting.
     """
-    interval_ms = max(1, round(1000 / (fps or window.renderer.fps)))
     started = window.clock()
+    present(
+        window,
+        lambda: window.renderer.tour_stop(int((window.clock() - started) / dwell), window.seed),
+        fps=fps,
+    )
 
-    def step() -> None:
-        if window.closed:
-            return
-        index = int((window.clock() - started) / dwell)
-        window.draw(window.renderer.tour_stop(index, window.seed))
-        if not window.closed:
-            window.schedule(interval_ms, step)
 
-    window.bind_close(window.close)
-    window.schedule(0, step)
-    window.root.mainloop()
+def follow_service(window: CityWindow, view: ServiceView, *, fps: int | None = None) -> None:
+    """Draw what the service reports, and its link state under the image."""
+
+    def next_input() -> CityInput:
+        view.pump()
+        window.set_caption(view.caption())
+        return view.city(window.seed)
+
+    present(window, next_input, fps=fps)
 
 
 def window_size(value: str) -> tuple[int, int]:
@@ -213,11 +341,8 @@ def window_size(value: str) -> tuple[int, int]:
     return size
 
 
-def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[str]]:
-    parser = argparse.ArgumentParser(
-        description=__doc__.splitlines()[0],
-        epilog="Unrecognised arguments are passed to the daemon.",
-    )
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--layout",
         choices=[layout.name.lower() for layout in Layout],
@@ -251,10 +376,10 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
     parser.add_argument(
         "--tour",
         action="store_true",
-        help="walk the districts without starting a daemon or touching the bus",
+        help="walk the districts without the service or the bus",
     )
     parser.add_argument("--tour-dwell", type=float, default=6.0, metavar="SECONDS")
-    args, rest = parser.parse_known_args(argv)
+    args = parser.parse_args(argv)
     if args.scale is not None and args.size is not None:
         parser.error("--scale and --size are alternatives: --size picks the scale that fits")
     if args.scale is not None and not 1 <= args.scale <= 16:
@@ -263,13 +388,26 @@ def parse_args(argv: list[str] | None = None) -> tuple[argparse.Namespace, list[
         parser.error("--fps must be in 1..60")
     if args.tour_dwell <= 0:
         parser.error("--tour-dwell must be positive")
-    return args, rest
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     from .city import CityError
 
-    args, rest = parse_args(argv)
+    args = parse_args(argv)
+    if not args.tour:
+        try:
+            import gi
+
+            gi.require_version("Gio", "2.0")
+            from gi.repository import Gio, GLib
+        except (ImportError, ValueError) as error:
+            print(
+                f"corne-arcane: PyGObject is needed to follow the service ({error}); "
+                "--tour runs without it",
+                file=sys.stderr,
+            )
+            return 2
     try:
         window = CityWindow(
             scale=args.scale,
@@ -277,24 +415,28 @@ def main(argv: list[str] | None = None) -> int:
             size=args.size,
             seed=args.seed,
             duels=args.duels,
+            caption=not args.tour,
         )
     except CityError as error:
-        print(f"arcane-city: {error}", file=sys.stderr)
+        print(f"corne-arcane: {error}", file=sys.stderr)
         return 2
 
     if args.tour:
         run_tour(window, fps=args.fps, dwell=args.tour_dwell)
         return 0
 
-    from . import daemon
-
-    def presenter_factory(GLib, runtime, resolver):
-        return RuntimePresenter(GLib, runtime, resolver, window, fps=args.fps)
-
+    view = None
     try:
-        return daemon.run(daemon.parse_args(rest), presenter_factory=presenter_factory)
+        view = ServiceView(Gio, GLib, Gio.bus_get_sync(Gio.BusType.SESSION, None))
+        follow_service(window, view, fps=args.fps)
+    except GLib.Error as error:
+        print(f"corne-arcane: no session bus ({error.message})", file=sys.stderr)
+        return 2
     finally:
+        if view is not None:
+            view.close()
         window.close()
+    return 0
 
 
 if __name__ == "__main__":

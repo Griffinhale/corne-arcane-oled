@@ -24,13 +24,17 @@ from arcane_host.dbus_contract import (
     BUS_NAME,
     CONTROL_BUSY,
     CONTROL_INTERFACE,
+    EVENTS_INTERFACE,
+    INJECT_SYNTHETIC,
     OBJECT_PATH,
     PAUSE,
     RESUME,
     STATUS,
     STATUS_CHANGED,
+    WORLD,
+    WORLD_CHANGED,
 )
-from arcane_host.protocol import REPORT_SIZE
+from arcane_host.protocol import REPORT_SIZE, Category, Priority
 
 try:
     import gi
@@ -237,6 +241,43 @@ class ControlTests(unittest.TestCase):
         wait_until(reconnect_signalled, 2.0)
         self.assertIn(("paused", "", True, "test tool?(pid 1)"), signals)
         self.assertEqual(signals[-1], ("connected", self.keyboard.path, False, ""))
+
+    def test_world_follows_the_resolved_state(self) -> None:
+        worlds: list[tuple] = []
+        self.client.signal_subscribe(
+            BUS_NAME,
+            CONTROL_INTERFACE,
+            WORLD_CHANGED,
+            OBJECT_PATH,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            lambda *args: worlds.append(args[-1].unpack()),
+        )
+        resting = self.call(WORLD, reply="(yyyyyyyy)")
+        self.assertEqual(len(resting), 8)
+        self.assertEqual(resting[1], 0, "no notification is waiting yet")
+        self.client.call_sync(
+            BUS_NAME,
+            OBJECT_PATH,
+            EVENTS_INTERFACE,
+            INJECT_SYNTHETIC,
+            GLib.Variant("(yyb)", (int(Category.COMMUNICATION), int(Priority.NORMAL), False)),
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            1000,
+            None,
+        )
+        context = GLib.MainContext.default()
+
+        def signalled() -> bool:
+            while context.iteration(False):
+                pass
+            return bool(worlds)
+
+        self.assertTrue(wait_until(signalled, 2.0), "no WorldChanged")
+        world = self.call(WORLD, reply="(yyyyyyyy)")
+        self.assertEqual(worlds[-1], world)
+        self.assertEqual(world[1:3], (1, int(Category.COMMUNICATION)))
 
     def test_pause_ends_with_the_pausing_connection(self) -> None:
         pauser = self.connect()

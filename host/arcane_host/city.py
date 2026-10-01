@@ -22,7 +22,7 @@ from enum import IntEnum
 from pathlib import Path
 
 from .protocol import CivicState, NotificationSummary, Scene
-from .semantic import SemanticState
+from .semantic import SemanticState, world_bytes
 
 CITY_ABI = 7
 LIBRARY_NAME = "libcornearcane.so"
@@ -140,19 +140,7 @@ def city_input(state: SemanticState, *, online: bool = True, seed: int = 0) -> C
     already packs exactly as ``duel_host.h``; the rest are the payload bytes
     ``build_packet`` writes, in the same order.
     """
-    summary = state.summary
-    return CityInput(
-        scene=int(state.scene),
-        notif_count=summary.count,
-        category=int(summary.category),
-        priority=int(summary.priority),
-        age=summary.age,
-        persistent=1 if summary.persistent else 0,
-        civic=state.civic.civic_byte(),
-        secondary=state.civic.secondary_byte(),
-        online=1 if online else 0,
-        seed=seed & 0xFF,
-    )
+    return CityInput(*world_bytes(state), online=1 if online else 0, seed=seed & 0xFF)
 
 
 def candidate_paths() -> list[Path]:
