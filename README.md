@@ -109,6 +109,7 @@ install the `.deb` from a release, or build it with
 corne-arcane-event browser scroll 1              # send one activity event by hand
 corne-arcane-diagnostics --observe 300 --json    # compare metrics over 5 minutes
 corne-arcane-vial                                # launch Vial for keymap edits
+corne-arcane-flash corne_arcane.uf2              # flash both halves, one after the other
 ```
 
 Vial, diagnostics, and the daemon share one Raw HID endpoint, so
@@ -134,8 +135,11 @@ needs the opt-in `corne-arcane-focus-x11` service.
 
 The keyboard is the product. The simulation under it is plain C11 with no
 allocation, no floats and no time reads, so it also compiles unchanged for
-four other shells. None of them read keystrokes: with no hands at the keys, the
-champions generate their own input from a seed and the city plays itself.
+four other shells. With no hands at the keys, the champions generate their own
+input from a seed and the city plays itself. The desktop window also runs for a
+keyboard without this firmware. There, an opt-in typing helper can send the
+city a coarse summary of your typing once a minute, never the keys themselves
+([`docs/typing-summary.md`](docs/typing-summary.md)).
 
 | Shell | Where | What it is |
 | --- | --- | --- |
