@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import errno
 import io
+import os
+import time
 import unittest
 from contextlib import redirect_stderr
+from pathlib import Path
+from types import SimpleNamespace
 
 from arcane_host.adapters import SemanticAdapters
 from arcane_host.dbus_adapters import DBusAdapterHub
@@ -13,6 +17,7 @@ from arcane_host.policy import NotificationPolicy
 from arcane_host.protocol import Scene
 from arcane_host.runtime import DaemonRuntime
 from arcane_host.semantic import SemanticResolver
+from test_hid_ownership import foreign_opener, release
 
 
 class FakeGLib:
@@ -256,6 +261,134 @@ class AdapterFailureTests(unittest.TestCase):
             ],
         )
         self.assertEqual(adapters.counters.errors, 3)
+
+
+class PtyHeartbeat(FakeHeartbeat):
+    """Connects to a pty path on each tick while disconnected; opens nothing."""
+
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = path
+        self.connects = 0
+        self.next_connect = 0.0
+
+    def tick(self, _now):
+        if self.device is None:
+            self.device = SimpleNamespace(path=self.path)
+            self.connects += 1
+            self.link = "connected"
+        return False
+
+    def close(self):
+        self.closed = True
+        self.device = None
+
+
+class LendTests(unittest.TestCase):
+    """A real child opens a pty that stands in for the keyboard node.
+
+    Real inotify and a real /proc scan, so this is the daemon's check end to
+    end short of D-Bus; the node is a pty, never /dev/hidraw.
+    """
+
+    def setUp(self):
+        FakeGLib.reset()
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        self.path = os.ttyname(slave)
+        self.stderr = io.StringIO()
+        quiet = redirect_stderr(self.stderr)
+        quiet.__enter__()
+        self.addCleanup(quiet.__exit__, None, None, None)
+
+    def runtime(self, lend_check=lambda _node: True):
+        heartbeat = PtyHeartbeat(self.path)
+        resolver = SemanticResolver()
+        policy = NotificationPolicy()
+        runtime = DaemonRuntime(
+            FakeGio,
+            FakeGLib,
+            FakeLoop(),
+            heartbeat,
+            resolver,
+            policy,
+            FocusArbiter(settle_seconds=0),
+            lend_check=lend_check,
+        )
+        runtime.bind_adapters(SemanticAdapters(resolver, policy, runtime.wake))
+        self.addCleanup(runtime.close)
+        return runtime, heartbeat
+
+    def test_lends_on_a_foreign_open_and_takes_it_back(self):
+        runtime, heartbeat = self.runtime()
+        runtime.tick()
+        runtime.tick()
+        self.assertEqual(runtime.status(), ("connected", self.path, False, ""))
+        child = foreign_opener(self.path)
+        try:
+            started = time.monotonic()
+            runtime.tick()
+            self.assertLess(time.monotonic() - started, 1.0)
+            comm = Path(f"/proc/{child.pid}/comm").read_text().strip()
+            self.assertEqual(runtime.status(), ("paused", "", True, f"{comm} (pid {child.pid})"))
+            self.assertIsNone(heartbeat.device, "the keyboard was released")
+            runtime.tick()
+            self.assertTrue(runtime.paused, "held while the opener keeps it open")
+            # Paused, the loop wakes once a second to check that one process.
+            self.assertEqual(FakeGLib.added[-1][:2], ("timeout", 1000))
+        finally:
+            release(child)
+        runtime.tick()
+        self.assertFalse(runtime.paused)
+        runtime.tick()
+        self.assertEqual(heartbeat.connects, 2)
+        self.assertEqual(runtime.status(), ("connected", self.path, False, ""))
+        self.assertIn("keyboard returned", self.stderr.getvalue())
+
+    def test_opener_present_before_connect_is_found(self):
+        child = foreign_opener(self.path)
+        try:
+            runtime, _heartbeat = self.runtime()
+            runtime.tick()
+            self.assertEqual(runtime.lent_to, (child.pid,))
+        finally:
+            release(child)
+
+    def test_unchecked_node_is_never_lent(self):
+        runtime, _heartbeat = self.runtime(lend_check=lambda _node: False)
+        runtime.tick()
+        child = foreign_opener(self.path)
+        try:
+            runtime.tick()
+            self.assertFalse(runtime.paused)
+            self.assertIsNone(runtime.open_watch)
+        finally:
+            release(child)
+
+    def test_unwatchable_node_is_tried_once(self):
+        self.path = "/nonexistent/hidraw9"
+        runtime, _heartbeat = self.runtime()
+        runtime.tick()
+        runtime.tick()
+        self.assertIsNone(runtime.open_watch)
+        self.assertEqual(runtime._unwatchable, Path(self.path))
+        self.assertFalse(runtime.paused)
+
+    def test_control_pause_is_kept_and_the_opener_found_after_it(self):
+        runtime, _heartbeat = self.runtime()
+        runtime.tick()
+        runtime.pause("Vial guard (pid 1)")
+        child = foreign_opener(self.path)
+        try:
+            runtime.tick()
+            self.assertEqual(runtime.status()[3], "Vial guard (pid 1)")
+            self.assertEqual(runtime.lent_to, ())
+            runtime.resume()
+            runtime.tick()
+            self.assertEqual(runtime.lent_to, (child.pid,))
+        finally:
+            release(child)
 
 
 if __name__ == "__main__":

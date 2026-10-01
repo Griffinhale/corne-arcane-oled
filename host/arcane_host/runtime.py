@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 from .adapters import SemanticAdapters
+from .dbus_contract import OWNER_LABEL_MAX
 from .focus import FocusArbiter
 from .heartbeat import HidHeartbeat
+from .hid_ownership import OpenWatch, holds_node, node_openers
 from .policy import NotificationPolicy
 from .protocol import NotificationSummary
 from .semantic import SemanticResolver, world_bytes
@@ -32,6 +36,7 @@ class DaemonRuntime:
         once: bool = False,
         verbose: bool = False,
         clock: Callable[[], float] = time.monotonic,
+        lend_check: Callable[[Path], bool] | None = None,
     ) -> None:
         self.Gio = Gio
         self.GLib = GLib
@@ -57,6 +62,14 @@ class DaemonRuntime:
         self._world_listeners: list[Callable[[tuple[int, ...]], None]] = []
         self._owned: list[Any] = []
         self._closed = False
+        # Lending to a program that opened the keyboard without the guard (Vial
+        # from its own icon). lend_check says which nodes to watch; None is off.
+        self.lend_check = lend_check
+        self.open_watch: OpenWatch | None = None
+        self._checked_device: Any = None
+        self._unwatchable: Path | None = None
+        self.lent_to: tuple[int, ...] = ()
+        self.lent_node: Path | None = None
 
     def bind_adapters(self, adapters: SemanticAdapters) -> None:
         self.adapters = adapters
@@ -115,10 +128,60 @@ class DaemonRuntime:
         if not self.paused:
             return
         self.paused_by = ""
+        self.lent_to = ()
         self.heartbeat.next_connect = 0.0
         print("arcane-host: keyboard returned; reconnecting", file=sys.stderr, flush=True)
         self._publish_status()
         self.wake()
+
+    def _check_openers(self) -> None:
+        """Lend the keyboard to another opener; take it back once all have closed it."""
+        if self.lend_check is None:
+            return
+        if self.lent_to:
+            if self.open_watch is not None:
+                self.open_watch.opened()
+            node = self.lent_node
+            self.lent_to = tuple(pid for pid in self.lent_to if holds_node(pid, node))
+            if not self.lent_to:
+                self.resume()
+            return
+        device = self.heartbeat.device
+        path = getattr(device, "path", None)
+        if self.paused or path is None:
+            return
+        node = Path(os.path.realpath(path))
+        if not self.lend_check(node):
+            return
+        # A new connection is checked once, for a program that opened the node
+        # before we did; after that only an open event triggers the scan.
+        due = device is not self._checked_device
+        self._checked_device = device
+        watched = None if self.open_watch is None else self.open_watch.node
+        if node not in (watched, self._unwatchable):
+            self._close_watch()
+            try:
+                self.open_watch = OpenWatch(node)
+            except OSError as error:
+                # Checked at each new connection only, then.
+                self._unwatchable = node
+                self._debug(f"no open watch on {node} ({error})")
+        if self.open_watch is not None and self.open_watch.opened():
+            due = True
+        if not due:
+            return
+        openers = node_openers(node)
+        if not openers:
+            return
+        self.lent_node = node
+        label = ", ".join(f"{name} (pid {pid})" for pid, name in openers)
+        self.pause(label[:OWNER_LABEL_MAX])
+        self.lent_to = tuple(pid for pid, _name in openers)
+
+    def _close_watch(self) -> None:
+        if self.open_watch is not None:
+            self.open_watch.close()
+            self.open_watch = None
 
     def _deadline_delay_ms(self, now: float) -> int:
         if self.adapters is None:
@@ -160,6 +223,7 @@ class DaemonRuntime:
                 for listener in tuple(self._world_listeners):
                     listener(world)
             sent = False if self.paused else self.heartbeat.tick(now)
+            self._check_openers()
             self._publish_status()
             if sent and self.once:
                 self.loop.quit()
@@ -215,4 +279,5 @@ class DaemonRuntime:
         if self.owner_id:
             self.Gio.bus_unown_name(self.owner_id)
             self.owner_id = 0
+        self._close_watch()
         self.heartbeat.close()

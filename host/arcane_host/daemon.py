@@ -186,6 +186,8 @@ def run(args: argparse.Namespace) -> int:
         focus_override=override is not None,
         once=args.once,
         verbose=args.verbose,
+        # Lend a real keyboard to anything that opens it outside the guard.
+        lend_check=lambda node: str(node).startswith("/dev/hidraw"),
     )
     adapters = SemanticAdapters(
         resolver, policy, runtime.wake, pomodoro_duration=args.pomodoro_duration

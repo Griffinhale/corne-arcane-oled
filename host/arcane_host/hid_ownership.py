@@ -142,13 +142,29 @@ def hidraw_handles(pid: int, proc_root: Path = Path("/proc")) -> tuple[Path, ...
     return tuple(sorted(handles))
 
 
-def hidraw_openers(node: Path, proc_root: Path = Path("/proc")) -> tuple[str, ...]:
-    """Name every other process with node open, as "comm (pid N)".
+def holds_node(pid: int, node: Path, proc_root: Path = Path("/proc")) -> bool:
+    """Whether pid has node open; reads its /proc fd links, never the node."""
+    try:
+        entries = tuple((proc_root / str(pid) / "fd").iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        try:
+            if Path(os.readlink(entry)) == node:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def node_openers(node: Path, proc_root: Path = Path("/proc")) -> tuple[tuple[int, str], ...]:
+    """(pid, comm) of every other process with node open.
 
     Reads /proc/*/fd links only; the device itself is never opened. Processes
-    of other users are unreadable and so are not seen.
+    of other users are unreadable and so are not seen. One pass costs tens of
+    milliseconds on a busy desktop, so callers run it on an event, not a timer.
     """
-    openers: list[str] = []
+    openers: list[tuple[int, str]] = []
     try:
         entries = sorted(proc_root.iterdir())
     except OSError:
@@ -156,14 +172,62 @@ def hidraw_openers(node: Path, proc_root: Path = Path("/proc")) -> tuple[str, ..
     for entry in entries:
         if not entry.name.isdigit() or int(entry.name) == os.getpid():
             continue
-        if node not in hidraw_handles(int(entry.name), proc_root):
+        if not holds_node(int(entry.name), node, proc_root):
             continue
         try:
             name = (entry / "comm").read_text().strip()
         except OSError:
             name = "unknown"
-        openers.append(f"{name} (pid {entry.name})")
+        openers.append((int(entry.name), name))
     return tuple(openers)
+
+
+def hidraw_openers(node: Path, proc_root: Path = Path("/proc")) -> tuple[str, ...]:
+    """Name every other process with node open, as "comm (pid N)"."""
+    return tuple(f"{name} (pid {pid})" for pid, name in node_openers(node, proc_root))
+
+
+IN_OPEN = 0x20
+
+
+class OpenWatch:
+    """Tells when anything opens one node, through inotify, without opening it.
+
+    Costs nothing while the node is idle: opened() is one non-blocking read.
+    Our own opens count too; the caller sorts openers out with node_openers.
+    """
+
+    def __init__(self, node: Path) -> None:
+        import ctypes
+
+        libc = ctypes.CDLL(None, use_errno=True)
+        # IN_NONBLOCK and IN_CLOEXEC have the values of O_NONBLOCK and O_CLOEXEC.
+        fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if fd < 0:
+            raise OSError(ctypes.get_errno(), "inotify_init1 failed")
+        if libc.inotify_add_watch(fd, os.fsencode(node), IN_OPEN) < 0:
+            error = ctypes.get_errno()
+            os.close(fd)
+            raise OSError(error, f"cannot watch {node}")
+        self.node = node
+        self.fd = fd
+
+    def opened(self) -> bool:
+        """Drain pending events; True when the node was opened since the last call."""
+        seen = False
+        while self.fd >= 0:
+            try:
+                if not os.read(self.fd, 4096):
+                    break
+            except OSError:
+                break
+            seen = True
+        return seen
+
+    def close(self) -> None:
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
 
 
 def wait_for_hidraw_release(

@@ -212,6 +212,61 @@ class OpenerScanTests(unittest.TestCase):
             hid_ownership.wait_for_hidraw_release(Path("/dev/hidraw5"), 0.0, root)
 
 
+def foreign_opener(path: str) -> subprocess.Popen:
+    """A child that opens path, says so, and holds it until its stdin closes."""
+    child = subprocess.Popen(
+        (
+            sys.executable,
+            "-c",
+            "import os, sys; fd = os.open(sys.argv[1], os.O_RDWR | os.O_NOCTTY); "
+            "print('open', flush=True); sys.stdin.read()",
+            path,
+        ),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert child.stdout.readline().strip() == "open"
+    return child
+
+
+def release(child: subprocess.Popen) -> None:
+    child.stdin.close()
+    child.wait(timeout=5)
+    child.stdout.close()
+
+
+class OpenWatchTests(unittest.TestCase):
+    """A pty stands in for the keyboard node; nothing under /dev/hidraw is touched."""
+
+    def setUp(self) -> None:
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        self.node = Path(os.ttyname(slave))
+
+    def test_foreign_open_is_seen_and_named(self) -> None:
+        watch = hid_ownership.OpenWatch(self.node)
+        self.addCleanup(watch.close)
+        self.assertFalse(watch.opened())
+        # This process holds the pty itself and is never its own opener.
+        self.assertEqual(hid_ownership.node_openers(self.node), ())
+        child = foreign_opener(str(self.node))
+        try:
+            self.assertTrue(watch.opened())
+            self.assertFalse(watch.opened(), "events are drained")
+            comm = Path(f"/proc/{child.pid}/comm").read_text().strip()
+            self.assertEqual(hid_ownership.node_openers(self.node), ((child.pid, comm),))
+            self.assertTrue(hid_ownership.holds_node(child.pid, self.node))
+        finally:
+            release(child)
+        self.assertFalse(hid_ownership.holds_node(child.pid, self.node))
+
+    def test_unwatchable_node_raises(self) -> None:
+        with self.assertRaises(OSError):
+            hid_ownership.OpenWatch(Path("/nonexistent/hidraw9"))
+
+
 class RemoteErrorTextTests(unittest.TestCase):
     def text(self, message: str) -> str:
         return hid_ownership.remote_error_text(SimpleNamespace(message=message))
