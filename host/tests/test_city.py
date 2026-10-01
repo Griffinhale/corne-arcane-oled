@@ -208,15 +208,17 @@ class CityRendererTests(unittest.TestCase):
                 with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
                     self.render(packed)
 
-    # Today's resting frame in each layout, as the renderer drew it before any
-    # off-keyboard field was drawn. "None" in every field must keep it.
+    # Today's resting frame in each layout with every off-keyboard field at
+    # none. The panels are as the renderer drew them before those fields
+    # existed; the town and landscape moved once, reviewed, when the lit tower
+    # storey stopped being drawn inverted (NF22).
     RESTING_FRAMES = {
         Layout.DESK: "c0dc264113a523f4",
         Layout.CITY: "54aee2b5104b1179",
         Layout.LEFT: "0693730495095ab7",
         Layout.RIGHT: "8cfadb6b7ec969fe",
-        Layout.TOWN: "666e9f33b0d2c18a",
-        Layout.LANDSCAPE: "47a098ae3bd135fe",
+        Layout.TOWN: "68f2b02f5aa97c0a",
+        Layout.LANDSCAPE: "ae88f75233a95e2d",
     }
     # Only the town layers draw the typing summary and the health buckets. The
     # four panel layouts are the keyboard's own two screens, and the keyboard
@@ -230,6 +232,37 @@ class CityRendererTests(unittest.TestCase):
                 resting_input(seed=0x5A), 400_000, 12
             )
             self.assertEqual(digest(frame), pinned, layout)
+
+    # The tower's three storeys at scale 1 in the town layout: the band
+    # between ROOM_X0 and ROOM_X1 in desktop/duel_town_draw.c, and the rows of
+    # the upper neighbour, the tall active storey and the lower neighbour.
+    TOWER_ROOM_X = (112, 145)
+    TOWER_STOREY_ROWS = ((110, 125), (131, 159), (165, 180))
+
+    def storey_ink(self, layout: Layout, packed: CityInput) -> list[float]:
+        renderer = CityRenderer(scale=1, layout=layout)
+        _, _, pixels = renderer.render(packed, 400_000, 12).partition(b"255\n")
+        offset = (renderer.width - 256) // 2
+        x0, x1 = (x + offset for x in self.TOWER_ROOM_X)
+        shares = []
+        for y0, y1 in self.TOWER_STOREY_ROWS:
+            lit = sum(
+                1 for y in range(y0, y1) for x in range(x0, x1) if pixels[y * renderer.width + x]
+            )
+            shares.append(lit / ((y1 - y0) * (x1 - x0)))
+        return shares
+
+    def test_the_active_storey_is_lamplit_not_inverted(self) -> None:
+        # A lit storey is a dark room with its furniture and its own light in
+        # white, like the rest of the town, not a white block. It still holds
+        # more light than either neighbour, on every floor.
+        for layout in self.TYPING_LAYOUTS:
+            for floor in Floor:
+                scene = Scene.FOCUS if floor is Floor.SPECIAL else Scene.DUEL
+                state = SemanticState(scene, NotificationSummary(), CivicState(floor=floor))
+                above, active, below = self.storey_ink(layout, city_input(state, seed=0x5A))
+                self.assertLess(active, 0.5, f"{layout} {floor}")
+                self.assertGreater(active, max(above, below), f"{layout} {floor}")
 
     def test_typing_values_change_the_frame(self) -> None:
         # Every typing value draws in the town layers, each differently from

@@ -663,18 +663,25 @@ static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint8_t spread,
 #define ROOM_CELLAR 5
 
 /*
- * Drawing inside a room, in whichever sense the light is going.
+ * Drawing inside a room, lit or not.
  *
- * A lit room is a bright rectangle with its furniture in silhouette; an unlit
- * one is dark with the same furniture dimly picked out. One set of shapes,
- * two polarities, so a storey does not have to be drawn twice and the two
- * cannot drift apart.
+ * Every room is dark, as the rest of the town is. A lit one has its furniture
+ * drawn solid by its own light; an unlit one has the same furniture dimly
+ * picked out. One set of shapes at two strengths, so a storey does not have
+ * to be drawn twice and the two cannot drift apart. A lit room used to be a
+ * white block with its furniture in silhouette, the one inverted patch in the
+ * picture.
  */
 static void room_px(town_fb_t *fb, int x, int y, bool lit) {
-    if (lit)
-        px(fb, x, y, false);
-    else if (shade_on(x, y, 6))
+    if (lit || shade_on(x, y, 6))
         px(fb, x, y, true);
+}
+
+/* A detail cut back out of furniture already drawn: a hoop on a cask, a
+ * star on a chart. */
+static void room_cut_hline(town_fb_t *fb, int x0, int x1, int y) {
+    for (int x = x0; x <= x1; x++)
+        px(fb, x, y, false);
 }
 
 static void room_hline(town_fb_t *fb, int x0, int x1, int y, bool lit) {
@@ -714,6 +721,71 @@ static void draw_brick_band(town_fb_t *fb, int y) {
         for (int x = TOWER_X0 + 2 + course * 4; x < TOWER_X1; x += 8)
             vline(fb, x, cy + 1, cy + 2);
         shade_rect(fb, TOWER_X0 + 1, cy + 1, TOWER_X1 - 1, cy + 2, 2);
+    }
+}
+
+/* Where each room's own light is: the fire, a candle on the lectern, the
+ * still's burner, the orb, and a lantern in the loft and the cellar. */
+static void room_light(int floor, int x0, int y0, int floor_y, int *lx, int *ly) {
+    switch (floor) {
+        case DUEL_CIVIC_FLOOR_COMMONS:
+            *lx = x0 + 6;
+            *ly = floor_y - 3;
+            break;
+        case DUEL_CIVIC_FLOOR_RESEARCH:
+            *lx = x0 + 24;
+            *ly = floor_y - 10;
+            break;
+        case DUEL_CIVIC_FLOOR_WORKSHOP:
+        case DUEL_CIVIC_FLOOR_SPECIAL:
+            *lx = x0 + 9;
+            *ly = floor_y - 9;
+            break;
+        case ROOM_LOFT:
+            *lx = x0 + 16;
+            *ly = y0 + 6;
+            break;
+        default:
+            *lx = x0 + 16;
+            *ly = floor_y - 6;
+            break;
+    }
+}
+
+/*
+ * The light in a lit room: a flame that flickers a pixel, and rings of dots
+ * round it that thin out as they spread, so the light reads as radiating
+ * rather than as a lit box. A dot lands only where nothing is lit next to it,
+ * so the light never fills a piece of furniture in.
+ */
+static void draw_room_light(town_fb_t *fb, int floor, int y0, int height, uint32_t frame) {
+    int lx;
+    int ly;
+    room_light(floor, ROOM_X0, y0, y0 + height - 1, &lx, &ly);
+    int flick = (int)((frame >> 3) & 1u);
+    fill_rect(fb, lx - 1, ly - 1 - flick, lx + 1, ly, true);
+    px(fb, lx, ly - 2 - flick, true);
+
+    int reach = (height >= ROOM_LARGE_H ? 16 : 11) + flick;
+    int y1 = y0 + height - 1;
+    for (int ring = 0; ring < 4; ring++) {
+        int radius = 4 + ring * (reach - 4) / 3;
+        int spacing = 2 + ring;
+        int dots = (radius * 6) / spacing;
+        for (int i = 0; i < dots; i++) {
+            uint32_t a = (uint32_t)(i * 256 / dots) + (uint32_t)ring * 9u + (frame >> 4);
+            int x = lx + isin(a + 64u) * radius / 127;
+            int y = ly + isin(a) * radius / 127;
+            if (x < ROOM_X0 || x > ROOM_X1 || y < y0 || y > y1)
+                continue;
+            bool clear = true;
+            for (int ny = -1; ny <= 1 && clear; ny++)
+                for (int nx = -1; nx <= 1 && clear; nx++)
+                    if (town_fb_get(fb, x + nx, y + ny))
+                        clear = false;
+            if (clear)
+                px(fb, x, y, true);
+        }
     }
 }
 
@@ -798,7 +870,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             for (int t = 0; t < 3; t++)
                 room_vline(fb, x0 + 22 + t * 4, y0 + 2, y0 + 4 + t, lit);
             room_rect(fb, x0 + 23, floor_y - 5, x0 + 30, floor_y, lit);
-            room_hline(fb, x0 + 23, x0 + 30, floor_y - 3, !lit);
+            room_cut_hline(fb, x0 + 23, x0 + 30, floor_y - 3);
             if (roomy) {
                 /* A second still, a bellows on the wall, and sacks under the
                  * bench. */
@@ -830,7 +902,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
                 room_rect(fb, x0 + 1, y0 + 2, x0 + 11, y0 + 9, lit);
                 for (int i = 0; i < 5; i++) {
                     uint32_t h = town_hash((uint32_t)i, 3u);
-                    room_px(fb, x0 + 2 + (int)(h % 9u), y0 + 3 + (int)((h >> 5) % 6u), !lit);
+                    px(fb, x0 + 2 + (int)(h % 9u), y0 + 3 + (int)((h >> 5) % 6u), false);
                 }
                 room_vline(fb, x0 + 22, y0 + 1, y0 + 4, lit);
                 room_rect(fb, x0 + 20, y0 + 5, x0 + 24, y0 + 7, lit);
@@ -846,7 +918,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             room_rect(fb, x0 + 6, floor_y - 5, x0 + 12, floor_y, lit);
             room_rect(fb, x0 + 14, floor_y - 3, x0 + 18, floor_y, lit);
             room_rect(fb, x0 + 22, floor_y - 6, x0 + 27, floor_y, lit);
-            room_hline(fb, x0 + 22, x0 + 27, floor_y - 3, !lit);
+            room_cut_hline(fb, x0 + 22, x0 + 27, floor_y - 3);
             break;
         }
         default: {
@@ -1188,9 +1260,9 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
 
         fill_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height, false);
         frame_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height);
-        if (lit)
-            fill_rect(fb, ROOM_X0, y0, ROOM_X1, y0 + height - 1, true);
         draw_room_contents(fb, ROOM_X0, y0, height, slot_floor[slot], lit, frame, r->civic_phase);
+        if (lit)
+            draw_room_light(fb, slot_floor[slot], y0, height, frame);
         /* Mullions, over the top of whatever is behind them. Without them a
          * lit storey is an opening in the wall rather than a window. */
         for (int m = 1; m < 3; m++) {
