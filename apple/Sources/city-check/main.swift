@@ -629,10 +629,13 @@ func runHealthBucketInvariants() {
         ("6h59m asleep", sleep(7 * hour - 60) == .tired),
         ("7h00m asleep", sleep(7 * hour) == .rested),
         ("no sleep recorded", sleep(nil) == .none),
+        (
+            "all missing",
+            HealthBuckets(HealthReading())
+                == HealthBuckets(body: .none, heart: .none, sleep: .none)
+        ),
     ]
-    let empty = HealthBuckets(HealthReading())
     let wrong = cases.filter { !$0.1 }.map(\.0)
-        + (empty == HealthBuckets(body: .none, heart: .none, sleep: .none) ? [] : ["all missing"])
     check("watch_health_buckets", wrong.isEmpty, wrong.joined(separator: ", "))
 }
 
