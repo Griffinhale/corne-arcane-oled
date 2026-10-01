@@ -32,6 +32,7 @@ import sys
 import time
 from typing import Callable
 
+from .app_controls import Controls, ControlsPanel
 from .city import CityInput, CityRenderer, Layout, city_input, resting_input
 from .dbus_contract import (
     BUS_NAME,
@@ -88,6 +89,8 @@ class CityWindow:
         self._after_id = None
 
         backdrop = renderer.backdrop
+        self.tk = tk
+        self.size = size
         self.root = tk.Tk()
         self.root.title(title)
         self.root.configure(background=backdrop)
@@ -146,6 +149,13 @@ class CityWindow:
 
     def draw_state(self, state: SemanticState, *, online: bool = True) -> None:
         self.draw(city_input(state, online=online, seed=self.seed))
+
+    def attach(self, panel) -> None:
+        """Lay out a panel under the image: packed, or placed in a fixed-size window."""
+        if self.size is None:
+            panel.pack()
+        else:
+            panel.place()
 
     def set_caption(self, text: str) -> None:
         if self.closed or self.caption is None:
@@ -318,15 +328,30 @@ def run_tour(window: CityWindow, *, fps: int | None = None, dwell: float = 6.0) 
     )
 
 
-def follow_service(window: CityWindow, view: ServiceView, *, fps: int | None = None) -> None:
-    """Draw what the service reports, and its link state under the image."""
+def follow_service(
+    window: CityWindow,
+    view: ServiceView,
+    *,
+    fps: int | None = None,
+    controls: Controls | None = None,
+) -> None:
+    """Draw what the service reports, its link state, and the controls under it."""
+    controls = controls or Controls(view)
+    panel = ControlsPanel(
+        window.tk, window.root, controls, background=window.renderer.backdrop, ink=CAPTION_INK
+    )
+    window.attach(panel)
 
     def next_input() -> CityInput:
         view.pump()
         window.set_caption(view.caption())
+        panel.refresh()
         return view.city(window.seed)
 
-    present(window, next_input, fps=fps)
+    try:
+        present(window, next_input, fps=fps)
+    finally:
+        controls.close()
 
 
 def window_size(value: str) -> tuple[int, int]:
