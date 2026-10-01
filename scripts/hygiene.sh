@@ -121,4 +121,25 @@ if [ "$changelog" != "$version" ]; then
     exit 1
 fi
 
+# VIAL_QMK_REVISION is the one Vial-QMK pin. The dev shell reads it rather than
+# restating it, so a pin update cannot leave the shell checking an old checkout.
+if [ -f flake.nix ]; then
+    if ! grep -q 'readFile ./VIAL_QMK_REVISION' flake.nix; then
+        echo "FAIL hygiene: flake.nix does not read its Vial-QMK revision from VIAL_QMK_REVISION" >&2
+        exit 1
+    fi
+    pin=$(tr -d '[:space:]' < VIAL_QMK_REVISION)
+    stray=$(grep -Ei 'vial|qmk' flake.nix | grep -Eo '[0-9a-f]{40}' | grep -vx "$pin" || true)
+    if [ -n "$stray" ]; then
+        echo "FAIL hygiene: flake.nix names a revision other than VIAL_QMK_REVISION ($pin)" >&2
+        printf '%s\n' "$stray" >&2
+        exit 1
+    fi
+    if grep -qi 'vial-qmk' flake.lock 2>/dev/null &&
+        ! grep -A8 -i '"vial-qmk"' flake.lock | grep -q "\"rev\": \"$pin\""; then
+        echo "FAIL hygiene: flake.lock locks Vial-QMK at a revision other than VIAL_QMK_REVISION" >&2
+        exit 1
+    fi
+fi
+
 echo "PASS hygiene"

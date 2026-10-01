@@ -20,6 +20,20 @@ make release-budget  # flash, static RAM, hard-stop, and reserve gates
 git diff --check
 ```
 
+With Nix (flakes enabled), one command gives you all of it:
+
+```bash
+nix develop                  # every target below except swift-parity
+nix develop .#apple          # the Swift shell, for make swift-parity
+```
+
+The shell takes the ARM compiler version from `scripts/budget.env` and the
+ruff and clang-format versions from `requirements-dev.txt`, and refuses to
+start if nixpkgs disagrees with them. It does not fetch Vial-QMK, because
+`make release-build` writes into the checkout. Instead it says on entry
+whether `QMK_ROOT` (default `~/src/vial-qmk`) is at `VIAL_QMK_REVISION`, and
+prints the commands to fix it when it is not. CI does not use this shell.
+
 What each target needs before you run it:
 
 | Target | Needs |

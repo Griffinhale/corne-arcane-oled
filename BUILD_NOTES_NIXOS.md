@@ -40,6 +40,12 @@ deployed.
 The expected Vial-QMK checkout is `~/src/vial-qmk`; override it with
 `QMK_ROOT=/path/to/vial-qmk` when running repository scripts.
 
+To work on the repository rather than run it, `nix develop` in the checkout
+gives the pinned ARM compiler, `qmk`, ruff, clang-format and the rest of the
+test and lint tools without touching the system profile. On entry it says
+whether the Vial-QMK checkout is at the pinned revision. See
+[`docs/development.md`](docs/development.md#toolchain-and-builds).
+
 ```bash
 make release-build    # syncs firmware/ into the QMK tree and builds both images
 make release-budget   # checks flash and RAM against the resource ceilings
