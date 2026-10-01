@@ -22,13 +22,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "host"))
 
-from arcane_host.city import CityRenderer, Layout  # noqa: E402
+from arcane_host.city import CityInput, CityRenderer, Layout  # noqa: E402
+from arcane_host.protocol import CivicState, Floor, Intensity, Mode, Secondary  # noqa: E402
 
 MATRIX = json.loads((Path(__file__).parent / "parity_matrix.json").read_text())
 LAYOUTS = MATRIX["layouts"]
 SEEDS = MATRIX["seeds"]
 FRAMES = MATRIX["frames"]
 TICK_MS = MATRIX["tick_ms"]
+SEMANTIC = MATRIX["semantic"]
 DUEL_CITY_ERR_LAYOUT = -5
 
 
@@ -59,6 +61,51 @@ def check_matrix() -> None:
         raise SystemExit(
             f"FAIL parity: the matrix has layouts {LAYOUTS} and the library has {count} layouts"
         )
+
+
+def semantic_input(row: dict) -> CityInput:
+    """A row's input, packed by the daemon's own CivicState rather than by hand."""
+    fields = row["input"]
+    civic = CivicState(
+        Floor(fields["floor"]),
+        Mode(fields["mode"]),
+        Intensity(fields["intensity"]),
+        Secondary(fields["activity"]),
+    )
+    return CityInput(
+        scene=fields["scene"],
+        notif_count=fields["count"],
+        category=fields["category"],
+        priority=fields["priority"],
+        age=fields["age"],
+        persistent=int(fields["persistent"]),
+        civic=civic.civic_byte(),
+        secondary=civic.secondary_byte(),
+        online=int(fields["online"]),
+        seed=row["seed"],
+    )
+
+
+def semantic_lines() -> list[str]:
+    """The semantic rows, in the matrix's line format with the row's name in front."""
+    lines = []
+    for row in SEMANTIC:
+        name, layout, seed = row["name"], row["layout"], row["seed"]
+        renderer = CityRenderer(scale=1, layout=Layout(layout))
+        world = renderer.ambient(seed)
+        city = semantic_input(row)
+        for frame in range(row["frames"]):
+            now = frame * TICK_MS
+            world.advance(now)
+            pixels = renderer.render(city, now, frame, ambient=world).split(b"\n", 3)[3]
+            digest = hashlib.sha256(pixels).hexdigest()
+            lines.append(f"{name} {layout} {seed} {frame} {len(pixels)} {digest}")
+        stats = world.stats
+        lines.append(
+            f"{name} {layout} {seed} stats {stats.ticks} {stats.casts} "
+            f"{stats.impacts} {stats.knockdowns}"
+        )
+    return lines
 
 
 def main() -> int:
@@ -96,6 +143,10 @@ def main() -> int:
 
     (args.out / "native.hashes").write_text("\n".join(lines) + "\n")
     print(f"native: {len(lines)} lines", file=sys.stderr)
+    # Apart from native.hashes, which the WASM leg is diffed against.
+    semantic = semantic_lines()
+    (args.out / "native-semantic.hashes").write_text("\n".join(semantic) + "\n")
+    print(f"native: {len(semantic)} semantic lines", file=sys.stderr)
     return 0
 
 

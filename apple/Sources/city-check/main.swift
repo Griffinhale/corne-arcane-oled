@@ -31,6 +31,54 @@ struct Matrix: Decodable {
     let seeds: [UInt8]
     let frames: UInt32
     let tick_ms: UInt32
+    let semantic: [SemanticRow]
+}
+
+/// One case that sets host semantics instead of starting from a tour stop.
+/// The browser takes no input, so only this leg and the native one run these.
+struct SemanticRow: Decodable {
+    struct Input: Decodable {
+        let scene: UInt8
+        let floor: UInt8
+        let mode: UInt8
+        let intensity: UInt8
+        let activity: UInt8
+        let count: UInt8
+        let category: UInt8
+        let priority: UInt8
+        let age: UInt8
+        let persistent: Bool
+        let online: Bool
+    }
+
+    let name: String
+    let layout: Int32
+    let seed: UInt8
+    let frames: UInt32
+    let input: Input
+
+    /// Through the public enums, so a number the row names and the enum lacks
+    /// fails here rather than reaching the renderer some other way.
+    var semantics: CitySemantics {
+        guard let scene = HostScene(rawValue: input.scene),
+            let floor = CivicFloor(rawValue: input.floor),
+            let mode = CivicMode(rawValue: input.mode),
+            let intensity = CivicIntensity(rawValue: input.intensity),
+            let activity = SecondaryActivity(rawValue: input.activity)
+        else { fail("semantic row \(name) names a value CityKit has no case for") }
+        var notification: NotificationSummary?
+        if input.count > 0 {
+            guard let category = NotificationCategory(rawValue: input.category),
+                let priority = NotificationPriority(rawValue: input.priority)
+            else { fail("semantic row \(name) names a notification CityKit has no case for") }
+            notification = NotificationSummary(
+                count: input.count, category: category, priority: priority, age: input.age,
+                persistent: input.persistent)
+        }
+        return CitySemantics(
+            scene: scene, floor: floor, mode: mode, intensity: intensity, activity: activity,
+            notification: notification, online: input.online)
+    }
 }
 
 /// The repository, found from this file rather than from the working
@@ -88,6 +136,35 @@ func parityLines() -> [String] {
     return lines
 }
 
+/// The semantic rows, in the line format above with the row's name in front.
+func semanticLines() -> [String] {
+    let matrix = loadMatrix()
+    var lines: [String] = []
+    for row in matrix.semantic {
+        guard let which = Layout(rawValue: row.layout),
+            let city = try? City(seed: row.seed, layout: which)
+        else { fail("semantic row \(row.name) would not start") }
+        do { try city.set(row.semantics) } catch {
+            fail("semantic row \(row.name) was refused: \(error)")
+        }
+        for frame in 0..<row.frames {
+            let now = frame * matrix.tick_ms
+            city.advance(to: now)
+            guard let pixels = try? city.render(frame: frame) else {
+                fail("semantic row \(row.name) frame \(frame) would not render")
+            }
+            lines.append(
+                "\(row.name) \(row.layout) \(row.seed) \(frame) \(pixels.count) "
+                    + SHA256.hexDigest(pixels))
+        }
+        let stats = city.stats
+        lines.append(
+            "\(row.name) \(row.layout) \(row.seed) stats \(stats.ticks) \(stats.casts) "
+                + "\(stats.impacts) \(stats.knockdowns)")
+    }
+    return lines
+}
+
 func runParity(outDirectory: String) {
     // A known vector first, so a divergence in the run below is read as a
     // divergence in the renderer rather than in this program's arithmetic.
@@ -107,6 +184,13 @@ func runParity(outDirectory: String) {
             to: out.appendingPathComponent("swift.hashes"), atomically: true, encoding: .utf8)
     } catch { fail("cannot write swift.hashes: \(error)") }
     FileHandle.standardError.write(Data("swift: \(lines.count) lines\n".utf8))
+    let semantic = semanticLines()
+    do {
+        try (semantic.joined(separator: "\n") + "\n").write(
+            to: out.appendingPathComponent("swift-semantic.hashes"), atomically: true,
+            encoding: .utf8)
+    } catch { fail("cannot write swift-semantic.hashes: \(error)") }
+    FileHandle.standardError.write(Data("swift: \(semantic.count) semantic lines\n".utf8))
 }
 
 #if canImport(CoreGraphics) && canImport(ImageIO)
@@ -285,6 +369,132 @@ func check(_ name: String, _ passed: Bool, _ detail: @autoclosure () -> String =
     }
 }
 
+/// A frame of `semantics` in a fresh city, or nil when it would not start,
+/// was refused, or would not render.
+func frame(_ semantics: CitySemantics, layout: Layout = .left) -> [UInt8]? {
+    guard let city = try? City(seed: 0x5A, layout: layout),
+        (try? city.set(semantics)) != nil
+    else { return nil }
+    city.advance(to: 12_000)
+    return try? city.render(frame: 300)
+}
+
+func runSemanticInvariants() {
+    check(
+        "host_enums_match_the_wire",
+        HostScene.allCases.count == duel_city_wire_constant("SCENE_COUNT")
+            && NotificationCategory.allCases.count + 1
+                == duel_city_wire_constant("CATEGORY_COUNT")
+            && NotificationPriority.allCases.count + 1
+                == duel_city_wire_constant("PRIORITY_COUNT")
+    )
+
+    let base = CitySemantics()
+    var variants: [(String, CitySemantics)] = [("default", base)]
+    func vary(_ name: String, _ change: (inout CitySemantics) -> Void) {
+        var semantics = base
+        change(&semantics)
+        variants.append((name, semantics))
+    }
+    for scene in HostScene.allCases { vary("scene \(scene)") { $0.scene = scene } }
+    for floor in CivicFloor.allCases { vary("floor \(floor)") { $0.floor = floor } }
+    for mode in CivicMode.allCases { vary("mode \(mode)") { $0.mode = mode } }
+    for level in CivicIntensity.allCases { vary("intensity \(level)") { $0.intensity = level } }
+    for activity in SecondaryActivity.allCases {
+        vary("activity \(activity)") { $0.activity = activity }
+    }
+    let one = NotificationSummary(count: 1, category: .terminal, priority: .low)
+    for count in UInt8(1)...15 {
+        vary("count \(count)") {
+            $0.notification = NotificationSummary(
+                count: count, category: .other, priority: .normal)
+        }
+    }
+    for category in NotificationCategory.allCases {
+        vary("category \(category)") {
+            $0.notification = NotificationSummary(
+                count: 2, category: category, priority: .normal)
+        }
+    }
+    for priority in NotificationPriority.allCases {
+        vary("priority \(priority)") {
+            $0.notification = NotificationSummary(
+                count: 2, category: .calendar, priority: priority)
+        }
+    }
+    for age in UInt8(0)...7 {
+        vary("age \(age)") {
+            $0.notification = NotificationSummary(
+                count: 1, category: .security, priority: .critical, age: age)
+        }
+    }
+    vary("persistent critical") {
+        $0.notification = NotificationSummary(
+            count: 4, category: .communication, priority: .critical, persistent: true)
+    }
+    vary("offline") { $0.online = false }
+    vary("everything at once") {
+        $0 = CitySemantics(
+            scene: .focus, floor: .special, mode: .urgent, intensity: .busy, activity: .scroll,
+            notification: NotificationSummary(
+                count: 3, category: .communication, priority: .critical, age: 2,
+                persistent: true))
+    }
+    let refused = variants.filter { frame($0.1) == nil }.map(\.0)
+    check(
+        "semantic_input_all_values", refused.isEmpty,
+        "refused or unrendered: \(refused.joined(separator: ", "))")
+    let drifting = variants.filter { frame($0.1) != frame($0.1) }.map(\.0)
+    check(
+        "semantic_input_renders_deterministically", drifting.isEmpty,
+        "two renders differ: \(drifting.joined(separator: ", "))")
+    let floors = Set(
+        CivicFloor.allCases.compactMap { floor -> [UInt8]? in
+            var semantics = base
+            semantics.floor = floor
+            return frame(semantics, layout: .town)
+        })
+    check(
+        "semantic_input_reaches_the_picture", floors.count == CivicFloor.allCases.count,
+        "\(floors.count) distinct frames for \(CivicFloor.allCases.count) floors")
+
+    // Values the enums can carry but the firmware refuses; the C check is the judge.
+    let wrong: [(String, NotificationSummary)] = [
+        (
+            "count 0 with a category",
+            NotificationSummary(count: 0, category: .system, priority: .low)
+        ),
+        ("count 16", NotificationSummary(count: 16, category: .system, priority: .low)),
+        ("age 8", NotificationSummary(count: 1, category: .system, priority: .low, age: 8)),
+        (
+            "persistent below critical",
+            NotificationSummary(
+                count: 1, category: .system, priority: .normal, persistent: true)
+        ),
+    ]
+    guard let city = try? City(seed: 0x5A, layout: .left) else { fail("the city would not start") }
+    try? city.set(CitySemantics(notification: one))
+    city.advance(to: 12_000)
+    let before = try? city.render(frame: 300)
+    var answers: [String] = []
+    for (name, notification) in wrong {
+        do {
+            try city.set(CitySemantics(floor: .workshop, notification: notification))
+            answers.append("\(name): accepted")
+        } catch let error as CityError where error.code == Int32(DUEL_CITY_ERR_INPUT) {
+        } catch {
+            answers.append("\(name): \(error)")
+        }
+    }
+    check(
+        "out_of_range_input_returns_the_c_error", answers.isEmpty,
+        answers.joined(separator: "; "))
+    check(
+        "a_refused_input_keeps_the_last_good_one",
+        before != nil
+            && (try? city.render(frame: 300)) == before)
+}
+
 func runInvariants() {
     check(
         "abi_is_the_one_this_tree_compiles", City.abi == expectedCityABI,
@@ -294,6 +504,7 @@ func runInvariants() {
         Layout.allCases.map(\.rawValue) == Array(0..<Int32(DUEL_CITY_LAYOUT_COUNT)))
     check("cadence_comes_from_the_simulation", City.frameIntervalMs == 40)
     check("the_tour_is_every_civic_floor", City.tourLength == 5)
+    runSemanticInvariants()
 
     let expected: [Layout: (Int, Int)] = [
         .desk: (67, 128), .city: (67, 128), .left: (32, 128), .right: (32, 128),

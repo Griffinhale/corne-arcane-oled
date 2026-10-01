@@ -5,7 +5,9 @@
  * Swift's own C interop in place of an FFI layer. Nothing here samples input:
  * on the keyboard key positions never leave the firmware, a phone has no
  * keyboard to read, and this file offers no way to supply one. The world
- * plays itself, exactly as it does in the browser.
+ * plays itself, exactly as it does in the browser. A caller that knows what
+ * its host is doing can say so with set(_:) (Semantics.swift), in the same
+ * bounded values the daemon sends the keyboard.
  *
  * The library never allocates. A City is three caller-owned structs and a
  * pixel buffer, which is why a widget extension's memory ceiling is not a
@@ -187,6 +189,21 @@ public final class City {
         }
         try check(code, "render")
         return pixels
+    }
+
+    /* Take `candidate` as the input only if the C library accepts it. The
+     * check is a render with no carry-over state and no world, so nothing but
+     * the scratch buffer is touched, and the judge is duel_host_accept, the
+     * keyboard's own: a refused input throws and the last good one stays. */
+    func accept(_ candidate: duel_city_input_t) throws {
+        var candidate = candidate
+        let code = warmPixels.withUnsafeMutableBufferPointer { buffer in
+            duel_city_render(
+                nil, &candidate, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress,
+                buffer.count)
+        }
+        try check(code, "semantics")
+        input = candidate
     }
 
     func renderWarmUp(_ nowMs: UInt32, _ frame: UInt32) throws {

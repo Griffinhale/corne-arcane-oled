@@ -32,6 +32,18 @@ fi
 frames=$(grep -cv ' stats ' "$out/native.hashes")
 echo "PASS parity: $frames frames byte-identical, native and Swift"
 
+# The cases that set host semantics through CityKit's setter. The browser takes
+# no input, so these have no WASM leg; the native side packs them with the
+# daemon's own encoder.
+if ! diff -u "$out/native-semantic.hashes" "$out/swift-semantic.hashes" \
+    > "$out/semantic.diff"; then
+    echo "FAIL parity: native and Swift disagree on the semantic cases; first differences:" >&2
+    head -40 "$out/semantic.diff" >&2
+    exit 1
+fi
+frames=$(grep -cv ' stats ' "$out/native-semantic.hashes")
+echo "PASS parity: $frames semantic frames byte-identical, native and Swift"
+
 # The invariants that are about this shell rather than about the pixels: the
 # first tick at time zero, the run-up a seek has to render, and a day of
 # widget entries generated in one forward pass.
