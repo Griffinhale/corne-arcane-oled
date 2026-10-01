@@ -13,6 +13,7 @@ statement about hashes.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import sys
@@ -28,6 +29,36 @@ LAYOUTS = MATRIX["layouts"]
 SEEDS = MATRIX["seeds"]
 FRAMES = MATRIX["frames"]
 TICK_MS = MATRIX["tick_ms"]
+DUEL_CITY_ERR_LAYOUT = -5
+
+
+def check_matrix() -> None:
+    """Fail unless the matrix covers every layout and ticks at the library's cadence.
+
+    The library is the judge: a new layout or a changed tick must reach the
+    matrix, or the parity run would quietly test less than the product ships.
+    """
+    renderer = CityRenderer(scale=1)
+    if TICK_MS != renderer.frame_interval_ms:
+        raise SystemExit(
+            f"FAIL parity: the matrix says tick_ms {TICK_MS} and the library says "
+            f"{renderer.frame_interval_ms}"
+        )
+    width, height = ctypes.c_int(), ctypes.c_int()
+    # Layouts are 0..n-1; the first one the library refuses is n.
+    geometry = renderer._library.duel_city_geometry
+    count = next(
+        (
+            n
+            for n in range(256)
+            if geometry(n, 1, ctypes.byref(width), ctypes.byref(height)) == DUEL_CITY_ERR_LAYOUT
+        ),
+        None,
+    )
+    if count is None or LAYOUTS != list(range(count)):
+        raise SystemExit(
+            f"FAIL parity: the matrix has layouts {LAYOUTS} and the library has {count} layouts"
+        )
 
 
 def main() -> int:
@@ -35,6 +66,7 @@ def main() -> int:
     parser.add_argument("out", type=Path, help="directory for hashes and raw dumps")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    check_matrix()
 
     lines = []
     for layout in LAYOUTS:
