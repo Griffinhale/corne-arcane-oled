@@ -505,9 +505,8 @@ func runSemanticInvariants() {
             && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
             && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
     )
-    // The town draws every typing value, and the panels, which are the
-    // keyboard's own screens, draw none. Health has no art yet, so it must
-    // render the frame a city without it renders.
+    // The town draws every typing and health value, and the panels, which
+    // are the keyboard's own screens, draw none of them.
     let plain = frame(base, layout: .town)
     let typed = variants.filter {
         $0.1.tempo != .none || $0.1.spread != .none || $0.1.row != .none
@@ -522,10 +521,12 @@ func runSemanticInvariants() {
     let health = variants.filter {
         $0.1.body != .none || $0.1.heart != .none || $0.1.sleep != .none
     }
-    let moved = health.filter { frame($0.1, layout: .town) != plain }.map(\.0)
+    let still = health.filter { frame($0.1, layout: .town) == plain }.map(\.0)
+    let leaked = health.filter { frame($0.1) != frame(base) }.map(\.0)
     check(
-        "health_signals_change_no_frame_yet", plain != nil && moved.isEmpty,
-        "frames moved: \(moved.joined(separator: ", "))")
+        "health_signals_draw", plain != nil && still.isEmpty && leaked.isEmpty,
+        "town unchanged: \(still.joined(separator: ", ")); "
+            + "panel moved: \(leaked.joined(separator: ", "))")
     // One past each signal enum, written into the C struct directly since the
     // Swift enums cannot hold it; the C check refuses it.
     var unchecked: [String] = []

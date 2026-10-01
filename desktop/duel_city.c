@@ -317,7 +317,8 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         town_fb_t town;
         town_fb_clear(&town, plan.width, plan.height);
         town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
-        duel_town_draw(&town, &render, &typing, frame);
+        town_health_t health = {input->body, input->heart, input->sleep};
+        duel_town_draw(&town, &render, &typing, &health, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }

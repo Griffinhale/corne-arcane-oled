@@ -89,8 +89,11 @@ whose zero means none. They pass only from a shell to its renderer; neither
 wire protocol carries them. The town and landscape layouts draw the typing
 four: tempo is the spire's pennant, spread the chimney smoke, top row the
 height of a lit lantern on the tower, and row share how many lanterns hang.
+They also draw the health three as mood, never as a reading: body activity is
+kites over the town, one up per activity ring closed; heart mood is the
+windmill on the hill, furled when still and turning when lively; and last
+night's sleep is who sits on the roof ridge, a cockerel or a sleeping cat.
 The four panel layouts are the keyboard's own screens and draw none of them.
-The health three draw nothing yet.
 
 Every Raw HID write is a request/response exchange. A valid VIA echo must arrive
 before the next heartbeat is scheduled. A timeout, mismatch, short read, or

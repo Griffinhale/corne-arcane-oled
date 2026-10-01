@@ -218,8 +218,9 @@ class CityRendererTests(unittest.TestCase):
         Layout.TOWN: "666e9f33b0d2c18a",
         Layout.LANDSCAPE: "47a098ae3bd135fe",
     }
-    # Only the town layers draw the typing summary. The four panel layouts are
-    # the keyboard's own two screens, and the keyboard never sees it.
+    # Only the town layers draw the typing summary and the health buckets. The
+    # four panel layouts are the keyboard's own two screens, and the keyboard
+    # never sees either.
     TYPING_LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
     TYPING_FIELDS = ("tempo", "spread", "row", "row_spread")
 
@@ -252,21 +253,27 @@ class CityRendererTests(unittest.TestCase):
                     else:
                         self.assertEqual(frame, base, f"{layout} {field}={value}")
 
-    def test_health_fields_still_draw_nothing(self) -> None:
-        # Body, heart and sleep have no art yet (NF20), so every accepted
-        # value renders today's frame byte for byte, in every layout.
+    def test_health_values_change_the_frame(self) -> None:
+        # Body, heart and sleep draw in the town layers too, each value
+        # differently from the others, and nothing in the panels.
         for layout in Layout:
             renderer = CityRenderer(scale=1, layout=layout)
-            base = renderer.render(resting_input(seed=0x5A), 400_000, 12)
+            base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
             for field, kind in OFF_KEYBOARD_FIELDS:
                 if field in self.TYPING_FIELDS:
                     continue
+                frames = {base}
                 for value in kind:
+                    if value == 0:
+                        continue
                     packed = resting_input(seed=0x5A)
                     setattr(packed, field, int(value))
-                    self.assertEqual(
-                        renderer.render(packed, 400_000, 12), base, f"{layout} {field}={value}"
-                    )
+                    frame = digest(renderer.render(packed, 400_000, 12))
+                    if layout in self.TYPING_LAYOUTS:
+                        self.assertNotIn(frame, frames, f"{layout} {field}={value}")
+                        frames.add(frame)
+                    else:
+                        self.assertEqual(frame, base, f"{layout} {field}={value}")
 
     def test_scale_is_bounded(self) -> None:
         with self.assertRaisesRegex(CityError, "scale"):

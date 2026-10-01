@@ -1244,6 +1244,168 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
         hline(fb, TOWER_CX - DOOR_W - 2 - s * 2, TOWER_CX + DOOR_W + 2 + s * 2, GROUND_Y + 1 + s);
 }
 
+/* ---- the health buckets -------------------------------------------------- */
+
+/*
+ * Health is mood, never a reading: nothing here flashes, nothing is drawn as
+ * a warning, and no value looks like a worse version of another. Each bucket
+ * has its own object in the town, clear of the typing art, so that body,
+ * heart and sleep can be told apart at a glance on a watch.
+ */
+
+/* A kite: a solid diamond with its spars left dark, a tail of bows streaming
+ * the way the pennant does, and a margin cleared round it so it reads over
+ * cloud and sun alike. */
+static void draw_kite(town_fb_t *fb, int cx, int cy, int half_w, int half_h, uint32_t frame,
+                      uint32_t salt) {
+    for (int dy = -half_h - 2; dy <= half_h + 2; dy++) {
+        int ady = dy < 0 ? -dy : dy;
+        int span = (half_w + 2) * (half_h + 2 - ady) / (half_h + 2);
+        fill_rect(fb, cx - span, cy + dy, cx + span, cy + dy, false);
+    }
+    for (int dy = -half_h; dy <= half_h; dy++) {
+        int ady = dy < 0 ? -dy : dy;
+        int span = half_w * (half_h - ady) / half_h;
+        hline(fb, cx - span, cx + span, cy + dy);
+    }
+    for (int dy = -half_h + 1; dy < half_h; dy++)
+        px(fb, cx, cy + dy, false);
+    for (int x = cx - half_w + 1; x < cx + half_w; x++)
+        px(fb, x, cy - half_h / 3, false);
+    for (int b = 1; b <= 4; b++) {
+        int bx = cx + b * 2 + isin(frame * 6u + (uint32_t)b * 48u + salt * 70u) * 2 / 127;
+        int by = cy + half_h + b * 4;
+        hline(fb, bx - 1, bx + 1, by);
+        px(fb, bx, by - 1, true);
+        px(fb, bx, by + 1, true);
+    }
+}
+
+/* Body is kites over the town: one up for each activity ring closed, the
+ * first and third flown from the street right of the tower and the second
+ * from the street left of it. The landscape has the width to spread them
+ * further apart. At rest the one kite leans against a wall. */
+static void draw_kites(town_fb_t *fb, uint8_t body, uint32_t frame) {
+    static const struct {
+        int16_t town_x, landscape_x, y, anchor;
+        uint8_t half_w, half_h;
+    } kites[3] = {
+        {186, 252, 58, 216, 6, 9},
+        {64, 146, 106, 30, 5, 8},
+        {204, 312, 100, 216, 4, 6},
+    };
+    if (body == DUEL_CITY_BODY_NONE)
+        return;
+    int flying = (int)body - (int)DUEL_CITY_BODY_RESTING;
+    if (flying == 0) {
+        /* Grounded: stood on its tail against the house right of the tower,
+         * the string wound on its stick at its foot. */
+        int x = TOWN_X(160);
+        draw_kite(fb, x, GROUND_Y - 26, 5, 8, 0u, 3u);
+        fill_rect(fb, x + 5, GROUND_Y - 3, x + 7, GROUND_Y - 1, true);
+        return;
+    }
+    for (int k = 0; k < flying; k++) {
+        int bob = isin((frame << 2) + (uint32_t)k * 85u) * 2 / 127;
+        int x = CANVAS_W == LANDSCAPE_W ? kites[k].landscape_x : kites[k].town_x;
+        int y = kites[k].y + bob;
+        line_step(fb, x, y + kites[k].half_h, TOWN_X(kites[k].anchor), GROUND_Y - 44, 2, k);
+        draw_kite(fb, x, y, kites[k].half_w, kites[k].half_h, frame, (uint32_t)k);
+    }
+}
+
+/* Heart is the windmill on the hill: sails furled to the bare lattice when
+ * the heart is still, cloth out and turning when it is lively. Never a pulse
+ * and never a number. */
+static void draw_windmill(town_fb_t *fb, const duel_render_t *r, uint8_t heart, uint32_t frame) {
+    if (heart == DUEL_CITY_HEART_NONE)
+        return;
+    uint32_t seed = r->seed;
+    int mx = TOWN_X(92);
+    int base = HILL_BASE_Y - 22 - (isin((uint32_t)mx * 3u + seed * 11u + 90u) * 11) / 127 -
+               (isin((uint32_t)mx * 7u + seed) * 4) / 127;
+    int top = base - 20;
+    for (int y = top; y <= base; y++) {
+        int half = 3 + (y - top) * 3 / 20;
+        fill_rect(fb, mx - half, y, mx + half, y, false);
+        px(fb, mx - half, y, true);
+        px(fb, mx + half, y, true);
+    }
+    for (int s = 0; s <= 4; s++)
+        hline(fb, mx - 4 + s, mx + 4 - s, top - s);     /* the cap */
+    frame_rect(fb, mx - 1, base - 6, mx + 1, base - 1); /* the door */
+    int hub_y = top + 1;
+    bool lively = heart == DUEL_CITY_HEART_LIVELY;
+    uint32_t turn = lively ? frame * 5u : 0u;
+    for (uint32_t arm = 0; arm < 4u; arm++) {
+        uint32_t a = 32u + arm * 64u + turn;
+        int cx = isin(a + 64u);
+        int cy = isin(a);
+        int perp_x = -cy * 3 / 127;
+        int perp_y = cx * 3 / 127;
+        for (int t = 2; t <= 14; t++)
+            px(fb, mx + t * cx / 127, hub_y + t * cy / 127, true);
+        if (lively) {
+            /* Cloth on the trailing side, and the sweep it has just made. */
+            for (int t = 5; t <= 14; t++)
+                for (int w = 1; w <= 3; w++)
+                    px(fb, mx + t * cx / 127 + perp_x * w / 3,
+                       hub_y + t * cy / 127 + perp_y * w / 3, true);
+            for (uint32_t s = 8u; s <= 24u; s += 4u) {
+                int sx = isin(a - s + 64u);
+                int sy = isin(a - s);
+                px(fb, mx + 17 * sx / 127, hub_y + 17 * sy / 127, true);
+            }
+        } else {
+            /* Furled: only the lattice, a rung every third pixel and the
+             * hill showing through between them. */
+            for (int t = 5; t <= 14; t++)
+                px(fb, mx + t * cx / 127 + perp_x, hub_y + t * cy / 127 + perp_y, (t % 3) == 2);
+        }
+    }
+    disc(fb, mx, hub_y, 1, true);
+}
+
+/* Sleep is who is on the ridge of the house right of the tower the morning
+ * after: a cockerel up and crowing after a rested night, a cat curled up
+ * asleep after a tired one. */
+static void draw_ridge_sleeper(town_fb_t *fb, uint8_t sleep, uint32_t frame) {
+    if (sleep == DUEL_CITY_SLEEP_NONE)
+        return;
+    int x = TOWN_X(182);
+    int y = GROUND_Y - 33 - 8; /* the ridge of the pitched roof */
+    if (sleep == DUEL_CITY_SLEEP_RESTED) {
+        fill_rect(fb, x - 6, y - 15, x + 6, y - 1, false);
+        fill_rect(fb, x - 3, y - 6, x + 2, y - 3, true); /* the body */
+        for (int t = 0; t < 4; t++)                      /* the tail, arched */
+            vline(fb, x - 4 - t / 2, y - 8 + t, y - 4);
+        px(fb, x - 6, y - 7, true);
+        vline(fb, x + 2, y - 10, y - 6); /* the neck */
+        fill_rect(fb, x + 2, y - 12, x + 3, y - 10, true);
+        px(fb, x + 3, y - 13, true); /* the comb */
+        px(fb, x + 2, y - 14, true);
+        bool crowing = ((frame >> 4) & 1u) == 0u;
+        px(fb, x + 4, y - 11 - (crowing ? 1 : 0), true); /* the beak */
+        vline(fb, x - 1, y - 2, y);
+        vline(fb, x + 1, y - 2, y);
+    } else {
+        /* Curled nose to tail, ears up, the tail wrapped round the front. */
+        static const char *const cat[9] = {
+            "..........X.X..", "..........XXX..", "...XXXXX..XXXX.",
+            "..XXXXXXXXXXXXX", ".XXXXXXXXXX..XX", ".XXXXXXXXXXXXXX",
+            "..XXXXXXXXXXXX.", "XX.............", ".XXXXXXXXXX....",
+        };
+        fill_rect(fb, x - 8, y - 9, x + 8, y + 1, false);
+        for (int row = 0; row < 9; row++)
+            for (int col = 0; cat[row][col]; col++)
+                if (cat[row][col] == 'X')
+                    px(fb, x - 7 + col, y - 8 + row, true);
+        /* Breathing: the back rises a pixel now and then. */
+        if (((frame >> 5) & 1u) == 0u)
+            hline(fb, x - 3, x + 1, y - 7);
+    }
+}
+
 /* ---- the wizard on the balcony ------------------------------------------- */
 
 static void draw_wizard(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
@@ -2061,10 +2223,13 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, uint32_t frame
 }
 
 void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
-                    uint32_t frame) {
+                    const town_health_t *health, uint32_t frame) {
     static const town_typing_t no_typing;
+    static const town_health_t no_health;
     if (!typing)
         typing = &no_typing;
+    if (!health)
+        health = &no_health;
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
     uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
 
@@ -2073,8 +2238,11 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_clouds(fb, r, phase, frame);
     draw_birds(fb, r, phase, frame);
     draw_hills(fb, r);
+    draw_windmill(fb, r, health->heart, frame);
     draw_far_row(fb);
     draw_near_row(fb, r, typing->spread, frame);
+    draw_ridge_sleeper(fb, health->sleep, frame);
+    draw_kites(fb, health->body, frame);
     draw_residue(fb, r, frame);
     draw_tower(fb, r, typing, frame);
     draw_lanterns(fb, typing);
