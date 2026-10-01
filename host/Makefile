@@ -22,6 +22,10 @@ DATADIR    = $(PREFIX)/share
 UNITDIR    = $(PREFIX)/lib/systemd/user
 MOZILLADIR = $(PREFIX)/lib/mozilla/native-messaging-hosts
 UDEVDIR    = $(PREFIX)/lib/udev/rules.d
+# XDG autostart is read from $XDG_CONFIG_DIRS, which is /etc/xdg for a /usr
+# install. Nix links $out/etc/xdg into /run/current-system/sw/etc/xdg, which
+# NixOS puts on that path.
+AUTOSTARTDIR = $(if $(filter /usr,$(PREFIX)),,$(PREFIX))/etc/xdg/autostart
 
 # The systemd unit and the Firefox manifest go under lib/, not share/: both are
 # found by another program globbing a search path rather than by a human reading
@@ -123,6 +127,8 @@ install-assets:
 	install -d "$(DESTDIR)$(DATADIR)/applications"
 	install -m 0644 desktop/corne-arcane.desktop desktop/corne-arcane-vial.desktop \
 		"$(DESTDIR)$(DATADIR)/applications/"
+	install -D -m 0644 desktop/corne-arcane-autostart.desktop \
+		"$(DESTDIR)$(AUTOSTARTDIR)/corne-arcane.desktop"
 
 install-udev:
 	install -D -m 0644 udev/60-corne-arcane.rules \
@@ -146,4 +152,5 @@ uninstall:
 	rm -rf "$(DESTDIR)$(DATADIR)/corne-arcane"
 	rm -f "$(DESTDIR)$(DATADIR)/applications/corne-arcane.desktop"
 	rm -f "$(DESTDIR)$(DATADIR)/applications/corne-arcane-vial.desktop"
+	rm -f "$(DESTDIR)$(AUTOSTARTDIR)/corne-arcane.desktop"
 	rm -f "$(DESTDIR)$(UDEVDIR)/60-corne-arcane.rules"

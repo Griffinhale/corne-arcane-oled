@@ -113,6 +113,18 @@ launcher stops before pausing the daemon and says so in a desktop
 notification. Nix pins this automatically. `CORNE_ARCANE_SYSTEMCTL`, `CORNE_ARCANE_SERVICE`, and
 `CORNE_ARCANE_KWIN_SCRIPT` already default correctly on Debian.
 
+The units start with `graphical-session.target`, which GNOME and Plasma reach
+and XFCE, Cinnamon and i3 do not. For those, the package installs
+`/etc/xdg/autostart/corne-arcane.desktop`, which starts whichever Corne Arcane
+units you enabled when you log in. XFCE and Cinnamon run it, and so does i3
+when its config runs `dex --autostart` (Debian's default i3 config does). For
+an i3 config without that line, or a window manager that ignores autostart,
+add this to `~/.config/i3/config` or its startup file:
+
+```
+exec --no-startup-id systemctl --user start corne-arcane-host.service
+```
+
 ## Focus producers
 
 Focus semantics need something to report the active window. Without a producer

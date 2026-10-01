@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Corne Arcane services
+Comment=Start the Corne Arcane user units you enabled, on sessions that never reach graphical-session.target
+Exec=sh -c "systemctl --user -q is-enabled corne-arcane-host.service && systemctl --user start corne-arcane-host.service; systemctl --user -q is-enabled corne-arcane-focus-x11.service && systemctl --user start corne-arcane-focus-x11.service; systemctl --user -q is-enabled corne-arcane-tray.service && systemctl --user start corne-arcane-tray.service; true"
+NoDisplay=true
+Terminal=false
+X-GNOME-Autostart-Phase=Applications
