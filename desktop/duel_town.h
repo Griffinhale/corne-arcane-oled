@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "duel_city.h"
 #include "duel_render.h"
 
 #define TOWN_W         256
@@ -37,7 +38,22 @@ typedef struct {
 void town_fb_clear(town_fb_t *fb, int width, int height);
 bool town_fb_get(const town_fb_t *fb, int x, int y);
 
+/*
+ * The typing summary, as the town reads it: the four DUEL_CITY_* typing enums
+ * and nothing else. It is not part of the projection because the keyboard
+ * never sees it; only this layer draws it. All zero is "none", and none draws
+ * the town exactly as it was before these fields existed.
+ */
+typedef struct {
+    uint8_t tempo;      /* DUEL_CITY_TEMPO_*: the pennant */
+    uint8_t spread;     /* DUEL_CITY_SPREAD_*: the chimney smoke */
+    uint8_t row;        /* DUEL_CITY_ROW_*: which lantern on the tower is lit */
+    uint8_t row_spread; /* DUEL_CITY_ROW_SPREAD_*: how many lanterns hang */
+} town_typing_t;
+
 /* One frame of the town from one projection. `frame` is the animation phase;
  * everything else is read from the render, exactly as the panel compositor
- * reads it. */
-void duel_town_draw(town_fb_t *fb, const duel_render_t *render, uint32_t frame);
+ * reads it, except the typing summary, which only the town draws. `typing`
+ * may be NULL, which is the same as none. */
+void duel_town_draw(town_fb_t *fb, const duel_render_t *render, const town_typing_t *typing,
+                    uint32_t frame);

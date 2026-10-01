@@ -500,7 +500,15 @@ static void draw_far_row(town_fb_t *fb) {
 
 /* Puffs, not a plume: three of them, well separated, leaning further as they
  * rise and thinning out at the top. A continuous column reads as a mast. */
-static void draw_smoke(town_fb_t *fb, int x, int base_y, uint32_t frame, uint32_t salt) {
+static void draw_smoke_typed(town_fb_t *fb, int x, int base_y, uint32_t frame, uint32_t salt,
+                             uint8_t spread);
+
+static void draw_smoke(town_fb_t *fb, int x, int base_y, uint32_t frame, uint32_t salt,
+                       uint8_t spread) {
+    if (spread != DUEL_CITY_SPREAD_NONE) {
+        draw_smoke_typed(fb, x, base_y, frame, salt, spread);
+        return;
+    }
     /*
      * Four puffs on a short run. The run is short deliberately: a long one
      * with the old quadratic drift left a dotted diagonal reaching halfway up
@@ -521,7 +529,7 @@ static void draw_smoke(town_fb_t *fb, int x, int base_y, uint32_t frame, uint32_
     }
 }
 
-static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
+static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint8_t spread, uint32_t frame) {
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
     bool night = sky_is_night(DUEL_SECONDARY_SKY_PHASE(r->secondary));
     for (size_t i = 0; i < sizeof near_row / sizeof near_row[0]; i++) {
@@ -619,7 +627,7 @@ static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint32_t frame)
             int ctop = top - b->width / 4 - 6;
             fill_rect(fb, cx, ctop, cx + 4, top - 2, true);
             hline(fb, cx - 1, cx + 5, ctop); /* a cap */
-            draw_smoke(fb, cx + 2, ctop, frame, (uint32_t)i * 13u);
+            draw_smoke(fb, cx + 2, ctop, frame, (uint32_t)i * 13u, spread);
         }
         (void)night;
     }
@@ -914,7 +922,150 @@ static void draw_ward(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     }
 }
 
-static void draw_tower(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
+/* ---- the typing summary --------------------------------------------------
+ * Four bounded enums from the opt-in typing helper (docs/typing-summary.md).
+ * Each one changes one thing in the town, and none of them says good or bad:
+ * a fast typist gets a stiff wind, not a reward. Every function here is only
+ * reached for a value other than none, so a town without the helper is drawn
+ * by exactly the code that drew it before. */
+
+/* Tempo is the wind: the faster the typing, the further and harder the
+ * pennant streams, and the faster it ripples. */
+static void draw_pennant_typed(town_fb_t *fb, int flag_y, uint8_t tempo, uint32_t frame) {
+    if (tempo == DUEL_CITY_TEMPO_DELIBERATE) {
+        /* Limp: it hangs down the pole and only sways at the hem. */
+        int sway = isin(frame << 1) > 40 ? 1 : 0;
+        for (int t = 0; t < 10; t++) {
+            int width = 4 - t * 4 / 10;
+            int lean = t >= 6 ? sway : 0;
+            for (int x = 0; x <= width; x++)
+                px(fb, TOWER_CX + 1 + x + lean, flag_y + t, true);
+        }
+        return;
+    }
+    static const struct {
+        uint8_t length, amplitude, speed_shift_up, depth;
+    } wind[DUEL_CITY_TEMPO_COUNT] = {
+        [DUEL_CITY_TEMPO_FLOWING] = {14, 1, 1, 4},
+        [DUEL_CITY_TEMPO_RAPID] = {18, 1, 3, 3},
+        [DUEL_CITY_TEMPO_FRANTIC] = {22, 2, 4, 3},
+    };
+    int length = wind[tempo].length;
+    uint32_t phase = frame << wind[tempo].speed_shift_up;
+    for (int i = 0; i < length; i++) {
+        int wave = isin((uint32_t)(i * 20) + phase) * wind[tempo].amplitude / 127;
+        int depth = wind[tempo].depth - i * wind[tempo].depth / length;
+        /* A gale splits the tail into a swallowtail. */
+        bool forked = tempo == DUEL_CITY_TEMPO_FRANTIC && i >= length - 6;
+        for (int t = 0; t <= depth; t++) {
+            if (forked && t == depth / 2 + 1)
+                continue;
+            px(fb, TOWER_CX + 1 + i, flag_y + wave + t, true);
+        }
+        if (forked)
+            px(fb, TOWER_CX + 1 + i, flag_y + wave + depth + 1, true);
+    }
+    if (tempo == DUEL_CITY_TEMPO_FRANTIC) {
+        /* Wind streaks past the flag, so the gale reads when it holds still. */
+        for (int s = 0; s < 3; s++) {
+            int sx = TOWER_CX + 8 + (int)((frame * 3u + (uint32_t)s * 11u) % 24u);
+            int sy = flag_y - 4 + s * 6;
+            hline(fb, sx, sx + 5, sy);
+        }
+    }
+}
+
+/* Spread is the rhythm of the smoke: an even typist's chimneys puff in a
+ * straight, evenly spaced column; an uneven one's come out in ragged bursts. */
+static void draw_smoke_typed(town_fb_t *fb, int x, int base_y, uint32_t frame, uint32_t salt,
+                             uint8_t spread) {
+    static const uint8_t even_ages[4] = {0, 4, 8, 12};
+    static const uint8_t ragged_ages[4] = {0, 2, 7, 13};
+    static const uint8_t ragged_sizes[4] = {2, 1, 3, 1};
+    for (int puff = 0; puff < 4; puff++) {
+        const uint8_t *ages = spread == DUEL_CITY_SPREAD_IRREGULAR ? ragged_ages : even_ages;
+        uint32_t age = ((frame >> 3) + ages[puff] + salt) % 16u;
+        int y = base_y - 3 - (int)age;
+        int dx = 0;
+        int radius = 1;
+        if (spread == DUEL_CITY_SPREAD_VARIED) {
+            /* A lazy S: it sways rather than drifting off. */
+            dx = isin(age * 24u + salt * 8u) * 2 / 127;
+            radius = age < 7u ? 1 : 2;
+        } else if (spread == DUEL_CITY_SPREAD_IRREGULAR) {
+            dx = (int)(town_hash((uint32_t)puff + salt, frame >> 4) % 5u) - 2;
+            radius = ragged_sizes[(puff + (int)(frame >> 5)) & 3];
+        }
+        if (age < 6u)
+            disc(fb, x + dx, y, radius, true);
+        else
+            shade_disc(fb, x + dx, y, radius, age < 11u ? 9 : 5);
+    }
+}
+
+/* Row is height: the busiest keyboard row lights the lantern at the matching
+ * storey of the tower, from the eaves (top row) down to the doorstep (thumbs).
+ * Row spread is how many lanterns hang: one alone with a glow when the typing
+ * is focused on that row, a neighbour when it is mixed, all four when it is
+ * even. A row spread with no row anchors on HOME, as a tie does. */
+static int lantern_y(const town_fb_t *fb, uint8_t row) {
+    switch (row) {
+        case DUEL_CITY_ROW_TOP:
+            return TOWER_TOP_Y + 6;
+        case DUEL_CITY_ROW_HOME:
+            return BALCONY_Y + 8;
+        case DUEL_CITY_ROW_BOTTOM:
+            return 152;
+        default:
+            return GROUND_Y - 16;
+    }
+}
+
+static void draw_lantern(town_fb_t *fb, uint8_t row, bool lit, bool glow) {
+    int y = lantern_y(fb, row);
+    /* Off the right wall, clear of the buttress flare at the foot. */
+    int wall = TOWER_X1 + (y > 150 ? (y - 150) * 6 / (GROUND_Y - 150) : 0);
+    int x = wall + 6;
+    /* A focused lantern clears a pool of dark around itself first, so its
+     * halo reads against the hills' dither rather than vanishing into it.
+     * The pool stops short of the wall it hangs from. */
+    if (glow)
+        fill_rect(fb, wall + 1, y - 3, x + 10, y + 15, false);
+    hline(fb, wall + 1, x, y);
+    px(fb, x, y + 1, true);
+    fill_rect(fb, x - 3, y + 2, x + 3, y + 10, false);
+    hline(fb, x - 2, x + 2, y + 2);
+    frame_rect(fb, x - 2, y + 3, x + 2, y + 9);
+    if (lit)
+        fill_rect(fb, x - 1, y + 4, x + 1, y + 8, true);
+    if (glow) {
+        /* A dashed halo on the open side only. */
+        for (uint32_t a = 0; a < 256u; a += 8u) {
+            int dx = isin(a + 64u) * 9 / 127;
+            int dy = isin(a) * 9 / 127;
+            if (dx >= -2 && ((a >> 3) & 1u) == 0u)
+                px(fb, x + dx, y + 6 + dy, true);
+        }
+    }
+}
+
+static void draw_lanterns(town_fb_t *fb, const town_typing_t *typing) {
+    if (typing->row == DUEL_CITY_ROW_NONE && typing->row_spread == DUEL_CITY_ROW_SPREAD_NONE)
+        return;
+    uint8_t busiest = typing->row != DUEL_CITY_ROW_NONE ? typing->row : DUEL_CITY_ROW_HOME;
+    if (typing->row_spread == DUEL_CITY_ROW_SPREAD_EVEN) {
+        for (uint8_t row = DUEL_CITY_ROW_TOP; row < DUEL_CITY_ROW_COUNT; row++)
+            if (row != busiest)
+                draw_lantern(fb, row, false, false);
+    } else if (typing->row_spread == DUEL_CITY_ROW_SPREAD_MIXED) {
+        uint8_t neighbour = busiest == DUEL_CITY_ROW_THUMB ? busiest - 1u : busiest + 1u;
+        draw_lantern(fb, neighbour, false, false);
+    }
+    draw_lantern(fb, busiest, true, typing->row_spread == DUEL_CITY_ROW_SPREAD_FOCUSED);
+}
+
+static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
+                       uint32_t frame) {
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
 
     fill_rect(fb, TOWER_X0 - 6, TOWER_TOP_Y, TOWER_X1 + 6, GROUND_Y, false);
@@ -960,11 +1111,15 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     /* A pennant, rippling on the frame count. The only thing in the town that
      * says which way the wind is going. */
     int flag_y = SPIRE_TIP_Y + 6;
-    for (int i = 0; i < 12; i++) {
-        int wave = isin((uint32_t)(i * 18) + (frame >> 1)) * 2 / 127;
-        int depth = 4 - i / 4;
-        for (int t = 0; t <= depth; t++)
-            px(fb, TOWER_CX + 1 + i, flag_y + wave + t, true);
+    if (typing->tempo != DUEL_CITY_TEMPO_NONE) {
+        draw_pennant_typed(fb, flag_y, typing->tempo, frame);
+    } else {
+        for (int i = 0; i < 12; i++) {
+            int wave = isin((uint32_t)(i * 18) + (frame >> 1)) * 2 / 127;
+            int depth = 4 - i / 4;
+            for (int t = 0; t <= depth; t++)
+                px(fb, TOWER_CX + 1 + i, flag_y + wave + t, true);
+        }
     }
 
     /* An urgent town lights its beacon; the pulse is the only thing on the
@@ -1905,7 +2060,11 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, uint32_t frame
     (void)frame;
 }
 
-void duel_town_draw(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
+void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
+                    uint32_t frame) {
+    static const town_typing_t no_typing;
+    if (!typing)
+        typing = &no_typing;
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
     uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
 
@@ -1915,9 +2074,10 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     draw_birds(fb, r, phase, frame);
     draw_hills(fb, r);
     draw_far_row(fb);
-    draw_near_row(fb, r, frame);
+    draw_near_row(fb, r, typing->spread, frame);
     draw_residue(fb, r, frame);
-    draw_tower(fb, r, frame);
+    draw_tower(fb, r, typing, frame);
+    draw_lanterns(fb, typing);
     draw_wizard(fb, r, frame);
     draw_ward(fb, r, frame);
     draw_fields(fb, r, frame);

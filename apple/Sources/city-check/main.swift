@@ -505,17 +505,26 @@ func runSemanticInvariants() {
             && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
             && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
     )
-    // Nothing draws the signals until their art lands, so every value must
-    // render the frame a city without them renders.
+    // The town draws every typing value, and the panels, which are the
+    // keyboard's own screens, draw none. Health has no art yet, so it must
+    // render the frame a city without it renders.
     let plain = frame(base, layout: .town)
-    let signalled = variants.filter {
+    let typed = variants.filter {
         $0.1.tempo != .none || $0.1.spread != .none || $0.1.row != .none
-            || $0.1.rowSpread != .none || $0.1.body != .none || $0.1.heart != .none
-            || $0.1.sleep != .none
+            || $0.1.rowSpread != .none
     }
-    let moved = signalled.filter { frame($0.1, layout: .town) != plain }.map(\.0)
+    let unseen = typed.filter { frame($0.1, layout: .town) == plain }.map(\.0)
+    let panelled = typed.filter { frame($0.1) != frame(base) }.map(\.0)
     check(
-        "signals_change_no_frame_yet", plain != nil && moved.isEmpty,
+        "typing_signals_draw", plain != nil && unseen.isEmpty && panelled.isEmpty,
+        "town unchanged: \(unseen.joined(separator: ", ")); "
+            + "panel moved: \(panelled.joined(separator: ", "))")
+    let health = variants.filter {
+        $0.1.body != .none || $0.1.heart != .none || $0.1.sleep != .none
+    }
+    let moved = health.filter { frame($0.1, layout: .town) != plain }.map(\.0)
+    check(
+        "health_signals_change_no_frame_yet", plain != nil && moved.isEmpty,
         "frames moved: \(moved.joined(separator: ", "))")
     // One past each signal enum, written into the C struct directly since the
     // Swift enums cannot hold it; the C check refuses it.

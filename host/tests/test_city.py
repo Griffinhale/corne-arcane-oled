@@ -4,6 +4,7 @@ import argparse
 import ast
 import contextlib
 import ctypes
+import hashlib
 import io
 import os
 import select
@@ -59,6 +60,11 @@ from test_dbus_control import FRAME, HOST_DIR, EchoKeyboard, Gio, GLib, holds, w
 
 def library_available() -> bool:
     return any(path.is_file() for path in candidate_paths())
+
+
+def digest(frame: bytes) -> str:
+    """A frame's short name, so a failing comparison prints sixteen characters."""
+    return hashlib.sha256(frame).hexdigest()[:16]
 
 
 requires_library = unittest.skipUnless(
@@ -202,13 +208,59 @@ class CityRendererTests(unittest.TestCase):
                 with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
                     self.render(packed)
 
-    def test_off_keyboard_values_change_no_frame_yet(self) -> None:
-        # Nothing draws these values until the art lands, so every accepted
+    # Today's resting frame in each layout, as the renderer drew it before any
+    # off-keyboard field was drawn. "None" in every field must keep it.
+    RESTING_FRAMES = {
+        Layout.DESK: "c0dc264113a523f4",
+        Layout.CITY: "54aee2b5104b1179",
+        Layout.LEFT: "0693730495095ab7",
+        Layout.RIGHT: "8cfadb6b7ec969fe",
+        Layout.TOWN: "666e9f33b0d2c18a",
+        Layout.LANDSCAPE: "47a098ae3bd135fe",
+    }
+    # Only the town layers draw the typing summary. The four panel layouts are
+    # the keyboard's own two screens, and the keyboard never sees it.
+    TYPING_LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
+    TYPING_FIELDS = ("tempo", "spread", "row", "row_spread")
+
+    def test_none_renders_today_unchanged(self) -> None:
+        for layout, pinned in self.RESTING_FRAMES.items():
+            frame = CityRenderer(scale=1, layout=layout).render(
+                resting_input(seed=0x5A), 400_000, 12
+            )
+            self.assertEqual(digest(frame), pinned, layout)
+
+    def test_typing_values_change_the_frame(self) -> None:
+        # Every typing value draws in the town layers, each differently from
+        # the others, and nothing in the panels.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
+            for field, kind in OFF_KEYBOARD_FIELDS:
+                if field not in self.TYPING_FIELDS:
+                    continue
+                frames = {base}
+                for value in kind:
+                    if value == 0:
+                        continue
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, int(value))
+                    frame = digest(renderer.render(packed, 400_000, 12))
+                    if layout in self.TYPING_LAYOUTS:
+                        self.assertNotIn(frame, frames, f"{layout} {field}={value}")
+                        frames.add(frame)
+                    else:
+                        self.assertEqual(frame, base, f"{layout} {field}={value}")
+
+    def test_health_fields_still_draw_nothing(self) -> None:
+        # Body, heart and sleep have no art yet (NF20), so every accepted
         # value renders today's frame byte for byte, in every layout.
         for layout in Layout:
             renderer = CityRenderer(scale=1, layout=layout)
             base = renderer.render(resting_input(seed=0x5A), 400_000, 12)
             for field, kind in OFF_KEYBOARD_FIELDS:
+                if field in self.TYPING_FIELDS:
+                    continue
                 for value in kind:
                     packed = resting_input(seed=0x5A)
                     setattr(packed, field, int(value))

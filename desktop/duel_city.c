@@ -316,7 +316,8 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         /* The town layers draw the same projection into their own surfaces. */
         town_fb_t town;
         town_fb_clear(&town, plan.width, plan.height);
-        duel_town_draw(&town, &render, frame);
+        town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
+        duel_town_draw(&town, &render, &typing, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }
