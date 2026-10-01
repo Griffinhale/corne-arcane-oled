@@ -58,6 +58,18 @@ def start_service() -> None:
 CONTROL_TIMEOUT_MS = 1000
 
 
+def remote_error_text(error: Any) -> str:
+    """The text of a GLib.Error a D-Bus peer returned, without its error name.
+
+    "GDBus.Error:<name>: text" -> "text". Gio.DBusError.strip_remote_error
+    edits the C error, not PyGObject's copy of it, so strip the message here.
+    """
+    message = error.message
+    if message.startswith("GDBus.Error:"):
+        message = message.split(": ", 1)[-1]
+    return message
+
+
 def pause_daemon(label: str) -> Any | None:
     """Ask a running daemon to lend the keyboard over its Control interface.
 
@@ -88,8 +100,7 @@ def pause_daemon(label: str) -> Any | None:
         )
     except GLib.Error as error:
         if Gio.DBusError.get_remote_error(error) == CONTROL_BUSY:
-            Gio.DBusError.strip_remote_error(error)
-            raise RuntimeError(f"{error.message}; close it first") from None
+            raise RuntimeError(f"{remote_error_text(error)}; close it first") from None
         return None
     return connection
 
@@ -110,7 +121,7 @@ def resume_daemon(connection: Any) -> None:
             None,
         )
     except GLib.Error as error:
-        raise RuntimeError(f"daemon did not resume: {error.message}") from None
+        raise RuntimeError(f"daemon did not resume: {remote_error_text(error)}") from None
 
 
 def hidraw_handles(pid: int, proc_root: Path = Path("/proc")) -> tuple[Path, ...]:

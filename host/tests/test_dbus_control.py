@@ -321,6 +321,28 @@ class ControlTests(unittest.TestCase):
         child.stdout.close()
         self.assertTrue(wait_until(lambda: self.status()[0] == "connected", 5.0))
 
+    def test_guard_busy_message_is_plain(self) -> None:
+        self.call(PAUSE, GLib.Variant("(s)", ("Vial (pid 2)",)))
+        child = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from arcane_host import hid_ownership as h\n"
+                "try:\n"
+                "    h.pause_daemon('probe')\n"
+                "except RuntimeError as error:\n"
+                "    print(error)\n",
+            ],
+            cwd=HOST_DIR,
+            env=self.env,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        )
+        self.assertEqual(
+            child.stdout.strip(), "the keyboard is lent to Vial (pid 2); close it first"
+        )
+
     def test_killed_guard_gives_the_keyboard_back(self) -> None:
         child = self.guard_child()
         self.assertTrue(self.status()[2])

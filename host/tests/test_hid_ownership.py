@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from arcane_host import hid_ownership
@@ -209,6 +210,20 @@ class OpenerScanTests(unittest.TestCase):
             root = Path(directory)
             self.fake_proc(root, 124, "firefox", ("/dev/hidraw2",))
             hid_ownership.wait_for_hidraw_release(Path("/dev/hidraw5"), 0.0, root)
+
+
+class RemoteErrorTextTests(unittest.TestCase):
+    def text(self, message: str) -> str:
+        return hid_ownership.remote_error_text(SimpleNamespace(message=message))
+
+    def test_remote_error_name_is_stripped(self) -> None:
+        self.assertEqual(
+            self.text("GDBus.Error:io.github.Griffinhale.CorneArcane.Control.Busy: lent to x: y"),
+            "lent to x: y",
+        )
+
+    def test_local_error_is_kept(self) -> None:
+        self.assertEqual(self.text("Timeout was reached"), "Timeout was reached")
 
 
 if __name__ == "__main__":

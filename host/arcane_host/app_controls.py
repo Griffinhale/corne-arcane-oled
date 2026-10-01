@@ -37,7 +37,7 @@ from .dbus_contract import (
     WORLD_CHANGED,
     WORLD_SIGNATURE,
 )
-from .hid_ownership import lock_path
+from .hid_ownership import lock_path, remote_error_text
 
 APP_LABEL = "Corne Arcane app"
 OBSERVE_MINUTES = (1, 5, 15, 30)
@@ -366,12 +366,7 @@ class Controls:
             try:
                 connection.call_finish(result)
             except GLib.Error as error:
-                # "GDBus.Error:<name>: text" -> "text". strip_remote_error edits
-                # the C error, not PyGObject's copy of it, so strip here.
-                message = error.message
-                if message.startswith("GDBus.Error:"):
-                    message = message.split(": ", 1)[-1]
-                done(message)
+                done(remote_error_text(error))
                 return
             done(None)
 
