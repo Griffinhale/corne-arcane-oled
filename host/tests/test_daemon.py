@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import subprocess
@@ -7,11 +8,12 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
 from arcane_host.adapters import SemanticAdapters
-from arcane_host.daemon import default_kwin_script, lend_check, parse_args
+from arcane_host.daemon import default_kwin_script, lend_check, parse_args, transport_factory
 from arcane_host.dbus_contract import (
     BUS_NAME,
     EVENTS_INTERFACE,
@@ -22,7 +24,7 @@ from arcane_host.dbus_contract import (
 )
 from arcane_host.dbus_services import EventService, KWinBridgeLoader
 from arcane_host.focus import FocusArbiter
-from arcane_host.heartbeat import DryRunTransport, HidHeartbeat
+from arcane_host.heartbeat import LINK_ABSENT, DryRunTransport, HidHeartbeat
 from arcane_host.policy import NotificationPolicy
 from arcane_host.protocol import (
     Category,
@@ -438,6 +440,59 @@ class LendFlagTests(unittest.TestCase):
 
     def test_no_lend_turns_it_off(self) -> None:
         self.assertIsNone(lend_check(parse_args(["--no-lend"])))
+
+
+class NoHidTests(unittest.TestCase):
+    """--no-hid: a machine with no Corne runs the resolver and writes nothing to HID."""
+
+    def test_no_hid_builds_no_transport(self) -> None:
+        self.assertIsNone(transport_factory(parse_args(["--no-hid"])))
+        self.assertIsNotNone(transport_factory(parse_args([])))
+        self.assertIs(transport_factory(parse_args(["--dry-run"])), DryRunTransport)
+
+    def test_no_hid_service_setting(self) -> None:
+        with patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "1"}):
+            self.assertTrue(parse_args([]).no_hid)
+        with patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "0"}):
+            self.assertFalse(parse_args([]).no_hid)
+        with patch.dict(os.environ):
+            os.environ.pop("CORNE_ARCANE_NO_HID", None)
+            self.assertFalse(parse_args([]).no_hid)
+
+    def test_no_hid_conflicts_with_device_options(self) -> None:
+        for extra in (["--dry-run"], ["--once"], ["--device", "/dev/hidraw0"]):
+            with self.subTest(extra=extra), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    parse_args(["--no-hid", *extra])
+
+    def test_no_hid_logs_no_retries(self) -> None:
+        heartbeat = HidHeartbeat(lambda: Scene.DUEL, None, lambda: 7, verbose=True)
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            for step in range(100):
+                self.assertFalse(heartbeat.tick(step * 0.5))
+            heartbeat.request_heartbeat(60.0)
+            heartbeat.request_notify()
+            self.assertFalse(heartbeat.tick(60.0))
+            heartbeat.close()
+        self.assertIsNone(heartbeat.device)
+        self.assertEqual(heartbeat.link, LINK_ABSENT)
+        self.assertEqual(out.getvalue(), "")
+        lines = err.getvalue().splitlines()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn("--no-hid", lines[0])
+        self.assertNotIn("retry", err.getvalue())
+        self.assertGreater(heartbeat.next_deadline(60.0), 61.0)
+
+    def test_no_hid_link_comes_back_after_a_pause(self) -> None:
+        heartbeat = HidHeartbeat(lambda: Scene.DUEL, None, lambda: 7)
+        with redirect_stderr(io.StringIO()) as err:
+            heartbeat.tick(0.0)
+            heartbeat.close()
+            heartbeat.link = None  # what DaemonRuntime.pause() does
+            heartbeat.tick(1.0)
+        self.assertEqual(heartbeat.link, LINK_ABSENT)
+        self.assertEqual(len(err.getvalue().splitlines()), 1)
 
 
 HOST_DIR = Path(__file__).resolve().parents[1]

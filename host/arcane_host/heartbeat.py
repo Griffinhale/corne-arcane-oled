@@ -84,7 +84,7 @@ class HidHeartbeat:
     def __init__(
         self,
         scene_provider: Callable[[], Scene],
-        device_factory: Callable[[], HidTransport],
+        device_factory: Callable[[], HidTransport] | None,
         session_factory: Callable[[], int],
         *,
         summary_provider: Callable[[], NotificationSummary] | None = None,
@@ -117,6 +117,7 @@ class HidHeartbeat:
         self.notifications = 0
         self.notify_pending = False
         self.link: str | None = None
+        self._announced_off = False
 
     def _exchange(self, device: HidTransport, report: bytes) -> None:
         device.send(report)
@@ -184,8 +185,20 @@ class HidHeartbeat:
         self._set_link(LINK_CONNECTED, f"keyboard connected ({getattr(device, 'path', 'Raw HID')})")
         self._log(f"connected session=0x{self.session:08x}")
 
+    def _stay_off(self) -> None:
+        # No transport (--no-hid): the keyboard is absent by choice, so say so
+        # once and never retry. The link is kept for Control status, which a
+        # pause clears.
+        if not self._announced_off:
+            self._announced_off = True
+            print("arcane-host: running without a keyboard (--no-hid)", file=sys.stderr, flush=True)
+        self.link = LINK_ABSENT
+
     def tick(self, now: float) -> bool:
         """Advance I/O. Return True exactly when a heartbeat was sent."""
+        if self.device_factory is None:
+            self._stay_off()
+            return False
         if self.device is None:
             if now >= self.next_connect:
                 self._connect(now)
@@ -239,6 +252,8 @@ class HidHeartbeat:
             self.notify_pending = True
 
     def next_deadline(self, now: float) -> float:
+        if self.device_factory is None:
+            return float("inf")
         if self.device is None:
             return max(now, self.next_connect)
         if self.notify_pending:

@@ -68,6 +68,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dry-run", action="store_true", help="print reports instead of opening hidraw"
     )
     parser.add_argument(
+        "--no-hid",
+        action="store_true",
+        default=os.environ.get("CORNE_ARCANE_NO_HID", "") not in ("", "0"),
+        help="run with no keyboard: resolve focus and notifications, write nothing to HID "
+        "(service setting: CORNE_ARCANE_NO_HID=1)",
+    )
+    parser.add_argument(
         "--no-lend",
         action="store_true",
         help="keep the keyboard when another program opens it outside corne-arcane-vial",
@@ -84,7 +91,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--retry-interval must be positive")
     if args.pomodoro_duration <= 0:
         parser.error("--pomodoro-duration must be positive")
+    if args.no_hid and (args.dry_run or args.once or args.device):
+        parser.error("--no-hid opens no keyboard, so it cannot take --dry-run, --once or --device")
     return args
+
+
+def transport_factory(args: argparse.Namespace) -> Callable[[], HidTransport] | None:
+    """What the heartbeat opens: nothing with --no-hid, echoes with --dry-run, else the Corne."""
+    if args.no_hid:
+        return None
+    if args.dry_run:
+        return DryRunTransport
+
+    def device_factory() -> HidTransport:
+        return Device(choose_device(args.device))
+
+    return device_factory
 
 
 def lend_check(args: argparse.Namespace) -> Callable[[Path], bool] | None:
@@ -134,13 +156,6 @@ def run(args: argparse.Namespace) -> int:
     override = SCENES[args.scene] if args.scene is not None else None
     resolver = SemanticResolver(override)
 
-    if args.dry_run:
-        device_factory: Callable[[], HidTransport] = DryRunTransport
-    else:
-
-        def device_factory() -> HidTransport:
-            return Device(choose_device(args.device))
-
     fixed_session = args.session
     session_factory = (
         (lambda: fixed_session)
@@ -155,7 +170,7 @@ def run(args: argparse.Namespace) -> int:
     resolver.update(summary=fixed_summary if args.notify else policy.summary(time.monotonic()))
     heartbeat = HidHeartbeat(
         lambda: resolver.state.scene,
-        device_factory,
+        transport_factory(args),
         session_factory,
         summary_provider=lambda: resolver.state.summary,
         civic_provider=lambda: resolver.state.civic,
