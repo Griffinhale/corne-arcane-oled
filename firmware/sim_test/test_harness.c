@@ -94,27 +94,14 @@ void render_floor_scene(uint8_t floor, bool is_left, uint8_t transition, duel_fb
 
 void render_district_scene(uint8_t district, bool is_left, uint8_t intensity, uint8_t transition,
                            duel_fb_t *fb) {
-    /* The exact (floor, scene) pair duel_civic_district maps back to this
-     * district. Every entry must round-trip, which is what pins the reviewed
-     * frame to the derivation rather than to a district number. */
-    static const uint8_t floor[DUEL_DISTRICT_COUNT] = {
-        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_WORKSHOP,
-        DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_COMMONS,
-        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_WORKSHOP,
-    };
-    static const uint8_t scene[DUEL_DISTRICT_COUNT] = {
-        DUEL_HOST_SCENE_DUEL,  DUEL_HOST_SCENE_ARCHIVE, DUEL_HOST_SCENE_DUEL,
-        DUEL_HOST_SCENE_FOCUS, DUEL_HOST_SCENE_DUEL,    DUEL_HOST_SCENE_ARCHIVE,
-        DUEL_HOST_SCENE_REVEL, DUEL_HOST_SCENE_ARCHIVE,
-    };
     sim_world_t w;
     sim_init(&w, SIMF_AUTHORITATIVE, 0);
     duel_render_t r = {0};
     duel_render_from_world(&r, &w);
-    if (district >= DUEL_DISTRICT_COUNT)
-        district = DUEL_DISTRICT_COMMONS;
-    r.civic = DUEL_CIVIC_PACK(floor[district], DUEL_CIVIC_MODE_NORMAL, intensity);
-    r.external = DUEL_HOST_CONTEXT_PACK(true, scene[district], 0u, false);
+    uint8_t floor, scene;
+    district_context(district, &floor, &scene);
+    r.civic = DUEL_CIVIC_PACK(floor, DUEL_CIVIC_MODE_NORMAL, intensity);
+    r.external = DUEL_HOST_CONTEXT_PACK(true, scene, 0u, false);
     r.seed = 0x42u;
     r.civic_phase = 19u;
     r.floor_transition = transition;

@@ -145,6 +145,11 @@ int duel_city_abi_version(void);
  * change on one side cannot pass unnoticed. Not used by any renderer. */
 long duel_city_wire_constant(const char *name);
 
+/* The lowercase name of DUEL_DISTRICT_* `district`, as the visual catalog names
+ * its cases ("commons", ...), or NULL past the last one. Tools read the list
+ * from here instead of restating it. Not used by any renderer. */
+const char *duel_city_district_name(int district);
+
 /* Pixel size of one rendered image in this layout at this scale. Returns an
  * error code without touching the outputs if either argument is out of
  * range. */

@@ -72,6 +72,18 @@ long duel_city_wire_constant(const char *name) {
     return -1;
 }
 
+const char *duel_city_district_name(int district) {
+    static const char *const names[] = {
+        "commons",     "research", "workshop", "observatory",
+        "scriptorium", "studio",   "arena",    "undercroft",
+    };
+    _Static_assert(sizeof names / sizeof names[0] == DUEL_DISTRICT_COUNT,
+                   "every district needs a name");
+    if (district < 0 || district >= DUEL_DISTRICT_COUNT)
+        return NULL;
+    return names[district];
+}
+
 void duel_city_state_init(duel_city_state_t *state) {
     if (state)
         memset(state, 0, sizeof *state);

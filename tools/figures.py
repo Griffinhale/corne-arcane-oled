@@ -2,6 +2,7 @@
 """Documentation figures, rendered from the visual catalog.
 
 Usage:
+    make city-lib
     firmware/sim_test/visual_runner --dump-pgm /tmp/frames
     python3 tools/figures.py /tmp/frames docs/images
 
@@ -16,10 +17,15 @@ physical 32x128 OLED.
 """
 
 import argparse
+import ctypes
 import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "host"))
+
+from arcane_host.city import library_path  # noqa: E402
 
 LEFT = (0, 0, 32, 128)
 RIGHT = (35, 0, 67, 128)
@@ -40,20 +46,21 @@ DUEL = [
     ("scenario_persistent-critical", "aftermath"),
 ]
 
-# The eight districts. Each is drawn twice by the catalog, once per
-# architectural voice; the left canvas comes from the astral case and the
-# right canvas from the mechanical one, which is how both halves render a
-# district on hardware.
-DISTRICTS = [
-    "commons",
-    "research",
-    "workshop",
-    "observatory",
-    "scriptorium",
-    "studio",
-    "arena",
-    "undercroft",
-]
+
+# Every district, in DUEL_DISTRICT_* order, named as the catalog names its
+# cases. Each is drawn twice by the catalog, once per architectural voice; the
+# left canvas comes from the astral case and the right canvas from the
+# mechanical one, which is how both halves render a district on hardware.
+def district_names():
+    """Read the names from the native library, so a new district reaches every figure."""
+    library = ctypes.CDLL(str(library_path()))
+    library.duel_city_district_name.argtypes = [ctypes.c_int]
+    library.duel_city_district_name.restype = ctypes.c_char_p
+    names = []
+    while (name := library.duel_city_district_name(len(names))) is not None:
+        names.append(name.decode("ascii"))
+    return names
+
 
 # Cases worth watching in motion. Neither list is a sequence the simulation
 # produces on its own; each is a hand-picked tour of catalog cases, held one
@@ -156,7 +163,7 @@ def rooms_animation(frames, out_dir):
             cell(frames, f"occupation_astral_{d}_work", f"occupation_mech_{d}_work", 3, 12),
             d.capitalize(),
         )
-        for d in DISTRICTS
+        for d in district_names()
     ]
     return animate(cells, 20, 26, font(17), out_dir / "rooms.gif", 1100)
 
@@ -232,7 +239,7 @@ def duel_figure(frames, out_dir):
 def districts_figure(frames, out_dir):
     scale, pad = 3, 16
     cells = []
-    for d in DISTRICTS:
+    for d in district_names():
         cells.append(
             (
                 cell(frames, f"occupation_astral_{d}_work", f"occupation_mech_{d}_work", scale, 12),

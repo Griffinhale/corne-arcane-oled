@@ -64,5 +64,29 @@ unsigned framebuffer_pixels(const duel_fb_t *framebuffer);
 void incantation_render(duel_fb_t *framebuffer, const duel_render_t *render, bool is_left,
                         bool diagnostics);
 void render_floor_scene(uint8_t floor, bool is_left, uint8_t transition, duel_fb_t *framebuffer);
+/* The exact (floor, scene) pair duel_civic_district maps back to a district,
+ * for the mechanics tests and the visual catalog alike. Every entry must
+ * round-trip, which is what pins a reviewed frame to the derivation rather than
+ * to a district number. Out-of-range districts read as the Commons; a new
+ * district fails to compile until it has a row here. */
+static inline void district_context(uint8_t district, uint8_t *floor, uint8_t *scene) {
+    static const uint8_t floors[] = {
+        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_WORKSHOP,
+        DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_COMMONS,
+        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_WORKSHOP,
+    };
+    static const uint8_t scenes[] = {
+        DUEL_HOST_SCENE_DUEL,  DUEL_HOST_SCENE_ARCHIVE, DUEL_HOST_SCENE_DUEL,
+        DUEL_HOST_SCENE_FOCUS, DUEL_HOST_SCENE_DUEL,    DUEL_HOST_SCENE_ARCHIVE,
+        DUEL_HOST_SCENE_REVEL, DUEL_HOST_SCENE_ARCHIVE,
+    };
+    _Static_assert(sizeof floors == DUEL_DISTRICT_COUNT, "every district needs a floor");
+    _Static_assert(sizeof scenes == DUEL_DISTRICT_COUNT, "every district needs a scene");
+    if (district >= DUEL_DISTRICT_COUNT)
+        district = DUEL_DISTRICT_COMMONS;
+    *floor = floors[district];
+    *scene = scenes[district];
+}
+
 void render_district_scene(uint8_t district, bool is_left, uint8_t intensity, uint8_t transition,
                            duel_fb_t *framebuffer);

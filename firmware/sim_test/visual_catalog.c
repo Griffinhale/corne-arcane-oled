@@ -14,6 +14,7 @@
 #include "duel_runtime.h"
 #include "duel_sim.h"
 #include "scenarios.h"
+#include "test_harness.h"
 
 typedef struct {
     char name[48];
@@ -91,24 +92,11 @@ static void record_render(const char *name, const duel_render_t *render, uint32_
 
 static void set_district_context(duel_render_t *render, uint8_t district, uint8_t mode,
                                  uint8_t intensity) {
-    /* The exact (floor, scene) pair duel_civic_district maps back to this
-     * district. Every entry must round-trip, which is what pins the reviewed
-     * frame to the derivation rather than to a district number. */
-    static const uint8_t floor[DUEL_DISTRICT_COUNT] = {
-        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_WORKSHOP,
-        DUEL_CIVIC_FLOOR_SPECIAL, DUEL_CIVIC_FLOOR_RESEARCH, DUEL_CIVIC_FLOOR_COMMONS,
-        DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_FLOOR_WORKSHOP,
-    };
-    static const uint8_t scene[DUEL_DISTRICT_COUNT] = {
-        DUEL_HOST_SCENE_DUEL,  DUEL_HOST_SCENE_ARCHIVE, DUEL_HOST_SCENE_DUEL,
-        DUEL_HOST_SCENE_FOCUS, DUEL_HOST_SCENE_DUEL,    DUEL_HOST_SCENE_ARCHIVE,
-        DUEL_HOST_SCENE_REVEL, DUEL_HOST_SCENE_ARCHIVE,
-    };
-    if (district >= DUEL_DISTRICT_COUNT)
-        district = DUEL_DISTRICT_COMMONS;
-    render->civic = DUEL_CIVIC_PACK(floor[district], mode, intensity);
+    uint8_t floor, scene;
+    district_context(district, &floor, &scene);
+    render->civic = DUEL_CIVIC_PACK(floor, mode, intensity);
     render->external =
-        DUEL_HOST_CONTEXT_PACK(true, scene[district], DUEL_HOST_CONTEXT_NOTIF(render->external),
+        DUEL_HOST_CONTEXT_PACK(true, scene, DUEL_HOST_CONTEXT_NOTIF(render->external),
                                DUEL_HOST_CONTEXT_PERSISTENT(render->external));
 }
 
@@ -225,9 +213,10 @@ static void build_catalog(void) {
      * Commons/dawn review frame. */
     add_case("sky_commons_dawn_idle_8hp", &world, 0, 0);
 
-    static const char *floor_name[INCANTATION_OCCUPATION_FLOORS] = {
-        "commons",     "research", "workshop", "observatory",
-        "scriptorium", "studio",   "arena",    "undercroft"};
+    static const char *const floor_name[] = {"commons",     "research", "workshop", "observatory",
+                                             "scriptorium", "studio",   "arena",    "undercroft"};
+    _Static_assert(sizeof floor_name / sizeof floor_name[0] == INCANTATION_OCCUPATION_FLOORS,
+                   "every district needs a case name");
     static const char *mode_name[] = {"normal", "quiet", "urgent"};
     static const char *intensity_name[] = {"calm", "active", "busy", "saturated"};
 
