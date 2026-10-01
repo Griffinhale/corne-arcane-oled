@@ -88,7 +88,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes debhelper dpkg-dev python3-gi
           DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -b -uc -us
-          cp ../corne-arcane-host_*_all.deb dist/
+          cp ../corne-arcane-host_*_amd64.deb dist/
 
       - name: Record hashes
         run: cd dist && sha256sum ./* > SHA256SUMS && cat SHA256SUMS
@@ -113,9 +113,10 @@ jobs:
             echo
             echo "## The optional host package"
             echo
-            echo "The keyboard is complete without it. The \`.deb\` is architecture independent"
-            echo "and carries its own version, which tracks the host package and not this"
-            echo "firmware tag."
+            echo "The keyboard is complete without it. The \`.deb\` is for 64-bit x86 (amd64)"
+            echo "Debian and Ubuntu, because it carries the compiled city renderer. On another"
+            echo "architecture, build it from source. It has its own version, which tracks"
+            echo "the host package and not this firmware tag."
             echo
             echo "## Source"
             echo
@@ -143,5 +144,5 @@ jobs:
             --title "Firmware $GITHUB_REF_NAME" \
             --notes-file dist/NOTES.md \
             dist/corne_arcane.uf2 \
-            dist/corne-arcane-host_*_all.deb \
+            dist/corne-arcane-host_*_amd64.deb \
             dist/SHA256SUMS
