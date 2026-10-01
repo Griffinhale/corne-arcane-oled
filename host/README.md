@@ -308,16 +308,18 @@ corne-arcane --tour     # walk the districts: no service, no bus, no keyboard
 From a checkout, run `make city-lib` at the repository root, then
 `python3 -m arcane_host.city_window` in `host/`.
 
-By default the window is one continuous scene. The three columns between the
-two towers are world the panels cannot show -- the battlefield axis crosses
-them and nothing is ever drawn there -- so on a desktop they are unlit rather
-than desk-coloured, and the keyboard's two-panel framing disappears.
+By default the window shows the town, the same view the iPhone and Apple Watch
+apps open on. `--layout city` shows what the keyboard's screens show instead,
+as one continuous scene: the three columns between the two towers are world the
+panels cannot show -- the battlefield axis crosses them and nothing is ever
+drawn there -- so on a desktop they are unlit rather than desk-coloured.
 
-- `--layout city` one scene, the default
+- `--layout landscape` the town's 400x240 wide view
+- `--layout city` the keyboard's panels as one scene
 - `--layout desk` two panels with the desk between them, as the review sheets
   and the hardware show it
 - `--layout left`, `--layout right` a single tower
-- `--layout town` a 256x256 city: one wizard tower at the centre, cut away to
+- `--layout town`, the default, a 256x256 city: one wizard tower at the centre, cut away to
   the storey the host is on, houses and hills either side, a paved plaza in
   front, and the hour, the weather and the duel in the sky
 - `--size 512x512` a fixed window with the city centred at the largest whole

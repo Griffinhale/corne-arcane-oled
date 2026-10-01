@@ -482,9 +482,12 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             city_window.parse_args(["--scale", "4", "--size", "256x256"])
 
-    def test_the_default_layout_is_one_continuous_scene(self) -> None:
+    def test_the_default_layout_is_the_town(self) -> None:
+        # The view the phone and the watch open on; the keyboard's own
+        # framing is one flag away.
         args = city_window.parse_args([])
-        self.assertEqual(args.layout, "city")
+        self.assertEqual(args.layout, "town")
+        self.assertEqual(city_window.parse_args(["--layout", "city"]).layout, "city")
 
 
 @requires_library

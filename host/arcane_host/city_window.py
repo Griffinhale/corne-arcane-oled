@@ -22,12 +22,13 @@ reads the service's Control interface for the keyboard link and the world the
 keyboard is being sent, and it never opens the keyboard. With no service on
 the bus it shows the city offline and says so under the image.
 
-The default layout is one continuous scene: the space between the two towers
-is world the panels cannot show, so it is drawn unlit rather than as a desk.
-`--layout desk` restores the two-panel view the review sheets use, and
-`--layout left` or `right` shows a single tower. `town` and `landscape` select
-the renderer's square and wide drawing layers; `--size` fits any of them at a
-whole-pixel scale and letterboxes the remainder.
+The default layout is the town, the view the phone and the watch open on: one
+wizard tower at the centre of a small city. `--layout city` shows the
+keyboard's two panels as one continuous scene, the space between the towers
+drawn unlit, and `--layout desk` restores the two-panel view the review sheets
+use. `left` or `right` shows a single tower, and `landscape` is the town's wide
+counterpart. `--size` fits any of them at a whole-pixel scale and letterboxes
+the remainder.
 """
 
 from __future__ import annotations
@@ -89,7 +90,7 @@ class CityWindow:
         self,
         *,
         scale: int | None = None,
-        layout: Layout | int = Layout.CITY,
+        layout: Layout | int = Layout.TOWN,
         size: tuple[int, int] | None = None,
         seed: int = 0,
         duels: bool = True,
@@ -388,10 +389,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--layout",
         choices=[layout.name.lower() for layout in Layout],
-        default=Layout.CITY.name.lower(),
+        default=Layout.TOWN.name.lower(),
         help=(
-            "city: one continuous scene (default); desk: two panels; "
-            "left/right: one tower; town: one tower at the centre of a 256x256 city"
+            "town: one tower at the centre of a 256x256 city (default); "
+            "landscape: the town, wide; city: the keyboard's panels as one scene; "
+            "desk: two panels; left/right: one tower"
         ),
     )
     parser.add_argument(
