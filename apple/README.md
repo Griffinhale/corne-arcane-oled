@@ -186,3 +186,26 @@ a Focus mode: a Focus is a bounded enum, so it maps onto `DUEL_CIVIC_MODE`
 title or notification body crossing the boundary. Never sample keystrokes or
 read the pasteboard, and do not reach for Screen Time categories -- whatever
 goes in has to stay something the firmware would itself accept.
+
+## Health
+
+The town can show three health moods: body activity as kites, heart as the
+windmill, and last night's sleep as a cockerel or a sleeping cat on a roof.
+`HealthBuckets` in CityKit turns plain numbers into those moods. It takes
+rings closed today, steps today, the latest and resting heart rate, and
+seconds asleep last night:
+
+- Body: 0, 1, 2 or 3 rings closed is resting, stirring, moving or full.
+  Steps count only when there is no ring reading: under 2000, under 6000,
+  under 10000, then full.
+- Heart: lively at 20 bpm or more above resting, otherwise still.
+- Sleep: rested at seven hours or more, otherwise tired.
+
+A missing number gives none, and the town draws nothing for it. The function
+keeps nothing between calls and does not import HealthKit, so
+`city-check watch_health_buckets` tests every cut-off on Linux. The levels are
+moods for the picture, not medical readings.
+
+The watch does not read HealthKit yet. When it does, it will read only on the
+watch, pass these few numbers to `HealthBuckets`, and keep only the latest
+levels. No health data leaves the watch.

@@ -206,6 +206,40 @@ static uint32_t descriptor(uint8_t form, uint8_t magnitude) {
                            interaction, TEMPO_FLOWING, TREND_STEADY, magnitude - 1u);
 }
 
+/* add_case under a chosen sky phase and celestial sub-phase. Every other
+ * add_case keeps the default dawn secondary byte. */
+static void add_case_sky(const char *name, sim_world_t *world, uint32_t frame, uint8_t flash_kind,
+                         uint8_t phase, uint8_t sub) {
+    duel_render_t render = {0};
+    duel_render_from_world(&render, world);
+    render.seed = 0x5au;
+    render.civic_phase = 19u;
+    render.flash_kind = flash_kind;
+    render.flash_frames = flash_kind ? 8u : 0u;
+    render.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
+    render.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 0u, false);
+    render.secondary = DUEL_SECONDARY_SKY_SUB_PACK(DUEL_SECONDARY_SKY_PACK(0, phase), sub);
+    record_render(name, &render, frame, false);
+}
+
+/* One wizard winding up a cast of form, with remaining ticks of total. */
+static void set_windup(sim_world_t *world, uint8_t side, uint8_t form, uint8_t total,
+                       uint8_t remaining, uint8_t tier) {
+    world->wiz[side].pose = POSE_CAST;
+    world->wiz[side].inc_state = INC_WINDUP;
+    world->wiz[side].windup_total = total;
+    world->wiz[side].cast_windup = remaining;
+    world->wiz[side].cast_tier = tier;
+    world->wiz[side].pending_desc = descriptor(form, 3u);
+}
+
+static void set_flight(sim_world_t *world, uint8_t side, uint8_t form, uint8_t progress) {
+    world->spell[side] = (sim_spell_t){.active = 1,
+                                       .progress = progress,
+                                       .dir = side ? -4 : 4,
+                                       .descriptor = descriptor(form, 3u)};
+}
+
 static void build_catalog(void) {
     sim_world_t world;
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
@@ -951,6 +985,263 @@ static void build_catalog(void) {
                                                 .descriptor = descriptor(SPELL_PROJECTILE, tier)};
         snprintf(name, sizeof name, "ward_meets_spell_tier_%u", tier);
         add_case(name, &world, tier, FX_DEFLECT_R);
+    }
+
+    /* ---- deeper samples of the same gaps ----------------------------------
+     * The block above pins one or a few samples per gap. These widen each
+     * one toward the states a player actually sees, within the ceiling of
+     * about 100 new scenes per contact-sheet review. */
+    static const char *form_name[] = {"projectile", "singularity", "fireball", "beam",
+                                      "swarm",      "ground_wave", "chain",    "conjure"};
+
+    /* More asymmetric health pairs, each side low against the other high. */
+    static const uint8_t more_hp_pairs[][2] = {
+        {1u, SIM_MAX_HP}, {SIM_MAX_HP, 4u}, {3u, 5u}, {7u, 0u}, {4u, 1u}};
+    for (size_t i = 0; i < sizeof more_hp_pairs / sizeof more_hp_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_L].hp = more_hp_pairs[i][0];
+        world.wiz[SIM_SIDE_R].hp = more_hp_pairs[i][1];
+        snprintf(name, sizeof name, "health_%u_vs_%u", more_hp_pairs[i][0], more_hp_pairs[i][1]);
+        add_case(name, &world, 0, 0);
+    }
+
+    /* The charge indicator draws four stages, and neither form, tier nor
+     * total changes the frame, so windup_progress_* above already pins every
+     * stage on the left. The same span on the mirrored right half. */
+    for (size_t i = 0; i < sizeof windup_remaining; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        set_windup(&world, SIM_SIDE_R, SPELL_BEAM, 40u, windup_remaining[i], SPELL_TIER_LONG);
+        snprintf(name, sizeof name, "windup_progress_r_%zu", i);
+        add_case(name, &world, 5u, 0);
+    }
+
+    /* Both wizards acting, in mixed states rather than the same state twice. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    set_windup(&world, SIM_SIDE_L, SPELL_BEAM, 30u, 20u, SPELL_TIER_MEDIUM);
+    set_flight(&world, SIM_SIDE_R, SPELL_FIREBALL, 160u);
+    add_case("duel_winding_vs_flight", &world, 5u, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].inc_state = INC_PREPARED;
+    world.wiz[SIM_SIDE_L].prepared = 1;
+    world.wiz[SIM_SIDE_L].prepared_desc = descriptor(SPELL_BEAM, 3u);
+    set_windup(&world, SIM_SIDE_R, SPELL_SWARM, 30u, 12u, SPELL_TIER_MEDIUM);
+    add_case("duel_prepared_vs_winding", &world, 6u, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++) {
+        world.wiz[side].inc_state = INC_PREPARED;
+        world.wiz[side].prepared = 1;
+        world.wiz[side].prepared_desc = descriptor(side ? SPELL_CHAIN : SPELL_BEAM, 3u);
+    }
+    add_case("duel_both_prepared", &world, 6u, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++) {
+        world.wiz[side].inc_state = INC_COLLECTING;
+        world.wiz[side].inc.key_count = side ? 40u : 12u;
+        world.wiz[side].inc.seen_pos = side ? 0x0fffu : 0x003fu;
+    }
+    add_case("duel_both_collecting", &world, 3u, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    set_flight(&world, SIM_SIDE_L, SPELL_PROJECTILE, 128u);
+    set_flight(&world, SIM_SIDE_R, SPELL_PROJECTILE, 128u);
+    add_case("duel_both_crossing_gap", &world, 6u, 0);
+    static const uint8_t flight_pairs[][2] = {{SPELL_BEAM, SPELL_SWARM},
+                                              {SPELL_CHAIN, SPELL_GROUND_WAVE},
+                                              {SPELL_SINGULARITY, SPELL_CONJURE}};
+    for (size_t i = 0; i < sizeof flight_pairs / sizeof flight_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        set_flight(&world, SIM_SIDE_L, flight_pairs[i][0], 88u);
+        set_flight(&world, SIM_SIDE_R, flight_pairs[i][1], 104u);
+        snprintf(name, sizeof name, "duel_%s_vs_%s", form_name[flight_pairs[i][0]],
+                 form_name[flight_pairs[i][1]]);
+        add_case(name, &world, 6u, 0);
+    }
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    set_windup(&world, SIM_SIDE_L, SPELL_BEAM, 12u, 6u, SPELL_TIER_SATURATED);
+    world.wiz[SIM_SIDE_L].rearm_lock = 1;
+    world.wiz[SIM_SIDE_R].ward_strength = 4u;
+    world.wiz[SIM_SIDE_R].ward_capacity = 4u;
+    world.wiz[SIM_SIDE_R].ward_focus = 3u;
+    world.wiz[SIM_SIDE_R].shield_ticks = SIM_SHIELD_TICKS;
+    add_case("duel_bigcast_vs_ward", &world, 5u, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].pose = POSE_RECOVER;
+    set_windup(&world, SIM_SIDE_R, SPELL_FIREBALL, 30u, 18u, SPELL_TIER_MEDIUM);
+    add_case("duel_impact_while_winding", &world, 4u, FX_IMPACT_R);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    set_flight(&world, SIM_SIDE_R, SPELL_PROJECTILE, 96u);
+    world.wiz[SIM_SIDE_L].ward_strength = 2u;
+    world.wiz[SIM_SIDE_L].ward_capacity = 2u;
+    add_case("duel_deflect_while_flight", &world, 4u, FX_DEFLECT_L);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].pose = POSE_RECOVER;
+    world.wiz[SIM_SIDE_R].pose = POSE_RECOVER;
+    add_case("duel_both_recover", &world, 5u, 0);
+
+    /* More two-field pairs: mirrored same-kind pairs, both slots on one half,
+     * and the remaining kinds, so every kind is pinned in a pair. */
+    static const struct {
+        const char *name;
+        uint8_t a_kind;
+        uint8_t a_zone;
+        uint8_t b_kind;
+        uint8_t b_zone;
+    } more_field_pairs[] = {
+        {"steam_rune", FIELD_STEAM, SIM_RESIDUE_DOORSTEP_L, FIELD_RUNE, SIM_RESIDUE_DOORSTEP_R},
+        {"wall_wall", FIELD_WALL, SIM_RESIDUE_MID_L, FIELD_WALL, SIM_RESIDUE_MID_R},
+        {"trap_trap", FIELD_TRAP, SIM_RESIDUE_DOORSTEP_L, FIELD_TRAP, SIM_RESIDUE_DOORSTEP_R},
+        {"familiar_vortex", FIELD_FAMILIAR, SIM_RESIDUE_MID_L, FIELD_VORTEX, SIM_RESIDUE_MID_R},
+        {"singularity_steam", FIELD_SINGULARITY, SIM_RESIDUE_MID_L, FIELD_STEAM,
+         SIM_RESIDUE_DOORSTEP_R},
+        {"rune_vortex_left", FIELD_RUNE, SIM_RESIDUE_DOORSTEP_L, FIELD_VORTEX, SIM_RESIDUE_MID_L},
+        {"wall_trap_right", FIELD_WALL, SIM_RESIDUE_MID_R, FIELD_TRAP, SIM_RESIDUE_DOORSTEP_R},
+    };
+    for (size_t i = 0; i < sizeof more_field_pairs / sizeof more_field_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        duel_render_t pair = {0};
+        duel_render_from_world(&pair, &world);
+        pair.seed = 0x35u;
+        pair.civic_phase = 21u;
+        pair.field[0] =
+            (uint8_t)(more_field_pairs[i].a_kind | (more_field_pairs[i].a_zone << 3) | (2u << 5));
+        pair.field[1] = (uint8_t)(more_field_pairs[i].b_kind | (more_field_pairs[i].b_zone << 3) |
+                                  (1u << 5) | 0x80u);
+        snprintf(name, sizeof name, "field_pair_%s", more_field_pairs[i].name);
+        add_render_case(name, &pair, 9u);
+    }
+    /* A spell crossing a pair of fields. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    set_flight(&world, SIM_SIDE_L, SPELL_PROJECTILE, 168u);
+    duel_render_t crossing = {0};
+    duel_render_from_world(&crossing, &world);
+    crossing.seed = 0x35u;
+    crossing.civic_phase = 21u;
+    crossing.field[0] = (uint8_t)(FIELD_RUNE | (SIM_RESIDUE_MID_L << 3) | (2u << 5));
+    crossing.field[1] = (uint8_t)(FIELD_WALL | (SIM_RESIDUE_MID_R << 3) | (1u << 5) | 0x80u);
+    add_render_case("field_pair_spell_crossing", &crossing, 9u);
+
+    /* The lifecycle arc at the start and end of each moving phase, on both
+     * halves. DOWNED is still for its whole span, so life_right_downed and
+     * scenario_life-downed already pin it. */
+    static const struct {
+        const char *name;
+        uint8_t life;
+        uint8_t total;
+    } life_phase[] = {
+        {"collapse", LIFE_COLLAPSE, SIM_COLLAPSE_TICKS},
+        {"medic", LIFE_MEDIC, SIM_MEDIC_TICKS},
+        {"replace", LIFE_REPLACE, SIM_REPLACE_TICKS},
+    };
+    for (uint8_t side = 0; side < 2u; side++)
+        for (size_t i = 0; i < sizeof life_phase / sizeof life_phase[0]; i++)
+            for (uint8_t end = 0; end < 2u; end++) {
+                char name[48];
+                sim_init(&world, SIMF_AUTHORITATIVE, 0);
+                world.wiz[side].hp = 0;
+                world.wiz[side].life = life_phase[i].life;
+                world.wiz[side].life_ticks = end ? 2u : (uint8_t)(life_phase[i].total - 2u);
+                snprintf(name, sizeof name, "life_%c_%s_%s", side ? 'r' : 'l', life_phase[i].name,
+                         end ? "late" : "early");
+                add_case(name, &world, 3u, 0);
+            }
+    /* Each replacement silhouette walking in. Variant 2 walks in as variant 0
+     * (life_right_replace), so it is left out. */
+    for (uint8_t variant = 1; variant < SIM_ROSTER_N; variant += 2u) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_R].hp = 0;
+        world.wiz[SIM_SIDE_R].life = LIFE_REPLACE;
+        world.wiz[SIM_SIDE_R].life_ticks = SIM_REPLACE_TICKS / 2u;
+        world.wiz[SIM_SIDE_R].variant = variant;
+        snprintf(name, sizeof name, "life_replace_variant_%u", variant);
+        add_case(name, &world, 3u, 0);
+    }
+    /* Fizzles at the right half's downed wizard and at a collapsing one. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_R].hp = 0;
+    world.wiz[SIM_SIDE_R].life = LIFE_DOWNED;
+    world.wiz[SIM_SIDE_R].life_ticks = SIM_DOWNED_TICKS / 2u;
+    add_case("life_fizzle_at_downed_r", &world, 4u, FX_FIZZLE_R);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].hp = 0;
+    world.wiz[SIM_SIDE_L].life = LIFE_COLLAPSE;
+    world.wiz[SIM_SIDE_L].life_ticks = SIM_COLLAPSE_TICKS / 2u;
+    add_case("life_fizzle_at_collapse", &world, 4u, FX_FIZZLE_L);
+
+    /* Combat over the Commons at every non-dawn hour: crossing spells, a long
+     * wind-up and a landing impact, then a few steps of the celestial arc. */
+    static const char *hour_name[] = {"dawn", "day", "dusk", "night"};
+    for (uint8_t phase = DUEL_SKY_DAY; phase <= DUEL_SKY_NIGHT; phase++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        set_flight(&world, SIM_SIDE_L, SPELL_PROJECTILE, 96u);
+        set_flight(&world, SIM_SIDE_R, SPELL_FIREBALL, 160u);
+        snprintf(name, sizeof name, "sky_%s_both_in_flight", hour_name[phase]);
+        add_case_sky(name, &world, 6u, 0, phase, 0);
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        set_windup(&world, SIM_SIDE_L, SPELL_BEAM, 40u, 12u, SPELL_TIER_LONG);
+        snprintf(name, sizeof name, "sky_%s_windup", hour_name[phase]);
+        add_case_sky(name, &world, 5u, 0, phase, 0);
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_R].hp = 5u;
+        snprintf(name, sizeof name, "sky_%s_impact", hour_name[phase]);
+        add_case_sky(name, &world, 4u, FX_IMPACT_R, phase, 0);
+    }
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_R].ward_strength = 3u;
+    world.wiz[SIM_SIDE_R].ward_capacity = 3u;
+    add_case_sky("sky_dusk_deflect", &world, 4u, FX_DEFLECT_R, DUEL_SKY_DUSK, 0);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].hp = 0;
+    world.wiz[SIM_SIDE_L].life = LIFE_DOWNED;
+    world.wiz[SIM_SIDE_L].life_ticks = SIM_DOWNED_TICKS / 2u;
+    add_case_sky("sky_night_downed", &world, 3u, 0, DUEL_SKY_NIGHT, 0);
+    static const uint8_t arc_steps[][2] = {
+        {DUEL_SKY_DAY, 1u}, {DUEL_SKY_DUSK, 3u}, {DUEL_SKY_NIGHT, 1u}};
+    for (size_t i = 0; i < sizeof arc_steps / sizeof arc_steps[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        set_flight(&world, SIM_SIDE_L, SPELL_PROJECTILE, 96u);
+        set_flight(&world, SIM_SIDE_R, SPELL_FIREBALL, 160u);
+        snprintf(name, sizeof name, "sky_arc_%s_sub%u_combat", hour_name[arc_steps[i][0]],
+                 arc_steps[i][1]);
+        add_case_sky(name, &world, 6u, 0, arc_steps[i][0], arc_steps[i][1]);
+    }
+
+    /* Status on the right half, mirrored, and both wizards statused at once.
+     * Only BURNING draws intensity (see above), so the others take one. */
+    static const char *status_name[] = {"", "burning", "frozen", "disrupted", "marked"};
+    for (uint8_t status = STATUS_BURNING; status <= STATUS_MARKED; status++) {
+        uint8_t top = status == STATUS_BURNING ? 3u : 1u;
+        for (uint8_t intensity = 1u; intensity <= top; intensity++) {
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            world.wiz[SIM_SIDE_R].status = status;
+            world.wiz[SIM_SIDE_R].status_intensity = status == STATUS_BURNING ? intensity : 3u;
+            world.wiz[SIM_SIDE_R].status_ticks = 125u;
+            if (status == STATUS_BURNING)
+                snprintf(name, sizeof name, "status_r_%s_%u", status_name[status], intensity);
+            else
+                snprintf(name, sizeof name, "status_r_%s", status_name[status]);
+            add_case(name, &world, status, 0);
+        }
+    }
+    static const uint8_t status_pairs[][2] = {{STATUS_BURNING, STATUS_FROZEN},
+                                              {STATUS_MARKED, STATUS_DISRUPTED}};
+    for (size_t i = 0; i < sizeof status_pairs / sizeof status_pairs[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        for (uint8_t side = 0; side < 2u; side++) {
+            world.wiz[side].status = status_pairs[i][side];
+            world.wiz[side].status_intensity = 3u;
+            world.wiz[side].status_ticks = 125u;
+        }
+        snprintf(name, sizeof name, "status_%s_vs_%s", status_name[status_pairs[i][0]],
+                 status_name[status_pairs[i][1]]);
+        add_case(name, &world, 2u, 0);
     }
 
     /* Stances. MEDITATE/STUDY restage onto the balcony (MEDITATE's

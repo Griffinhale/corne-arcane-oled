@@ -123,3 +123,27 @@ CONTROL_XML = f"""
   </interface>
 </node>
 """
+
+# Typing: the opt-in typing helper's own name. It is not the daemon's and the
+# daemon never listens to it, so a summary cannot reach the heartbeat or the
+# keyboard; only the desktop city subscribes. Summary carries one kept window
+# as tempo, spread, row and row_spread (arcane_host.typing_summary), four
+# bytes, and nothing else exists on this interface.
+TYPING_BUS_NAME = "io.github.Griffinhale.CorneArcane.Typing"
+TYPING_OBJECT_PATH = "/io/github/Griffinhale/CorneArcane/Typing"
+TYPING_INTERFACE = "io.github.Griffinhale.CorneArcane.Typing"
+TYPING_SUMMARY = "Summary"
+TYPING_SIGNATURE = "(yyyy)"
+
+TYPING_XML = f"""
+<node>
+  <interface name='{TYPING_INTERFACE}'>
+    <signal name='{TYPING_SUMMARY}'>
+      <arg type='y' name='tempo'/>
+      <arg type='y' name='spread'/>
+      <arg type='y' name='row'/>
+      <arg type='y' name='rowSpread'/>
+    </signal>
+  </interface>
+</node>
+"""

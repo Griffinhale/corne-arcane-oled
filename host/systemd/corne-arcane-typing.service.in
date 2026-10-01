@@ -1,0 +1,21 @@
+[Unit]
+Description=Corne Arcane typing helper
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Opt-in, and off unless you enable it. Reads one keyboard that is not the
+# Corne and sends the desktop city a four-value summary per minute, nothing
+# else (docs/typing-summary.md). It needs read access to that keyboard; see
+# host/README.md, Typing helper. With several keyboards, name one with
+# `systemctl --user edit corne-arcane-typing.service`:
+#   [Service]
+#   Environment=CORNE_ARCANE_TYPING_DEVICE=/dev/input/by-id/...-event-kbd
+
+[Service]
+Type=dbus
+BusName=io.github.Griffinhale.CorneArcane.Typing
+ExecStart=@PREFIX@/bin/corne-arcane-typing
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

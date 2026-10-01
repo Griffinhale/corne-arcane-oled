@@ -152,6 +152,14 @@ int duel_city_geometry(int layout, int scale, int *width, int *height) {
  * heartbeat timeout runs.
  */
 static bool ingest(duel_host_state_t *host, const duel_city_input_t *in) {
+    /* The off-keyboard fields have no wire to be checked on, so they are
+     * checked here, against the same rule: each inside its enum. */
+    if (in->tempo >= DUEL_CITY_TEMPO_COUNT || in->spread >= DUEL_CITY_SPREAD_COUNT ||
+        in->row >= DUEL_CITY_ROW_COUNT || in->row_spread >= DUEL_CITY_ROW_SPREAD_COUNT ||
+        in->body >= DUEL_CITY_BODY_COUNT || in->heart >= DUEL_CITY_HEART_COUNT ||
+        in->sleep >= DUEL_CITY_SLEEP_COUNT)
+        return false;
+
     duel_host_packet_t packet;
     memset(&packet, 0, sizeof packet);
     packet.magic0 = DUEL_HOST_MAGIC0;
@@ -308,7 +316,9 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         /* The town layers draw the same projection into their own surfaces. */
         town_fb_t town;
         town_fb_clear(&town, plan.width, plan.height);
-        duel_town_draw(&town, &render, frame);
+        town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
+        town_health_t health = {input->body, input->heart, input->sleep};
+        duel_town_draw(&town, &render, &typing, &health, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }

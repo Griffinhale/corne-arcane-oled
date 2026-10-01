@@ -3,7 +3,9 @@
  *
  * The same bounded values the daemon sends the keyboard over Raw HID v3, as
  * Swift enums: a scene, the civic floor, mode and intensity, one secondary
- * activity, and an optional notification summary. Every field is a small
+ * activity, and an optional notification summary. Then the off-keyboard
+ * signals, which no keyboard ever receives: a typing summary and reduced
+ * health buckets, each `none` unless a shell has one. Every field is a small
  * integer. There is no string anywhere in this file, so a title, a URL or a
  * health sample has nothing to travel in.
  *
@@ -13,8 +15,9 @@
  * with the firmware's own DUEL_CITY_ERR_INPUT.
  *
  * Swift raw values must be literals, so the numbers are restated from
- * duel_host.h, whose enums say they are never renumbered. city-check holds
- * the counts against the library's wire constants and renders every value.
+ * duel_host.h and duel_city.h, whose enums say they are never renumbered.
+ * city-check holds the counts against the library's constants and renders
+ * every value.
  * The names avoid SwiftUI's Scene, ActivityKit's Activity and Foundation's
  * Notification, which the app targets import beside this module.
  */
@@ -84,6 +87,66 @@ public enum NotificationPriority: UInt8, CaseIterable, Sendable {
     case critical = 3
 }
 
+/// DUEL_CITY_TEMPO_*: typing tempo from a desktop's opt-in typing summary.
+/// Like every off-keyboard signal below, `none` is zero and is what a shell
+/// without the signal sends, and the value never reaches the keyboard.
+public enum TypingTempo: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case deliberate = 1
+    case flowing = 2
+    case rapid = 3
+    case frantic = 4
+}
+
+/// DUEL_CITY_SPREAD_*: how even the gaps inside a typing burst are.
+public enum TypingSpread: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case steady = 1
+    case varied = 2
+    case irregular = 3
+}
+
+/// DUEL_CITY_ROW_*: the keyboard row with the most keydowns.
+public enum TypingRow: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case top = 1
+    case home = 2
+    case bottom = 3
+    case thumb = 4
+}
+
+/// DUEL_CITY_ROW_SPREAD_*: how much of the typing that row holds.
+public enum TypingRowSpread: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case focused = 1
+    case mixed = 2
+    case even = 3
+}
+
+/// DUEL_CITY_BODY_*: body activity today, reduced on the watch: activity
+/// rings closed, or a step band when there are no rings.
+public enum BodyActivity: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case resting = 1
+    case stirring = 2
+    case moving = 3
+    case full = 4
+}
+
+/// DUEL_CITY_HEART_*: heart rate as a mood, never a reading.
+public enum HeartMood: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case still = 1
+    case lively = 2
+}
+
+/// DUEL_CITY_SLEEP_*: last night's sleep, as a mood for the day.
+public enum SleepMood: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case rested = 1
+    case tired = 2
+}
+
 /// A non-empty notification summary. The counters are plain integers, so a
 /// count above 15, an age above 7, or a persistent summary below critical
 /// reaches the C check and is refused there.
@@ -116,11 +179,21 @@ public struct CitySemantics: Equatable, Sendable {
     public var activity: SecondaryActivity
     public var notification: NotificationSummary?
     public var online: Bool
+    public var tempo: TypingTempo
+    public var spread: TypingSpread
+    public var row: TypingRow
+    public var rowSpread: TypingRowSpread
+    public var body: BodyActivity
+    public var heart: HeartMood
+    public var sleep: SleepMood
 
     public init(
         scene: HostScene = .duel, floor: CivicFloor = .commons, mode: CivicMode = .normal,
         intensity: CivicIntensity = .calm, activity: SecondaryActivity = .none,
-        notification: NotificationSummary? = nil, online: Bool = true
+        notification: NotificationSummary? = nil, online: Bool = true,
+        tempo: TypingTempo = .none, spread: TypingSpread = .none, row: TypingRow = .none,
+        rowSpread: TypingRowSpread = .none, body: BodyActivity = .none,
+        heart: HeartMood = .none, sleep: SleepMood = .none
     ) {
         self.scene = scene
         self.floor = floor
@@ -129,6 +202,13 @@ public struct CitySemantics: Equatable, Sendable {
         self.activity = activity
         self.notification = notification
         self.online = online
+        self.tempo = tempo
+        self.spread = spread
+        self.row = row
+        self.rowSpread = rowSpread
+        self.body = body
+        self.heart = heart
+        self.sleep = sleep
     }
 
     /// duel_city_input_t, packed as DUEL_CIVIC_PACK and DUEL_SECONDARY_PACK pack it.
@@ -146,6 +226,13 @@ public struct CitySemantics: Equatable, Sendable {
         }
         input.online = online ? 1 : 0
         input.seed = seed
+        input.tempo = tempo.rawValue
+        input.spread = spread.rawValue
+        input.row = row.rawValue
+        input.row_spread = rowSpread.rawValue
+        input.body = body.rawValue
+        input.heart = heart.rawValue
+        input.sleep = sleep.rawValue
         return input
     }
 }

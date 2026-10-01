@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import ast
 import ctypes
+import inspect
 import unittest
+from pathlib import Path
 
 from arcane_host.city import candidate_paths
 from arcane_host.protocol import (
@@ -157,6 +160,43 @@ class ProtocolTests(unittest.TestCase):
     def test_civic_bounds(self) -> None:
         with self.assertRaises(ValueError):
             CivicState(secondary=8)  # exceeds the 3-bit secondary field
+
+
+# The only modules that may know the typing summary exists: the reducer, the
+# helper that sends it, the bus names, and the desktop window that listens.
+TYPING_MODULES = {"typing_summary", "typing_helper", "dbus_contract", "city_window"}
+
+
+class TypingSummaryTests(unittest.TestCase):
+    def test_summary_never_on_wire(self) -> None:
+        # The report has no field a summary could ride in: its builder takes
+        # the scene, the notification summary and the civic state, nothing more.
+        self.assertEqual(
+            set(inspect.signature(build_packet).parameters),
+            {"message", "session", "sequence", "scene", "notification_count", "summary", "civic"},
+        )
+        # And nothing that builds, sends or serves the heartbeat can reach one:
+        # outside the helper and the window, no module imports the reducer or
+        # the helper, or names the helper's bus.
+        package = Path(build_packet.__code__.co_filename).parent
+        for path in sorted(package.glob("*.py")):
+            if path.stem in TYPING_MODULES:
+                continue
+            source = path.read_text()
+            tree = ast.parse(source)
+            imported = {
+                node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+            } | {
+                alias.name
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Import)
+                for alias in node.names
+            }
+            for module in ("typing_summary", "typing_helper", "city_window"):
+                self.assertFalse(
+                    any(name.endswith(module) for name in imported), f"{path.name} imports {module}"
+                )
+            self.assertNotIn("TYPING_", source, path.name)
 
 
 if __name__ == "__main__":

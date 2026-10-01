@@ -133,6 +133,30 @@ That is the normal RP2040 behaviour and does not mean the flash failed.
 If the volume does not mount automatically, find it with `lsblk` and mount it by
 hand. It is a small FAT filesystem labelled `RPI-RP2`.
 
+### With the flasher
+
+`corne-arcane-flash IMAGE.uf2`, or **Flash** in the `corne-arcane` app, runs the
+same sequence for you. It checks the image, stops the daemon, asks for each
+half in turn, copies the image when `RPI-RP2` appears, and gives the daemon
+back. You still press BOOT on each half and keep TRRS disconnected. It keeps the
+image it flashed before, so `corne-arcane-flash --last-good` goes back one.
+
+**Flash** in the app opens the file dialog with an image already chosen, so
+Open is usually all it takes. It offers, in order:
+
+1. The newest `fw-v*` release on the releases page. The app downloads
+   `corne_arcane.uf2` and `SHA256SUMS` into `~/.cache/corne-arcane/firmware/`
+   and offers the image only if its hash matches. A release already downloaded
+   is not fetched again.
+2. A local build: the file named by `CORNE_ARCANE_FIRMWARE`, then
+   `artifacts/release/griffin_arcane-release.uf2` when the app runs from a
+   checkout, then the file you last flashed from the app.
+
+It never offers the diagnostic image or a `.prev.uf2`. You can still pick any
+other file in the dialog, and the warning line says where an offered image
+came from. Looking up releases is the app's only network request, and it sends
+nothing about you or the keyboard.
+
 ## Which half is "left"
 
 The half with the USB cable is the master, and this firmware treats the master

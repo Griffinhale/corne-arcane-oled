@@ -4,19 +4,23 @@ import argparse
 import ast
 import contextlib
 import ctypes
+import hashlib
 import io
 import os
+import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from arcane_host import city, city_window
+from arcane_host import city, city_window, typing_helper
 from arcane_host.city import (
     CITY_ABI,
+    OFF_KEYBOARD_FIELDS,
     CityError,
     CityInput,
     CityRenderer,
@@ -25,12 +29,24 @@ from arcane_host.city import (
     city_input,
     resting_input,
 )
-from arcane_host.dbus_contract import BUS_NAME, CONTROL_INTERFACE, OBJECT_PATH, PAUSE
+from arcane_host.dbus_contract import (
+    BUS_NAME,
+    CONTROL_INTERFACE,
+    EVENTS_INTERFACE,
+    FOCUS_INTERFACE,
+    INJECT_SYNTHETIC,
+    OBJECT_PATH,
+    PAUSE,
+    REPORT_ACTIVE_WINDOW,
+    TYPING_SIGNATURE,
+)
 from arcane_host.protocol import (
+    REPORT_SIZE,
     Category,
     CivicState,
     Floor,
     Intensity,
+    Message,
     Mode,
     NotificationSummary,
     Priority,
@@ -38,11 +54,17 @@ from arcane_host.protocol import (
     Secondary,
 )
 from arcane_host.semantic import SemanticState
-from test_dbus_control import HOST_DIR, EchoKeyboard, Gio, GLib, holds, wait_until
+from arcane_host.typing_summary import Row, RowSpread, Spread, Tempo, TypingSummary
+from test_dbus_control import FRAME, HOST_DIR, EchoKeyboard, Gio, GLib, holds, wait_until
 
 
 def library_available() -> bool:
     return any(path.is_file() for path in candidate_paths())
+
+
+def digest(frame: bytes) -> str:
+    """A frame's short name, so a failing comparison prints sixteen characters."""
+    return hashlib.sha256(frame).hexdigest()[:16]
 
 
 requires_library = unittest.skipUnless(
@@ -51,11 +73,26 @@ requires_library = unittest.skipUnless(
 
 
 class CityInputTests(unittest.TestCase):
-    def test_struct_is_ten_bounded_bytes(self) -> None:
+    def test_struct_is_seventeen_bounded_bytes(self) -> None:
         # The privacy boundary is structural: every field is a small integer
         # and there is nowhere a title, URL, or notification body could ride.
-        self.assertEqual(ctypes.sizeof(CityInput), 10)
+        self.assertEqual(ctypes.sizeof(CityInput), 17)
         self.assertTrue(all(kind is ctypes.c_uint8 for _, kind in CityInput._fields_))
+
+    def test_off_keyboard_fields_follow_the_payload(self) -> None:
+        # The first ten bytes keep their offsets; the off-keyboard signals
+        # are appended, so nothing that wrote the old struct by offset moves.
+        names = [name for name, _ in CityInput._fields_]
+        self.assertEqual(names[8:10], ["online", "seed"])
+        self.assertEqual(names[10:], [field for field, _ in OFF_KEYBOARD_FIELDS])
+        self.assertEqual(CityInput.tempo.offset, 10)
+
+    def test_off_keyboard_fields_start_at_none(self) -> None:
+        packed = city_input(SemanticState(), seed=0x5A)
+        for field, _ in OFF_KEYBOARD_FIELDS:
+            self.assertEqual(getattr(packed, field), 0, field)
+        for field, kind in OFF_KEYBOARD_FIELDS:
+            self.assertEqual(kind(0).name, "NONE", field)
 
     def test_carries_the_raw_hid_payload_in_payload_order(self) -> None:
         summary = NotificationSummary(3, Category.COMMUNICATION, Priority.CRITICAL, 5, True)
@@ -159,6 +196,117 @@ class CityRendererTests(unittest.TestCase):
             setattr(packed, field, value)
             with self.assertRaisesRegex(CityError, "outside its enum"):
                 self.render(packed)
+
+    def test_off_keyboard_values_outside_their_enum_are_refused(self) -> None:
+        # Each new field takes every value of its enum and nothing past it.
+        # Zero is "none", so a struct that never heard of these fields is valid.
+        for field, kind in OFF_KEYBOARD_FIELDS:
+            top = max(kind)
+            for value in (top + 1, 0xFF):
+                packed = resting_input(seed=0x5A)
+                setattr(packed, field, value)
+                with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
+                    self.render(packed)
+
+    # Today's resting frame in each layout with every off-keyboard field at
+    # none. The panels are as the renderer drew them before those fields
+    # existed; the town and landscape moved once, reviewed, when the lit tower
+    # storey stopped being drawn inverted (NF22).
+    RESTING_FRAMES = {
+        Layout.DESK: "c0dc264113a523f4",
+        Layout.CITY: "54aee2b5104b1179",
+        Layout.LEFT: "0693730495095ab7",
+        Layout.RIGHT: "8cfadb6b7ec969fe",
+        Layout.TOWN: "68f2b02f5aa97c0a",
+        Layout.LANDSCAPE: "ae88f75233a95e2d",
+    }
+    # Only the town layers draw the typing summary and the health buckets. The
+    # four panel layouts are the keyboard's own two screens, and the keyboard
+    # never sees either.
+    TYPING_LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
+    TYPING_FIELDS = ("tempo", "spread", "row", "row_spread")
+
+    def test_none_renders_today_unchanged(self) -> None:
+        for layout, pinned in self.RESTING_FRAMES.items():
+            frame = CityRenderer(scale=1, layout=layout).render(
+                resting_input(seed=0x5A), 400_000, 12
+            )
+            self.assertEqual(digest(frame), pinned, layout)
+
+    # The tower's three storeys at scale 1 in the town layout: the band
+    # between ROOM_X0 and ROOM_X1 in desktop/duel_town_draw.c, and the rows of
+    # the upper neighbour, the tall active storey and the lower neighbour.
+    TOWER_ROOM_X = (112, 145)
+    TOWER_STOREY_ROWS = ((110, 125), (131, 159), (165, 180))
+
+    def storey_ink(self, layout: Layout, packed: CityInput) -> list[float]:
+        renderer = CityRenderer(scale=1, layout=layout)
+        _, _, pixels = renderer.render(packed, 400_000, 12).partition(b"255\n")
+        offset = (renderer.width - 256) // 2
+        x0, x1 = (x + offset for x in self.TOWER_ROOM_X)
+        shares = []
+        for y0, y1 in self.TOWER_STOREY_ROWS:
+            lit = sum(
+                1 for y in range(y0, y1) for x in range(x0, x1) if pixels[y * renderer.width + x]
+            )
+            shares.append(lit / ((y1 - y0) * (x1 - x0)))
+        return shares
+
+    def test_the_active_storey_is_lamplit_not_inverted(self) -> None:
+        # A lit storey is a dark room with its furniture and its own light in
+        # white, like the rest of the town, not a white block. It still holds
+        # more light than either neighbour, on every floor.
+        for layout in self.TYPING_LAYOUTS:
+            for floor in Floor:
+                scene = Scene.FOCUS if floor is Floor.SPECIAL else Scene.DUEL
+                state = SemanticState(scene, NotificationSummary(), CivicState(floor=floor))
+                above, active, below = self.storey_ink(layout, city_input(state, seed=0x5A))
+                self.assertLess(active, 0.5, f"{layout} {floor}")
+                self.assertGreater(active, max(above, below), f"{layout} {floor}")
+
+    def test_typing_values_change_the_frame(self) -> None:
+        # Every typing value draws in the town layers, each differently from
+        # the others, and nothing in the panels.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
+            for field, kind in OFF_KEYBOARD_FIELDS:
+                if field not in self.TYPING_FIELDS:
+                    continue
+                frames = {base}
+                for value in kind:
+                    if value == 0:
+                        continue
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, int(value))
+                    frame = digest(renderer.render(packed, 400_000, 12))
+                    if layout in self.TYPING_LAYOUTS:
+                        self.assertNotIn(frame, frames, f"{layout} {field}={value}")
+                        frames.add(frame)
+                    else:
+                        self.assertEqual(frame, base, f"{layout} {field}={value}")
+
+    def test_health_values_change_the_frame(self) -> None:
+        # Body, heart and sleep draw in the town layers too, each value
+        # differently from the others, and nothing in the panels.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
+            for field, kind in OFF_KEYBOARD_FIELDS:
+                if field in self.TYPING_FIELDS:
+                    continue
+                frames = {base}
+                for value in kind:
+                    if value == 0:
+                        continue
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, int(value))
+                    frame = digest(renderer.render(packed, 400_000, 12))
+                    if layout in self.TYPING_LAYOUTS:
+                        self.assertNotIn(frame, frames, f"{layout} {field}={value}")
+                        frames.add(frame)
+                    else:
+                        self.assertEqual(frame, base, f"{layout} {field}={value}")
 
     def test_scale_is_bounded(self) -> None:
         with self.assertRaisesRegex(CityError, "scale"):
@@ -272,6 +420,7 @@ class FakeRenderer:
     def __init__(self, layout: Layout = Layout.CITY) -> None:
         self.layout = layout
         self.calls = []
+        self.inputs = []
         self.worlds = []
         self.backdrop = "#123456"
         self.fps = 25
@@ -287,6 +436,7 @@ class FakeRenderer:
 
     def render(self, packed, elapsed_ms, frame, ambient=None) -> bytes:
         self.calls.append((packed.civic, elapsed_ms, frame, ambient))
+        self.inputs.append(bytes(packed))
         return b"pixels"
 
 
@@ -424,9 +574,12 @@ class LayoutTests(unittest.TestCase):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             city_window.parse_args(["--scale", "4", "--size", "256x256"])
 
-    def test_the_default_layout_is_one_continuous_scene(self) -> None:
+    def test_the_default_layout_is_the_town(self) -> None:
+        # The view the phone and the watch open on; the keyboard's own
+        # framing is one flag away.
         args = city_window.parse_args([])
-        self.assertEqual(args.layout, "city")
+        self.assertEqual(args.layout, "town")
+        self.assertEqual(city_window.parse_args(["--layout", "city"]).layout, "city")
 
 
 @requires_library
@@ -676,6 +829,212 @@ class CaptionTests(unittest.TestCase):
         build_window().set_caption("ignored")
 
 
+class NoCorneTests(unittest.TestCase):
+    """corne-arcane --no-hid: a keyboard without this firmware, so no Corne is expected."""
+
+    def test_no_hid_follows_the_daemons_option_and_setting(self) -> None:
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": ""}):
+            self.assertFalse(city_window.parse_args([]).no_hid)
+            self.assertTrue(city_window.parse_args(["--no-hid"]).no_hid)
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "1"}):
+            self.assertTrue(city_window.parse_args([]).no_hid)
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "0"}):
+            self.assertFalse(city_window.parse_args([]).no_hid)
+
+    def test_an_absent_keyboard_is_not_an_error_without_a_corne(self) -> None:
+        caption = city_window.service_caption
+        absent = ("absent", "", False, "")
+        self.assertEqual(caption(absent, no_hid=False), "No keyboard found")
+        self.assertEqual(caption(absent, no_hid=True), city_window.NO_CORNE)
+        self.assertEqual(caption(None, no_hid=True), city_window.NO_SERVICE)
+        for words in (city_window.NO_CORNE, city_window.NO_SERVICE):
+            self.assertNotRegex(words.lower(), "hid|error|fail|denied")
+
+    def test_no_corne_shows_none_of_the_corne_controls(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        with mock.patch.object(city_window, "ControlsPanel") as panel:
+            window.schedule = lambda _delay, _callback: None
+            window.root.mainloop = lambda: None
+            city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True)
+        panel.assert_not_called()
+
+    def test_the_first_redraw_says_the_city_follows_the_desktop(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True)
+        self.assertEqual(window.caption.cget("text"), city_window.NO_CORNE)
+        self.assertEqual(window.frames, 1)
+
+
+class FakeView:
+    def __init__(self, status) -> None:
+        self.status = status
+        self.world = None
+
+    def pump(self) -> None:
+        pass
+
+    def caption(self) -> str:
+        return city_window.link_caption(self.status)
+
+    def city(self, seed: int) -> CityInput:
+        return resting_input(online=self.status is not None, seed=seed)
+
+
+class FakeVariant:
+    def __init__(self, values, signature: str = TYPING_SIGNATURE) -> None:
+        self.values = values
+        self.signature = signature
+
+    def get_type_string(self) -> str:
+        return self.signature
+
+    def unpack(self):
+        return self.values
+
+
+def typing_view(clock=lambda: 0.0) -> city_window.TypingView:
+    """A TypingView on no bus: summaries are handed to it as the signal would."""
+    return city_window.TypingView(mock.Mock(), mock.Mock(), mock.Mock(), clock=clock)
+
+
+def hear(view: city_window.TypingView, values, signature: str = TYPING_SIGNATURE) -> None:
+    view._summary(None, ":1.7", None, None, None, FakeVariant(values, signature))
+
+
+def typing_fields(packed: CityInput) -> tuple[int, int, int, int]:
+    return (packed.tempo, packed.spread, packed.row, packed.row_spread)
+
+
+class TypingViewTests(unittest.TestCase):
+    """The desktop city's side of the opt-in typing summary (NF7)."""
+
+    def test_each_summary_value_is_its_city_value(self) -> None:
+        # The city enums are the summary's plus one, zero being none.
+        view = typing_view()
+        for tempo in Tempo:
+            for spread in Spread:
+                for row in Row:
+                    for row_spread in RowSpread:
+                        hear(view, (tempo, spread, row, row_spread))
+                        packed = view.apply(resting_input(seed=0x5A))
+                        self.assertEqual(
+                            typing_fields(packed), (tempo + 1, spread + 1, row + 1, row_spread + 1)
+                        )
+
+    def test_no_summary_leaves_the_fields_none(self) -> None:
+        packed = typing_view().apply(resting_input(seed=0x5A))
+        self.assertEqual(bytes(packed), bytes(resting_input(seed=0x5A)))
+
+    def test_only_the_typing_fields_change(self) -> None:
+        state = SemanticState(
+            Scene.ARCHIVE,
+            NotificationSummary(3, Category.COMMUNICATION, Priority.CRITICAL, 5, True),
+            CivicState(Floor.WORKSHOP, Mode.QUIET, Intensity.BUSY, Secondary.TRANSFER),
+            7,
+        )
+        before = city_input(state, seed=0x5A)
+        view = typing_view()
+        hear(view, (Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        after = view.apply(city_input(state, seed=0x5A))
+        # Civic intensity stays host workload; health fields stay none.
+        self.assertEqual(bytes(after)[:10], bytes(before)[:10])
+        self.assertEqual(typing_fields(after), (4, 3, 1, 1))
+        self.assertEqual((after.body, after.heart, after.sleep), (0, 0, 0))
+
+    def test_a_silent_helper_fades_back_to_none(self) -> None:
+        now = [100.0]
+        view = typing_view(clock=lambda: now[0])
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        # One dropped window between two kept ones is not silence.
+        now[0] += 2 * 60.0
+        self.assertEqual(typing_fields(view.apply(resting_input())), (3, 1, 2, 2))
+        now[0] = 100.0 + city_window.TYPING_STALE_SECONDS
+        self.assertEqual(typing_fields(view.apply(resting_input())), (0, 0, 0, 0))
+        hear(view, (Tempo.FLOWING, Spread.VARIED, Row.BOTTOM, RowSpread.EVEN))
+        self.assertEqual(typing_fields(view.apply(resting_input())), (2, 2, 3, 3))
+
+    def test_the_stale_window_is_two_to_three_minutes(self) -> None:
+        self.assertGreaterEqual(city_window.TYPING_STALE_SECONDS, 120.0)
+        self.assertLessEqual(city_window.TYPING_STALE_SECONDS, 180.0)
+
+    def test_turning_the_helper_off_drops_the_fields_at_once(self) -> None:
+        view = typing_view()
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        view._vanished(None, "io.github.Griffinhale.CorneArcane.Typing")
+        self.assertEqual(typing_fields(view.apply(resting_input())), (0, 0, 0, 0))
+
+    def test_a_malformed_summary_is_ignored(self) -> None:
+        view = typing_view()
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        hear(view, (4, 0, 0, 0))
+        hear(view, (0, 0, 0, 0, 0), "(yyyyy)")
+        hear(view, ("x",), "(s)")
+        self.assertEqual(typing_fields(view.apply(resting_input())), (3, 1, 2, 2))
+
+    def test_following_the_service_draws_the_typing_fields(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        typing = typing_view()
+        hear(typing, (Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True, typing=typing)
+        drawn = CityInput.from_buffer_copy(window.renderer.inputs[-1])
+        self.assertEqual(typing_fields(drawn), (4, 3, 1, 1))
+
+    def test_without_a_typing_view_the_fields_stay_none(self) -> None:
+        window = build_window(caption=True)
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(
+            window, FakeView(("absent", "", False, "")), controls=mock.Mock(), no_hid=True
+        )
+        drawn = CityInput.from_buffer_copy(window.renderer.inputs[-1])
+        self.assertEqual(typing_fields(drawn), (0, 0, 0, 0))
+
+
+class RecordingKeyboard(EchoKeyboard):
+    """An echoing pty that also keeps every frame the heartbeat wrote to it."""
+
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+        self.lock = threading.Lock()
+        super().__init__()
+
+    def _echo(self) -> None:
+        pending = b""
+        while not self._stop.is_set():
+            readable, _, _ = select.select((self.master,), (), (), 0.05)
+            if not readable:
+                continue
+            try:
+                pending += os.read(self.master, 4096)
+            except OSError:
+                return
+            while len(pending) >= FRAME:
+                frame, pending = pending[:FRAME], pending[FRAME:]
+                with self.lock:
+                    self.frames.append(frame)
+                os.write(self.master, frame)
+
+    def heartbeats(self) -> list[bytes]:
+        with self.lock:
+            return [frame for frame in self.frames if frame[1 + 3] == Message.HEARTBEAT]
+
+
+def without_counters(frame: bytes) -> bytes:
+    """A heartbeat with its session, sequence and CRC cut out: what it says, not when."""
+    report = frame[1:]
+    return frame[:1] + report[:4] + report[10 : REPORT_SIZE - 1]
+
+
 class NoPrivateDaemonTests(unittest.TestCase):
     def test_no_private_daemon(self) -> None:
         """The window module reaches neither the daemon nor the keyboard."""
@@ -851,6 +1210,126 @@ class ServiceViewTests(unittest.TestCase):
 
         owner = ask("GetNameOwner", BUS_NAME, "(s)")
         self.assertEqual(ask("GetConnectionUnixProcessID", owner, "(u)"), self.daemon.pid)
+
+    def test_typing_summary_sets_typing_fields(self) -> None:
+        """The helper's signal, over a real bus, fills the window's typing fields."""
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        publisher = typing_helper.Publisher(self.connect())
+        publisher.own()
+        self.assertTrue(self.settle(lambda: typing.present, 3.0), "never saw the helper")
+        publisher.send(TypingSummary(Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        self.assertTrue(self.settle(lambda: typing.summary is not None, 3.0), "no summary")
+        self.assertEqual(typing_fields(typing.apply(self.view.city(0x5A))), (4, 3, 1, 1))
+
+    def test_a_summary_from_another_name_is_not_heard(self) -> None:
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        impostor = self.connect()
+        impostor.emit_signal(
+            None,
+            city_window.TYPING_OBJECT_PATH,
+            city_window.TYPING_INTERFACE,
+            city_window.TYPING_SUMMARY,
+            GLib.Variant(TYPING_SIGNATURE, (3, 2, 0, 0)),
+        )
+        impostor.flush_sync(None)
+        self.settle(lambda: False, 0.5)
+        self.assertIsNone(typing.summary)
+
+    def test_typing_summary_leaves_hid_packets_unchanged(self) -> None:
+        """The keyboard is sent the same heartbeat with and without a summary on the bus."""
+        self.keyboard = RecordingKeyboard()
+        self.addCleanup(self.keyboard.close)
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        self.start_daemon()
+        self.assertTrue(
+            self.settle(lambda: self.view.status is not None and self.view.status[0] == "connected")
+        )
+        self.assertTrue(self.settle(lambda: len(self.keyboard.heartbeats()) >= 3, 5.0))
+        without = self.keyboard.heartbeats()
+
+        publisher = typing_helper.Publisher(self.connect())
+        publisher.own()
+        publisher.send(TypingSummary(Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        self.assertTrue(self.settle(lambda: typing.summary is not None, 3.0), "no summary")
+        self.assertEqual(typing_fields(typing.apply(self.view.city(0x5A))), (4, 3, 1, 1))
+        self.assertTrue(
+            self.settle(lambda: len(self.keyboard.heartbeats()) >= len(without) + 3, 5.0)
+        )
+        with_summary = self.keyboard.heartbeats()[len(without) :]
+
+        for frame in without + with_summary:
+            self.assertEqual(len(frame), FRAME)
+        self.assertEqual(
+            {without_counters(frame) for frame in with_summary},
+            {without_counters(frame) for frame in without},
+        )
+        self.assertEqual(len({without_counters(frame) for frame in without}), 1)
+
+    def test_no_corne_renders_city_only(self) -> None:
+        """A --no-hid service: the city is online, follows focus and notifications, and no HID error shows."""
+        log = tempfile.TemporaryFile()
+        self.addCleanup(log.close)
+        self.daemon = subprocess.Popen(
+            [sys.executable, "-m", "arcane_host.daemon", "--no-hid", "--no-desktop-notifications"],
+            cwd=HOST_DIR,
+            env=self.env,
+            stdout=subprocess.DEVNULL,
+            stderr=log,
+        )
+        self.addCleanup(self.stop_daemon)
+        self.assertTrue(
+            self.settle(lambda: self.view.status is not None and self.view.world is not None),
+            f"never saw the service: {self.view.status}",
+        )
+        self.assertEqual(self.view.status[0], "absent")
+        self.assertEqual(
+            city_window.service_caption(self.view.status, no_hid=True), city_window.NO_CORNE
+        )
+        resting = self.view.city(0x5A)
+        self.assertEqual((resting.online, resting.seed), (1, 0x5A))
+
+        client = self.connect()
+
+        def report(interface: str, method: str, value) -> None:
+            client.call_sync(
+                BUS_NAME,
+                OBJECT_PATH,
+                interface,
+                method,
+                value,
+                None,
+                Gio.DBusCallFlags.NO_AUTO_START,
+                1000,
+                None,
+            )
+
+        before = self.view.world
+        report(
+            EVENTS_INTERFACE,
+            INJECT_SYNTHETIC,
+            GLib.Variant("(yyb)", (int(Category.COMMUNICATION), int(Priority.NORMAL), False)),
+        )
+        self.assertTrue(self.settle(lambda: self.view.world != before, 3.0), "no notification")
+        self.assertEqual(self.view.world[1:3], (1, int(Category.COMMUNICATION)))
+
+        before = self.view.world
+        report(FOCUS_INTERFACE, REPORT_ACTIVE_WINDOW, GLib.Variant("(ss)", ("code", "code")))
+        self.assertTrue(self.settle(lambda: self.view.world != before, 3.0), "focus not followed")
+
+        city_now = self.view.city(0x5A)
+        self.assertEqual(city_now.online, 1)
+        if library_available():
+            frame = CityRenderer().render(city_now, 400_000, 0)
+            self.assertTrue(frame.startswith(b"P5"))
+
+        self.stop_daemon()
+        log.seek(0)
+        errors = log.read().decode("utf-8", "replace")
+        self.assertIn("running without a keyboard", errors)
+        self.assertNotIn("HID unavailable", errors)
 
 
 if __name__ == "__main__":

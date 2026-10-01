@@ -51,11 +51,23 @@ struct SemanticRow: Decodable {
         let online: Bool
     }
 
+    /// The off-keyboard signals; a row without them leaves every one at none.
+    struct Signals: Decodable {
+        let tempo: UInt8
+        let spread: UInt8
+        let row: UInt8
+        let row_spread: UInt8
+        let body: UInt8
+        let heart: UInt8
+        let sleep: UInt8
+    }
+
     let name: String
     let layout: Int32
     let seed: UInt8
     let frames: UInt32
     let input: Input
+    let signals: Signals?
 
     /// Through the public enums, so a number the row names and the enum lacks
     /// fails here rather than reaching the renderer some other way.
@@ -75,9 +87,27 @@ struct SemanticRow: Decodable {
                 count: input.count, category: category, priority: priority, age: input.age,
                 persistent: input.persistent)
         }
-        return CitySemantics(
+        var semantics = CitySemantics(
             scene: scene, floor: floor, mode: mode, intensity: intensity, activity: activity,
             notification: notification, online: input.online)
+        if let signals {
+            guard let tempo = TypingTempo(rawValue: signals.tempo),
+                let spread = TypingSpread(rawValue: signals.spread),
+                let row = TypingRow(rawValue: signals.row),
+                let rowSpread = TypingRowSpread(rawValue: signals.row_spread),
+                let body = BodyActivity(rawValue: signals.body),
+                let heart = HeartMood(rawValue: signals.heart),
+                let sleep = SleepMood(rawValue: signals.sleep)
+            else { fail("semantic row \(name) names a signal CityKit has no case for") }
+            semantics.tempo = tempo
+            semantics.spread = spread
+            semantics.row = row
+            semantics.rowSpread = rowSpread
+            semantics.body = body
+            semantics.heart = heart
+            semantics.sleep = sleep
+        }
+        return semantics
     }
 }
 
@@ -433,6 +463,13 @@ func runSemanticInvariants() {
             count: 4, category: .communication, priority: .critical, persistent: true)
     }
     vary("offline") { $0.online = false }
+    for tempo in TypingTempo.allCases { vary("tempo \(tempo)") { $0.tempo = tempo } }
+    for spread in TypingSpread.allCases { vary("spread \(spread)") { $0.spread = spread } }
+    for row in TypingRow.allCases { vary("row \(row)") { $0.row = row } }
+    for share in TypingRowSpread.allCases { vary("row spread \(share)") { $0.rowSpread = share } }
+    for body in BodyActivity.allCases { vary("body \(body)") { $0.body = body } }
+    for heart in HeartMood.allCases { vary("heart \(heart)") { $0.heart = heart } }
+    for sleep in SleepMood.allCases { vary("sleep \(sleep)") { $0.sleep = sleep } }
     vary("everything at once") {
         $0 = CitySemantics(
             scene: .focus, floor: .special, mode: .urgent, intensity: .busy, activity: .scroll,
@@ -457,6 +494,68 @@ func runSemanticInvariants() {
     check(
         "semantic_input_reaches_the_picture", floors.count == CivicFloor.allCases.count,
         "\(floors.count) distinct frames for \(CivicFloor.allCases.count) floors")
+
+    check(
+        "signal_enums_match_the_header",
+        TypingTempo.allCases.count == Int(DUEL_CITY_TEMPO_COUNT)
+            && TypingSpread.allCases.count == Int(DUEL_CITY_SPREAD_COUNT)
+            && TypingRow.allCases.count == Int(DUEL_CITY_ROW_COUNT)
+            && TypingRowSpread.allCases.count == Int(DUEL_CITY_ROW_SPREAD_COUNT)
+            && BodyActivity.allCases.count == Int(DUEL_CITY_BODY_COUNT)
+            && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
+            && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
+    )
+    // The town draws every typing and health value, and the panels, which
+    // are the keyboard's own screens, draw none of them.
+    let plain = frame(base, layout: .town)
+    let typed = variants.filter {
+        $0.1.tempo != .none || $0.1.spread != .none || $0.1.row != .none
+            || $0.1.rowSpread != .none
+    }
+    let unseen = typed.filter { frame($0.1, layout: .town) == plain }.map(\.0)
+    let panelled = typed.filter { frame($0.1) != frame(base) }.map(\.0)
+    check(
+        "typing_signals_draw", plain != nil && unseen.isEmpty && panelled.isEmpty,
+        "town unchanged: \(unseen.joined(separator: ", ")); "
+            + "panel moved: \(panelled.joined(separator: ", "))")
+    let health = variants.filter {
+        $0.1.body != .none || $0.1.heart != .none || $0.1.sleep != .none
+    }
+    let still = health.filter { frame($0.1, layout: .town) == plain }.map(\.0)
+    let leaked = health.filter { frame($0.1) != frame(base) }.map(\.0)
+    check(
+        "health_signals_draw", plain != nil && still.isEmpty && leaked.isEmpty,
+        "town unchanged: \(still.joined(separator: ", ")); "
+            + "panel moved: \(leaked.joined(separator: ", "))")
+    // One past each signal enum, written into the C struct directly since the
+    // Swift enums cannot hold it; the C check refuses it.
+    var unchecked: [String] = []
+    let past: [(String, WritableKeyPath<duel_city_input_t, UInt8>, Int)] = [
+        ("tempo", \.tempo, Int(DUEL_CITY_TEMPO_COUNT)),
+        ("spread", \.spread, Int(DUEL_CITY_SPREAD_COUNT)),
+        ("row", \.row, Int(DUEL_CITY_ROW_COUNT)),
+        ("row_spread", \.row_spread, Int(DUEL_CITY_ROW_SPREAD_COUNT)),
+        ("body", \.body, Int(DUEL_CITY_BODY_COUNT)),
+        ("heart", \.heart, Int(DUEL_CITY_HEART_COUNT)),
+        ("sleep", \.sleep, Int(DUEL_CITY_SLEEP_COUNT)),
+    ]
+    var width: Int32 = 0
+    var height: Int32 = 0
+    _ = duel_city_geometry(Layout.left.rawValue, 1, &width, &height)
+    var scratch = [UInt8](repeating: 0, count: Int(width * height))
+    for (name, field, count) in past {
+        var raw = duel_city_input_t()
+        _ = duel_city_tour_stop(0, 0x5A, &raw)
+        raw[keyPath: field] = UInt8(count)
+        let code = scratch.withUnsafeMutableBufferPointer { buffer in
+            duel_city_render(
+                nil, &raw, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress, buffer.count)
+        }
+        if code != Int32(DUEL_CITY_ERR_INPUT) { unchecked.append("\(name) \(count): \(code)") }
+    }
+    check(
+        "signals_past_their_enum_are_refused", unchecked.isEmpty,
+        unchecked.joined(separator: "; "))
 
     // Values the enums can carry but the firmware refuses; the C check is the judge.
     let wrong: [(String, NotificationSummary)] = [
@@ -495,6 +594,48 @@ func runSemanticInvariants() {
             && (try? city.render(frame: 300)) == before)
 }
 
+/// The watch's health reducer at every cut-off the owner set, one step either
+/// side, and with nothing to read.
+func runHealthBucketInvariants() {
+    let hour = 3_600.0
+    func body(rings: Int? = nil, steps: Int? = nil) -> BodyActivity {
+        HealthBuckets(HealthReading(ringsClosed: rings, steps: steps)).body
+    }
+    func heart(_ latest: Double?, resting: Double?) -> HeartMood {
+        HealthBuckets(HealthReading(heartRate: latest, restingHeartRate: resting)).heart
+    }
+    func sleep(_ seconds: Double?) -> SleepMood {
+        HealthBuckets(HealthReading(secondsAsleep: seconds)).sleep
+    }
+    let cases: [(String, Bool)] = [
+        ("rings 0", body(rings: 0) == .resting),
+        ("rings 1", body(rings: 1) == .stirring),
+        ("rings 2", body(rings: 2) == .moving),
+        ("rings 3", body(rings: 3) == .full),
+        ("rings win over steps", body(rings: 0, steps: 12_000) == .resting),
+        ("steps 0", body(steps: 0) == .resting),
+        ("steps 1999", body(steps: 1_999) == .resting),
+        ("steps 2000", body(steps: 2_000) == .stirring),
+        ("steps 5999", body(steps: 5_999) == .stirring),
+        ("steps 6000", body(steps: 6_000) == .moving),
+        ("steps 9999", body(steps: 9_999) == .moving),
+        ("steps 10000", body(steps: 10_000) == .full),
+        ("no rings, no steps", body() == .none),
+        ("resting + 19", heart(79, resting: 60) == .still),
+        ("resting + 20", heart(80, resting: 60) == .lively),
+        ("below resting", heart(50, resting: 60) == .still),
+        ("no latest heart rate", heart(nil, resting: 60) == .none),
+        ("no resting heart rate", heart(80, resting: nil) == .none),
+        ("6h59m asleep", sleep(7 * hour - 60) == .tired),
+        ("7h00m asleep", sleep(7 * hour) == .rested),
+        ("no sleep recorded", sleep(nil) == .none),
+    ]
+    let empty = HealthBuckets(HealthReading())
+    let wrong = cases.filter { !$0.1 }.map(\.0)
+        + (empty == HealthBuckets(body: .none, heart: .none, sleep: .none) ? [] : ["all missing"])
+    check("watch_health_buckets", wrong.isEmpty, wrong.joined(separator: ", "))
+}
+
 func runInvariants() {
     check(
         "abi_is_the_one_this_tree_compiles", City.abi == expectedCityABI,
@@ -505,6 +646,7 @@ func runInvariants() {
     check("cadence_comes_from_the_simulation", City.frameIntervalMs == 40)
     check("the_tour_is_every_civic_floor", City.tourLength == 5)
     runSemanticInvariants()
+    runHealthBucketInvariants()
 
     let expected: [Layout: (Int, Int)] = [
         .desk: (67, 128), .city: (67, 128), .left: (32, 128), .right: (32, 128),

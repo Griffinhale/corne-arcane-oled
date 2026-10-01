@@ -22,7 +22,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "host"))
 
-from arcane_host.city import CityInput, CityRenderer, Layout  # noqa: E402
+from arcane_host.city import OFF_KEYBOARD_FIELDS, CityInput, CityRenderer, Layout  # noqa: E402
 from arcane_host.protocol import CivicState, Floor, Intensity, Mode, Secondary  # noqa: E402
 
 MATRIX = json.loads((Path(__file__).parent / "parity_matrix.json").read_text())
@@ -64,8 +64,13 @@ def check_matrix() -> None:
 
 
 def semantic_input(row: dict) -> CityInput:
-    """A row's input, packed by the daemon's own CivicState rather than by hand."""
+    """A row's input, packed by the daemon's own CivicState rather than by hand.
+
+    The off-keyboard signals go through their enums, so a number the row names
+    and the enum lacks fails here, as it does in the Swift leg.
+    """
     fields = row["input"]
+    signals = row.get("signals", {})
     civic = CivicState(
         Floor(fields["floor"]),
         Mode(fields["mode"]),
@@ -83,6 +88,7 @@ def semantic_input(row: dict) -> CityInput:
         secondary=civic.secondary_byte(),
         online=int(fields["online"]),
         seed=row["seed"],
+        **{name: int(kind(signals.get(name, 0))) for name, kind in OFF_KEYBOARD_FIELDS},
     )
 
 

@@ -5,7 +5,7 @@ simulation the firmware runs. This module is the whole of the Python side: the
 shell holds no presentation policy of its own, and every decision the window
 would otherwise make -- scale, backdrop, cadence, the tour -- is asked of the
 renderer, so a second shell on another platform repeats none of it. It packs a
-:class:`~arcane_host.semantic.SemanticState` into the ten-byte input struct
+:class:`~arcane_host.semantic.SemanticState` into the input struct
 ``duel_city.h`` declares and hands back both canvases as one grey image.
 
 Only integer enums cross the boundary, which is the same contract the Raw HID
@@ -24,7 +24,7 @@ from pathlib import Path
 from .protocol import CivicState, NotificationSummary, Scene
 from .semantic import SemanticState, world_bytes
 
-CITY_ABI = 7
+CITY_ABI = 8
 LIBRARY_NAME = "libcornearcane.so"
 
 
@@ -63,8 +63,86 @@ class CityError(RuntimeError):
     """The native renderer is missing, too old, or refused an input."""
 
 
+class CityTempo(IntEnum):
+    """``DUEL_CITY_TEMPO_*``: typing tempo from the opt-in summary."""
+
+    NONE = 0
+    DELIBERATE = 1
+    FLOWING = 2
+    RAPID = 3
+    FRANTIC = 4
+
+
+class CitySpread(IntEnum):
+    """``DUEL_CITY_SPREAD_*``: how even the gaps inside a typing burst are."""
+
+    NONE = 0
+    STEADY = 1
+    VARIED = 2
+    IRREGULAR = 3
+
+
+class CityRow(IntEnum):
+    """``DUEL_CITY_ROW_*``: the keyboard row with the most keydowns."""
+
+    NONE = 0
+    TOP = 1
+    HOME = 2
+    BOTTOM = 3
+    THUMB = 4
+
+
+class CityRowSpread(IntEnum):
+    """``DUEL_CITY_ROW_SPREAD_*``: how much of the typing that row holds."""
+
+    NONE = 0
+    FOCUSED = 1
+    MIXED = 2
+    EVEN = 3
+
+
+class CityBody(IntEnum):
+    """``DUEL_CITY_BODY_*``: body activity today, from a watch."""
+
+    NONE = 0
+    RESTING = 1
+    STIRRING = 2
+    MOVING = 3
+    FULL = 4
+
+
+class CityHeart(IntEnum):
+    """``DUEL_CITY_HEART_*``: heart rate as a mood, never a reading."""
+
+    NONE = 0
+    STILL = 1
+    LIVELY = 2
+
+
+class CitySleep(IntEnum):
+    """``DUEL_CITY_SLEEP_*``: last night's sleep, as a mood for the day."""
+
+    NONE = 0
+    RESTED = 1
+    TIRED = 2
+
+
+# The signals from off the keyboard, in struct order after the payload. Zero is
+# "none" in every one, and none is what this desktop sends until a producer
+# exists; they never reach the keyboard wire.
+OFF_KEYBOARD_FIELDS: tuple[tuple[str, type[IntEnum]], ...] = (
+    ("tempo", CityTempo),
+    ("spread", CitySpread),
+    ("row", CityRow),
+    ("row_spread", CityRowSpread),
+    ("body", CityBody),
+    ("heart", CityHeart),
+    ("sleep", CitySleep),
+)
+
+
 class CityInput(ctypes.Structure):
-    """``duel_city_input_t``: the Raw HID v3 semantic payload, unpacked."""
+    """``duel_city_input_t``: the Raw HID v3 payload, unpacked, then off-keyboard signals."""
 
     _fields_ = [
         ("scene", ctypes.c_uint8),
@@ -77,6 +155,7 @@ class CityInput(ctypes.Structure):
         ("secondary", ctypes.c_uint8),
         ("online", ctypes.c_uint8),
         ("seed", ctypes.c_uint8),
+        *((name, ctypes.c_uint8) for name, _ in OFF_KEYBOARD_FIELDS),
     ]
 
 
