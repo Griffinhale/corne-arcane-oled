@@ -301,8 +301,15 @@ def _run(boards: list[Keyboard]) -> int:
         GLib.timeout_add(WINDOW_MS - now % WINDOW_MS + 50, minute_edge)
         return GLib.SOURCE_REMOVE
 
+    try:  # PyGObject 3.52 moved the Unix calls to GLibUnix; older ones lack it.
+        gi.require_version("GLibUnix", "2.0")
+        from gi.repository import GLibUnix
+
+        fd_add_full = GLibUnix.fd_add_full
+    except (ImportError, ValueError):
+        fd_add_full = GLib.unix_fd_add_full
     for fd in fds:
-        GLib.unix_fd_add_full(
+        fd_add_full(
             GLib.PRIORITY_DEFAULT,
             fd,
             GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
