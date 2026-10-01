@@ -6,15 +6,17 @@ import contextlib
 import ctypes
 import io
 import os
+import select
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from arcane_host import city, city_window
+from arcane_host import city, city_window, typing_helper
 from arcane_host.city import (
     CITY_ABI,
     OFF_KEYBOARD_FIELDS,
@@ -35,12 +37,15 @@ from arcane_host.dbus_contract import (
     OBJECT_PATH,
     PAUSE,
     REPORT_ACTIVE_WINDOW,
+    TYPING_SIGNATURE,
 )
 from arcane_host.protocol import (
+    REPORT_SIZE,
     Category,
     CivicState,
     Floor,
     Intensity,
+    Message,
     Mode,
     NotificationSummary,
     Priority,
@@ -48,7 +53,8 @@ from arcane_host.protocol import (
     Secondary,
 )
 from arcane_host.semantic import SemanticState
-from test_dbus_control import HOST_DIR, EchoKeyboard, Gio, GLib, holds, wait_until
+from arcane_host.typing_summary import Row, RowSpread, Spread, Tempo, TypingSummary
+from test_dbus_control import FRAME, HOST_DIR, EchoKeyboard, Gio, GLib, holds, wait_until
 
 
 def library_available() -> bool:
@@ -322,6 +328,7 @@ class FakeRenderer:
     def __init__(self, layout: Layout = Layout.CITY) -> None:
         self.layout = layout
         self.calls = []
+        self.inputs = []
         self.worlds = []
         self.backdrop = "#123456"
         self.fps = 25
@@ -337,6 +344,7 @@ class FakeRenderer:
 
     def render(self, packed, elapsed_ms, frame, ambient=None) -> bytes:
         self.calls.append((packed.civic, elapsed_ms, frame, ambient))
+        self.inputs.append(bytes(packed))
         return b"pixels"
 
 
@@ -782,6 +790,156 @@ class FakeView:
         return resting_input(online=self.status is not None, seed=seed)
 
 
+class FakeVariant:
+    def __init__(self, values, signature: str = TYPING_SIGNATURE) -> None:
+        self.values = values
+        self.signature = signature
+
+    def get_type_string(self) -> str:
+        return self.signature
+
+    def unpack(self):
+        return self.values
+
+
+def typing_view(clock=lambda: 0.0) -> city_window.TypingView:
+    """A TypingView on no bus: summaries are handed to it as the signal would."""
+    return city_window.TypingView(mock.Mock(), mock.Mock(), mock.Mock(), clock=clock)
+
+
+def hear(view: city_window.TypingView, values, signature: str = TYPING_SIGNATURE) -> None:
+    view._summary(None, ":1.7", None, None, None, FakeVariant(values, signature))
+
+
+def typing_fields(packed: CityInput) -> tuple[int, int, int, int]:
+    return (packed.tempo, packed.spread, packed.row, packed.row_spread)
+
+
+class TypingViewTests(unittest.TestCase):
+    """The desktop city's side of the opt-in typing summary (NF7)."""
+
+    def test_each_summary_value_is_its_city_value(self) -> None:
+        # The city enums are the summary's plus one, zero being none.
+        view = typing_view()
+        for tempo in Tempo:
+            for spread in Spread:
+                for row in Row:
+                    for row_spread in RowSpread:
+                        hear(view, (tempo, spread, row, row_spread))
+                        packed = view.apply(resting_input(seed=0x5A))
+                        self.assertEqual(
+                            typing_fields(packed), (tempo + 1, spread + 1, row + 1, row_spread + 1)
+                        )
+
+    def test_no_summary_leaves_the_fields_none(self) -> None:
+        packed = typing_view().apply(resting_input(seed=0x5A))
+        self.assertEqual(bytes(packed), bytes(resting_input(seed=0x5A)))
+
+    def test_only_the_typing_fields_change(self) -> None:
+        state = SemanticState(
+            Scene.ARCHIVE,
+            NotificationSummary(3, Category.COMMUNICATION, Priority.CRITICAL, 5, True),
+            CivicState(Floor.WORKSHOP, Mode.QUIET, Intensity.BUSY, Secondary.TRANSFER),
+            7,
+        )
+        before = city_input(state, seed=0x5A)
+        view = typing_view()
+        hear(view, (Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        after = view.apply(city_input(state, seed=0x5A))
+        # Civic intensity stays host workload; health fields stay none.
+        self.assertEqual(bytes(after)[:10], bytes(before)[:10])
+        self.assertEqual(typing_fields(after), (4, 3, 1, 1))
+        self.assertEqual((after.body, after.heart, after.sleep), (0, 0, 0))
+
+    def test_a_silent_helper_fades_back_to_none(self) -> None:
+        now = [100.0]
+        view = typing_view(clock=lambda: now[0])
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        # One dropped window between two kept ones is not silence.
+        now[0] += 2 * 60.0
+        self.assertEqual(typing_fields(view.apply(resting_input())), (3, 1, 2, 2))
+        now[0] = 100.0 + city_window.TYPING_STALE_SECONDS
+        self.assertEqual(typing_fields(view.apply(resting_input())), (0, 0, 0, 0))
+        hear(view, (Tempo.FLOWING, Spread.VARIED, Row.BOTTOM, RowSpread.EVEN))
+        self.assertEqual(typing_fields(view.apply(resting_input())), (2, 2, 3, 3))
+
+    def test_the_stale_window_is_two_to_three_minutes(self) -> None:
+        self.assertGreaterEqual(city_window.TYPING_STALE_SECONDS, 120.0)
+        self.assertLessEqual(city_window.TYPING_STALE_SECONDS, 180.0)
+
+    def test_turning_the_helper_off_drops_the_fields_at_once(self) -> None:
+        view = typing_view()
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        view._vanished(None, "io.github.Griffinhale.CorneArcane.Typing")
+        self.assertEqual(typing_fields(view.apply(resting_input())), (0, 0, 0, 0))
+
+    def test_a_malformed_summary_is_ignored(self) -> None:
+        view = typing_view()
+        hear(view, (Tempo.RAPID, Spread.STEADY, Row.HOME, RowSpread.MIXED))
+        hear(view, (4, 0, 0, 0))
+        hear(view, (0, 0, 0, 0, 0), "(yyyyy)")
+        hear(view, ("x",), "(s)")
+        self.assertEqual(typing_fields(view.apply(resting_input())), (3, 1, 2, 2))
+
+    def test_following_the_service_draws_the_typing_fields(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        typing = typing_view()
+        hear(typing, (Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True, typing=typing)
+        drawn = CityInput.from_buffer_copy(window.renderer.inputs[-1])
+        self.assertEqual(typing_fields(drawn), (4, 3, 1, 1))
+
+    def test_without_a_typing_view_the_fields_stay_none(self) -> None:
+        window = build_window(caption=True)
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(
+            window, FakeView(("absent", "", False, "")), controls=mock.Mock(), no_hid=True
+        )
+        drawn = CityInput.from_buffer_copy(window.renderer.inputs[-1])
+        self.assertEqual(typing_fields(drawn), (0, 0, 0, 0))
+
+
+class RecordingKeyboard(EchoKeyboard):
+    """An echoing pty that also keeps every frame the heartbeat wrote to it."""
+
+    def __init__(self) -> None:
+        self.frames: list[bytes] = []
+        self.lock = threading.Lock()
+        super().__init__()
+
+    def _echo(self) -> None:
+        pending = b""
+        while not self._stop.is_set():
+            readable, _, _ = select.select((self.master,), (), (), 0.05)
+            if not readable:
+                continue
+            try:
+                pending += os.read(self.master, 4096)
+            except OSError:
+                return
+            while len(pending) >= FRAME:
+                frame, pending = pending[:FRAME], pending[FRAME:]
+                with self.lock:
+                    self.frames.append(frame)
+                os.write(self.master, frame)
+
+    def heartbeats(self) -> list[bytes]:
+        with self.lock:
+            return [frame for frame in self.frames if frame[1 + 3] == Message.HEARTBEAT]
+
+
+def without_counters(frame: bytes) -> bytes:
+    """A heartbeat with its session, sequence and CRC cut out: what it says, not when."""
+    report = frame[1:]
+    return frame[:1] + report[:4] + report[10 : REPORT_SIZE - 1]
+
+
 class NoPrivateDaemonTests(unittest.TestCase):
     def test_no_private_daemon(self) -> None:
         """The window module reaches neither the daemon nor the keyboard."""
@@ -957,6 +1115,63 @@ class ServiceViewTests(unittest.TestCase):
 
         owner = ask("GetNameOwner", BUS_NAME, "(s)")
         self.assertEqual(ask("GetConnectionUnixProcessID", owner, "(u)"), self.daemon.pid)
+
+    def test_typing_summary_sets_typing_fields(self) -> None:
+        """The helper's signal, over a real bus, fills the window's typing fields."""
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        publisher = typing_helper.Publisher(self.connect())
+        publisher.own()
+        self.assertTrue(self.settle(lambda: typing.present, 3.0), "never saw the helper")
+        publisher.send(TypingSummary(Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        self.assertTrue(self.settle(lambda: typing.summary is not None, 3.0), "no summary")
+        self.assertEqual(typing_fields(typing.apply(self.view.city(0x5A))), (4, 3, 1, 1))
+
+    def test_a_summary_from_another_name_is_not_heard(self) -> None:
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        impostor = self.connect()
+        impostor.emit_signal(
+            None,
+            city_window.TYPING_OBJECT_PATH,
+            city_window.TYPING_INTERFACE,
+            city_window.TYPING_SUMMARY,
+            GLib.Variant(TYPING_SIGNATURE, (3, 2, 0, 0)),
+        )
+        impostor.flush_sync(None)
+        self.settle(lambda: False, 0.5)
+        self.assertIsNone(typing.summary)
+
+    def test_typing_summary_leaves_hid_packets_unchanged(self) -> None:
+        """The keyboard is sent the same heartbeat with and without a summary on the bus."""
+        self.keyboard = RecordingKeyboard()
+        self.addCleanup(self.keyboard.close)
+        typing = city_window.TypingView(Gio, GLib, self.connect())
+        self.addCleanup(typing.close)
+        self.start_daemon()
+        self.assertTrue(
+            self.settle(lambda: self.view.status is not None and self.view.status[0] == "connected")
+        )
+        self.assertTrue(self.settle(lambda: len(self.keyboard.heartbeats()) >= 3, 5.0))
+        without = self.keyboard.heartbeats()
+
+        publisher = typing_helper.Publisher(self.connect())
+        publisher.own()
+        publisher.send(TypingSummary(Tempo.FRANTIC, Spread.IRREGULAR, Row.TOP, RowSpread.FOCUSED))
+        self.assertTrue(self.settle(lambda: typing.summary is not None, 3.0), "no summary")
+        self.assertEqual(typing_fields(typing.apply(self.view.city(0x5A))), (4, 3, 1, 1))
+        self.assertTrue(
+            self.settle(lambda: len(self.keyboard.heartbeats()) >= len(without) + 3, 5.0)
+        )
+        with_summary = self.keyboard.heartbeats()[len(without) :]
+
+        for frame in without + with_summary:
+            self.assertEqual(len(frame), FRAME)
+        self.assertEqual(
+            {without_counters(frame) for frame in with_summary},
+            {without_counters(frame) for frame in without},
+        )
+        self.assertEqual(len({without_counters(frame) for frame in without}), 1)
 
     def test_no_corne_renders_city_only(self) -> None:
         """A --no-hid service: the city is online, follows focus and notifications, and no HID error shows."""

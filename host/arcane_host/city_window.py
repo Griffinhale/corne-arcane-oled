@@ -5,7 +5,10 @@ reference implementation any later platform can read. What it shows is the
 city: the tower, its floor, the sky, the resident, and whatever the daemon's
 notification summary sends walking through. Never the duel. On the keyboard,
 key positions never leave the firmware, and sampling them on a desktop is
-exactly the access this project refuses, so nothing here reads input.
+exactly the access this project refuses, so nothing here reads input. The one
+thing it hears about typing is the opt-in typing helper's per-minute summary
+(docs/typing-summary.md), four enums that fill the city's own typing fields
+and go nowhere else: not to the service, and not to the keyboard.
 
 Two ways to run it:
 
@@ -43,13 +46,34 @@ from .app_controls import (  # noqa: F401 -- link_caption and NO_SERVICE are re-
     link_caption,
 )
 from .app_settings import Settings, SettingsWindow
-from .city import CityInput, CityRenderer, Layout, city_input
+from .city import (
+    CityInput,
+    CityRenderer,
+    CityRow,
+    CityRowSpread,
+    CitySpread,
+    CityTempo,
+    Layout,
+    city_input,
+)
+from .dbus_contract import (
+    TYPING_BUS_NAME,
+    TYPING_INTERFACE,
+    TYPING_OBJECT_PATH,
+    TYPING_SIGNATURE,
+    TYPING_SUMMARY,
+)
 from .semantic import SemanticState
+from .typing_summary import Row, RowSpread, Spread, Tempo, TypingSummary
 
 CAPTION_INK = "#9aa3b2"
 # The link line when no Corne is expected: the city runs on focus and
 # notifications alone, so a missing keyboard is not something to fix.
 NO_CORNE = "No Corne: the city follows this desktop"
+# The helper sends one summary a minute and nothing for a sparse minute, so a
+# summary older than two and a half minutes means typing stopped or the helper
+# did: one dropped minute between two kept ones is not silence, two are.
+TYPING_STALE_SECONDS = 150.0
 
 
 def service_caption(status: tuple[str, str, bool, str] | None, *, no_hid: bool) -> str:
@@ -187,6 +211,81 @@ class CityWindow:
             pass
 
 
+class TypingView:
+    """The opt-in typing helper's latest summary, as the city's typing fields.
+
+    It listens to the helper's bus name and nothing else, holds one summary,
+    and lets it go when the helper leaves the bus or falls silent for
+    TYPING_STALE_SECONDS. The fields it fills are the desktop city's own; the
+    keyboard's payload bytes are never touched.
+    """
+
+    def __init__(self, Gio, GLib, connection, *, clock: Callable[[], float] = time.monotonic):
+        self.Gio = Gio
+        self.connection = connection
+        self.clock = clock
+        self.summary: TypingSummary | None = None
+        self.received = 0.0
+        self.present = False
+        self._subscription = connection.signal_subscribe(
+            TYPING_BUS_NAME,
+            TYPING_INTERFACE,
+            TYPING_SUMMARY,
+            TYPING_OBJECT_PATH,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            self._summary,
+        )
+        self._watch_id = Gio.bus_watch_name_on_connection(
+            connection,
+            TYPING_BUS_NAME,
+            Gio.BusNameWatcherFlags.NONE,
+            self._appeared,
+            self._vanished,
+        )
+
+    def _summary(self, *args) -> None:
+        parameters = args[-1]
+        if parameters.get_type_string() != TYPING_SIGNATURE:
+            return
+        tempo, spread, row, row_spread = parameters.unpack()
+        try:
+            summary = TypingSummary(Tempo(tempo), Spread(spread), Row(row), RowSpread(row_spread))
+        except ValueError:
+            return
+        self.summary = summary
+        self.received = self.clock()
+
+    def _appeared(self, _connection, _name, _owner) -> None:
+        self.present = True
+
+    def _vanished(self, _connection, _name) -> None:
+        self.present = False
+        self.summary = None
+
+    def apply(self, city: CityInput) -> CityInput:
+        """Fill the typing fields of one input: the summary plus one, or none."""
+        summary = self.summary
+        if summary is not None and self.clock() - self.received >= TYPING_STALE_SECONDS:
+            summary = self.summary = None
+        if summary is None:
+            city.tempo = city.spread = city.row = city.row_spread = 0
+        else:
+            city.tempo = CityTempo(summary.tempo + 1)
+            city.spread = CitySpread(summary.spread + 1)
+            city.row = CityRow(summary.row + 1)
+            city.row_spread = CityRowSpread(summary.row_spread + 1)
+        return city
+
+    def close(self) -> None:
+        if self._subscription:
+            self.connection.signal_unsubscribe(self._subscription)
+            self._subscription = 0
+        if self._watch_id:
+            self.Gio.bus_unwatch_name(self._watch_id)
+            self._watch_id = 0
+
+
 def present(
     window: CityWindow, next_input: Callable[[], CityInput], *, fps: int | None = None
 ) -> None:
@@ -226,11 +325,14 @@ def follow_service(
     fps: int | None = None,
     controls: Controls | None = None,
     no_hid: bool = False,
+    typing: TypingView | None = None,
 ) -> None:
     """Draw what the service reports, its link state, and the controls under it.
 
     With ``no_hid`` there is no Corne to pause, lend to Vial, observe or flash,
     so the window shows no controls: none of them could do anything but fail.
+    ``typing`` fills the city's typing fields from the helper's summaries; it
+    is pumped with the service's bus, and without it the fields stay none.
     """
     controls = controls or Controls(view)
     settings = Settings(controls)
@@ -260,7 +362,8 @@ def follow_service(
             panel.refresh()
         if settings_window is not None:
             settings_window.refresh()
-        return view.city(window.seed)
+        city = view.city(window.seed)
+        return city if typing is None else typing.apply(city)
 
     try:
         present(window, next_input, fps=fps)
@@ -373,13 +476,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     view = None
+    typing = None
     try:
-        view = ServiceView(Gio, GLib, Gio.bus_get_sync(Gio.BusType.SESSION, None))
-        follow_service(window, view, fps=args.fps, no_hid=args.no_hid)
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        view = ServiceView(Gio, GLib, bus)
+        typing = TypingView(Gio, GLib, bus)
+        follow_service(window, view, fps=args.fps, no_hid=args.no_hid, typing=typing)
     except GLib.Error as error:
         print(f"corne-arcane: no session bus ({error.message})", file=sys.stderr)
         return 2
     finally:
+        if typing is not None:
+            typing.close()
         if view is not None:
             view.close()
         window.close()
