@@ -38,7 +38,15 @@ from .dbus_contract import (
     WORLD_CHANGED,
     WORLD_SIGNATURE,
 )
-from .flash import KEYMAP_WARNING, WrongImage, check_image, state_dir
+from .flash import (
+    KEYMAP_WARNING,
+    Suggested,
+    WrongImage,
+    check_image,
+    remember_choice,
+    state_dir,
+    suggest_image,
+)
 from .hid_ownership import lock_path, remote_error_text
 
 APP_LABEL = "Corne Arcane app"
@@ -264,8 +272,10 @@ class Controls:
         lock: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
         label: str = APP_LABEL,
+        suggest: Callable[[], Suggested | None] = suggest_image,
     ) -> None:
         self.view = view
+        self.suggest = suggest
         self.vial_command = vial_command or tool_command("vial", "vial_launcher")
         self.diagnostics_command = diagnostics_command or tool_command("diagnostics", "diagnostics")
         self.flash_command = flash_command or tool_command("flash", "flash")
@@ -415,9 +425,16 @@ class Controls:
         self.observe_until = self.clock() + seconds
         self.message = ""
 
-    def prepare_flash(self, image: Path) -> None:
+    def suggest_flash(self) -> Suggested | None:
+        """The image to offer before asking: a GitHub release, else a local
+        build, else nothing and the file dialog starts empty."""
+        if not self.can_use_keyboard:
+            return None
+        return self.suggest()
+
+    def prepare_flash(self, image: Path, source: str | None = None) -> None:
         """Check the image, then show the keymap warning; nothing runs until
-        confirm_flash."""
+        confirm_flash. `source` names where an offered image came from."""
         self.flash_ready = None
         if not self.can_use_keyboard:
             return
@@ -427,7 +444,8 @@ class Controls:
             self.message = f"Not flashed: {error}"
             return
         self.flash_ready = Path(image)
-        self.message = f"{KEYMAP_WARNING} Then press Flash now."
+        where = f"{Path(image).name} ({source}). " if source else ""
+        self.message = f"{where}{KEYMAP_WARNING} Then press Flash now."
 
     def cancel_flash(self) -> None:
         if self.flash_ready is not None:
@@ -438,6 +456,7 @@ class Controls:
         image, self.flash_ready = self.flash_ready, None
         if image is None or not self.can_use_keyboard:
             return
+        remember_choice(image)
         try:
             self.flash = _Child([*self.flash_command, str(image)], self.env)
         except OSError as error:
@@ -538,7 +557,7 @@ class ControlsPanel:
         background: str,
         ink: str,
         on_settings: Callable[[], None] | None = None,
-        ask_image: Callable[[], str] | None = None,
+        ask_image: Callable[[Suggested | None], str] | None = None,
     ) -> None:
         self.controls = controls
         self.master = master
@@ -597,22 +616,29 @@ class ControlsPanel:
             return
         self.controls.observe(minutes)
 
-    def _ask_image(self) -> str:
+    def _ask_image(self, suggested: Suggested | None) -> str:
         from tkinter import filedialog
 
+        where = {}
+        if suggested is not None:
+            # Opened on the offered image, so Open is all it takes.
+            where = {"initialdir": str(suggested.path.parent), "initialfile": suggested.path.name}
         return filedialog.askopenfilename(
             parent=self.master,
             title="Choose the Corne image to flash",
             filetypes=(("UF2 image", "*.uf2"),),
+            **where,
         )
 
     def _flash(self) -> None:
         if self.controls.flash_ready is not None:
             self.controls.confirm_flash()
             return
-        chosen = self.ask_image()
+        suggested = self.controls.suggest_flash()
+        chosen = self.ask_image(suggested)
         if chosen:
-            self.controls.prepare_flash(Path(chosen))
+            offered = suggested is not None and Path(chosen).resolve() == suggested.path.resolve()
+            self.controls.prepare_flash(Path(chosen), suggested.source if offered else None)
 
     def refresh(self) -> None:
         controls = self.controls

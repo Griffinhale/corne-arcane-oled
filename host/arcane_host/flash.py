@@ -9,16 +9,23 @@ The image this tool flashed last is kept as current.uf2 in the state
 directory, and the one before it as last-good.uf2: the way back if a new image
 misbehaves. Nothing here opens the keyboard; the drive is found through the
 mount table and its INFO_UF2.TXT, and only ever written to.
+
+Before the app asks for a file it offers one (suggest_image): the newest
+fw-v* release on GitHub, downloaded only after its hash matches the release's
+SHA256SUMS, else a local release build. The download is the only network
+request here and carries nothing about the board or its owner.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import struct
 import sys
 import time
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -43,6 +50,17 @@ IMAGE_NAMES = frozenset(
 )
 CURRENT = "current.uf2"
 LAST_GOOD = "last-good.uf2"
+LAST_CHOSEN = "last-chosen"
+
+# Where Flash looks for an image before asking: the newest published fw-v*
+# release (.github/workflows/release.yml attaches corne_arcane.uf2 and
+# SHA256SUMS), then a local build.
+RELEASES_URL = "https://api.github.com/repos/Griffinhale/corne-arcane-oled/releases?per_page=20"
+RELEASE_TAG_PREFIX = "fw-v"
+RELEASE_IMAGE = "corne_arcane.uf2"
+LOCAL_IMAGE = "griffin_arcane-release.uf2"
+FIRMWARE_ENV = "CORNE_ARCANE_FIRMWARE"
+FETCH_SECONDS = 5.0
 
 UF2_MAGIC_START0 = 0x0A324655
 UF2_MAGIC_START1 = 0x9E5D5157
@@ -114,6 +132,149 @@ def check_image(path: Path, state: Path | None = None) -> bytes:
         if block_no != number or total != count or size > 476:
             raise WrongImage(f"{path.name} is damaged (block {number} of {count} is wrong)")
     return data
+
+
+@dataclass(frozen=True)
+class Suggested:
+    path: Path
+    # Where it came from, in words the Flash button can show.
+    source: str
+
+
+def cache_dir() -> Path:
+    base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+    return Path(base) / "corne-arcane" / "firmware"
+
+
+def _get(url: str) -> bytes:
+    request = urllib.request.Request(
+        url, headers={"Accept": "application/vnd.github+json", "User-Agent": "corne-arcane-flash"}
+    )
+    with urllib.request.urlopen(request, timeout=FETCH_SECONDS) as response:
+        return response.read()
+
+
+def _listed_hash(sums: str, name: str) -> str | None:
+    # sha256sum writes "<hash>  <name>", with "./" when run as `sha256sum ./*`
+    # and "*" before the name in binary mode.
+    for line in sums.splitlines():
+        digest, _, listed = line.strip().partition(" ")
+        listed = listed.strip().lstrip("*")
+        if listed.startswith("./"):
+            listed = listed[2:]
+        if listed == name and len(digest) == 64:
+            return digest.lower()
+    return None
+
+
+def latest_release(
+    fetch: Callable[[str], bytes] = _get, cache: Path | None = None
+) -> Suggested | None:
+    """The newest published fw-v* release's image, downloaded once into the
+    cache and only kept when it matches the release's SHA256SUMS and passes
+    check_image. None when there is no such release or GitHub cannot be read."""
+    cache = Path(cache or cache_dir())
+    try:
+        releases = json.loads(fetch(RELEASES_URL))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(releases, list):
+        return None
+    release = next(
+        (
+            entry
+            for entry in releases
+            if isinstance(entry, dict)
+            and str(entry.get("tag_name", "")).startswith(RELEASE_TAG_PREFIX)
+            and not entry.get("draft")
+            and not entry.get("prerelease")
+        ),
+        None,
+    )
+    if release is None:
+        return None
+    tag = str(release["tag_name"])
+    if "/" in tag or tag in (".", ".."):
+        return None
+    assets = {
+        asset.get("name"): asset.get("browser_download_url")
+        for asset in release.get("assets", [])
+        if isinstance(asset, dict)
+    }
+    image = cache / tag / RELEASE_IMAGE
+    source = f"{tag} from GitHub, checksum verified"
+    try:
+        sums = fetch(assets["SHA256SUMS"]).decode("utf-8", "replace")
+        want = _listed_hash(sums, RELEASE_IMAGE)
+        if want is None:
+            return None
+        if image.is_file() and hashlib.sha256(image.read_bytes()).hexdigest() == want:
+            return Suggested(image, source)
+        data = fetch(assets[RELEASE_IMAGE])
+    except (OSError, KeyError, TypeError, ValueError):
+        return None
+    if hashlib.sha256(data).hexdigest() != want:
+        return None
+    image.parent.mkdir(parents=True, exist_ok=True)
+    _replace(image, data)
+    try:
+        check_image(image)
+    except WrongImage:
+        image.unlink(missing_ok=True)
+        return None
+    return Suggested(image, source)
+
+
+def local_images(state: Path | None = None, checkout: Path | None = None) -> list[Path]:
+    """Where a locally built image is looked for, in order: an explicit
+    override, this checkout's release build, then the file last chosen in the
+    app, which for an installed app is usually that same build."""
+    state = Path(state or state_dir())
+    paths = []
+    override = os.environ.get(FIRMWARE_ENV)
+    if override:
+        paths.append(Path(override))
+    checkout = Path(checkout or Path(__file__).resolve().parents[2])
+    paths.append(checkout / "artifacts" / "release" / LOCAL_IMAGE)
+    try:
+        chosen = (state / LAST_CHOSEN).read_text().strip()
+    except OSError:
+        chosen = ""
+    if chosen:
+        paths.append(Path(chosen))
+    return paths
+
+
+def suggest_image(
+    fetch: Callable[[str], bytes] = _get,
+    cache: Path | None = None,
+    state: Path | None = None,
+    local: list[Path] | None = None,
+) -> Suggested | None:
+    """The image Flash should offer: the newest GitHub release, else a local
+    build. Never the diagnostic or a kept .prev image."""
+    found = latest_release(fetch, cache)
+    if found is not None:
+        return found
+    for path in local_images(state) if local is None else local:
+        if "diagnostic" in path.name or ".prev." in path.name:
+            continue
+        try:
+            check_image(path, state)
+        except WrongImage:
+            continue
+        return Suggested(path, "local build")
+    return None
+
+
+def remember_choice(image: Path, state: Path | None = None) -> None:
+    """Note the file chosen by hand, so the next Flash can offer it again."""
+    state = Path(state or state_dir())
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        _replace(state / LAST_CHOSEN, str(Path(image).resolve()).encode())
+    except OSError:
+        pass
 
 
 def _unescape(field: str) -> str:

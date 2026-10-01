@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import fake_systemctl
 from arcane_host import flash
@@ -24,6 +25,9 @@ from arcane_host.flash import (
     check_image,
     find_bootloader,
     flash_image,
+    local_images,
+    remember_choice,
+    suggest_image,
 )
 
 HOST_DIR = Path(__file__).resolve().parents[1]
@@ -108,6 +112,17 @@ class Fixture(unittest.TestCase):
         self.state = self.root / "state"
         self.clock = Clock()
         self.progress: list[str] = []
+        # Nothing here may touch the real state or cache, or name a real image.
+        env = mock.patch.dict(
+            os.environ,
+            {
+                "XDG_STATE_HOME": str(self.root / "xdg-state"),
+                "XDG_CACHE_HOME": str(self.root / "xdg-cache"),
+            },
+        )
+        env.start()
+        self.addCleanup(env.stop)
+        os.environ.pop(flash.FIRMWARE_ENV, None)
 
     def image(self, name: str = "corne_arcane.uf2", payload: bytes = b"A" * 600) -> Path:
         path = self.root / "images" / name
@@ -156,6 +171,125 @@ class CheckImageTests(Fixture):
         with self.assertRaises(WrongImage) as caught:
             check_image(text)
         self.assertIn("damaged", str(caught.exception))
+
+
+class FakeGitHub:
+    """GitHub's release listing and asset downloads, by URL; anything else is
+    unreachable, as GitHub is with no network."""
+
+    def __init__(self, urls: dict[str, bytes]) -> None:
+        self.urls = urls
+        self.fetched: list[str] = []
+
+    def __call__(self, url: str) -> bytes:
+        self.fetched.append(url)
+        if url not in self.urls:
+            raise OSError("unreachable")
+        return self.urls[url]
+
+
+def release(tag: str, image: bytes, sums: bytes | None = None, **extra) -> tuple[dict, dict]:
+    import hashlib
+
+    base = f"https://example.invalid/{tag}/"
+    digest = hashlib.sha256(image).hexdigest()
+    listing = {
+        "tag_name": tag,
+        "draft": False,
+        "prerelease": False,
+        "assets": [
+            {"name": "corne_arcane.uf2", "browser_download_url": base + "corne_arcane.uf2"},
+            {"name": "SHA256SUMS", "browser_download_url": base + "SHA256SUMS"},
+        ],
+        **extra,
+    }
+    if sums is None:
+        sums = f"{digest}  ./corne_arcane.uf2\n{'0' * 64}  ./corne-arcane-host_1_all.deb\n".encode()
+    return listing, {base + "corne_arcane.uf2": image, base + "SHA256SUMS": sums}
+
+
+def github(*releases: tuple[dict, dict]) -> FakeGitHub:
+    import json
+
+    urls = {flash.RELEASES_URL: json.dumps([listing for listing, _ in releases]).encode()}
+    for _, assets in releases:
+        urls.update(assets)
+    return FakeGitHub(urls)
+
+
+class SuggestImageTests(Fixture):
+    def setUp(self) -> None:
+        super().setUp()
+        self.cache = self.root / "cache"
+        self.local = self.image("griffin_arcane-release.uf2", b"L" * 600)
+
+    def suggest(self, fetch, local=None):
+        return suggest_image(
+            fetch,
+            cache=self.cache,
+            state=self.state,
+            local=[self.local] if local is None else local,
+        )
+
+    def test_the_newest_published_fw_release_is_offered_after_its_checksum(self) -> None:
+        image = uf2(b"R" * 600)
+        fake = github(
+            release("fw-v2.0", uf2(b"D" * 600), draft=True),
+            release("app-v9", uf2(b"X" * 600)),
+            release("fw-v1.1", image),
+            release("fw-v1.0", uf2(b"O" * 600)),
+        )
+        found = self.suggest(fake)
+        self.assertEqual(found.path, self.cache / "fw-v1.1" / "corne_arcane.uf2")
+        self.assertEqual(found.path.read_bytes(), image)
+        self.assertIn("fw-v1.1", found.source)
+        self.assertIn("checksum verified", found.source)
+        # Kept: a second offer reads the hash list but downloads nothing.
+        fake.fetched.clear()
+        self.assertEqual(self.suggest(fake).path, found.path)
+        self.assertNotIn("https://example.invalid/fw-v1.1/corne_arcane.uf2", fake.fetched)
+
+    def test_a_download_that_misses_its_checksum_is_never_offered(self) -> None:
+        listing, assets = release(
+            "fw-v1.0", uf2(b"R" * 600), sums=f"{'1' * 64}  ./corne_arcane.uf2\n".encode()
+        )
+        found = self.suggest(github((listing, assets)))
+        self.assertEqual(found, flash.Suggested(self.local, "local build"))
+        self.assertFalse((self.cache / "fw-v1.0" / "corne_arcane.uf2").exists())
+
+    def test_a_release_whose_image_is_not_a_corne_image_is_dropped(self) -> None:
+        bad = uf2(b"R" * 600, family=0x12345678)
+        found = self.suggest(github(release("fw-v1.0", bad)))
+        self.assertEqual(found.source, "local build")
+        self.assertFalse((self.cache / "fw-v1.0" / "corne_arcane.uf2").exists())
+
+    def test_no_network_or_no_release_falls_back_to_the_local_build(self) -> None:
+        for fake in (FakeGitHub({}), github()):
+            with self.subTest(fake=fake.urls.keys()):
+                self.assertEqual(self.suggest(fake), flash.Suggested(self.local, "local build"))
+
+    def test_diagnostic_prev_and_wrong_files_are_never_offered(self) -> None:
+        candidates = [
+            self.image("griffin_arcane-diagnostic.uf2"),
+            self.image("griffin_arcane-release.prev.uf2"),
+            self.image("vial.uf2"),
+            self.root / "missing" / "griffin_arcane-release.uf2",
+        ]
+        self.assertIsNone(self.suggest(FakeGitHub({}), local=candidates))
+
+    def test_local_images_come_override_checkout_then_last_choice(self) -> None:
+        chosen = self.image("corne_arcane.uf2")
+        remember_choice(chosen, self.state)
+        with mock.patch.dict(os.environ, {flash.FIRMWARE_ENV: "/opt/fw.uf2"}):
+            paths = local_images(self.state, checkout=self.root / "repo")
+        self.assertEqual(
+            paths,
+            [
+                Path("/opt/fw.uf2"),
+                self.root / "repo" / "artifacts" / "release" / "griffin_arcane-release.uf2",
+                chosen.resolve(),
+            ],
+        )
 
 
 class FindBootloaderTests(Fixture):
@@ -492,6 +626,7 @@ class PanelFlashTests(Fixture):
             StubView(),
             lock=self.root / "hid.lock",
             flash_command=script(self.root, "flash", "exit 0"),
+            suggest=lambda: None,
         )
         self.addCleanup(controls.close)
         image = self.image()
@@ -502,20 +637,20 @@ class PanelFlashTests(Fixture):
             controls,
             background="#000",
             ink="#fff",
-            ask_image=lambda: (asked.append(True), str(image))[1],
+            ask_image=lambda offered: (asked.append(offered), str(image))[1],
         )
         panel.refresh()
         self.assertEqual(panel.flash_button.cget("text"), "Flash")
         self.assertIsNone(panel.cancel_button.layout, "Cancel is hidden until it means something")
         panel._flash()
-        self.assertEqual(asked, [True])
+        self.assertEqual(asked, [None], "nothing found, so nothing is offered")
         panel.refresh()
         self.assertEqual(panel.flash_button.cget("text"), "Flash now")
         self.assertIsNotNone(panel.cancel_button.layout)
         self.assertIn(KEYMAP_WARNING, panel.message.cget("text"))
         panel._flash()
         self.assertIsNotNone(controls.flash)
-        self.assertEqual(asked, [True], "confirming does not ask again")
+        self.assertEqual(asked, [None], "confirming does not ask again")
         panel.refresh()
         self.assertIsNone(panel.cancel_button.layout)
         self.assertEqual(panel.flash_button.cget("state"), "disabled")
@@ -523,10 +658,52 @@ class PanelFlashTests(Fixture):
 
         # A dismissed file dialog changes nothing.
         panel = ControlsPanel(
-            FakeTk, None, controls, background="#000", ink="#fff", ask_image=lambda: ""
+            FakeTk, None, controls, background="#000", ink="#fff", ask_image=lambda offered: ""
         )
         panel._flash()
         self.assertIsNone(controls.flash_ready)
+
+    def test_the_offered_image_is_named_and_remembered(self) -> None:
+        image = self.image()
+        offer = flash.Suggested(image, "fw-v1.0 from GitHub, checksum verified")
+        controls = Controls(
+            StubView(),
+            lock=self.root / "hid.lock",
+            flash_command=script(self.root, "flash", "exit 0"),
+            suggest=lambda: offer,
+        )
+        self.addCleanup(controls.close)
+        asked = []
+        panel = ControlsPanel(
+            FakeTk,
+            None,
+            controls,
+            background="#000",
+            ink="#fff",
+            ask_image=lambda offered: (asked.append(offered), str(offered.path))[1],
+        )
+        panel._flash()
+        self.assertEqual(asked, [offer], "the dialog opens on the offered image")
+        panel.refresh()
+        text = panel.message.cget("text")
+        self.assertTrue(text.startswith("corne_arcane.uf2 (fw-v1.0 from GitHub"), text)
+        self.assertIn(KEYMAP_WARNING, text)
+        panel._flash()
+        run_flash(controls)
+        self.assertEqual((flash.state_dir() / flash.LAST_CHOSEN).read_text(), str(image.resolve()))
+
+        # Another file picked instead of the offer is not credited to GitHub.
+        other = self.image("griffin_arcane-release.uf2")
+        panel = ControlsPanel(
+            FakeTk,
+            None,
+            controls,
+            background="#000",
+            ink="#fff",
+            ask_image=lambda offered: str(other),
+        )
+        panel._flash()
+        self.assertTrue(controls.message.startswith(KEYMAP_WARNING), controls.message)
 
 
 if __name__ == "__main__":
