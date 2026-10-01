@@ -51,11 +51,23 @@ struct SemanticRow: Decodable {
         let online: Bool
     }
 
+    /// The off-keyboard signals; a row without them leaves every one at none.
+    struct Signals: Decodable {
+        let tempo: UInt8
+        let spread: UInt8
+        let row: UInt8
+        let row_spread: UInt8
+        let body: UInt8
+        let heart: UInt8
+        let sleep: UInt8
+    }
+
     let name: String
     let layout: Int32
     let seed: UInt8
     let frames: UInt32
     let input: Input
+    let signals: Signals?
 
     /// Through the public enums, so a number the row names and the enum lacks
     /// fails here rather than reaching the renderer some other way.
@@ -75,9 +87,27 @@ struct SemanticRow: Decodable {
                 count: input.count, category: category, priority: priority, age: input.age,
                 persistent: input.persistent)
         }
-        return CitySemantics(
+        var semantics = CitySemantics(
             scene: scene, floor: floor, mode: mode, intensity: intensity, activity: activity,
             notification: notification, online: input.online)
+        if let signals {
+            guard let tempo = TypingTempo(rawValue: signals.tempo),
+                let spread = TypingSpread(rawValue: signals.spread),
+                let row = TypingRow(rawValue: signals.row),
+                let rowSpread = TypingRowSpread(rawValue: signals.row_spread),
+                let body = BodyActivity(rawValue: signals.body),
+                let heart = HeartMood(rawValue: signals.heart),
+                let sleep = SleepMood(rawValue: signals.sleep)
+            else { fail("semantic row \(name) names a signal CityKit has no case for") }
+            semantics.tempo = tempo
+            semantics.spread = spread
+            semantics.row = row
+            semantics.rowSpread = rowSpread
+            semantics.body = body
+            semantics.heart = heart
+            semantics.sleep = sleep
+        }
+        return semantics
     }
 }
 
@@ -433,6 +463,13 @@ func runSemanticInvariants() {
             count: 4, category: .communication, priority: .critical, persistent: true)
     }
     vary("offline") { $0.online = false }
+    for tempo in TypingTempo.allCases { vary("tempo \(tempo)") { $0.tempo = tempo } }
+    for spread in TypingSpread.allCases { vary("spread \(spread)") { $0.spread = spread } }
+    for row in TypingRow.allCases { vary("row \(row)") { $0.row = row } }
+    for share in TypingRowSpread.allCases { vary("row spread \(share)") { $0.rowSpread = share } }
+    for body in BodyActivity.allCases { vary("body \(body)") { $0.body = body } }
+    for heart in HeartMood.allCases { vary("heart \(heart)") { $0.heart = heart } }
+    for sleep in SleepMood.allCases { vary("sleep \(sleep)") { $0.sleep = sleep } }
     vary("everything at once") {
         $0 = CitySemantics(
             scene: .focus, floor: .special, mode: .urgent, intensity: .busy, activity: .scroll,
@@ -457,6 +494,58 @@ func runSemanticInvariants() {
     check(
         "semantic_input_reaches_the_picture", floors.count == CivicFloor.allCases.count,
         "\(floors.count) distinct frames for \(CivicFloor.allCases.count) floors")
+
+    check(
+        "signal_enums_match_the_header",
+        TypingTempo.allCases.count == Int(DUEL_CITY_TEMPO_COUNT)
+            && TypingSpread.allCases.count == Int(DUEL_CITY_SPREAD_COUNT)
+            && TypingRow.allCases.count == Int(DUEL_CITY_ROW_COUNT)
+            && TypingRowSpread.allCases.count == Int(DUEL_CITY_ROW_SPREAD_COUNT)
+            && BodyActivity.allCases.count == Int(DUEL_CITY_BODY_COUNT)
+            && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
+            && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
+    )
+    // Nothing draws the signals until their art lands, so every value must
+    // render the frame a city without them renders.
+    let plain = frame(base, layout: .town)
+    let signalled = variants.filter {
+        $0.1.tempo != .none || $0.1.spread != .none || $0.1.row != .none
+            || $0.1.rowSpread != .none || $0.1.body != .none || $0.1.heart != .none
+            || $0.1.sleep != .none
+    }
+    let moved = signalled.filter { frame($0.1, layout: .town) != plain }.map(\.0)
+    check(
+        "signals_change_no_frame_yet", plain != nil && moved.isEmpty,
+        "frames moved: \(moved.joined(separator: ", "))")
+    // One past each signal enum, written into the C struct directly since the
+    // Swift enums cannot hold it; the C check refuses it.
+    var unchecked: [String] = []
+    let past: [(String, WritableKeyPath<duel_city_input_t, UInt8>, Int)] = [
+        ("tempo", \.tempo, Int(DUEL_CITY_TEMPO_COUNT)),
+        ("spread", \.spread, Int(DUEL_CITY_SPREAD_COUNT)),
+        ("row", \.row, Int(DUEL_CITY_ROW_COUNT)),
+        ("row_spread", \.row_spread, Int(DUEL_CITY_ROW_SPREAD_COUNT)),
+        ("body", \.body, Int(DUEL_CITY_BODY_COUNT)),
+        ("heart", \.heart, Int(DUEL_CITY_HEART_COUNT)),
+        ("sleep", \.sleep, Int(DUEL_CITY_SLEEP_COUNT)),
+    ]
+    var width: Int32 = 0
+    var height: Int32 = 0
+    _ = duel_city_geometry(Layout.left.rawValue, 1, &width, &height)
+    var scratch = [UInt8](repeating: 0, count: Int(width * height))
+    for (name, field, count) in past {
+        var raw = duel_city_input_t()
+        _ = duel_city_tour_stop(0, 0x5A, &raw)
+        raw[keyPath: field] = UInt8(count)
+        let code = scratch.withUnsafeMutableBufferPointer { buffer in
+            duel_city_render(
+                nil, &raw, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress, buffer.count)
+        }
+        if code != Int32(DUEL_CITY_ERR_INPUT) { unchecked.append("\(name) \(count): \(code)") }
+    }
+    check(
+        "signals_past_their_enum_are_refused", unchecked.isEmpty,
+        unchecked.joined(separator: "; "))
 
     // Values the enums can carry but the firmware refuses; the C check is the judge.
     let wrong: [(String, NotificationSummary)] = [

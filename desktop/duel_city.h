@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 7
+#define DUEL_CITY_ABI 8
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -74,10 +74,84 @@ enum {
 #define DUEL_CITY_MAX_SCALE 16
 
 /*
+ * Signals from off the keyboard, for shells that have them: a typing summary
+ * from the opt-in helper on a desktop whose keyboard lacks this firmware
+ * (docs/typing-summary.md), and reduced health buckets on a watch. Each is a
+ * small enum whose zero means "none", and none is what every shell that has no
+ * such signal sends. They never reach the keyboard: Raw HID v3 and split v12
+ * have no room for them and do not carry them. Values are never renumbered.
+ */
+/* Typing tempo: the mean gap inside a burst, per the summary's cut points. */
+enum {
+    DUEL_CITY_TEMPO_NONE = 0,
+    DUEL_CITY_TEMPO_DELIBERATE = 1,
+    DUEL_CITY_TEMPO_FLOWING = 2,
+    DUEL_CITY_TEMPO_RAPID = 3,
+    DUEL_CITY_TEMPO_FRANTIC = 4,
+    DUEL_CITY_TEMPO_COUNT = 5,
+};
+
+/* Typing spread: how even the gaps inside a burst are. */
+enum {
+    DUEL_CITY_SPREAD_NONE = 0,
+    DUEL_CITY_SPREAD_STEADY = 1,
+    DUEL_CITY_SPREAD_VARIED = 2,
+    DUEL_CITY_SPREAD_IRREGULAR = 3,
+    DUEL_CITY_SPREAD_COUNT = 4,
+};
+
+/* The keyboard row with the most keydowns. */
+enum {
+    DUEL_CITY_ROW_NONE = 0,
+    DUEL_CITY_ROW_TOP = 1,
+    DUEL_CITY_ROW_HOME = 2,
+    DUEL_CITY_ROW_BOTTOM = 3,
+    DUEL_CITY_ROW_THUMB = 4,
+    DUEL_CITY_ROW_COUNT = 5,
+};
+
+/* How much of the typing that top row holds. */
+enum {
+    DUEL_CITY_ROW_SPREAD_NONE = 0,
+    DUEL_CITY_ROW_SPREAD_FOCUSED = 1,
+    DUEL_CITY_ROW_SPREAD_MIXED = 2,
+    DUEL_CITY_ROW_SPREAD_EVEN = 3,
+    DUEL_CITY_ROW_SPREAD_COUNT = 4,
+};
+
+/* Body activity today: activity rings closed, or a step band without them. */
+enum {
+    DUEL_CITY_BODY_NONE = 0,
+    DUEL_CITY_BODY_RESTING = 1,
+    DUEL_CITY_BODY_STIRRING = 2,
+    DUEL_CITY_BODY_MOVING = 3,
+    DUEL_CITY_BODY_FULL = 4,
+    DUEL_CITY_BODY_COUNT = 5,
+};
+
+/* Heart rate as a mood, never a reading: no value means good or bad. */
+enum {
+    DUEL_CITY_HEART_NONE = 0,
+    DUEL_CITY_HEART_STILL = 1,
+    DUEL_CITY_HEART_LIVELY = 2,
+    DUEL_CITY_HEART_COUNT = 3,
+};
+
+/* Last night's sleep, as a mood for the next day. */
+enum {
+    DUEL_CITY_SLEEP_NONE = 0,
+    DUEL_CITY_SLEEP_RESTED = 1,
+    DUEL_CITY_SLEEP_TIRED = 2,
+    DUEL_CITY_SLEEP_COUNT = 3,
+};
+
+/*
  * The Raw HID v3 semantic payload, unpacked, plus the two values the firmware
- * supplies locally rather than receiving. Every field is a bounded integer:
- * no window title, URL, path, or notification text can reach this struct, and
- * there is no field one could be smuggled through.
+ * supplies locally rather than receiving, plus the off-keyboard signals above.
+ * Every field is a bounded integer: no window title, URL, path, notification
+ * text, keycode, timestamp or raw sample can reach this struct, and there is no
+ * field one could be smuggled through. The off-keyboard fields follow the
+ * first ten bytes so those keep their offsets.
  */
 typedef struct {
     uint8_t scene;       /* payload[0]: DUEL_HOST_SCENE_* */
@@ -90,9 +164,16 @@ typedef struct {
     uint8_t secondary;   /* payload[7]: DUEL_SECONDARY_PACK(activity) */
     uint8_t online;      /* daemon link state, as the firmware's host state sees it */
     uint8_t seed;        /* presentation seed: the firmware's one-byte session */
+    uint8_t tempo;       /* DUEL_CITY_TEMPO_* */
+    uint8_t spread;      /* DUEL_CITY_SPREAD_* */
+    uint8_t row;         /* DUEL_CITY_ROW_* */
+    uint8_t row_spread;  /* DUEL_CITY_ROW_SPREAD_* */
+    uint8_t body;        /* DUEL_CITY_BODY_* */
+    uint8_t heart;       /* DUEL_CITY_HEART_* */
+    uint8_t sleep;       /* DUEL_CITY_SLEEP_* */
 } duel_city_input_t;
 
-_Static_assert(sizeof(duel_city_input_t) == 10, "city input layout changed");
+_Static_assert(sizeof(duel_city_input_t) == 17, "city input layout changed");
 
 /*
  * Opaque carry-over between frames — currently the floor-transition policy,

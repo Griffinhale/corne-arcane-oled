@@ -17,6 +17,7 @@ from unittest import mock
 from arcane_host import city, city_window
 from arcane_host.city import (
     CITY_ABI,
+    OFF_KEYBOARD_FIELDS,
     CityError,
     CityInput,
     CityRenderer,
@@ -60,11 +61,26 @@ requires_library = unittest.skipUnless(
 
 
 class CityInputTests(unittest.TestCase):
-    def test_struct_is_ten_bounded_bytes(self) -> None:
+    def test_struct_is_seventeen_bounded_bytes(self) -> None:
         # The privacy boundary is structural: every field is a small integer
         # and there is nowhere a title, URL, or notification body could ride.
-        self.assertEqual(ctypes.sizeof(CityInput), 10)
+        self.assertEqual(ctypes.sizeof(CityInput), 17)
         self.assertTrue(all(kind is ctypes.c_uint8 for _, kind in CityInput._fields_))
+
+    def test_off_keyboard_fields_follow_the_payload(self) -> None:
+        # The first ten bytes keep their offsets; the off-keyboard signals
+        # are appended, so nothing that wrote the old struct by offset moves.
+        names = [name for name, _ in CityInput._fields_]
+        self.assertEqual(names[8:10], ["online", "seed"])
+        self.assertEqual(names[10:], [field for field, _ in OFF_KEYBOARD_FIELDS])
+        self.assertEqual(CityInput.tempo.offset, 10)
+
+    def test_off_keyboard_fields_start_at_none(self) -> None:
+        packed = city_input(SemanticState(), seed=0x5A)
+        for field, _ in OFF_KEYBOARD_FIELDS:
+            self.assertEqual(getattr(packed, field), 0, field)
+        for field, kind in OFF_KEYBOARD_FIELDS:
+            self.assertEqual(kind(0).name, "NONE", field)
 
     def test_carries_the_raw_hid_payload_in_payload_order(self) -> None:
         summary = NotificationSummary(3, Category.COMMUNICATION, Priority.CRITICAL, 5, True)
@@ -168,6 +184,31 @@ class CityRendererTests(unittest.TestCase):
             setattr(packed, field, value)
             with self.assertRaisesRegex(CityError, "outside its enum"):
                 self.render(packed)
+
+    def test_off_keyboard_values_outside_their_enum_are_refused(self) -> None:
+        # Each new field takes every value of its enum and nothing past it.
+        # Zero is "none", so a struct that never heard of these fields is valid.
+        for field, kind in OFF_KEYBOARD_FIELDS:
+            top = max(kind)
+            for value in (top + 1, 0xFF):
+                packed = resting_input(seed=0x5A)
+                setattr(packed, field, value)
+                with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
+                    self.render(packed)
+
+    def test_off_keyboard_values_change_no_frame_yet(self) -> None:
+        # Nothing draws these values until the art lands, so every accepted
+        # value renders today's frame byte for byte, in every layout.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = renderer.render(resting_input(seed=0x5A), 400_000, 12)
+            for field, kind in OFF_KEYBOARD_FIELDS:
+                for value in kind:
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, int(value))
+                    self.assertEqual(
+                        renderer.render(packed, 400_000, 12), base, f"{layout} {field}={value}"
+                    )
 
     def test_scale_is_bounded(self) -> None:
         with self.assertRaisesRegex(CityError, "scale"):

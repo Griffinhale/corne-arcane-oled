@@ -152,6 +152,14 @@ int duel_city_geometry(int layout, int scale, int *width, int *height) {
  * heartbeat timeout runs.
  */
 static bool ingest(duel_host_state_t *host, const duel_city_input_t *in) {
+    /* The off-keyboard fields have no wire to be checked on, so they are
+     * checked here, against the same rule: each inside its enum. */
+    if (in->tempo >= DUEL_CITY_TEMPO_COUNT || in->spread >= DUEL_CITY_SPREAD_COUNT ||
+        in->row >= DUEL_CITY_ROW_COUNT || in->row_spread >= DUEL_CITY_ROW_SPREAD_COUNT ||
+        in->body >= DUEL_CITY_BODY_COUNT || in->heart >= DUEL_CITY_HEART_COUNT ||
+        in->sleep >= DUEL_CITY_SLEEP_COUNT)
+        return false;
+
     duel_host_packet_t packet;
     memset(&packet, 0, sizeof packet);
     packet.magic0 = DUEL_HOST_MAGIC0;
