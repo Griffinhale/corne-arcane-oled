@@ -120,6 +120,12 @@ class KeyboardChoiceTests(unittest.TestCase):
         self.input.add("event6", "SINO WEALTH Gaming KB", (0x258A, 0x002A), LETTERS)
         nodes = [board.node.name for board in choose(None, self.input.root)]
         self.assertEqual(nodes, ["event5", "event6"])
+        # Naming either node picks the keyboard, and with it both nodes, even
+        # beside a second keyboard that makes the name necessary.
+        self.input.add("event11", "Compx 2.4G Receiver", (0x25A7, 0xFA61), LETTERS)
+        for named in ("event5", "/dev/input/event6"):
+            nodes = [board.node.name for board in choose(named, self.input.root)]
+            self.assertEqual(nodes, ["event5", "event6"], named)
 
     def test_two_keyboards_need_a_choice(self) -> None:
         self.input.add("event11", "Laptop keyboard", (0x0001, 0x0001), LETTERS)

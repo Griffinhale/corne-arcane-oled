@@ -423,7 +423,8 @@ systemctl --user enable --now corne-arcane-typing.service
 
 With a `make install` prefix other than `/usr`, the rule is under that prefix
 instead. One keyboard may be listed twice, once per interface; the helper
-reads both. If two different keyboards are listed, pick one with
+reads both. If two different keyboards are listed (a wireless mouse receiver
+can claim to be one), name either node of yours with
 `systemctl --user edit corne-arcane-typing.service`:
 
 ```ini

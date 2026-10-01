@@ -122,12 +122,13 @@ def choose(
     sys_class: Path = SYS_CLASS_INPUT,
     exclude: tuple[int, int] | None = CORNE_USB_ID,
 ) -> list[Keyboard]:
-    """The event nodes to read: the one named, or the only keyboard there is.
+    """The event nodes to read: those of the keyboard named, or of the only one.
 
     A name may be an event node, a /dev/input/by-id link to one, or the bare
-    eventN. Unnamed, every node of one keyboard is read, since many keyboards
-    report their letters on more than one interface; two keyboards need a
-    name. The Corne is refused here, before anything is opened.
+    eventN, and picks the keyboard that node belongs to. Every node of that
+    keyboard is read, since many keyboards report their letters on more than
+    one interface. Unnamed, two keyboards need a name. The Corne is refused
+    here, before anything is opened.
     """
     if requested:
         node = Path(os.path.realpath(requested)).name
@@ -138,7 +139,7 @@ def choose(
             raise HelperError(f"{requested} is not a keyboard")
         if board.usb_id == exclude:
             raise HelperError(f"{requested} is the Corne, which this helper never reads")
-        return [board]
+        return [found for found in keyboards(sys_class, exclude) if found.usb_id == board.usb_id]
     found = keyboards(sys_class, exclude)
     if not found:
         raise HelperError("no keyboard other than the Corne is readable")
