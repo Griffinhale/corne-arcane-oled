@@ -24,12 +24,17 @@ HOST_DIR = Path(__file__).resolve().parents[1]
 HOLDER = "Vial (corne-arcane-vial)"
 ENV_VIAL = "CORNE_ARCANE_VIAL_BIN"
 # Runs the real launcher; only the node choice is fixed, so no sysfs is read.
+# A real device lookup fails the run, so a plugged-in Corne cannot hide a gap.
 LAUNCHER = (
     "import sys\n"
     "from pathlib import Path\n"
     "from arcane_host import hid_ownership, vial_launcher\n"
-    "if hasattr(hid_ownership, 'chosen_node'):\n"
-    "    hid_ownership.chosen_node = lambda _explicit=None: Path('/dev/hidraw-e2e-fake')\n"
+    "def no_device_lookup(*_args, **_kwargs):\n"
+    "    raise SystemExit('e2e: the launcher looked for a real keyboard')\n"
+    "hid_ownership.choose_device = no_device_lookup\n"
+    "fake_node = lambda _explicit=None: Path('/dev/hidraw-e2e-fake')\n"
+    "hid_ownership.chosen_node = fake_node\n"
+    "vial_launcher.chosen_node = fake_node\n"
     "raise SystemExit(vial_launcher.main([]))\n"
 )
 
