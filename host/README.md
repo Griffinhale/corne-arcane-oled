@@ -189,11 +189,25 @@ switches and page loads. The native host, `corne-arcane-browser-bridge`, passes
 them to the daemon. The package installs the host and its manifest. You load
 the extension yourself.
 
-The extension is not signed, and ordinary Firefox releases only keep signed
-extensions. So on those it loads as a temporary add-on, and **Firefox drops it
-at every restart**. You load it again after each restart. Firefox ESR,
-Developer Edition and Nightly can keep it if you set
-`xpinstall.signatures.required` to `false` in `about:config`.
+A copy signed by Mozilla stays installed across restarts in any Firefox:
+
+1. Download `corne-arcane-activity-1.0.0.xpi` from the
+   [releases page](https://github.com/Griffinhale/corne-arcane-oled/releases).
+2. Open it in Firefox (drag it onto a window, or **File > Open File**) and
+   click **Add**.
+3. Switch tabs once. The extension starts the native host on the first event,
+   so this should now print a process:
+
+   ```bash
+   pgrep -af corne-arcane-browser-bridge
+   ```
+
+The signed copy is version 1.0.0 of the files under `host/firefox`. To run a
+changed copy instead, load it as a temporary add-on. Ordinary Firefox releases
+only keep signed extensions, so **Firefox drops a temporary add-on at every
+restart** and you load it again each time. Firefox ESR, Developer Edition and
+Nightly can keep it if you set `xpinstall.signatures.required` to `false` in
+`about:config`.
 
 1. Find the extension folder:
 
