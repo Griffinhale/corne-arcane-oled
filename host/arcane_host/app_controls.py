@@ -4,10 +4,11 @@
 
 Everything here goes through what already exists. Pause and Resume are the
 service's Control interface, called over the app's own bus connection, so a
-pause lasts exactly as long as the app does. Open Vial runs the Vial launcher
-and Observe runs diagnostics, each a child process with its own guard, so the
-app never opens the keyboard itself. While another tool holds the keyboard the
-buttons that would need it are disabled, and the line says who has it.
+pause lasts exactly as long as the app does. Open Vial runs the Vial launcher,
+Observe runs diagnostics and Flash runs the flasher, each a child process with
+its own guard, so the app never opens the keyboard itself. While another tool
+holds the keyboard the buttons that would need it are disabled, and the line
+says who has it.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from .dbus_contract import (
     WORLD_CHANGED,
     WORLD_SIGNATURE,
 )
+from .flash import KEYMAP_WARNING, WrongImage, check_image, state_dir
 from .hid_ownership import lock_path, remote_error_text
 
 APP_LABEL = "Corne Arcane app"
@@ -258,6 +260,7 @@ class Controls:
         *,
         vial_command: list[str] | None = None,
         diagnostics_command: list[str] | None = None,
+        flash_command: list[str] | None = None,
         lock: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
         label: str = APP_LABEL,
@@ -265,6 +268,7 @@ class Controls:
         self.view = view
         self.vial_command = vial_command or tool_command("vial", "vial_launcher")
         self.diagnostics_command = diagnostics_command or tool_command("diagnostics", "diagnostics")
+        self.flash_command = flash_command or tool_command("flash", "flash")
         self.lock = lock or lock_path()
         self.clock = clock
         self.label = f"{label} (pid {os.getpid()})"
@@ -275,6 +279,9 @@ class Controls:
         self.observation: _Child | None = None
         # A keymap save or load started from the settings window (app_settings).
         self.keymap: _Child | None = None
+        # An image checked and waiting for the keymap warning to be confirmed.
+        self.flash_ready: Path | None = None
+        self.flash: _Child | None = None
         self.observe_until = 0.0
         self.locked_by: str | None = None
         self._lock_checked = -math.inf
@@ -322,6 +329,7 @@ class Controls:
             and self.vial is None
             and self.observation is None
             and self.keymap is None
+            and self.flash is None
         )
 
     def remaining(self) -> int | None:
@@ -407,6 +415,36 @@ class Controls:
         self.observe_until = self.clock() + seconds
         self.message = ""
 
+    def prepare_flash(self, image: Path) -> None:
+        """Check the image, then show the keymap warning; nothing runs until
+        confirm_flash."""
+        self.flash_ready = None
+        if not self.can_use_keyboard:
+            return
+        try:
+            check_image(image, state_dir())
+        except WrongImage as error:
+            self.message = f"Not flashed: {error}"
+            return
+        self.flash_ready = Path(image)
+        self.message = f"{KEYMAP_WARNING} Then press Flash now."
+
+    def cancel_flash(self) -> None:
+        if self.flash_ready is not None:
+            self.flash_ready = None
+            self.message = ""
+
+    def confirm_flash(self) -> None:
+        image, self.flash_ready = self.flash_ready, None
+        if image is None or not self.can_use_keyboard:
+            return
+        try:
+            self.flash = _Child([*self.flash_command, str(image)], self.env)
+        except OSError as error:
+            self.message = f"Could not start the flasher: {error}"
+            return
+        self.message = "Stopping the service"
+
     def poll(self) -> None:
         """Called every frame: notice finished tools and who holds the keyboard."""
         now = self.clock()
@@ -418,7 +456,8 @@ class Controls:
         if now - self._lock_checked >= LOCK_POLL_SECONDS:
             self._lock_checked = now
             self.locked_by = lock_holder(self.lock)
-            if any(child is not None for child in (self.vial, self.observation, self.keymap)):
+            children = (self.vial, self.observation, self.keymap, self.flash)
+            if any(child is not None for child in children):
                 # Our own children hold it; that is not someone else.
                 self.locked_by = None
         if self.vial is not None:
@@ -441,6 +480,20 @@ class Controls:
                 self.message = self._observation_result(code)
                 self.observation.close()
                 self.observation = None
+        if self.flash is not None:
+            code = self.flash.poll()
+            if code is None:
+                lines = self.flash.output().strip().splitlines()
+                if lines:
+                    self.message = lines[-1]
+            else:
+                self.message = (
+                    "Both halves flashed. Load your saved layout back in Vial."
+                    if code == 0
+                    else self.flash.error() or f"Flasher exited {code}"
+                )
+                self.flash.close()
+                self.flash = None
 
     def _observation_result(self, code: int) -> str:
         if code in (0, 2):
@@ -456,7 +509,7 @@ class Controls:
 
     def close(self) -> None:
         """Stop an observation (its guard restores the service). Leave Vial open,
-        and let a keymap write finish rather than cut it off halfway."""
+        and let a keymap write or a flash finish rather than cut it off halfway."""
         if self.observation is not None:
             self.observation.process.terminate()
             try:
@@ -466,7 +519,7 @@ class Controls:
                 self.observation.process.wait()
             self.observation.close()
             self.observation = None
-        for name in ("vial", "keymap"):
+        for name in ("vial", "keymap", "flash"):
             child = getattr(self, name)
             if child is not None:
                 child.close()
@@ -485,8 +538,11 @@ class ControlsPanel:
         background: str,
         ink: str,
         on_settings: Callable[[], None] | None = None,
+        ask_image: Callable[[], str] | None = None,
     ) -> None:
         self.controls = controls
+        self.master = master
+        self.ask_image = ask_image or self._ask_image
         self.frame = tk.Frame(master, background=background)
         self.pause_button = tk.Button(self.frame, text="Pause keyboard", command=self._toggle)
         self.vial_button = tk.Button(self.frame, text="Open Vial", command=controls.open_vial)
@@ -500,7 +556,17 @@ class ControlsPanel:
         self.message = tk.Label(
             master, text="", background=background, foreground=ink, wraplength=360
         )
-        widgets = [self.pause_button, self.vial_button, self.observe_button, self.minutes_box]
+        self.flash_button = tk.Button(self.frame, text="Flash", command=self._flash)
+        # Shown only while the keymap warning waits, so the row stays narrow.
+        self.cancel_button = tk.Button(self.frame, text="Cancel", command=controls.cancel_flash)
+        self.cancel_shown = False
+        widgets = [
+            self.pause_button,
+            self.vial_button,
+            self.observe_button,
+            self.minutes_box,
+            self.flash_button,
+        ]
         self.settings_button = None
         if on_settings is not None:
             self.settings_button = tk.Button(self.frame, text="Settings", command=on_settings)
@@ -531,6 +597,23 @@ class ControlsPanel:
             return
         self.controls.observe(minutes)
 
+    def _ask_image(self) -> str:
+        from tkinter import filedialog
+
+        return filedialog.askopenfilename(
+            parent=self.master,
+            title="Choose the Corne image to flash",
+            filetypes=(("UF2 image", "*.uf2"),),
+        )
+
+    def _flash(self) -> None:
+        if self.controls.flash_ready is not None:
+            self.controls.confirm_flash()
+            return
+        chosen = self.ask_image()
+        if chosen:
+            self.controls.prepare_flash(Path(chosen))
+
     def refresh(self) -> None:
         controls = self.controls
         controls.poll()
@@ -542,6 +625,14 @@ class ControlsPanel:
         )
         self._set(self.vial_button, "Open Vial", controls.can_use_keyboard)
         self._set(self.observe_button, "Observe (min)", controls.can_use_keyboard)
+        ready = controls.flash_ready is not None
+        self._set(self.flash_button, "Flash now" if ready else "Flash", controls.can_use_keyboard)
+        if ready != self.cancel_shown:
+            self.cancel_shown = ready
+            if ready:
+                self.cancel_button.pack(side="left", padx=3, after=self.flash_button)
+            else:
+                self.cancel_button.pack_forget()
         owner = controls.other_owner
         text = controls.message or (f"In use by {owner}" if owner else "")
         if self.message.cget("text") != text:
