@@ -1,4 +1,4 @@
-.PHONY: test mechanics-test visual-test noalloc-check city-lib \
+.PHONY: test mechanics-test visual-test noalloc-check check-sources city-lib \
 	web-lib web-parity web-clean swift-parity release-build release-budget hygiene \
 	format format-check lint lint-js lint-swift
 
@@ -19,7 +19,7 @@ SWIFT_SOURCES := Package.swift $(shell find apple -type f -name '*.swift' | sort
 # The swift-format release lint-swift is measured against; CI builds this tag.
 SWIFT_FORMAT_VERSION := 510.1.0
 
-test: mechanics-test visual-test noalloc-check city-lib
+test: check-sources mechanics-test visual-test noalloc-check city-lib
 	cd host && ./run_tests.sh
 
 mechanics-test:
@@ -30,6 +30,11 @@ visual-test:
 
 noalloc-check:
 	$(MAKE) -C firmware/sim_test noalloc-check
+
+# rules.mk, sim_sources.mk and Package.swift each name the shared C; a file
+# missing from one would otherwise surface only in the QMK build or Xcode.
+check-sources:
+	sh ./scripts/check_sources.sh
 
 # The desktop product's native library. Built as part of `test` so the host
 # tests that exercise the renderer actually run.
