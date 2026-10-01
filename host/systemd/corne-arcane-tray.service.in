@@ -1,0 +1,14 @@
+[Unit]
+Description=Corne Arcane tray icon
+PartOf=graphical-session.target
+# After the daemon, so the first icon already shows its link state.
+After=graphical-session.target corne-arcane-host.service
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/corne-arcane-tray
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

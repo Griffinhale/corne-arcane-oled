@@ -4,11 +4,12 @@ The optional host package sends bounded, privacy-redacted desktop and browser
 activity semantics to `griffin_arcane`. Firmware remains fully functional when
 it is absent.
 
-The package provides the `corne-arcane-host`, `corne-arcane-event`,
-`corne-arcane-diagnostics` and `corne-arcane-vial` commands, the
+The package provides the `corne-arcane` desktop app and the
+`corne-arcane-host`, `corne-arcane-event`, `corne-arcane-diagnostics`,
+`corne-arcane-vial`, `corne-arcane-keymap` and `corne-arcane-tray` commands, the
 `io.github.Griffinhale.CorneArcane` D-Bus name, and the
 `corne-arcane-host.service` user unit. `corne-arcane-focus-x11` is an opt-in
-focus producer for X11 sessions.
+focus producer for X11 sessions, and `corne-arcane-tray` an opt-in tray icon.
 
 Raw HID v3 is a 32-byte report with an eight-byte payload, including secondary
 activity values for scroll, tab selection, and page events. The generic method
@@ -37,7 +38,8 @@ On NixOS, import [`../corne.nix`](../corne.nix). It supplies the package, the
 udev rule, and the user service. On a session with no compositor focus bridge
 also set `services.corne-arcane-host.x11FocusProducer = true;` -- NixOS builds
 user units from module definitions instead of from the package, so the
-producer's unit ships but is not declared without it.
+producer's unit ships but is not declared without it. For the same reason the
+tray icon needs `services.corne-arcane-host.trayIcon = true;`.
 
 On Debian or Ubuntu, build the package from the repository root of a checkout:
 
@@ -188,7 +190,8 @@ at all. That is untested.
 Stop the services first, in your own session:
 
 ```bash
-systemctl --user disable --now corne-arcane-host.service corne-arcane-focus-x11.service
+systemctl --user disable --now corne-arcane-host.service corne-arcane-focus-x11.service \
+  corne-arcane-tray.service
 ```
 
 Then undo whatever you turned on from the list above:
@@ -306,6 +309,29 @@ The service exports `io.github.Griffinhale.CorneArcane.Control` at
   level.
 - Signals `StatusChanged` and `WorldChanged` carry the same values when they
   change.
+
+## Tray icon
+
+`corne-arcane-tray` puts the keyboard link in the panel. The icon shows a
+keyboard while the link is up, a pause sign while a tool has the keyboard, and
+a warning when there is no keyboard or no service. Its menu has Pause keyboard
+(held for as long as the tray runs), Open Vial and Open Corne Arcane; a click on
+the icon opens the app too. It is the app's own control layer, so the app and
+the tray never disagree about who has the keyboard.
+
+Turn it on for your session:
+
+```bash
+systemctl --user enable --now corne-arcane-tray.service
+```
+
+On NixOS set `services.corne-arcane-host.trayIcon = true;` instead.
+
+The icon is a StatusNotifierItem. KDE Plasma, XFCE, Cinnamon and most other
+panels show it as it is. **GNOME Shell does not show tray icons by itself**:
+install the AppIndicator extension first (`gnome-shell-extension-appindicator`
+on Debian and Ubuntu, `gnomeExtensions.appindicator` on NixOS) and enable it in
+Extensions.
 
 ## Tasks
 

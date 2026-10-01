@@ -47,7 +47,8 @@ COMMANDS = \
 	browser-bridge:browser_bridge \
 	vial:vial_launcher \
 	focus-x11:focus_x11 \
-	keymap:keymap_profiles
+	keymap:keymap_profiles \
+	tray:tray
 
 .PHONY: install install-lib install-commands install-units install-assets install-udev uninstall
 
@@ -87,8 +88,9 @@ install-commands:
 
 # Generated from .in templates so ExecStart follows PREFIX. The focus producer
 # is opt-in: it is installed but never enabled, because KWin and GNOME Shell
-# report focus from inside the compositor and need no helper.
-UNITS = corne-arcane-host corne-arcane-focus-x11
+# report focus from inside the compositor and need no helper. The tray icon is
+# opt-in too: GNOME shows it only with the AppIndicator extension.
+UNITS = corne-arcane-host corne-arcane-focus-x11 corne-arcane-tray
 
 install-units:
 	install -d "$(DESTDIR)$(UNITDIR)"

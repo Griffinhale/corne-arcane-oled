@@ -214,6 +214,7 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
                 "corne-arcane-vial",
                 "corne-arcane-focus-x11",
                 "corne-arcane-keymap",
+                "corne-arcane-tray",
             },
         )
         for module in entries.values():

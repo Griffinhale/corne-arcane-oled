@@ -42,6 +42,15 @@ in
         loaded by hand; host/README.md says how.
       '';
     };
+    trayIcon = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the tray icon as a user service: link state, pause, Open Vial and
+        the app. GNOME Shell shows it only with the AppIndicator extension
+        (gnomeExtensions.appindicator).
+      '';
+    };
     x11FocusProducer = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -105,6 +114,19 @@ in
     # destination. A later drop is harmless -- the producer swallows it and the
     # next focus change repairs the state -- but the first one would otherwise
     # sit wrong until the user happened to switch windows.
+    systemd.user.services.corne-arcane-tray = lib.mkIf cfg.trayIcon {
+      description = "Corne Arcane tray icon";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" "corne-arcane-host.service" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${corneArcaneHost}/bin/corne-arcane-tray";
+        Restart = "on-failure";
+        RestartSec = 2;
+      };
+    };
+
     systemd.user.services.corne-arcane-focus-x11 =
       lib.mkIf cfg.x11FocusProducer {
         description = "Corne Arcane X11 focus producer";

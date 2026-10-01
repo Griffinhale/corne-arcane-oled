@@ -1,4 +1,6 @@
-"""The city app's controls: lend the keyboard, open Vial, run an observation.
+"""The control layer the city app and the tray share: what the service reports
+(ServiceView), and lending the keyboard, opening Vial, running an observation
+(Controls).
 
 Everything here goes through what already exists. Pause and Resume are the
 service's Control interface, called over the app's own bus connection, so a
@@ -21,7 +23,20 @@ import time
 from pathlib import Path
 from typing import IO, Callable
 
-from .dbus_contract import BUS_NAME, CONTROL_INTERFACE, OBJECT_PATH, PAUSE, RESUME
+from .city import CityInput, resting_input
+from .dbus_contract import (
+    BUS_NAME,
+    CONTROL_INTERFACE,
+    OBJECT_PATH,
+    PAUSE,
+    RESUME,
+    STATUS,
+    STATUS_CHANGED,
+    STATUS_SIGNATURE,
+    WORLD,
+    WORLD_CHANGED,
+    WORLD_SIGNATURE,
+)
 from .hid_ownership import lock_path
 
 APP_LABEL = "Corne Arcane app"
@@ -54,12 +69,14 @@ def lock_holder(path: Path, locks: Path = Path("/proc/locks")) -> str | None:
 
 
 def tool_command(name: str, module: str) -> list[str]:
-    """How to run corne-arcane-<name>: the installed command beside this app if
-    there is one (on Nix it carries wrapped settings), else the module."""
-    sibling = Path(sys.argv[0]).resolve().parent / f"corne-arcane-{name}"
+    """How to run corne-arcane-<name> (plain corne-arcane for ""): the installed
+    command beside this one if there is one (on Nix it carries wrapped
+    settings), else the module."""
+    command = "corne-arcane" + (f"-{name}" if name else "")
+    sibling = Path(sys.argv[0]).resolve().parent / command
     if sibling.is_file() and os.access(sibling, os.X_OK):
         return [str(sibling)]
-    found = shutil.which(f"corne-arcane-{name}")
+    found = shutil.which(command)
     if found:
         return [found]
     return [sys.executable, "-m", f"arcane_host.{module}"]
@@ -105,6 +122,133 @@ class _Child:
         self.stderr.close()
 
 
+# What the link line says, for each Control link state.
+LINK_CAPTIONS = {
+    "starting": "Connecting to the keyboard",
+    "connected": "Keyboard connected",
+    "absent": "No keyboard found",
+    "denied": "Keyboard found, but not allowed to open it",
+    "several": "Several keyboards found; give the service --device",
+    "failed": "Keyboard link failed; retrying",
+}
+NO_SERVICE = "Service not running, so the city is offline"
+
+
+def link_caption(status: tuple[str, str, bool, str] | None) -> str:
+    if status is None:
+        return NO_SERVICE
+    link, _device, paused, owner = status
+    if paused:
+        return f"Keyboard lent to {owner}"
+    return LINK_CAPTIONS.get(link, f"Keyboard: {link}")
+
+
+class ServiceView:
+    """What the running service reports: the keyboard link and the world it sends.
+
+    A client, not a daemon. It reads the Control interface and its signals and
+    never opens the keyboard or sends a heartbeat, so the service's heartbeat
+    stays the only one. Until the service answers, and after it goes away,
+    ``status`` and ``world`` are None and the city is drawn offline.
+    """
+
+    CALL_TIMEOUT_MS = 1000
+
+    def __init__(self, Gio, GLib, connection) -> None:
+        self.Gio = Gio
+        self.GLib = GLib
+        self.connection = connection
+        self.status: tuple[str, str, bool, str] | None = None
+        self.world: tuple[int, ...] | None = None
+        # Called after status or world changes; the tray redraws its icon here.
+        self.listeners: list[Callable[[], None]] = []
+        self._subscriptions = [
+            connection.signal_subscribe(
+                BUS_NAME,
+                CONTROL_INTERFACE,
+                name,
+                OBJECT_PATH,
+                None,
+                Gio.DBusSignalFlags.NONE,
+                handler,
+            )
+            for name, handler in (
+                (STATUS_CHANGED, self._status_changed),
+                (WORLD_CHANGED, self._world_changed),
+            )
+        ]
+        self._watch_id = Gio.bus_watch_name_on_connection(
+            connection, BUS_NAME, Gio.BusNameWatcherFlags.NONE, self._appeared, self._vanished
+        )
+
+    def _changed(self) -> None:
+        for listener in tuple(self.listeners):
+            listener()
+
+    def _status_changed(self, *args) -> None:
+        self.status = tuple(args[-1].unpack())
+        self._changed()
+
+    def _world_changed(self, *args) -> None:
+        self.world = tuple(args[-1].unpack())
+        self._changed()
+
+    def _appeared(self, _connection, _name, _owner) -> None:
+        self._fetch(STATUS, STATUS_SIGNATURE, "status")
+        self._fetch(WORLD, WORLD_SIGNATURE, "world")
+
+    def _vanished(self, _connection, _name) -> None:
+        self.status = None
+        self.world = None
+        self._changed()
+
+    def _fetch(self, method: str, signature: str, attribute: str) -> None:
+        def done(connection, result) -> None:
+            try:
+                value = connection.call_finish(result).unpack()
+            except self.GLib.Error:
+                # A service older than World still reports its link; the city
+                # then rests until a WorldChanged arrives.
+                return
+            setattr(self, attribute, tuple(value))
+            self._changed()
+
+        self.connection.call(
+            BUS_NAME,
+            OBJECT_PATH,
+            CONTROL_INTERFACE,
+            method,
+            None,
+            self.GLib.VariantType(signature),
+            self.Gio.DBusCallFlags.NO_AUTO_START,
+            self.CALL_TIMEOUT_MS,
+            None,
+            done,
+        )
+
+    def pump(self) -> None:
+        """Deliver whatever the bus has sent, without blocking the window."""
+        context = self.GLib.MainContext.default()
+        while context.iteration(False):
+            pass
+
+    def city(self, seed: int) -> CityInput:
+        if self.world is None:
+            return resting_input(online=self.status is not None, seed=seed)
+        return CityInput(*self.world, online=1, seed=seed & 0xFF)
+
+    def caption(self) -> str:
+        return link_caption(self.status)
+
+    def close(self) -> None:
+        for subscription in self._subscriptions:
+            self.connection.signal_unsubscribe(subscription)
+        self._subscriptions = []
+        if self._watch_id:
+            self.Gio.bus_unwatch_name(self._watch_id)
+            self._watch_id = 0
+
+
 class Controls:
     """What the panel can do, and what it should say, without any Tk in it."""
 
@@ -116,13 +260,14 @@ class Controls:
         diagnostics_command: list[str] | None = None,
         lock: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
+        label: str = APP_LABEL,
     ) -> None:
         self.view = view
         self.vial_command = vial_command or tool_command("vial", "vial_launcher")
         self.diagnostics_command = diagnostics_command or tool_command("diagnostics", "diagnostics")
         self.lock = lock or lock_path()
         self.clock = clock
-        self.label = f"{APP_LABEL} (pid {os.getpid()})"
+        self.label = f"{label} (pid {os.getpid()})"
         self.message = ""
         self.holding = False
         self.pending = False

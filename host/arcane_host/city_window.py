@@ -32,20 +32,15 @@ import sys
 import time
 from typing import Callable
 
-from .app_controls import Controls, ControlsPanel
-from .app_settings import Settings, SettingsWindow
-from .city import CityInput, CityRenderer, Layout, city_input, resting_input
-from .dbus_contract import (
-    BUS_NAME,
-    CONTROL_INTERFACE,
-    OBJECT_PATH,
-    STATUS,
-    STATUS_CHANGED,
-    STATUS_SIGNATURE,
-    WORLD,
-    WORLD_CHANGED,
-    WORLD_SIGNATURE,
+from .app_controls import (  # noqa: F401 -- link_caption and NO_SERVICE are re-exported
+    NO_SERVICE,
+    Controls,
+    ControlsPanel,
+    ServiceView,
+    link_caption,
 )
+from .app_settings import Settings, SettingsWindow
+from .city import CityInput, CityRenderer, Layout, city_input
 from .semantic import SemanticState
 
 CAPTION_INK = "#9aa3b2"
@@ -178,123 +173,6 @@ class CityWindow:
             self.root.destroy()
         except Exception:
             pass
-
-
-# What the link line says, for each Control link state.
-LINK_CAPTIONS = {
-    "starting": "Connecting to the keyboard",
-    "connected": "Keyboard connected",
-    "absent": "No keyboard found",
-    "denied": "Keyboard found, but not allowed to open it",
-    "several": "Several keyboards found; give the service --device",
-    "failed": "Keyboard link failed; retrying",
-}
-NO_SERVICE = "Service not running, so the city is offline"
-
-
-def link_caption(status: tuple[str, str, bool, str] | None) -> str:
-    if status is None:
-        return NO_SERVICE
-    link, _device, paused, owner = status
-    if paused:
-        return f"Keyboard lent to {owner}"
-    return LINK_CAPTIONS.get(link, f"Keyboard: {link}")
-
-
-class ServiceView:
-    """What the running service reports: the keyboard link and the world it sends.
-
-    A client, not a daemon. It reads the Control interface and its signals and
-    never opens the keyboard or sends a heartbeat, so the service's heartbeat
-    stays the only one. Until the service answers, and after it goes away,
-    ``status`` and ``world`` are None and the city is drawn offline.
-    """
-
-    CALL_TIMEOUT_MS = 1000
-
-    def __init__(self, Gio, GLib, connection) -> None:
-        self.Gio = Gio
-        self.GLib = GLib
-        self.connection = connection
-        self.status: tuple[str, str, bool, str] | None = None
-        self.world: tuple[int, ...] | None = None
-        self._subscriptions = [
-            connection.signal_subscribe(
-                BUS_NAME,
-                CONTROL_INTERFACE,
-                name,
-                OBJECT_PATH,
-                None,
-                Gio.DBusSignalFlags.NONE,
-                handler,
-            )
-            for name, handler in (
-                (STATUS_CHANGED, self._status_changed),
-                (WORLD_CHANGED, self._world_changed),
-            )
-        ]
-        self._watch_id = Gio.bus_watch_name_on_connection(
-            connection, BUS_NAME, Gio.BusNameWatcherFlags.NONE, self._appeared, self._vanished
-        )
-
-    def _status_changed(self, *args) -> None:
-        self.status = tuple(args[-1].unpack())
-
-    def _world_changed(self, *args) -> None:
-        self.world = tuple(args[-1].unpack())
-
-    def _appeared(self, _connection, _name, _owner) -> None:
-        self._fetch(STATUS, STATUS_SIGNATURE, "status")
-        self._fetch(WORLD, WORLD_SIGNATURE, "world")
-
-    def _vanished(self, _connection, _name) -> None:
-        self.status = None
-        self.world = None
-
-    def _fetch(self, method: str, signature: str, attribute: str) -> None:
-        def done(connection, result) -> None:
-            try:
-                value = connection.call_finish(result).unpack()
-            except self.GLib.Error:
-                # A service older than World still reports its link; the city
-                # then rests until a WorldChanged arrives.
-                return
-            setattr(self, attribute, tuple(value))
-
-        self.connection.call(
-            BUS_NAME,
-            OBJECT_PATH,
-            CONTROL_INTERFACE,
-            method,
-            None,
-            self.GLib.VariantType(signature),
-            self.Gio.DBusCallFlags.NO_AUTO_START,
-            self.CALL_TIMEOUT_MS,
-            None,
-            done,
-        )
-
-    def pump(self) -> None:
-        """Deliver whatever the bus has sent, without blocking the window."""
-        context = self.GLib.MainContext.default()
-        while context.iteration(False):
-            pass
-
-    def city(self, seed: int) -> CityInput:
-        if self.world is None:
-            return resting_input(online=self.status is not None, seed=seed)
-        return CityInput(*self.world, online=1, seed=seed & 0xFF)
-
-    def caption(self) -> str:
-        return link_caption(self.status)
-
-    def close(self) -> None:
-        for subscription in self._subscriptions:
-            self.connection.signal_unsubscribe(subscription)
-        self._subscriptions = []
-        if self._watch_id:
-            self.Gio.bus_unwatch_name(self._watch_id)
-            self._watch_id = 0
 
 
 def present(
