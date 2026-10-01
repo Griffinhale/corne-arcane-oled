@@ -145,7 +145,12 @@ class ServiceStateTests(unittest.TestCase):
 class LauncherTests(unittest.TestCase):
     def setUp(self) -> None:
         # Tests never depend on a real Vial, and never notify the real desktop.
-        for name, value in (("resolve_vial", ["/opt/vial"]), ("notify_failure", None)):
+        # Nor on whether a Corne is plugged in: chosen_node reads the real /sys.
+        for name, value in (
+            ("resolve_vial", ["/opt/vial"]),
+            ("notify_failure", None),
+            ("chosen_node", Path("/dev/hidraw-test")),
+        ):
             patcher = patch.object(vial_launcher, name, return_value=value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -173,6 +178,53 @@ class LauncherTests(unittest.TestCase):
         ):
             self.assertEqual(vial_launcher.main(["--verbose"]), 0)
         self.assertEqual(order, ["enter", "/opt/vial:--verbose", "exit"])
+
+    def launch(self, argv: list[str], corne: Path | None) -> tuple[dict, list[str]]:
+        """Run main() with a recording guard; return the guard's arguments and Vial's."""
+        seen: dict = {}
+        launched: list[str] = []
+
+        class Guard:
+            def __init__(self, **kwargs: object) -> None:
+                seen.update(kwargs)
+
+            def __enter__(self) -> None:
+                pass
+
+            def __exit__(self, *_args: object) -> None:
+                pass
+
+        with (
+            patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
+            patch.object(vial_launcher, "chosen_node", return_value=corne),
+            patch.object(
+                vial_launcher,
+                "run_vial",
+                side_effect=lambda _command, args: launched.extend(args) or 0,
+            ),
+        ):
+            self.assertEqual(vial_launcher.main(argv), 0)
+        return seen, launched
+
+    def test_other_board_skips_handoff(self) -> None:
+        seen, launched = self.launch(["--other-board", "--verbose"], Path("/dev/hidraw-corne"))
+        self.assertTrue(seen["other_board"])
+        self.assertEqual(launched, ["--verbose"])
+
+    def test_no_corne_attached_skips_handoff(self) -> None:
+        # The daemon holds no device, so there is nothing to hand over.
+        seen, launched = self.launch(["--verbose"], None)
+        self.assertTrue(seen["other_board"])
+        self.assertEqual(launched, ["--verbose"])
+
+    def test_corne_still_exclusive(self) -> None:
+        seen, launched = self.launch(["--verbose"], Path("/dev/hidraw-corne"))
+        self.assertFalse(seen["other_board"])
+        self.assertEqual(launched, ["--verbose"])
+        # Only a leading flag is the launcher's; later ones belong to Vial.
+        seen, launched = self.launch(["--verbose", "--other-board"], Path("/dev/hidraw-corne"))
+        self.assertFalse(seen["other_board"])
+        self.assertEqual(launched, ["--verbose", "--other-board"])
 
     def test_signal_status_and_restore_failure_are_reported(self) -> None:
         class SignalGuard:
@@ -233,6 +285,7 @@ class HandleTests(unittest.TestCase):
         stderr = io.StringIO()
         with (
             patch.object(vial_launcher, "resolve_vial", return_value=["/opt/vial"]),
+            patch.object(vial_launcher, "chosen_node", return_value=None),
             patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
             patch.object(vial_launcher.subprocess, "Popen", side_effect=FileNotFoundError()),
             patch.object(vial_launcher, "notify_failure"),
@@ -289,6 +342,7 @@ class ForkingVialTests(unittest.TestCase):
         with (
             patch.object(vial_launcher, "resolve_vial", return_value=[str(vial)]),
             patch.object(vial_launcher, "ExclusiveHidOwnership", Guard),
+            patch.object(vial_launcher, "chosen_node", return_value=None),
         ):
             self.assertEqual(vial_launcher.main([]), 0)
         self.assertEqual(seen_at_exit, [True])

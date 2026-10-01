@@ -11,9 +11,11 @@ import sys
 import time
 from pathlib import Path
 
-from .hid_ownership import ExclusiveHidOwnership, OwnershipSignal, hidraw_handles
+from .hid_ownership import ExclusiveHidOwnership, OwnershipSignal, chosen_node, hidraw_handles
 
 ENV_VAR = "CORNE_ARCANE_VIAL_BIN"
+# A leading launcher flag, not passed to Vial: the board to edit is not the Corne.
+OTHER_BOARD = "--other-board"
 # How long Vial's leftover processes may run without the keyboard open before
 # the launcher stops waiting for them and hands the keyboard back.
 IDLE_GROUP_LIMIT = 30.0
@@ -176,11 +178,19 @@ def run_vial(command: list[str], args: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    other_board = bool(args) and args[0] == OTHER_BOARD
+    if other_board:
+        args = args[1:]
     result = 1
     try:
         # Resolve before taking ownership, so a missing Vial never stops the daemon.
         command = resolve_vial()
-        with ExclusiveHidOwnership(holder="Vial (corne-arcane-vial)"):
+        # With no Corne attached the daemon holds nothing, so it keeps running
+        # too; a Corne plugged in later is lent to Vial when it opens it,
+        # unless the daemon runs with --no-lend.
+        other_board = other_board or chosen_node() is None
+        holder = "Vial for another board" if other_board else "Vial"
+        with ExclusiveHidOwnership(holder=f"{holder} (corne-arcane-vial)", other_board=other_board):
             result = run_vial(command, args)
     except OwnershipSignal as interrupted:
         result = 128 + interrupted.signum

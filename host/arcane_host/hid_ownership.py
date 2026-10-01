@@ -292,6 +292,10 @@ class ExclusiveHidOwnership:
     restarted it. SIGKILL skips that restart, so a later guard that finds the
     marker while holding the lock -- which proves the old holder is gone --
     takes the debt over and restarts the daemon on its own exit.
+
+    other_board is for a caller that opens some keyboard other than the Corne:
+    it still holds the lock and pays a stale marker's debt, but leaves the
+    daemon running and never looks at the Corne's node.
     """
 
     def __init__(
@@ -301,8 +305,10 @@ class ExclusiveHidOwnership:
         release_timeout: float = 5.0,
         holder: str | None = None,
         device: str | None = None,
+        other_board: bool = False,
     ):
-        self.service_handoff = service_handoff
+        self.service_handoff = service_handoff and not other_board
+        self.other_board = other_board
         self.release_timeout = release_timeout
         self.holder = holder or Path(sys.argv[0]).name
         self.device = device
@@ -320,7 +326,7 @@ class ExclusiveHidOwnership:
             self._previous_handlers[signum] = signal.signal(signum, self._interrupted)
         try:
             self._lock_fd = take_lock(lock_path(), self.holder)
-            node = chosen_node(self.device)
+            node = None if self.other_board else chosen_node(self.device)
             marker = restore_marker_path()
             try:
                 stale = marker.read_text().strip()

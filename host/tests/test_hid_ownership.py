@@ -41,6 +41,23 @@ class LockTests(unittest.TestCase):
                 with hid_ownership.ExclusiveHidOwnership(holder="corne-arcane-diagnostics"):
                     self.fail("second owner entered")
 
+    def test_other_board_leaves_the_daemon_and_the_corne_alone(self) -> None:
+        # The daemon holds the Corne: a node check would refuse, a pause or stop would end it.
+        with (
+            patch.object(hid_ownership, "chosen_node", return_value=Path("/dev/hidraw-corne")),
+            patch.object(hid_ownership, "wait_for_hidraw_release") as wait,
+            patch.object(hid_ownership, "pause_daemon") as pause,
+            patch.object(hid_ownership, "service_is_active") as active,
+            patch.object(hid_ownership, "stop_service") as stop,
+        ):
+            with hid_ownership.ExclusiveHidOwnership(holder="Vial (other board)", other_board=True):
+                self.assertIn("Vial (other board)", self.lock.read_text())
+                with self.assertRaisesRegex(RuntimeError, r"in use by Vial \(other board\)"):
+                    with hid_ownership.ExclusiveHidOwnership(holder="corne-arcane-diagnostics"):
+                        self.fail("second owner entered")
+        for call in (wait, pause, active, stop):
+            call.assert_not_called()
+
     def test_lock_is_released_on_exit(self) -> None:
         with hid_ownership.ExclusiveHidOwnership(holder="first"):
             pass
@@ -150,6 +167,14 @@ class RestoreMarkerTests(unittest.TestCase):
         self.kill_holder()
         with contextlib.redirect_stderr(io.StringIO()):
             with hid_ownership.ExclusiveHidOwnership(service_handoff=False):
+                pass
+        self.assertEqual(self.state.read_text().strip(), "active")
+        self.assertFalse(self.marker.exists())
+
+    def test_stale_marker_restores_for_another_board(self) -> None:
+        self.kill_holder()
+        with contextlib.redirect_stderr(io.StringIO()):
+            with hid_ownership.ExclusiveHidOwnership(other_board=True):
                 pass
         self.assertEqual(self.state.read_text().strip(), "active")
         self.assertFalse(self.marker.exists())
