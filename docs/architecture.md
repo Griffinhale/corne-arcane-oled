@@ -109,7 +109,10 @@ native hosts disable only their adapter.
   Event storage stays caller-visible to avoid a second stack copy.
 - Privacy: host inputs are normalized to enums, counters, flags, and salted
   digests. Titles, bodies, commands, paths, URLs, filenames, and typed text do
-  not enter retained semantic state or either wire protocol.
+  not enter retained semantic state or either wire protocol. The opt-in typing
+  helper for keyboards without this firmware keeps raw key events inside its
+  own process; only a four-enum summary per 60-second window leaves it, to the
+  desktop city alone ([`typing-summary.md`](typing-summary.md)).
 - Timing: host state expires after 1.5 seconds; heartbeat and reconnect timing,
   display sleep, 25 Hz simulation, and 20-second HP regeneration are contracts.
 - Protocols: production Raw HID v3 and split v12 are exactly 32 bytes. The

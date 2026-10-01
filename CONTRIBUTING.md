@@ -60,6 +60,17 @@ state or onto either wire protocol. That property comes from the shape of the
 code, not from a filter, and a change that would make it depend on filtering is
 a change to the architecture.
 
+There is one exception, and it is bounded. For a keyboard without this
+firmware, an opt-in typing helper may read keys. It is off by default, reads
+only what the OS lets your session read, and sends nothing off the machine.
+The raw key events never leave the helper process. The only thing that does
+is a summary per 60-second window: four bucketed values for rhythm and key
+row, with no keys, no keycodes and no per-key timing. The summary goes to
+the desktop city over the session bus, never to the daemon or onto either
+wire. [`docs/typing-summary.md`](docs/typing-summary.md) is the full rule. A
+change that sends anything more, or anything else, is a change to the
+architecture.
+
 If you are unsure whether something crosses one of these, say so in the issue
 or the pull request and it can be worked out there.
 
