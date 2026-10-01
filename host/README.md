@@ -73,6 +73,30 @@ It places the same layout directly. Keep `PREFIX=/usr`: the default,
 where Firefox and udev do not look. Unplug and replug the keyboard afterwards
 so the udev rule applies.
 
+On Arch or Fedora, install these first. The commands need the first three
+packages; `xorg-xprop` or `xprop` is only for the X11 focus producer, and
+`make` and `gcc` only build the city library.
+
+```bash
+sudo pacman -S --needed python python-gobject tk xorg-xprop make gcc          # Arch
+sudo dnf install python3 python3-gobject-base python3-tkinter xprop make gcc  # Fedora
+```
+
+A desktop install of either already has the systemd user session and its
+D-Bus. Neither distro has a `plugdev` group, so udev ignores the rule's
+`GROUP="plugdev"` and logs that it did. The `uaccess` tag still gives the
+logged-in desktop user the keyboard, which is the normal case. To also reach it
+over ssh or `su`, create the group and join it, then log in again and replug
+the keyboard:
+
+```bash
+sudo groupadd --system plugdev
+sudo usermod -aG plugdev "$USER"
+sudo udevadm control --reload
+```
+
+Then enable the service with `systemctl --user enable --now corne-arcane-host.service`.
+
 Debian has no `vial` package -- Vial ships as an AppImage -- so tell
 `corne-arcane-vial` where it is. Put the path, or a whole command such as
 `flatpak run <app id>`, on one line in `~/.config/corne-arcane/vial`:
