@@ -118,6 +118,14 @@ same: the daemon is stopped for the whole `--observe` window, so the displays
 stop following your desktop until it ends. Metrics need firmware built with
 `ARCANE_DIAGNOSTICS=yes`.
 
+If another program opens the keyboard anyway, the daemon lets go of it within a
+second and takes it back when that program closes it. The tray and the app
+then say "Keyboard lent to" and name the program. This catches Vial started
+from its own icon, but it can miss a program that is done in under half a
+second, so still use `corne-arcane-vial`. If a program that keeps the keyboard
+open for its own reasons leaves the daemon paused, start the daemon with
+`--no-lend`, or set `services.corne-arcane-host.lendKeyboard = false;` on NixOS.
+
 If focus never seems to change anything, you probably have no focus producer:
 KWin and GNOME Shell report from inside the compositor, but a plain X11 session
 needs the opt-in `corne-arcane-focus-x11` service.

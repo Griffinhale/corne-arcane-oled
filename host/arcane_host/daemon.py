@@ -67,6 +67,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dry-run", action="store_true", help="print reports instead of opening hidraw"
     )
+    parser.add_argument(
+        "--no-lend",
+        action="store_true",
+        help="keep the keyboard when another program opens it outside corne-arcane-vial",
+    )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--session", type=lambda value: int(value, 0), help=argparse.SUPPRESS)
     parser.add_argument("--kwin-script", type=Path, help=argparse.SUPPRESS)
@@ -80,6 +85,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.pomodoro_duration <= 0:
         parser.error("--pomodoro-duration must be positive")
     return args
+
+
+def lend_check(args: argparse.Namespace) -> Callable[[Path], bool] | None:
+    """Lend a real keyboard to anything that opens it outside the guard, unless --no-lend."""
+    if args.no_lend:
+        return None
+    return lambda node: str(node).startswith("/dev/hidraw")
 
 
 def default_kwin_script() -> Path:
@@ -186,8 +198,7 @@ def run(args: argparse.Namespace) -> int:
         focus_override=override is not None,
         once=args.once,
         verbose=args.verbose,
-        # Lend a real keyboard to anything that opens it outside the guard.
-        lend_check=lambda node: str(node).startswith("/dev/hidraw"),
+        lend_check=lend_check(args),
     )
     adapters = SemanticAdapters(
         resolver, policy, runtime.wake, pomodoro_duration=args.pomodoro_duration

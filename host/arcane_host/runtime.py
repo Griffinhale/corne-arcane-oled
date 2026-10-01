@@ -37,6 +37,7 @@ class DaemonRuntime:
         verbose: bool = False,
         clock: Callable[[], float] = time.monotonic,
         lend_check: Callable[[Path], bool] | None = None,
+        lend_scan_window: float = 5.0,
     ) -> None:
         self.Gio = Gio
         self.GLib = GLib
@@ -70,6 +71,11 @@ class DaemonRuntime:
         self._unwatchable: Path | None = None
         self.lent_to: tuple[int, ...] = ()
         self.lent_node: Path | None = None
+        # A program that opens the keyboard over and over gets one scan per
+        # window; an open inside the window waits for its end.
+        self.lend_scan_window = lend_scan_window
+        self._scan_pending = False
+        self._next_open_scan = 0.0
 
     def bind_adapters(self, adapters: SemanticAdapters) -> None:
         self.adapters = adapters
@@ -134,7 +140,7 @@ class DaemonRuntime:
         self._publish_status()
         self.wake()
 
-    def _check_openers(self) -> None:
+    def _check_openers(self, now: float) -> None:
         """Lend the keyboard to another opener; take it back once all have closed it."""
         if self.lend_check is None:
             return
@@ -167,9 +173,15 @@ class DaemonRuntime:
                 self._unwatchable = node
                 self._debug(f"no open watch on {node} ({error})")
         if self.open_watch is not None and self.open_watch.opened():
+            self._scan_pending = True
+        if not due and self._scan_pending:
+            if now < self._next_open_scan:
+                return
             due = True
+            self._next_open_scan = now + self.lend_scan_window
         if not due:
             return
+        self._scan_pending = False
         openers = node_openers(node)
         if not openers:
             return
@@ -189,6 +201,8 @@ class DaemonRuntime:
         # Paused, the heartbeat's reconnect deadline is always due; it must not
         # turn into a 1 ms spin.
         deadlines = [now + 1.0] if self.paused else [self.heartbeat.next_deadline(now), now + 1.0]
+        if self._scan_pending and not self.paused:
+            deadlines.append(self._next_open_scan)
         focus_deadline = None if self.focus_override else self.arbiter.next_deadline()
         policy_deadline = None if self.fixed_summary is not None else self.policy.next_deadline(now)
         adapter_deadline = self.adapters.next_deadline(now)
@@ -223,7 +237,7 @@ class DaemonRuntime:
                 for listener in tuple(self._world_listeners):
                     listener(world)
             sent = False if self.paused else self.heartbeat.tick(now)
-            self._check_openers()
+            self._check_openers(now)
             self._publish_status()
             if sent and self.once:
                 self.loop.quit()

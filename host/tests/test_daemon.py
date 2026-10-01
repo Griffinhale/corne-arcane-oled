@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from arcane_host.adapters import SemanticAdapters
-from arcane_host.daemon import default_kwin_script
+from arcane_host.daemon import default_kwin_script, lend_check, parse_args
 from arcane_host.dbus_contract import (
     BUS_NAME,
     EVENTS_INTERFACE,
@@ -428,6 +428,16 @@ class KWinDefaultPathTests(unittest.TestCase):
     def test_environment_override_wins(self) -> None:
         with patch.dict(os.environ, {"CORNE_ARCANE_KWIN_SCRIPT": "/elsewhere/main.js"}):
             self.assertEqual(default_kwin_script(), Path("/elsewhere/main.js"))
+
+
+class LendFlagTests(unittest.TestCase):
+    def test_lending_is_on_for_hidraw_nodes_by_default(self) -> None:
+        check = lend_check(parse_args([]))
+        self.assertTrue(check(Path("/dev/hidraw3")))
+        self.assertFalse(check(Path("/dev/pts/4")))
+
+    def test_no_lend_turns_it_off(self) -> None:
+        self.assertIsNone(lend_check(parse_args(["--no-lend"])))
 
 
 HOST_DIR = Path(__file__).resolve().parents[1]

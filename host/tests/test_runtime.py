@@ -8,11 +8,13 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from arcane_host.adapters import SemanticAdapters
 from arcane_host.dbus_adapters import DBusAdapterHub
 from arcane_host.focus import FocusArbiter
 from arcane_host.heartbeat import HidHeartbeat
+from arcane_host.hid_ownership import node_openers
 from arcane_host.policy import NotificationPolicy
 from arcane_host.protocol import Scene
 from arcane_host.runtime import DaemonRuntime
@@ -302,7 +304,7 @@ class LendTests(unittest.TestCase):
         quiet.__enter__()
         self.addCleanup(quiet.__exit__, None, None, None)
 
-    def runtime(self, lend_check=lambda _node: True):
+    def runtime(self, lend_check=lambda _node: True, clock=time.monotonic):
         heartbeat = PtyHeartbeat(self.path)
         resolver = SemanticResolver()
         policy = NotificationPolicy()
@@ -314,6 +316,7 @@ class LendTests(unittest.TestCase):
             resolver,
             policy,
             FocusArbiter(settle_seconds=0),
+            clock=clock,
             lend_check=lend_check,
         )
         runtime.bind_adapters(SemanticAdapters(resolver, policy, runtime.wake))
@@ -387,6 +390,62 @@ class LendTests(unittest.TestCase):
             runtime.resume()
             runtime.tick()
             self.assertEqual(runtime.lent_to, (child.pid,))
+        finally:
+            release(child)
+
+    def counted_scans(self):
+        scans = []
+
+        def counting(node):
+            scans.append(node)
+            return node_openers(node)
+
+        patcher = patch("arcane_host.runtime.node_openers", counting)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return scans
+
+    def open_and_close(self):
+        os.close(os.open(self.path, os.O_RDWR | os.O_NOCTTY))
+
+    def test_repeated_opens_inside_the_window_scan_once(self):
+        now = [100.0]
+        scans = self.counted_scans()
+        runtime, _heartbeat = self.runtime(clock=lambda: now[0])
+        runtime.tick()
+        self.assertEqual(len(scans), 1, "a new connection is scanned once")
+        self.open_and_close()
+        runtime.tick()
+        self.assertEqual(len(scans), 2, "the first open is scanned at once")
+        for second in (101.0, 102.0, 103.0, 104.8):
+            now[0] = second
+            self.open_and_close()
+            runtime.tick()
+        self.assertEqual(len(scans), 2, "opens inside the window wait")
+        # The waiting scan sets the next wake, not the 1 s cap.
+        self.assertEqual(FakeGLib.added[-1][:2], ("timeout", 200))
+        now[0] = 105.0
+        runtime.tick()
+        self.assertEqual(len(scans), 3, "one scan at the end of the window")
+        runtime.tick()
+        self.assertEqual(len(scans), 3)
+
+    def test_scan_after_the_window_still_lends(self):
+        now = [100.0]
+        scans = self.counted_scans()
+        runtime, _heartbeat = self.runtime(clock=lambda: now[0])
+        runtime.tick()
+        self.open_and_close()
+        runtime.tick()
+        now[0] = 101.0
+        child = foreign_opener(self.path)
+        try:
+            runtime.tick()
+            self.assertFalse(runtime.paused, "inside the window")
+            now[0] = 105.0
+            runtime.tick()
+            self.assertEqual(runtime.lent_to, (child.pid,))
+            self.assertEqual(len(scans), 3)
         finally:
             release(child)
 

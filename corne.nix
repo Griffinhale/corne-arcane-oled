@@ -20,6 +20,16 @@ in
       default = true;
       description = "Mirror privacy-redacted Freedesktop notification metadata.";
     };
+    lendKeyboard = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Let go of the keyboard when another program opens it without
+        corne-arcane-vial (Vial from its own icon, say) and take it back when
+        that program closes it. Turn this off if a program that keeps the
+        keyboard open for its own reasons leaves the daemon paused.
+      '';
+    };
     pomodoroUnit = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -108,7 +118,7 @@ in
       serviceConfig = {
         Type = "dbus";
         BusName = "io.github.Griffinhale.CorneArcane";
-        ExecStart = "${lib.getExe corneArcaneHost} --pomodoro-duration ${toString cfg.pomodoroDuration}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}${lib.optionalString (cfg.pomodoroUnit != null) " --pomodoro-unit ${lib.escapeShellArg cfg.pomodoroUnit}"}";
+        ExecStart = "${lib.getExe corneArcaneHost} --pomodoro-duration ${toString cfg.pomodoroDuration}${lib.optionalString (!cfg.desktopNotifications) " --no-desktop-notifications"}${lib.optionalString (!cfg.lendKeyboard) " --no-lend"}${lib.optionalString (cfg.pomodoroUnit != null) " --pomodoro-unit ${lib.escapeShellArg cfg.pomodoroUnit}"}";
         Restart = "always";
         RestartSec = 2;
       };
