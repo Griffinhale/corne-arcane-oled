@@ -25,7 +25,16 @@ from arcane_host.city import (
     city_input,
     resting_input,
 )
-from arcane_host.dbus_contract import BUS_NAME, CONTROL_INTERFACE, OBJECT_PATH, PAUSE
+from arcane_host.dbus_contract import (
+    BUS_NAME,
+    CONTROL_INTERFACE,
+    EVENTS_INTERFACE,
+    FOCUS_INTERFACE,
+    INJECT_SYNTHETIC,
+    OBJECT_PATH,
+    PAUSE,
+    REPORT_ACTIVE_WINDOW,
+)
 from arcane_host.protocol import (
     Category,
     CivicState,
@@ -676,6 +685,62 @@ class CaptionTests(unittest.TestCase):
         build_window().set_caption("ignored")
 
 
+class NoCorneTests(unittest.TestCase):
+    """corne-arcane --no-hid: a keyboard without this firmware, so no Corne is expected."""
+
+    def test_no_hid_follows_the_daemons_option_and_setting(self) -> None:
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": ""}):
+            self.assertFalse(city_window.parse_args([]).no_hid)
+            self.assertTrue(city_window.parse_args(["--no-hid"]).no_hid)
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "1"}):
+            self.assertTrue(city_window.parse_args([]).no_hid)
+        with mock.patch.dict(os.environ, {"CORNE_ARCANE_NO_HID": "0"}):
+            self.assertFalse(city_window.parse_args([]).no_hid)
+
+    def test_an_absent_keyboard_is_not_an_error_without_a_corne(self) -> None:
+        caption = city_window.service_caption
+        absent = ("absent", "", False, "")
+        self.assertEqual(caption(absent, no_hid=False), "No keyboard found")
+        self.assertEqual(caption(absent, no_hid=True), city_window.NO_CORNE)
+        self.assertEqual(caption(None, no_hid=True), city_window.NO_SERVICE)
+        for words in (city_window.NO_CORNE, city_window.NO_SERVICE):
+            self.assertNotRegex(words.lower(), "hid|error|fail|denied")
+
+    def test_no_corne_shows_none_of_the_corne_controls(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        with mock.patch.object(city_window, "ControlsPanel") as panel:
+            window.schedule = lambda _delay, _callback: None
+            window.root.mainloop = lambda: None
+            city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True)
+        panel.assert_not_called()
+
+    def test_the_first_redraw_says_the_city_follows_the_desktop(self) -> None:
+        window = build_window(caption=True)
+        view = FakeView(("absent", "", False, ""))
+        steps = []
+        window.schedule = lambda _delay, callback: steps.append(callback)
+        window.root.mainloop = lambda: steps.pop(0)()
+        city_window.follow_service(window, view, controls=mock.Mock(), no_hid=True)
+        self.assertEqual(window.caption.cget("text"), city_window.NO_CORNE)
+        self.assertEqual(window.frames, 1)
+
+
+class FakeView:
+    def __init__(self, status) -> None:
+        self.status = status
+        self.world = None
+
+    def pump(self) -> None:
+        pass
+
+    def caption(self) -> str:
+        return city_window.link_caption(self.status)
+
+    def city(self, seed: int) -> CityInput:
+        return resting_input(online=self.status is not None, seed=seed)
+
+
 class NoPrivateDaemonTests(unittest.TestCase):
     def test_no_private_daemon(self) -> None:
         """The window module reaches neither the daemon nor the keyboard."""
@@ -851,6 +916,69 @@ class ServiceViewTests(unittest.TestCase):
 
         owner = ask("GetNameOwner", BUS_NAME, "(s)")
         self.assertEqual(ask("GetConnectionUnixProcessID", owner, "(u)"), self.daemon.pid)
+
+    def test_no_corne_renders_city_only(self) -> None:
+        """A --no-hid service: the city is online, follows focus and notifications, and no HID error shows."""
+        log = tempfile.TemporaryFile()
+        self.addCleanup(log.close)
+        self.daemon = subprocess.Popen(
+            [sys.executable, "-m", "arcane_host.daemon", "--no-hid", "--no-desktop-notifications"],
+            cwd=HOST_DIR,
+            env=self.env,
+            stdout=subprocess.DEVNULL,
+            stderr=log,
+        )
+        self.addCleanup(self.stop_daemon)
+        self.assertTrue(
+            self.settle(lambda: self.view.status is not None and self.view.world is not None),
+            f"never saw the service: {self.view.status}",
+        )
+        self.assertEqual(self.view.status[0], "absent")
+        self.assertEqual(
+            city_window.service_caption(self.view.status, no_hid=True), city_window.NO_CORNE
+        )
+        resting = self.view.city(0x5A)
+        self.assertEqual((resting.online, resting.seed), (1, 0x5A))
+
+        client = self.connect()
+
+        def report(interface: str, method: str, value) -> None:
+            client.call_sync(
+                BUS_NAME,
+                OBJECT_PATH,
+                interface,
+                method,
+                value,
+                None,
+                Gio.DBusCallFlags.NO_AUTO_START,
+                1000,
+                None,
+            )
+
+        before = self.view.world
+        report(
+            EVENTS_INTERFACE,
+            INJECT_SYNTHETIC,
+            GLib.Variant("(yyb)", (int(Category.COMMUNICATION), int(Priority.NORMAL), False)),
+        )
+        self.assertTrue(self.settle(lambda: self.view.world != before, 3.0), "no notification")
+        self.assertEqual(self.view.world[1:3], (1, int(Category.COMMUNICATION)))
+
+        before = self.view.world
+        report(FOCUS_INTERFACE, REPORT_ACTIVE_WINDOW, GLib.Variant("(ss)", ("code", "code")))
+        self.assertTrue(self.settle(lambda: self.view.world != before, 3.0), "focus not followed")
+
+        city_now = self.view.city(0x5A)
+        self.assertEqual(city_now.online, 1)
+        if library_available():
+            frame = CityRenderer().render(city_now, 400_000, 0)
+            self.assertTrue(frame.startswith(b"P5"))
+
+        self.stop_daemon()
+        log.seek(0)
+        errors = log.read().decode("utf-8", "replace")
+        self.assertIn("running without a keyboard", errors)
+        self.assertNotIn("HID unavailable", errors)
 
 
 if __name__ == "__main__":

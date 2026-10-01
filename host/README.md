@@ -296,6 +296,7 @@ it and install it as `corne-arcane`, with a menu entry:
 
 ```bash
 corne-arcane            # follow the running service
+corne-arcane --no-hid   # follow it with no Corne expected (see Using another keyboard)
 corne-arcane --tour     # walk the districts: no service, no bus, no keyboard
 ```
 
@@ -359,6 +360,46 @@ The service exports `io.github.Griffinhale.CorneArcane.Control` at
   level.
 - Signals `StatusChanged` and `WorldChanged` carry the same values when they
   change.
+
+## Using another keyboard
+
+The city runs without a Corne. A plain keyboard, such as one running its
+vendor firmware, cannot show the city, but the desktop window can. The city
+then follows window focus and notifications alone. Nothing reads the keyboard.
+
+Install the host as above. The udev rule only matters for a Corne, so you can
+skip the replug. Then tell the service and the window that no Corne is coming.
+One line does both:
+
+```bash
+mkdir -p ~/.config/environment.d
+echo CORNE_ARCANE_NO_HID=1 > ~/.config/environment.d/corne-arcane.conf
+```
+
+Log out and back in. The service now runs with `--no-hid`. It opens no
+keyboard, writes one line to the journal instead of retrying every 2 s, and
+reports the link as absent. `corne-arcane` reads the same setting, as its own
+`--no-hid` flag does. The line under the city then reads "No Corne: the city
+follows this desktop" rather than "No keyboard found". The window also hides
+the Pause, Vial, Observe and Flash buttons, because each one needs a Corne.
+
+On NixOS, set the variable on the unit and in the session instead:
+
+```nix
+systemd.user.services.corne-arcane-host.environment.CORNE_ARCANE_NO_HID = "1";
+environment.sessionVariables.CORNE_ARCANE_NO_HID = "1";
+```
+
+The focus producers and browser adapters work as they do with a Corne. Set
+them up from [Focus producers](#focus-producers) and
+[Optional adapters](#optional-adapters).
+
+The city is all you get. A keyboard without this firmware has no duel and no
+remapping from here.
+
+To open Vial for some other board while a Corne is plugged in, run
+`corne-arcane-vial --other-board`. The service keeps running, and the Corne
+keeps its city. With no Corne attached the launcher does this by itself.
 
 ## Tray icon
 

@@ -10,6 +10,8 @@ exactly the access this project refuses, so nothing here reads input.
 Two ways to run it:
 
     corne-arcane              follow the running service
+    corne-arcane --no-hid     follow a service run with --no-hid, for a keyboard
+                              without this firmware: no Corne is expected
     corne-arcane --tour       walk the districts with no service at all
 
 The window is a client of corne-arcane-host.service, never a second daemon: it
@@ -28,6 +30,7 @@ whole-pixel scale and letterboxes the remainder.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from typing import Callable
@@ -44,6 +47,15 @@ from .city import CityInput, CityRenderer, Layout, city_input
 from .semantic import SemanticState
 
 CAPTION_INK = "#9aa3b2"
+# The link line when no Corne is expected: the city runs on focus and
+# notifications alone, so a missing keyboard is not something to fix.
+NO_CORNE = "No Corne: the city follows this desktop"
+
+
+def service_caption(status: tuple[str, str, bool, str] | None, *, no_hid: bool) -> str:
+    if no_hid and status is not None and status[0] == "absent" and not status[2]:
+        return NO_CORNE
+    return link_caption(status)
 
 
 class CityWindow:
@@ -213,8 +225,13 @@ def follow_service(
     *,
     fps: int | None = None,
     controls: Controls | None = None,
+    no_hid: bool = False,
 ) -> None:
-    """Draw what the service reports, its link state, and the controls under it."""
+    """Draw what the service reports, its link state, and the controls under it.
+
+    With ``no_hid`` there is no Corne to pause, lend to Vial, observe or flash,
+    so the window shows no controls: none of them could do anything but fail.
+    """
     controls = controls or Controls(view)
     settings = Settings(controls)
     settings_window: SettingsWindow | None = None
@@ -224,20 +241,23 @@ def follow_service(
         if settings_window is None or settings_window.closed:
             settings_window = SettingsWindow(window.tk, window.root, settings)
 
-    panel = ControlsPanel(
-        window.tk,
-        window.root,
-        controls,
-        background=window.renderer.backdrop,
-        ink=CAPTION_INK,
-        on_settings=open_settings,
-    )
-    window.attach(panel)
+    panel = None
+    if not no_hid:
+        panel = ControlsPanel(
+            window.tk,
+            window.root,
+            controls,
+            background=window.renderer.backdrop,
+            ink=CAPTION_INK,
+            on_settings=open_settings,
+        )
+        window.attach(panel)
 
     def next_input() -> CityInput:
         view.pump()
-        window.set_caption(view.caption())
-        panel.refresh()
+        window.set_caption(service_caption(view.status, no_hid=no_hid))
+        if panel is not None:
+            panel.refresh()
         if settings_window is not None:
             settings_window.refresh()
         return view.city(window.seed)
@@ -298,6 +318,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="walk the districts without the service or the bus",
     )
     parser.add_argument("--tour-dwell", type=float, default=6.0, metavar="SECONDS")
+    parser.add_argument(
+        "--no-hid",
+        action="store_true",
+        # The daemon's own setting, so one line in the environment covers both.
+        default=os.environ.get("CORNE_ARCANE_NO_HID", "") not in ("", "0"),
+        help="no Corne is expected (the service runs with --no-hid): hide its controls "
+        "(setting: CORNE_ARCANE_NO_HID=1)",
+    )
     args = parser.parse_args(argv)
     if args.scale is not None and args.size is not None:
         parser.error("--scale and --size are alternatives: --size picks the scale that fits")
@@ -347,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
     view = None
     try:
         view = ServiceView(Gio, GLib, Gio.bus_get_sync(Gio.BusType.SESSION, None))
-        follow_service(window, view, fps=args.fps)
+        follow_service(window, view, fps=args.fps, no_hid=args.no_hid)
     except GLib.Error as error:
         print(f"corne-arcane: no session bus ({error.message})", file=sys.stderr)
         return 2
