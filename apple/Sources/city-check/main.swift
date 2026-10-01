@@ -594,6 +594,48 @@ func runSemanticInvariants() {
             && (try? city.render(frame: 300)) == before)
 }
 
+/// The watch's health reducer at every cut-off the owner set, one step either
+/// side, and with nothing to read.
+func runHealthBucketInvariants() {
+    let hour = 3_600.0
+    func body(rings: Int? = nil, steps: Int? = nil) -> BodyActivity {
+        HealthBuckets(HealthReading(ringsClosed: rings, steps: steps)).body
+    }
+    func heart(_ latest: Double?, resting: Double?) -> HeartMood {
+        HealthBuckets(HealthReading(heartRate: latest, restingHeartRate: resting)).heart
+    }
+    func sleep(_ seconds: Double?) -> SleepMood {
+        HealthBuckets(HealthReading(secondsAsleep: seconds)).sleep
+    }
+    let cases: [(String, Bool)] = [
+        ("rings 0", body(rings: 0) == .resting),
+        ("rings 1", body(rings: 1) == .stirring),
+        ("rings 2", body(rings: 2) == .moving),
+        ("rings 3", body(rings: 3) == .full),
+        ("rings win over steps", body(rings: 0, steps: 12_000) == .resting),
+        ("steps 0", body(steps: 0) == .resting),
+        ("steps 1999", body(steps: 1_999) == .resting),
+        ("steps 2000", body(steps: 2_000) == .stirring),
+        ("steps 5999", body(steps: 5_999) == .stirring),
+        ("steps 6000", body(steps: 6_000) == .moving),
+        ("steps 9999", body(steps: 9_999) == .moving),
+        ("steps 10000", body(steps: 10_000) == .full),
+        ("no rings, no steps", body() == .none),
+        ("resting + 19", heart(79, resting: 60) == .still),
+        ("resting + 20", heart(80, resting: 60) == .lively),
+        ("below resting", heart(50, resting: 60) == .still),
+        ("no latest heart rate", heart(nil, resting: 60) == .none),
+        ("no resting heart rate", heart(80, resting: nil) == .none),
+        ("6h59m asleep", sleep(7 * hour - 60) == .tired),
+        ("7h00m asleep", sleep(7 * hour) == .rested),
+        ("no sleep recorded", sleep(nil) == .none),
+    ]
+    let empty = HealthBuckets(HealthReading())
+    let wrong = cases.filter { !$0.1 }.map(\.0)
+        + (empty == HealthBuckets(body: .none, heart: .none, sleep: .none) ? [] : ["all missing"])
+    check("watch_health_buckets", wrong.isEmpty, wrong.joined(separator: ", "))
+}
+
 func runInvariants() {
     check(
         "abi_is_the_one_this_tree_compiles", City.abi == expectedCityABI,
@@ -604,6 +646,7 @@ func runInvariants() {
     check("cadence_comes_from_the_simulation", City.frameIntervalMs == 40)
     check("the_tour_is_every_civic_floor", City.tourLength == 5)
     runSemanticInvariants()
+    runHealthBucketInvariants()
 
     let expected: [Layout: (Int, Int)] = [
         .desk: (67, 128), .city: (67, 128), .left: (32, 128), .right: (32, 128),
