@@ -267,7 +267,13 @@ class SourceTests(unittest.TestCase):
         # The udev rule is shipped to share/, where nothing reads it, not rules.d.
         self.assertIn("udev/61-corne-arcane-typing.rules", makefile)
         self.assertNotIn("$(UDEVDIR)/61-corne-arcane-typing.rules", makefile)
-        nix = (root / "corne.nix").read_text()
+
+    # The package builds from host/ and the city's sources, without corne.nix.
+    @unittest.skipUnless(
+        (Path(__file__).resolve().parents[2] / "corne.nix").is_file(), "needs the full checkout"
+    )
+    def test_the_nixos_option_is_off_by_default(self) -> None:
+        nix = (Path(__file__).resolve().parents[2] / "corne.nix").read_text()
         option = nix.split("typingHelper = lib.mkOption {", 1)[1].split("};", 1)[0]
         self.assertIn("default = false;", option)
 
