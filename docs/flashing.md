@@ -133,6 +133,14 @@ That is the normal RP2040 behaviour and does not mean the flash failed.
 If the volume does not mount automatically, find it with `lsblk` and mount it by
 hand. It is a small FAT filesystem labelled `RPI-RP2`.
 
+### With the flasher
+
+`corne-arcane-flash IMAGE.uf2`, or **Flash** in the `corne-arcane` app, runs the
+same sequence for you. It checks the image, stops the daemon, asks for each
+half in turn, copies the image when `RPI-RP2` appears, and gives the daemon
+back. You still press BOOT on each half and keep TRRS disconnected. It keeps the
+image it flashed before, so `corne-arcane-flash --last-good` goes back one.
+
 ## Which half is "left"
 
 The half with the USB cable is the master, and this firmware treats the master

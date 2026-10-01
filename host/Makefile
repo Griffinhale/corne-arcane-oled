@@ -50,6 +50,7 @@ COMMANDS = \
 	diagnostics:diagnostics \
 	browser-bridge:browser_bridge \
 	vial:vial_launcher \
+	flash:flash \
 	focus-x11:focus_x11 \
 	typing:typing_helper \
 	keymap:keymap_profiles \

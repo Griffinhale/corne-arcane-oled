@@ -64,6 +64,9 @@ stdenv.mkDerivation {
     wrapProgram "$out/bin/corne-arcane-vial" \
       --set CORNE_ARCANE_VIAL_BIN ${lib.escapeShellArg (lib.getExe vial)} \
       --set CORNE_ARCANE_SYSTEMCTL ${lib.escapeShellArg (lib.getExe' systemd "systemctl")}
+    # The flasher stops and restarts the daemon through the same guard.
+    wrapProgram "$out/bin/corne-arcane-flash" \
+      --set CORNE_ARCANE_SYSTEMCTL ${lib.escapeShellArg (lib.getExe' systemd "systemctl")}
   '';
 
   meta = {

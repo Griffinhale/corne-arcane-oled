@@ -6,7 +6,8 @@ it is absent.
 
 The package provides the `corne-arcane` desktop app and the
 `corne-arcane-host`, `corne-arcane-event`, `corne-arcane-diagnostics`,
-`corne-arcane-vial`, `corne-arcane-keymap` and `corne-arcane-tray` commands, the
+`corne-arcane-vial`, `corne-arcane-flash`, `corne-arcane-keymap` and
+`corne-arcane-tray` commands, the
 `io.github.Griffinhale.CorneArcane` D-Bus name, and the
 `corne-arcane-host.service` user unit. `corne-arcane-focus-x11` is an opt-in
 focus producer for X11 sessions, `corne-arcane-tray` an opt-in tray icon, and
