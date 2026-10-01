@@ -213,6 +213,7 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
                 "corne-arcane-browser-bridge",
                 "corne-arcane-vial",
                 "corne-arcane-focus-x11",
+                "corne-arcane-typing",
                 "corne-arcane-keymap",
                 "corne-arcane-tray",
             },

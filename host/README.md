@@ -9,7 +9,9 @@ The package provides the `corne-arcane` desktop app and the
 `corne-arcane-vial`, `corne-arcane-keymap` and `corne-arcane-tray` commands, the
 `io.github.Griffinhale.CorneArcane` D-Bus name, and the
 `corne-arcane-host.service` user unit. `corne-arcane-focus-x11` is an opt-in
-focus producer for X11 sessions, and `corne-arcane-tray` an opt-in tray icon.
+focus producer for X11 sessions, `corne-arcane-tray` an opt-in tray icon, and
+`corne-arcane-typing` an opt-in typing helper for a keyboard without this
+firmware.
 
 Raw HID v3 is a 32-byte report with an eight-byte payload, including secondary
 activity values for scroll, tab selection, and page events. The generic method
@@ -241,7 +243,7 @@ Stop the services first, in your own session:
 
 ```bash
 systemctl --user disable --now corne-arcane-host.service corne-arcane-focus-x11.service \
-  corne-arcane-tray.service
+  corne-arcane-tray.service corne-arcane-typing.service
 ```
 
 Then undo whatever you turned on from the list above:
@@ -256,6 +258,8 @@ Then undo whatever you turned on from the list above:
 - Firefox: a temporary add-on is gone after a restart. If you kept it, remove
   it from `about:addons`.
 - Vial location: `rm -r ~/.config/corne-arcane` if you created it.
+- Typing helper: `sudo rm /etc/udev/rules.d/61-corne-arcane-typing.rules` if
+  you installed the rule, and leave the `input` group if you joined it.
 
 Finally remove the files, the same way you installed them:
 
@@ -365,7 +369,8 @@ The service exports `io.github.Griffinhale.CorneArcane.Control` at
 
 The city runs without a Corne. A plain keyboard, such as one running its
 vendor firmware, cannot show the city, but the desktop window can. The city
-then follows window focus and notifications alone. Nothing reads the keyboard.
+then follows window focus and notifications alone. Nothing reads the keyboard
+unless you turn on the [typing helper](#typing-helper).
 
 Install the host as above. The udev rule only matters for a Corne, so you can
 skip the replug. Then tell the service and the window that no Corne is coming.
@@ -393,6 +398,60 @@ environment.sessionVariables.CORNE_ARCANE_NO_HID = "1";
 The focus producers and browser adapters work as they do with a Corne. Set
 them up from [Focus producers](#focus-producers) and
 [Optional adapters](#optional-adapters).
+
+### Typing helper
+
+The typing helper lets the city respond to how you type on that keyboard. It
+is off until you turn it on. [docs/typing-summary.md](../docs/typing-summary.md)
+lists everything it may do. In short, it reads one keyboard, never the Corne,
+and once a minute sends four small values to the desktop city: tempo, how even
+the typing is, the busiest row, and how much of the typing that row holds. No
+key, keycode or time leaves it. A minute with fewer than 40 keys sends nothing.
+The service does not listen to it, so nothing reaches the Corne.
+
+It needs to read the keyboard. The default way is a udev rule that lets the
+person at the active seat read keyboards other than the Corne, only while that
+session is active. Install the rule and turn the helper on:
+
+```bash
+sudo install -m 0644 /usr/share/corne-arcane/udev/61-corne-arcane-typing.rules \
+  /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=input
+corne-arcane-typing --list                  # the keyboards it may read
+systemctl --user enable --now corne-arcane-typing.service
+```
+
+With a `make install` prefix other than `/usr`, the rule is under that prefix
+instead. One keyboard may be listed twice, once per interface; the helper
+reads both. If two different keyboards are listed, pick one with
+`systemctl --user edit corne-arcane-typing.service`:
+
+```ini
+[Service]
+Environment=CORNE_ARCANE_TYPING_DEVICE=/dev/input/by-id/usb-...-event-kbd
+```
+
+The fallback is the `input` group: `sudo usermod -aG input $USER`. Use it only
+if the rule does not work, for example in a session logind does not manage.
+That group can read every keyboard and mouse at all times, from any session.
+
+On NixOS, one option does both the rule and the unit:
+
+```nix
+services.corne-arcane-host.typingHelper = true;
+# only if several keyboards are attached:
+services.corne-arcane-host.typingDevice = "/dev/input/by-id/usb-...-event-kbd";
+```
+
+To see exactly what it sends, watch the bus while you type for a few minutes:
+
+```bash
+dbus-monitor "type='signal',interface='io.github.Griffinhale.CorneArcane.Typing'"
+```
+
+Each kept minute is one `Summary` signal with four bytes.
+
+### What a plain keyboard gets
 
 The city is all you get. A keyboard without this firmware has no duel and no
 remapping from here.

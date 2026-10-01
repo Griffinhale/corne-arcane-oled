@@ -1,0 +1,16 @@
+# Opt-in typing helper (docs/typing-summary.md). Inactive as installed: make
+# install puts this under share/corne-arcane/udev, where udev does not look.
+# corne.nix installs it into rules.d when typingHelper is on; elsewhere, copy it
+# to /etc/udev/rules.d yourself.
+#
+# Gives the user at the active seat read access to keyboards other than the
+# Corne, and only while that session is active. It must stay below 73 for the
+# same reason as 60-corne-arcane.rules: 73-seat-late.rules consumes the tag.
+# ID_INPUT_KEYBOARD and ID_VENDOR_ID/ID_MODEL_ID come from the 60- rules.
+ACTION=="remove", GOTO="corne_arcane_typing_end"
+SUBSYSTEM!="input", GOTO="corne_arcane_typing_end"
+KERNEL!="event*", GOTO="corne_arcane_typing_end"
+ENV{ID_INPUT_KEYBOARD}!="1", GOTO="corne_arcane_typing_end"
+ENV{ID_VENDOR_ID}=="4653", ENV{ID_MODEL_ID}=="0001", GOTO="corne_arcane_typing_end"
+TAG+="uaccess"
+LABEL="corne_arcane_typing_end"

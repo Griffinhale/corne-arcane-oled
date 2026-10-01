@@ -78,6 +78,30 @@ in
         module definitions rather than from the package's unit directory.
       '';
     };
+    typingHelper = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the opt-in typing helper as a user service, for a keyboard without
+        this firmware. It reads one keyboard that is not the Corne and sends
+        the desktop city only a four-value summary per minute
+        (docs/typing-summary.md).
+
+        This also installs a udev rule that gives the user at the active seat
+        read access to every keyboard but the Corne, while that session is
+        active. Nothing reads keys and no access is granted while this is off.
+      '';
+    };
+    typingDevice = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/dev/input/by-id/usb-SINO_WEALTH_Gaming_KB-event-kbd";
+      description = ''
+        The keyboard the typing helper reads. Needed only when more than one
+        keyboard other than the Corne is attached; corne-arcane-typing --list
+        names them.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -105,7 +129,14 @@ in
     # so an inline rule adds the tag too late to grant anything. Confirm with
     # `udevadm test /sys/class/hidraw/hidrawN` that the rule matches at 60 and
     # that 73-seat-late.rules then runs the uaccess builtin.
-    services.udev.packages = [ corneArcaneHost ];
+    services.udev.packages = [ corneArcaneHost ]
+      # Shipped under share/ so the package alone grants nothing; this puts it
+      # where udev reads it, at 61 so that 73-seat-late.rules sees the tag.
+      ++ lib.optional cfg.typingHelper (pkgs.runCommand "corne-arcane-typing-udev" { } ''
+        install -D -m 0644 \
+          ${corneArcaneHost}/share/corne-arcane/udev/61-corne-arcane-typing.rules \
+          $out/lib/udev/rules.d/61-corne-arcane-typing.rules
+      '');
 
     programs.firefox.nativeMessagingHosts.packages =
       lib.mkIf cfg.firefoxBridge [ corneArcaneHost ];
@@ -161,5 +192,24 @@ in
           RestartSec = 2;
         };
       };
+
+    # Type=dbus: started once it owns its own bus name, which the daemon never
+    # listens to. Unplugging the keyboard ends it; Restart brings it back.
+    systemd.user.services.corne-arcane-typing = lib.mkIf cfg.typingHelper {
+      description = "Corne Arcane typing helper";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session-pre.target" ];
+      environment = lib.mkIf (cfg.typingDevice != null) {
+        CORNE_ARCANE_TYPING_DEVICE = cfg.typingDevice;
+      };
+      serviceConfig = {
+        Type = "dbus";
+        BusName = "io.github.Griffinhale.CorneArcane.Typing";
+        ExecStart = "${corneArcaneHost}/bin/corne-arcane-typing";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
   };
 }

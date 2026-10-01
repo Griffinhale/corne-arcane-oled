@@ -51,6 +51,7 @@ COMMANDS = \
 	browser-bridge:browser_bridge \
 	vial:vial_launcher \
 	focus-x11:focus_x11 \
+	typing:typing_helper \
 	keymap:keymap_profiles \
 	tray:tray
 
@@ -95,8 +96,9 @@ install-commands:
 # Generated from .in templates so ExecStart follows PREFIX. The focus producer
 # is opt-in: it is installed but never enabled, because KWin and GNOME Shell
 # report focus from inside the compositor and need no helper. The tray icon is
-# opt-in too: GNOME shows it only with the AppIndicator extension.
-UNITS = corne-arcane-host corne-arcane-focus-x11 corne-arcane-tray
+# opt-in too: GNOME shows it only with the AppIndicator extension. So is the
+# typing helper, which reads a keyboard and must never run unasked.
+UNITS = corne-arcane-host corne-arcane-focus-x11 corne-arcane-tray corne-arcane-typing
 
 install-units:
 	install -d "$(DESTDIR)$(UNITDIR)"
@@ -127,6 +129,10 @@ install-assets:
 	install -d "$(DESTDIR)$(DATADIR)/corne-arcane/firefox"
 	install -m 0644 firefox/manifest.json firefox/background.js firefox/scroll.js \
 		"$(DESTDIR)$(DATADIR)/corne-arcane/firefox/"
+	# The typing helper's udev rule goes where udev does not look, so installing
+	# grants nothing; corne.nix or the README puts it in rules.d on request.
+	install -D -m 0644 udev/61-corne-arcane-typing.rules \
+		"$(DESTDIR)$(DATADIR)/corne-arcane/udev/61-corne-arcane-typing.rules"
 	install -d "$(DESTDIR)$(DATADIR)/applications"
 	install -m 0644 desktop/corne-arcane.desktop desktop/corne-arcane-vial.desktop \
 		"$(DESTDIR)$(DATADIR)/applications/"
