@@ -78,6 +78,12 @@ in
       corneArcaneHost # daemon tools plus the exclusive-ownership Vial launcher
     ];
 
+    # The shell hooks and the Firefox extension, at
+    # /run/current-system/sw/share/corne-arcane/{zsh,bash,fish,firefox}. The
+    # system profile links only the share/ subdirs some module asks for; Plasma 6
+    # asks for all of share/, a plain or XFCE or i3 system does not.
+    environment.pathsToLink = [ "/share/corne-arcane" ];
+
     # Non-root flashing of QMK bootloaders: installs qmk-udev-rules and creates
     # the plugdev group. Covers the RP2040 RPI-RP2 bootloader this board enters.
     hardware.keyboard.qmk.enable = true;
