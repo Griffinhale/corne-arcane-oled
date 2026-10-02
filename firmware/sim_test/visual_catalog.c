@@ -792,6 +792,20 @@ static void build_catalog(void) {
     add_render_case("attunement_right", &local, 7u);
     add_bilateral_attunement_case("attunement_bilateral_pending", &world);
 
+    {
+        // The CITY page names mode 3 STRAIN, not QUIET.
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.scry.state = SCRY_ACTIVE;
+        world.scry.scene = 0u;
+        duel_render_t strain = {0};
+        duel_render_from_world(&strain, &world);
+        strain.seed = 0x5au;
+        strain.civic_phase = 23u;
+        strain.civic = DUEL_CIVIC_PACK(0u, DUEL_CIVIC_MODE_STRAIN, 0);
+        strain.external = DUEL_HOST_CONTEXT_PACK(true, 0u, 2u, false);
+        strain.layer = DUEL_RENDER_LAYER_PACK(0u, DUEL_RENDER_LOCAL_NONE);
+        add_render_case("scry_city_mode_strain", &strain, 7u);
+    }
     for (uint8_t scene = 0; scene < SCRY_SCENES; scene++) {
         char name[48];
         sim_init(&world, SIMF_AUTHORITATIVE, 0);
