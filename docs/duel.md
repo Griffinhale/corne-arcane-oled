@@ -225,8 +225,10 @@ a zone that already holds it deepens it, and a bloom-signature spell reaching
 its own residue detonates it in an area pulse.
 
 **Fields** are persistent effects on the battlefield: trap, singularity, steam,
-rune, familiar, wall, vortex. There are exactly two slots globally, so a third
-field displaces an existing one. Durations run from 50 ticks (2 s) for a
+rune, familiar, wall, vortex. There are exactly two slots globally. A third
+field is refused, not swapped in: while both slots are full, a spell that would
+have settled into a field keeps flying as an ordinary spell, and ember meeting
+frost residue detonates at once instead of raising steam. Durations run from 50 ticks (2 s) for a
 singularity to 150 ticks (6 s) for a rune or a wall.
 
 **Signatures** are derived readings of a descriptor, not extra bits in it. A

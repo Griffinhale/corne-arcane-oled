@@ -78,7 +78,7 @@ Void.
 
 **Field** (authoritative). A persistent effect on the battlefield: trap,
 singularity, steam, rune, familiar, wall, or vortex. Exactly two slots exist
-globally, so a third displaces one.
+globally, and a third is refused while both are full.
 
 **Fizzle**. A spell dissipating at the doorstep of a wizard who is already
 down.
