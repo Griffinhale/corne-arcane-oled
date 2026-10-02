@@ -19,12 +19,17 @@ class DBusAdapterHub:
         adapters: SemanticAdapters,
         timer_unit: str | None = None,
         verbose: bool = False,
+        host_signals: bool = False,
     ):
         self.Gio = Gio
         self.adapters = adapters
         self.verbose = verbose
         self._reported: set[str] = set()
         self.timer_unit = timer_unit
+        # Opt-in (--host-signals): idle, load and call state. Off, none of them
+        # is read and their signals are ignored.
+        self.host_signals = host_signals
+        self._login_session: str | None = None
         self.subscriptions: list[tuple[Any, int]] = []
         self._players: dict[str, bool] = {}
         self._pomodoro_active = False
@@ -157,6 +162,43 @@ class DBusAdapterHub:
                 self._prime_network(system)
             except Exception as error:
                 self._failed("prime network", error)
+            if self.host_signals:
+                try:
+                    self._prime_login_session(system)
+                except Exception as error:
+                    self._failed("prime login session", error)
+
+    def _prime_login_session(self, system) -> None:
+        """Find this user's logind session and read its idle and lock hints.
+
+        "auto" is the caller's session, or the user's display session for a
+        user service. Only the object path is kept, to tell our session's
+        PropertiesChanged from another seat's; the hints are booleans.
+        """
+        from gi.repository import GLib
+
+        manager = self._proxy(
+            system,
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager",
+        )
+        reply = manager.call_sync(
+            "GetSession",
+            GLib.Variant("(s)", ("auto",)),
+            self.Gio.DBusCallFlags.NONE,
+            1000,
+            None,
+        )
+        self._login_session = str(self._unpack(reply)[0])
+        session = self._proxy(
+            system, "org.freedesktop.login1", self._login_session, "org.freedesktop.login1.Session"
+        )
+        idle = self._unpack(session.get_cached_property("IdleHint"))
+        locked = self._unpack(session.get_cached_property("LockedHint"))
+        self.adapters.session_presence(
+            None if idle is None else bool(idle), None if locked is None else bool(locked)
+        )
 
     def _prime_player(self, session, name: str) -> None:
         try:
@@ -310,6 +352,18 @@ class DBusAdapterHub:
                     self._refresh_vpn(connection, active_connections)
                 if connectivity is not None or active_connections is not None:
                     self.adapters.network(self._connectivity, bool(self._vpn_paths))
+            elif (
+                changed_interface == "org.freedesktop.login1.Session"
+                and self.host_signals
+                and path == self._login_session
+            ):
+                idle = self._lookup(changed, "IdleHint")
+                locked = self._lookup(changed, "LockedHint")
+                if idle is not None or locked is not None:
+                    self.adapters.session_presence(
+                        None if idle is None else bool(idle),
+                        None if locked is None else bool(locked),
+                    )
             elif changed_interface == "org.freedesktop.NetworkManager.Connection.Active":
                 vpn = self._lookup(changed, "Vpn")
                 if vpn is not None:

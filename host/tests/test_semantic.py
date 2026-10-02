@@ -179,6 +179,86 @@ class SemanticTests(unittest.TestCase):
         self.assertEqual(resolver.state.civic.secondary, Secondary.MEDIA)
         self.assertEqual(resolver.state.civic.secondary_byte(), 0x01)
 
+    def test_idle_and_locked_quiet_the_city(self) -> None:
+        resolver = SemanticResolver()
+        policy = NotificationPolicy()
+        adapters = SemanticAdapters(resolver, policy, lambda: None, lambda: 10.0)
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+        adapters.session_presence(idle=True)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        adapters.session_presence(idle=False)
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+        # A locked screen is away, and away shares QUIET.
+        adapters.session_presence(locked=True)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        adapters.session_presence(locked=False)
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+        # Coming back from idle leaves DND's QUIET in place.
+        resolver.update(dnd=True)
+        adapters.session_presence(idle=True)
+        adapters.session_presence(idle=False)
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+
+    def test_dbus_hub_reads_idle_only_from_its_own_session(self) -> None:
+        class Variant:
+            def __init__(self, value):
+                self.value = value
+
+            def unpack(self):
+                return self.value
+
+            def get_child_value(self, index):
+                value = self.value[index]
+                return value if isinstance(value, Variant) else Variant(value)
+
+            def lookup_value(self, key, _type):
+                value = self.value.get(key)
+                return None if value is None else Variant(value)
+
+        class Connection:
+            def signal_subscribe(self, *_args):
+                return 1
+
+            def signal_unsubscribe(self, _subscription):
+                pass
+
+        class Gio:
+            class DBusSignalFlags:
+                NONE = 0
+
+        def session_changed(hub, path, values):
+            hub._system_properties(
+                None,
+                ":1.9",
+                path,
+                None,
+                None,
+                Variant(("org.freedesktop.login1.Session", Variant(values), ())),
+            )
+
+        ours = "/org/freedesktop/login1/session/_32"
+        resolver = SemanticResolver()
+        adapters = SemanticAdapters(resolver, NotificationPolicy(), lambda: None, lambda: 1.0)
+        hub = DBusAdapterHub(Gio, Connection(), Connection(), adapters, host_signals=True)
+        hub._login_session = ours
+        # Another seat's session going idle is not ours.
+        session_changed(hub, "/org/freedesktop/login1/session/c4", {"IdleHint": True})
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+        session_changed(hub, ours, {"IdleHint": True})
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        session_changed(hub, ours, {"IdleHint": False, "LockedHint": True})
+        self.assertEqual(resolver.state.civic.mode, Mode.QUIET)
+        session_changed(hub, ours, {"LockedHint": False})
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+
+        # Without the opt-in the same signal changes nothing.
+        resolver = SemanticResolver()
+        adapters = SemanticAdapters(resolver, NotificationPolicy(), lambda: None, lambda: 1.0)
+        hub = DBusAdapterHub(Gio, Connection(), Connection(), adapters)
+        hub._login_session = ours
+        session_changed(hub, ours, {"IdleHint": True})
+        self.assertEqual(resolver.state.civic.mode, Mode.NORMAL)
+
     def test_secondary_channel_precedence(self) -> None:
         resolver = SemanticResolver()
         resolver.update(media_playing=True)

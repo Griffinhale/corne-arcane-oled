@@ -68,7 +68,16 @@ class SemanticResolver:
         self.system_alert = False
         self.browser_activity = Secondary.NONE
         self.browser_intensity = Intensity.CALM
+        self.idle = False
+        self.locked = False
         self.state = SemanticState()
+
+    def _resolve_mode(self) -> Mode:
+        # Ruled precedence (SH-D4p): URGENT > STRAIN > QUIET > NORMAL. Idle and
+        # a locked screen are both "away", and away shares QUIET.
+        if self.dnd or self.pomodoro or self.idle or self.locked:
+            return Mode.QUIET
+        return Mode.NORMAL
 
     def _resolve_secondary(self) -> Secondary:
         # One bounded supporting channel with fixed, documented precedence.
@@ -104,6 +113,8 @@ class SemanticResolver:
         system_alert: bool | None = None,
         browser_activity: Secondary | None = None,
         browser_intensity: Intensity | None = None,
+        idle: bool | None = None,
+        locked: bool | None = None,
     ) -> bool:
         if focus_scene is not None:
             self.focus_scene = focus_scene
@@ -129,6 +140,10 @@ class SemanticResolver:
             self.browser_activity = browser_activity
         if browser_intensity is not None:
             self.browser_intensity = browser_intensity
+        if idle is not None:
+            self.idle = idle
+        if locked is not None:
+            self.locked = locked
         current_summary = self.state.summary if summary is None else summary
         # Media is a fallback, not an override. It fills in ARCHIVE only when no
         # profile claimed the focused window, so playing something in the
@@ -145,7 +160,7 @@ class SemanticResolver:
             if self.media_playing and not self.focus_matched
             else self.focus_scene
         )
-        mode = Mode.QUIET if (self.dnd or self.pomodoro) else Mode.NORMAL
+        mode = self._resolve_mode()
         intensity = (
             self.pomodoro_stage
             if self.pomodoro

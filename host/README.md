@@ -176,6 +176,10 @@ Nothing below is auto-enabled by the package.
   enable that UUID through GNOME Extensions.
 - Firefox: load the extension under `share/corne-arcane/firefox`; see
   [Firefox](#firefox) below.
+- Host signals: run the daemon with `--host-signals`, or set
+  `CORNE_ARCANE_HOST_SIGNALS=1` for the service. While your session is idle or
+  its screen is locked, the city goes QUIET. It reads logind's idle and lock
+  hints for your own session, two booleans.
 
 Shell hooks report only monotonic duration, integer status, and normalized
 repository state. GNOME reports only application/desktop identifiers, and the

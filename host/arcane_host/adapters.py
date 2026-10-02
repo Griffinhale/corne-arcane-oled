@@ -80,6 +80,14 @@ class SemanticAdapters:
         if self.resolver.update(dnd=bool(inhibited)):
             self._changed()
 
+    def session_presence(self, idle: bool | None = None, locked: bool | None = None) -> None:
+        """logind's idle and lock hints for this session; booleans only."""
+        if self.resolver.update(
+            idle=None if idle is None else bool(idle),
+            locked=None if locked is None else bool(locked),
+        ):
+            self._changed()
+
     def pomodoro(
         self,
         active: bool,

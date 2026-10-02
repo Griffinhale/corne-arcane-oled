@@ -75,6 +75,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "(service setting: CORNE_ARCANE_NO_HID=1)",
     )
     parser.add_argument(
+        "--host-signals",
+        action="store_true",
+        default=os.environ.get("CORNE_ARCANE_HOST_SIGNALS", "") not in ("", "0"),
+        help="read idle and lock state, system load and call state into the city mode "
+        "and intensity; booleans and levels only (service setting: CORNE_ARCANE_HOST_SIGNALS=1)",
+    )
+    parser.add_argument(
         "--no-lend",
         action="store_true",
         help="keep the keyboard when another program opens it outside corne-arcane-vial",
@@ -246,7 +253,13 @@ def run(args: argparse.Namespace) -> int:
 
     runtime.own(
         DBusAdapterHub(
-            Gio, connection, system_connection, adapters, args.pomodoro_unit, args.verbose
+            Gio,
+            connection,
+            system_connection,
+            adapters,
+            args.pomodoro_unit,
+            args.verbose,
+            host_signals=args.host_signals,
         )
     )
 
