@@ -74,6 +74,42 @@ static void test_render_interaction_combine_solid_parity(void) {
     CHECK(ok, "incantation_render_combine_solid_parity_all_elements_forms");
 }
 
+/* Split v13 makes scalded status and outcomes 16..19 legal on the wire before
+ * the simulation produces them, so both halves must already draw them safely:
+ * every scry page with a scalded wizard, and each new outcome as both the
+ * overlay value and the local flash (ASan guards the table lookups). The
+ * scalded duel page must name the status rather than reuse another's. */
+static void test_render_v13_status_and_outcome_values(void) {
+    bool ok = true;
+    for (uint8_t side = 0; side < 2u; side++) {
+        sim_world_t w;
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        w.wiz[side].status = STATUS_SCALDED;
+        w.wiz[side].status_intensity = 2;
+        w.wiz[side].status_ticks = 60;
+        duel_render_t scalded = {0};
+        duel_render_from_world(&scalded, &w);
+        w.wiz[side].status = STATUS_MARKED;
+        duel_render_t marked = {0};
+        duel_render_from_world(&marked, &w);
+        EXPECT(duel_view_valid(&scalded.view));
+        for (uint8_t fx = FX_SHATTER_L; fx < FX_COUNT; fx++)
+            for (uint8_t page = 0; page < SCRY_SCENES; page++) {
+                duel_render_t r = scalded, m = marked;
+                r.view.outcome_overlay = VIEW_OVERLAY_PACK(fx, true, page);
+                m.view.outcome_overlay = r.view.outcome_overlay;
+                r.flash_kind = m.flash_kind = fx;
+                r.flash_frames = m.flash_frames = 6u;
+                duel_fb_t fr, fm;
+                incantation_render(&fr, &r, side == SIM_SIDE_L, false);
+                incantation_render(&fm, &m, side == SIM_SIDE_L, false);
+                if (page == 1u) /* the DUEL page names each wizard's status */
+                    EXPECT(memcmp(&fr, &fm, sizeof fr) != 0);
+            }
+    }
+    CHECK(ok, "incantation_render_v13_scalded_status_and_outcomes_16_19_on_both_halves");
+}
+
 /* Mirrors hp_window_xy: 2x2 lit windows, gapward column x7-8, outer x3-4,
  * rows bottom-up from y56. HP 8 uses four rows through y44. */
 static bool health_pixel(bool is_left, int hp_index, int x, int y) {
@@ -600,6 +636,7 @@ static void test_aftermath_split_loss_and_reconnect(void) {
 
 void run_rendering_geometry_tests(void) {
     test_render_interaction_combine_solid_parity();
+    test_render_v13_status_and_outcome_values();
     test_health_grid_geometry_and_lifecycles();
     test_local_layer_attunement();
     test_diegetic_scry_instruments();

@@ -78,7 +78,7 @@ enum {
  * from the opt-in helper on a desktop whose keyboard lacks this firmware
  * (docs/typing-summary.md), and reduced health buckets on a watch. Each is a
  * small enum whose zero means "none", and none is what every shell that has no
- * such signal sends. They never reach the keyboard: Raw HID v3 and split v12
+ * such signal sends. They never reach the keyboard: Raw HID v3 and split v13
  * have no room for them and do not carry them. Values are never renumbered.
  */
 /* Typing tempo: the mean gap inside a burst, per the summary's cut points. */

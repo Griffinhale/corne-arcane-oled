@@ -172,10 +172,11 @@ bool duel_decode_valid(const duel_snapshot_t *p) {
             DUEL_FIELD_OWNER(field) > SIM_SIDE_R)
             fields_valid = false;
     }
-    /* v12 has no reserved bits left; the range checks with teeth are the
-     * display-phase bound, the activity enum, and the residue canonical
-     * form (an empty zone must carry element 0). An older half fails identity
-     * check and takes the established stale-link presentation. */
+    /* The snapshot has no reserved bits left; the range checks with teeth are
+     * the display-phase bound, the activity enum, and the residue canonical
+     * form (an empty zone must carry element 0); duel_view_valid adds the
+     * view's. An older half fails the identity check and takes the established
+     * stale-link presentation. */
     bool residue_canonical = true;
     for (uint8_t zone = 0; zone < DUEL_RESIDUE_ZONES; zone++)
         if (duel_snapshot_residue_intensity(p, zone) == 0u &&

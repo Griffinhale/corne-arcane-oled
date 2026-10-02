@@ -276,7 +276,7 @@ static void scry_city_content(const scry_scroll_t *scroll, const duel_render_t *
 }
 
 static void scry_duel_content(const scry_scroll_t *scroll, const duel_render_t *r, bool is_left) {
-    static const char *const statuses[] = {"NONE", "BURN", "FROZEN", "DISRUP", "MARKED"};
+    static const char *const statuses[] = {"NONE", "BURN", "FROZEN", "DISRUP", "MARKED", "SCALD"};
     static const char *const elements[] = {"FORCE", "EMBER", "FROST", "VOID"};
     static const char *const fields[] = {"NONE", "TRAP",  "SING", "STEAM",
                                          "RUNE", "FAMIL", "WALL", "VORTEX"};

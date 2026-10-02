@@ -106,7 +106,7 @@ uint8_t duel_flash_remaining(const duel_flash_policy_t *policy, uint32_t now_ms)
  * Each OLED owns one vertical parchment. Presentation is local and bounded:
  * seven unroll extents, a slow upward content stream while held, then a
  * shorter reroll after release. The authoritative open/page bits stay on the
- * existing v12 wire; losing this cache loses only transitional frames. */
+ * existing split wire; losing this cache loses only transitional frames. */
 #define DUEL_SCRY_UNROLL_STEP_MS 50u
 #define DUEL_SCRY_REROLL_STEP_MS 40u
 #define DUEL_SCRY_SCROLL_STEP_MS 200u

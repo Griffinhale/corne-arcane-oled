@@ -181,7 +181,9 @@ enum {
     STATUS_BURNING = 1,
     STATUS_FROZEN = 2,
     STATUS_DISRUPTED = 3,
-    STATUS_MARKED = 4
+    STATUS_MARKED = 4,
+    /* Applied by the simulation (thaw), never compiled into a descriptor. */
+    STATUS_SCALDED = 5
 };
 enum { INTERACT_SOLID = 0, INTERACT_PHASE = 1, INTERACT_ABSORB = 2, INTERACT_COMBINE = 3 };
 enum { TEMPO_DELIBERATE = 0, TEMPO_FLOWING = 1, TEMPO_RAPID = 2, TEMPO_FRANTIC = 3 };
@@ -229,12 +231,15 @@ enum {
     AFTER_FLAVOR_VORTEX,
     AFTER_FLAVOR_ECHO,
     AFTER_FLAVOR_BLOOM,
+    AFTER_FLAVOR_COMBO,
     AFTER_FLAVOR_COUNT,
 };
 
 /* current one-shot outcomes retain the legacy 0..6 values above. Values 7..15
  * are deliberately side-neutral aftermaths except for the two ward-shatter
- * outcomes, whose side must be explicit for the local fracture animation. */
+ * outcomes, whose side must be explicit for the local fracture animation.
+ * Split v13 adds a fifth outcome bit for the combination outcomes 16..19;
+ * the shatter pair names the defender like the other L/R pairs. */
 enum {
     FX_HEAL_L = 7,
     FX_HEAL_R = 8,
@@ -244,7 +249,12 @@ enum {
     FX_COMBINE = 12,
     FX_COLLAPSE = 13,
     FX_WARD_SHATTER_L = 14,
-    FX_WARD_SHATTER_R = 15
+    FX_WARD_SHATTER_R = 15,
+    FX_SHATTER_L = 16,
+    FX_SHATTER_R = 17,
+    FX_THAW = 18,
+    FX_FIELD_CLASH = 19,
+    FX_COUNT
 };
 
 /* Bounded authoritative civic aftermath. The renderer derives movement,

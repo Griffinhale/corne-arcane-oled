@@ -6,14 +6,17 @@
  * state backward. Hardware-agnostic (no QMK includes) so the host harness
  * replays loss/duplication/reordering with exactly the firmware's code.
  *
- * Wire format: v12 uses the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves
+ * Wire format: v13 uses the complete 32-byte RPC_M2S_BUFFER_SIZE. Both halves
  * (and the test hosts we
  * care about) are little-endian, so the struct ships as raw bytes. The serial
  * protocol only checksums its own framing, hence our CRC over the payload.
  *
- * v12 combines the old magic/version bytes as 0xAC and compresses the two
+ * v12 combined the old magic/version bytes (0xAC) and compressed the two
  * active spell projections to seven bytes. The recovered bytes carry the two
  * global field projections while every trailing host/civic offset stays fixed.
+ * v13 (0xAD) keeps that layout and spends the view's last spare bits on
+ * spells: a fifth outcome bit, a per-spell combine flag, scalded status and the
+ * combo aftermath flavor.
  * Full byte/bit map: docs/protocol-ledger.md.
  */
 #pragma once
@@ -25,8 +28,8 @@
 #include "duel_view.h"
 
 #define DUEL_MAGIC             0xA7 /* diagnostics-only identity remains stable */
-#define DUEL_VER               12
-#define DUEL_SIGNATURE_VERSION 0xAC
+#define DUEL_VER               13
+#define DUEL_SIGNATURE_VERSION 0xAD
 
 // Snapshot flags: bit0 world valid; bits1-2 synchronized display phase;
 // bits3-4 residue zone2 element; bits5-6 residue zone2 intensity; bit7
@@ -83,14 +86,14 @@ typedef struct __attribute__((packed)) {
 } duel_snapshot_t;
 
 _Static_assert(sizeof(duel_snapshot_t) == 32,
-               "v12 snapshot must consume exactly one 32-byte RPC packet");
+               "v13 snapshot must consume exactly one 32-byte RPC packet");
 _Static_assert(offsetof(duel_snapshot_t, external) == 25 &&
                    offsetof(duel_snapshot_t, alert) == 26 &&
                    offsetof(duel_snapshot_t, civic) == 27 &&
                    offsetof(duel_snapshot_t, secondary) == 28 &&
                    offsetof(duel_snapshot_t, shared_pres) == 29 &&
                    offsetof(duel_snapshot_t, revision) == 30,
-               "v12 must preserve all trailing split offsets");
+               "v13 must preserve all trailing split offsets");
 
 #define DUEL_FIELD_KIND(value)  ((uint8_t)((value) & 7u))
 #define DUEL_FIELD_ZONE(value)  ((uint8_t)(((value) >> 3) & 3u))

@@ -17,7 +17,7 @@ safe extraction, and release procedures are in
 [`../docs/development.md`](../docs/development.md). Flash safety and rollback are
 in [`../docs/flashing.md`](../docs/flashing.md).
 
-Production Raw HID v3 and split snapshot v12 are fixed 32-byte contracts.
+Production Raw HID v3 and split snapshot v13 are fixed 32-byte contracts.
 Diagnostic builds additionally expose the separate three-page diagnostic v2
 protocol and an 18-byte reverse split reply; consult
 [`../docs/protocol-ledger.md`](../docs/protocol-ledger.md) before changing any

@@ -7,7 +7,7 @@ static void test_layout_and_protocol(void) {
     duel_encode_external_alert_display(&w, 9, 0x1234, 0x55, 0x2a, 2, &packet);
     duel_snapshot_set_civic(&packet, 1, 2, 3, 4);
     bool ok = true;
-    EXPECT(sizeof(duel_view_t) == 18 && sizeof(duel_snapshot_t) == 32 && DUEL_VER == 12 &&
+    EXPECT(sizeof(duel_view_t) == 18 && sizeof(duel_snapshot_t) == 32 && DUEL_VER == 13 &&
            sizeof(duel_render_t) <= 48u && sizeof(sim_world_t) <= 56u + 1024u &&
            duel_decode_valid(&packet));
     duel_snapshot_t bad = packet;
@@ -38,10 +38,11 @@ static void test_layout_and_protocol(void) {
     bad.revision = DUEL_EVENT_PACK(DUEL_CIVIC_EVENT_WORK_BREAK, DUEL_CIVIC_EVENT_PHASE_ACTIVE, 3u);
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&bad));
+    /* v13 fills the flavor bits: combo (7) is the last legal flavor. */
     bad = packet;
-    bad.revision = INCANTATION_AFTERMATH_WIRE | 0x70u;
+    bad.revision = INCANTATION_AFTERMATH_WIRE | (AFTER_FLAVOR_COMBO << 4);
     bad.crc = duel_crc8(&bad, offsetof(duel_snapshot_t, crc));
-    EXPECT(!duel_decode_valid(&bad));
+    EXPECT(AFTER_FLAVOR_COMBO == 7 && AFTER_FLAVOR_COUNT == 8 && duel_decode_valid(&bad));
     CHECK(ok, "incantation_v12_exact_size_crc_and_version_rejection");
 }
 
@@ -123,13 +124,13 @@ static void test_v12_repack_and_sky_subphase(void) {
     fv.fx_stance = VIEW_FX_PACK(VIEW_FX_SEQ(fv.fx_stance), DUEL_STANCE_MEDITATE, DUEL_STANCE_NONE);
     EXPECT(!duel_flash_observe_view(&flash, last_kind, &fv, 0u, 300u));
 
-    /* v11 (and a future v13) signature are rejected outright: a mixed-revision
+    /* v12 (and a future v14) signature are rejected outright: a mixed-revision
      * pair takes the established stale-link presentation. */
     duel_snapshot_t old = p;
-    old.signature_version = 0xABu;
+    old.signature_version = 0xACu;
     old.crc = duel_crc8(&old, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&old));
-    old.signature_version = 0xADu;
+    old.signature_version = 0xAEu;
     old.crc = duel_crc8(&old, offsetof(duel_snapshot_t, crc));
     EXPECT(!duel_decode_valid(&old));
 
@@ -455,7 +456,7 @@ static void test_view_validation(void) {
     bad.wizard[0][0] = (uint8_t)((bad.wizard[0][0] & 0x8fu) | (5u << 4));
     EXPECT(!duel_view_valid(&bad));
     bad = view;
-    bad.outcome_overlay |= 0x80u;
+    bad.outcome_overlay |= 0x8fu; /* outcome 31: past the outcome count */
     EXPECT(!duel_view_valid(&bad));
     bad = view;
     bad.spell[3] &= 0x0fu;
@@ -610,10 +611,109 @@ static void test_v12_field_projection_and_reconnect(void) {
         test_encode_snapshot(&world, 7u, (uint16_t)(10u + flavor), &later);
         EXPECT(duel_decode_valid(&later) && INCANTATION_AFTERMATH_FLAVOR(later.revision) == flavor);
     }
-    later.revision = (uint8_t)(INCANTATION_AFTERMATH_WIRE | (7u << 4));
-    later.crc = duel_crc8(&later, offsetof(duel_snapshot_t, crc));
-    EXPECT(!duel_decode_valid(&later));
     CHECK(ok, "v12_two_field_projection_age_owner_canonical_zero_flavor_and_reconnect_convergence");
+}
+
+/* v13 spends the last spare view bits on spells: outcome bit 4 rides
+ * outcome_overlay.7, wizard[side][2].7 is spell slot side's combine flag in
+ * place of the redundant prepared bit, and wizard status 5 (scalded) is legal. */
+static void test_v13_spell_outcome_wire(void) {
+    bool ok = true;
+    EXPECT(DUEL_VER == 13 && DUEL_SIGNATURE_VERSION == 0xADu);
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_view_t view;
+
+    /* Every outcome below the count round-trips with the scry bits intact. */
+    EXPECT(FX_SHATTER_L == 16 && FX_SHATTER_R == 17 && FX_THAW == 18 && FX_FIELD_CLASH == 19 &&
+           FX_COUNT == 20);
+    for (uint8_t fx = 0; fx < FX_COUNT; fx++) {
+        w.fx_kind = fx;
+        duel_view_from_world(&w, &view);
+        EXPECT(duel_view_valid(&view) && VIEW_OVERLAY_FX(view.outcome_overlay) == fx &&
+               !VIEW_OVERLAY_OPEN(view.outcome_overlay) &&
+               VIEW_OVERLAY_SCENE(view.outcome_overlay) == w.scry.scene);
+    }
+    view.outcome_overlay = VIEW_OVERLAY_PACK(FX_FIELD_CLASH, true, 2u);
+    EXPECT(duel_view_valid(&view) && VIEW_OVERLAY_FX(view.outcome_overlay) == FX_FIELD_CLASH &&
+           VIEW_OVERLAY_OPEN(view.outcome_overlay) &&
+           VIEW_OVERLAY_SCENE(view.outcome_overlay) == 2u);
+    for (uint8_t fx = FX_COUNT; fx < 32u; fx++) {
+        view.outcome_overlay = VIEW_OVERLAY_PACK(fx, false, 0u);
+        EXPECT(VIEW_OVERLAY_FX(view.outcome_overlay) == fx && !duel_view_valid(&view));
+    }
+
+    /* Scalded is a wizard status; 6 and 7 stay rejected, and no descriptor
+     * carries it because it is applied by the simulation, never cast. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[1].status = STATUS_SCALDED;
+    w.wiz[1].status_intensity = 1;
+    w.wiz[1].status_ticks = 40;
+    duel_view_from_world(&w, &view);
+    duel_view_wizard_t scalded = duel_view_wizard(&view, 1);
+    EXPECT(duel_view_valid(&view) && scalded.status == STATUS_SCALDED &&
+           scalded.status_intensity == 1 && scalded.status_duration == 1);
+    duel_view_t bad = view;
+    bad.wizard[1][1] = (uint8_t)((bad.wizard[1][1] & 0x1fu) | (6u << 5));
+    EXPECT(!duel_view_valid(&bad));
+    w.spell[0].active = 1;
+    w.spell[0].descriptor =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 2, STATUS_BURNING,
+                        INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0);
+    w.spell[0].progress = 30;
+    duel_view_from_world(&w, &view);
+    EXPECT(duel_view_valid(&view));
+    bad = view;
+    bad.spell[1] = (uint8_t)((bad.spell[1] & 0x8fu) | (STATUS_SCALDED << 4));
+    EXPECT(!duel_view_valid(&bad));
+
+    /* The combine flag lets the slave rebuild COMBINE, and with it the echo
+     * signature; prepared now derives from the incantation state. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.spell[0].active = 1;
+    w.spell[0].descriptor =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                        INTERACT_COMBINE, TEMPO_FLOWING, TREND_IRREGULAR, 1);
+    w.spell[0].progress = 40;
+    w.spell[1].active = 1;
+    w.spell[1].descriptor =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                        INTERACT_SOLID, TEMPO_FLOWING, TREND_IRREGULAR, 1);
+    w.spell[1].progress = 60;
+    w.wiz[1].inc_state = INC_PREPARED;
+    w.wiz[1].prepared = 1;
+    duel_view_from_world(&w, &view);
+    duel_view_spell_t combined = duel_view_spell(&view, 0, 9u);
+    duel_view_spell_t solid = duel_view_spell(&view, 1, 9u);
+    EXPECT(duel_view_valid(&view) && VIEW_W2_COMBINE(view.wizard[0][2]) &&
+           !VIEW_W2_COMBINE(view.wizard[1][2]));
+    EXPECT(SPELL_DESC_INTERACTION(combined.descriptor) == INTERACT_COMBINE &&
+           incantation_signature(combined.descriptor) == SPELL_SIGNATURE_ECHO &&
+           incantation_signature(w.spell[0].descriptor) == SPELL_SIGNATURE_ECHO &&
+           SPELL_DESC_INTERACTION(solid.descriptor) == INTERACT_SOLID &&
+           incantation_signature(solid.descriptor) == SPELL_SIGNATURE_BASE);
+    EXPECT(duel_view_wizard(&view, 1).prepared && !duel_view_wizard(&view, 0).prepared);
+
+    /* An empty slot, a singularity, and a void spell can never combine. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_view_from_world(&w, &view);
+    bad = view;
+    bad.wizard[0][2] |= 0x80u;
+    EXPECT(duel_view_valid(&view) && !duel_view_valid(&bad));
+    static const uint8_t no_combine[2][2] = {{SPELL_SINGULARITY, ELEM_EMBER},
+                                             {SPELL_PROJECTILE, ELEM_VOID}};
+    for (uint8_t i = 0; i < 2u; i++) {
+        w.spell[1].active = 1;
+        w.spell[1].descriptor =
+            SPELL_DESC_PACK(no_combine[i][0], no_combine[i][1], PAY_DAMAGE, TRAJ_MID, 2,
+                            STATUS_NONE, INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0);
+        w.spell[1].progress = 50;
+        duel_view_from_world(&w, &view);
+        bad = view;
+        bad.wizard[1][2] |= 0x80u;
+        EXPECT(duel_view_valid(&view) && !duel_view_valid(&bad));
+    }
+    CHECK(ok, "v13_outcome_bit4_range_scalded_status_and_combine_flag_rebuilds_echo");
 }
 
 void run_protocol_view_tests(void) {
@@ -625,4 +725,5 @@ void run_protocol_view_tests(void) {
     test_view_validation();
     test_v12_descriptor_compression_domain();
     test_v12_field_projection_and_reconnect();
+    test_v13_spell_outcome_wire();
 }

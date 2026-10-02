@@ -21,7 +21,7 @@ physical matrix
              v
        master sim_tick (25 Hz)
              │
-             ├─> model -> view -> split snapshot v12 -> slave presentation
+             ├─> model -> view -> split snapshot v13 -> slave presentation
              │
              ├─> render projection -> scene compositor -> local OLED
              │
@@ -68,7 +68,7 @@ desktop adapters + explicit event command
         master disposable context
                  │
                  v
-          split v12 propagation
+          split v13 propagation
 ```
 
 `dbus_contract.py` owns public names, paths, interfaces, XML, methods, and
@@ -128,7 +128,7 @@ native hosts disable only their adapter.
   desktop city alone ([`typing-summary.md`](typing-summary.md)).
 - Timing: host state expires after 1.5 seconds; heartbeat and reconnect timing,
   display sleep, 25 Hz simulation, and 20-second HP regeneration are contracts.
-- Protocols: production Raw HID v3 and split v12 are exactly 32 bytes. The
+- Protocols: production Raw HID v3 and split v13 are exactly 32 bytes. The
   diagnostics-only v2 reports are three 32-byte pages with an 18-byte reverse
   split reply. Versions, enum values, packing, reserved bits, CRC coverage, and
   stale fallback are stable.

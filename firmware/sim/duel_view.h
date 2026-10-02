@@ -6,7 +6,7 @@
 
 #include "duel_sim.h"
 
-/* Exactly 18 bytes. The two active spells share a seven-byte v12 stream:
+/* Exactly 18 bytes. The two active spells share a seven-byte stream:
  * 20 observable descriptor bits plus one progress byte per side. */
 typedef struct __attribute__((packed)) {
     uint8_t wizard[2][3];
@@ -22,12 +22,15 @@ typedef struct __attribute__((packed)) {
  * (duel_view_valid) alike so the three can never drift apart.
  *   wizard[0]: hp[0:3] ward_strength[4:6] rearm_lock[7]
  *   wizard[1]: life[0:2] variant[3:4] status[5:7]
- *   wizard[2]: pose[0:1] inc_state[2:4] ward_focus[5:6] prepared[7]
- *   outcome_overlay: fx_kind[0:3] scry_open[4] scry_scene[5:6] reserved[7]
+ *   wizard[2]: pose[0:1] inc_state[2:4] ward_focus[5:6] combine[7]
+ *   outcome_overlay: fx_kind[0:3] scry_open[4] scry_scene[5:6] fx_kind bit 4[7]
  *   phase (during WINDUP/PREPARED): form[0:2] element[3:4] progress[5:7]
  *   fx_stance: fx_seq[0:3] stance_L[4:5] stance_R[6:7] — the outcome
  *   sequence wraps at 16 and every consumer compares equality only, so the
- *   the high nibble belongs to the stance channel. */
+ *   the high nibble belongs to the stance channel.
+ * combine[7] flags spell slot `side` as an active COMBINE spell, the one
+ * interaction the slave cannot derive; prepared derives from inc_state. fx_kind
+ * bit 4 sits at bit 7 so the scry bits keep their v12 positions. */
 
 /* Non-casting stances are simulation state. PACE/TAUNT derive locally from
  * NONE + idle + seed and never ride the wire. */
@@ -48,17 +51,18 @@ typedef struct __attribute__((packed)) {
 #define VIEW_W1_VARIANT(b) ((uint8_t)(((b) >> 3) & 3u))
 #define VIEW_W1_STATUS(b)  ((uint8_t)(((b) >> 5) & 7u))
 
-#define VIEW_W2_PACK(pose, inc_state, focus, prepared)                                             \
+#define VIEW_W2_PACK(pose, inc_state, focus, combine)                                              \
     ((uint8_t)(((pose) & 3u) | (((inc_state) & 7u) << 2) | (((focus) & 3u) << 5) |                 \
-               ((prepared) ? 0x80u : 0u)))
-#define VIEW_W2_POSE(b)     ((uint8_t)((b) & 3u))
-#define VIEW_W2_INC(b)      ((uint8_t)(((b) >> 2) & 7u))
-#define VIEW_W2_FOCUS(b)    ((uint8_t)(((b) >> 5) & 3u))
-#define VIEW_W2_PREPARED(b) ((uint8_t)(((b) >> 7) & 1u))
+               ((combine) ? 0x80u : 0u)))
+#define VIEW_W2_POSE(b)    ((uint8_t)((b) & 3u))
+#define VIEW_W2_INC(b)     ((uint8_t)(((b) >> 2) & 7u))
+#define VIEW_W2_FOCUS(b)   ((uint8_t)(((b) >> 5) & 3u))
+#define VIEW_W2_COMBINE(b) ((uint8_t)(((b) >> 7) & 1u))
 
 #define VIEW_OVERLAY_PACK(fx, open, scene)                                                         \
-    ((uint8_t)(((fx) & 0x0fu) | ((open) ? 0x10u : 0u) | (((scene) & 3u) << 5)))
-#define VIEW_OVERLAY_FX(b)    ((uint8_t)((b) & 0x0fu))
+    ((uint8_t)(((fx) & 0x0fu) | (((fx) & 0x10u) << 3) | ((open) ? 0x10u : 0u) |                    \
+               (((scene) & 3u) << 5)))
+#define VIEW_OVERLAY_FX(b)    ((uint8_t)(((b) & 0x0fu) | (((b) & 0x80u) >> 3)))
 #define VIEW_OVERLAY_OPEN(b)  (((b) & 0x10u) != 0)
 #define VIEW_OVERLAY_SCENE(b) ((uint8_t)(((b) >> 5) & 3u))
 
@@ -96,11 +100,11 @@ typedef struct {
     uint8_t progress;
 } duel_view_spell_t;
 
-_Static_assert(sizeof(duel_view_t) == 18, "v12 canonical view must be exactly 18 bytes");
+_Static_assert(sizeof(duel_view_t) == 18, "v13 canonical view must be exactly 18 bytes");
 
 void duel_view_from_world(const sim_world_t *world, duel_view_t *view);
 /* Pack the four residue zones as two nibble-pair bytes — zones 0-1
- * into out[0] (exactly the v12 snapshot residue byte: elem[0:1] int[2:3] per
+ * into out[0] (exactly the snapshot residue byte: elem[0:1] int[2:3] per
  * zone, low zone first) and zones 2-3 into out[1] in the same grammar. The
  * encoder, the master's render fill, and the slave's snapshot unpack all
  * speak this one layout. */

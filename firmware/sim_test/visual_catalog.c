@@ -341,6 +341,7 @@ static void build_catalog(void) {
     world.wiz[0].ward_strength = 3u;
     world.wiz[0].status = STATUS_MARKED;
     world.wiz[0].status_intensity = 2u;
+    world.wiz[0].inc_state = INC_PREPARED;
     world.wiz[0].prepared = 1u;
     world.wiz[0].prepared_desc = descriptor(SPELL_BEAM, 3u);
     world.wiz[1].hp = 3u;

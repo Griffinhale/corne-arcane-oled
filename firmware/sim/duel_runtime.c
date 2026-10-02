@@ -292,7 +292,7 @@ bool duel_flash_observe_view(duel_flash_policy_t *policy, uint8_t last_spell_kin
     uint8_t flash_kind = VIEW_OVERLAY_FX(view->outcome_overlay);
     bool defender_left = flash_kind == FX_IMPACT_L || flash_kind == FX_DEFLECT_L ||
                          flash_kind == FX_FIZZLE_L || flash_kind == FX_HEAL_L ||
-                         flash_kind == FX_WARD_SHATTER_L;
+                         flash_kind == FX_WARD_SHATTER_L || flash_kind == FX_SHATTER_L;
     // The defender flashes with the style of the spell that reached it — the
     // one cast from the OPPOSITE side's slot.
     return duel_flash_note(policy, fx_seq, flash_kind,

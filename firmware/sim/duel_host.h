@@ -179,7 +179,7 @@ enum {
 #define DUEL_CIVIC_INTENSITY(value) ((uint8_t)(((value) >> 4) & 3u))
 #define DUEL_CIVIC_RESERVED_MASK    0xC0u /* Raw HID v3: bits 6-7 must be clear */
 
-// Secondary byte ledger: bits0-2 host activity. The split v12 snapshot owns
+// Secondary byte ledger: bits0-2 host activity. The split snapshot owns
 // the rest: bits3-4 master sky phase, bits5-6 sky sub-phase (celestial arc
 // step within the phase), bit7 residue zone3 intensity high bit (see
 // duel_proto.h). Raw HID v3 producers must leave bits3-7 clear — the host

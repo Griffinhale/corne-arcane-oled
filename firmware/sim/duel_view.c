@@ -96,8 +96,9 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
         uint8_t ward = wz->stance == DUEL_STANCE_MEDITATE ? 0u : wz->ward_strength;
         view->wizard[side][0] = VIEW_W0_PACK(wz->hp, ward, wz->rearm_lock);
         view->wizard[side][1] = VIEW_W1_PACK(wz->life, wz->variant, wz->status);
-        view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus, wz->prepared);
         const sim_spell_t *sp = &world->spell[side];
+        bool combine = sp->active && SPELL_DESC_INTERACTION(sp->descriptor) == INTERACT_COMBINE;
+        view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus, combine);
         if (sp->active)
             view_spell_pack(view, side, sp->descriptor, sp->progress);
         if (wz->inc_state == INC_COLLECTING) {
@@ -146,7 +147,7 @@ duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
         .inc_state = VIEW_W2_INC(b2),
         .ward_strength = VIEW_W0_WARD(b0),
         .ward_focus = VIEW_W2_FOCUS(b2),
-        .prepared = VIEW_W2_PREPARED(b2),
+        .prepared = VIEW_W2_INC(b2) == INC_PREPARED,
         .rearm_lock = VIEW_W0_REARM(b0),
         .status_intensity = nibble & 3u,
         .status_duration = (nibble >> 2) & 3u,
@@ -167,6 +168,8 @@ duel_view_wizard_t duel_view_wizard(const duel_view_t *view, uint8_t side) {
 duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side, uint8_t session) {
     uint32_t compressed = view_spell_compressed(view, side);
     uint32_t desc = duel_spell_descriptor_expand(compressed, session, side);
+    if (desc && VIEW_W2_COMBINE(view->wizard[side][2]))
+        desc = (desc & ~((uint32_t)3u << 15)) | ((uint32_t)INTERACT_COMBINE << 15);
     uint8_t progress = view_spell_progress(view, side);
     duel_view_spell_t spell = {
         .active = desc != 0,
@@ -180,7 +183,7 @@ duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side, uint8_t
 }
 
 bool duel_view_valid(const duel_view_t *view) {
-    if (view->outcome_overlay & 0x80u)
+    if (VIEW_OVERLAY_FX(view->outcome_overlay) >= FX_COUNT)
         return false;
     if (VIEW_OVERLAY_SCENE(view->outcome_overlay) >= SCRY_SCENES)
         return false;
@@ -189,15 +192,13 @@ bool duel_view_valid(const duel_view_t *view) {
         if (VIEW_W0_HP(b0) > SIM_MAX_HP || VIEW_W0_WARD(b0) > 4u)
             return false;
         if (VIEW_W1_LIFE(b1) > LIFE_REPLACE || VIEW_W1_VARIANT(b1) >= SIM_ROSTER_N ||
-            VIEW_W1_STATUS(b1) > STATUS_MARKED)
+            VIEW_W1_STATUS(b1) > STATUS_SCALDED)
             return false;
         if (VIEW_W2_POSE(b2) > POSE_RECOVER || VIEW_W2_INC(b2) > INC_REARM)
             return false;
         /* all four ward_focus values are legal; no range check needed */
         uint8_t inc_state = VIEW_W2_INC(b2);
-        bool prepared = VIEW_W2_PREPARED(b2) != 0;
-        if (prepared != (inc_state == INC_PREPARED))
-            return false;
+        bool combine = VIEW_W2_COMBINE(b2) != 0;
         uint8_t status = VIEW_W1_STATUS(b1);
         uint8_t status_nibble = (uint8_t)(view->status_visual >> (side * 4u)) & 0x0fu;
         if ((status == STATUS_NONE) != (status_nibble == 0u))
@@ -210,7 +211,7 @@ bool duel_view_valid(const duel_view_t *view) {
         uint32_t compressed = view_spell_compressed(view, side);
         uint8_t progress = view_spell_progress(view, side);
         if (!compressed) {
-            if (progress)
+            if (progress || combine)
                 return false;
             continue;
         }
@@ -219,6 +220,10 @@ bool duel_view_valid(const duel_view_t *view) {
         uint32_t desc = duel_spell_descriptor_expand(compressed, 0, side);
         if (!SPELL_DESC_VALID(desc) || SPELL_DESC_FORM(desc) > SPELL_CONJURE ||
             SPELL_DESC_STATUS(desc) > STATUS_MARKED)
+            return false;
+        /* Singularities absorb and void spells phase; neither can combine. */
+        if (combine &&
+            (SPELL_DESC_FORM(desc) == SPELL_SINGULARITY || SPELL_DESC_ELEMENT(desc) == ELEM_VOID))
             return false;
     }
     return true;
