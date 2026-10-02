@@ -3,7 +3,8 @@
 Every figure here is a machine-wide number from /proc or statvfs: CPU
 pressure, run-queue length, available memory and free disk space. No process,
 file or user is named, and the sample that leaves this module is one
-intensity level and one flag.
+intensity level and one flag for the keyboard wire, plus, for a desktop city
+(arcane_host.host_signals), a finer load level and which resource is near full.
 """
 
 from __future__ import annotations
@@ -13,12 +14,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from .host_signals import LoadLevel, StrainKind
 from .protocol import Intensity
 
 # CPU pressure ("some avg10", percent of time a task waited for a CPU) at
 # which intensity steps up. Without PSI, the 1-minute load per CPU stands in,
 # scaled so 1.0 per CPU reads as 50 %.
 INTENSITY_STEPS = (10.0, 30.0, 60.0)
+# The desktop's finer steps over the same figure. Every wire step is one of
+# these cut points, so a finer level always refines the intensity sent.
+LOAD_STEPS = (5.0, 10.0, 30.0, 60.0, 80.0)
 
 # Near full. Each resource turns strain on at the first figure and off only
 # past the second, so a value sitting on the line does not flicker.
@@ -61,6 +66,12 @@ def memory_available_fraction(text: str) -> float | None:
 def intensity_for(cpu_pressure: float) -> Intensity:
     level = sum(1 for step in INTENSITY_STEPS if cpu_pressure >= step)
     return Intensity(level)
+
+
+def load_level_for(cpu_pressure: float | None) -> LoadLevel:
+    if cpu_pressure is None:
+        return LoadLevel.NONE
+    return LoadLevel(1 + sum(1 for step in LOAD_STEPS if cpu_pressure >= step))
 
 
 @dataclass(slots=True)
@@ -123,12 +134,18 @@ class LoadReader:
 
 
 class StrainGauge:
-    """Turn samples into (intensity, strain) with hysteresis on strain."""
+    """Turn samples into (intensity, strain) with hysteresis on strain.
+
+    The last call's finer reading stays in ``level`` and ``kind`` for the
+    desktop's host signals; both are NONE until the first sample.
+    """
 
     def __init__(self) -> None:
         self._memory = False
         self._disk = False
         self._cpu = False
+        self.level = LoadLevel.NONE
+        self.kind = StrainKind.NONE
 
     @staticmethod
     def _below(value: float | None, held: bool, on: float, off: float) -> bool:
@@ -153,13 +170,37 @@ class StrainGauge:
         intensity = (
             Intensity.CALM if sample.cpu_pressure is None else intensity_for(sample.cpu_pressure)
         )
+        self.level = load_level_for(sample.cpu_pressure)
+        self.kind = (
+            StrainKind.DISK
+            if self._disk
+            else StrainKind.MEMORY
+            if self._memory
+            else StrainKind.CPU
+            if self._cpu
+            else StrainKind.CLEAR
+        )
         return intensity, self._memory or self._disk or self._cpu
 
 
-def load_sampler(
-    reader: Callable[[], LoadSample] | None = None,
-) -> Callable[[], tuple[Intensity, bool]]:
-    """The callable SemanticAdapters polls: read, then gauge."""
-    read = reader or LoadReader()
-    gauge = StrainGauge()
-    return lambda: gauge(read())
+class LoadSampler:
+    """The callable SemanticAdapters polls: read, then gauge.
+
+    A call returns the wire's (intensity, strain); ``detail`` is the same
+    sample's (LoadLevel, StrainKind) for the desktop city.
+    """
+
+    def __init__(self, reader: Callable[[], LoadSample]) -> None:
+        self._read = reader
+        self._gauge = StrainGauge()
+
+    def __call__(self) -> tuple[Intensity, bool]:
+        return self._gauge(self._read())
+
+    @property
+    def detail(self) -> tuple[LoadLevel, StrainKind]:
+        return self._gauge.level, self._gauge.kind
+
+
+def load_sampler(reader: Callable[[], LoadSample] | None = None) -> LoadSampler:
+    return LoadSampler(reader or LoadReader())

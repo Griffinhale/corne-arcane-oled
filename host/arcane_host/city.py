@@ -21,10 +21,11 @@ import os
 from enum import IntEnum
 from pathlib import Path
 
+from .host_signals import HOST_SIGNAL_FIELDS
 from .protocol import CivicState, NotificationSummary, Scene
 from .semantic import SemanticState, world_bytes
 
-CITY_ABI = 9
+CITY_ABI = 10
 LIBRARY_NAME = "libcornearcane.so"
 
 
@@ -157,10 +158,16 @@ OFF_KEYBOARD_FIELDS: tuple[tuple[str, type[IntEnum]], ...] = (
 # empty day, and any byte is a count, so there is no enum to fall outside.
 OFF_KEYBOARD_COUNTERS: tuple[str, ...] = ("tally_casts", "tally_impacts", "tally_knockdowns")
 
+# The desktop service's opt-in host signals (ABI 10), after the tallies:
+# presence, load, strain, call, alert and command, each an enum from
+# arcane_host.host_signals whose zero is "nothing sent". Only the desktop city
+# fills them, from Control.HostSignalsChanged; every other shell sends none.
+# HOST_SIGNAL_FIELDS names them in struct order.
+
 
 class CityInput(ctypes.Structure):
     """``duel_city_input_t``: the Raw HID v3 payload, unpacked, then the off-keyboard
-    signals, then the season and the day's tallies."""
+    signals, then the season and the day's tallies, then the host signals."""
 
     _fields_ = [
         ("scene", ctypes.c_uint8),
@@ -175,6 +182,7 @@ class CityInput(ctypes.Structure):
         ("seed", ctypes.c_uint8),
         *((name, ctypes.c_uint8) for name, _ in OFF_KEYBOARD_FIELDS),
         *((name, ctypes.c_uint8) for name in OFF_KEYBOARD_COUNTERS),
+        *((name, ctypes.c_uint8) for name, _ in HOST_SIGNAL_FIELDS),
     ]
 
 

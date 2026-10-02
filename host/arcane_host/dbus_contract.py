@@ -82,6 +82,17 @@ OWNER_LABEL_MAX = 80
 WORLD = "World"
 WORLD_CHANGED = "WorldChanged"
 WORLD_SIGNATURE = "(yyyyyyyy)"
+# HostSignals is the opt-in host signals (--host-signals) at the detail a
+# desktop city takes, finer than the wire folds them into World's civic byte:
+# presence, load, strain, call, alert and command, six enums from
+# arcane_host.host_signals in duel_city_input_t order (city ABI 10). Zero in
+# each is "nothing sent". HostSignalsChanged fires only while the service runs
+# with --host-signals; without it the method answers all zero and the signal
+# never fires. No caller, title, command text, process or stream name exists
+# at this level.
+HOST_SIGNALS = "HostSignals"
+HOST_SIGNALS_CHANGED = "HostSignalsChanged"
+HOST_SIGNALS_SIGNATURE = "(yyyyyy)"
 
 CONTROL_XML = f"""
 <node>
@@ -106,6 +117,14 @@ CONTROL_XML = f"""
       <arg type='y' name='civic' direction='out'/>
       <arg type='y' name='secondary' direction='out'/>
     </method>
+    <method name='{HOST_SIGNALS}'>
+      <arg type='y' name='presence' direction='out'/>
+      <arg type='y' name='load' direction='out'/>
+      <arg type='y' name='strain' direction='out'/>
+      <arg type='y' name='call' direction='out'/>
+      <arg type='y' name='alert' direction='out'/>
+      <arg type='y' name='command' direction='out'/>
+    </method>
     <signal name='{STATUS_CHANGED}'>
       <arg type='s' name='link'/>
       <arg type='s' name='device'/>
@@ -121,6 +140,14 @@ CONTROL_XML = f"""
       <arg type='y' name='persistent'/>
       <arg type='y' name='civic'/>
       <arg type='y' name='secondary'/>
+    </signal>
+    <signal name='{HOST_SIGNALS_CHANGED}'>
+      <arg type='y' name='presence'/>
+      <arg type='y' name='load'/>
+      <arg type='y' name='strain'/>
+      <arg type='y' name='call'/>
+      <arg type='y' name='alert'/>
+      <arg type='y' name='command'/>
     </signal>
   </interface>
 </node>

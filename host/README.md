@@ -404,8 +404,14 @@ The service exports `io.github.Griffinhale.CorneArcane.Control` at
   notification count, category, priority, age, persistent, civic, secondary).
   They are small integers only; no title, path or message text exists at this
   level.
+- `HostSignals() -> (yyyyyy)`: the opt-in host signals at the detail the
+  desktop city takes, finer than the keyboard wire: presence, load, strain,
+  call, alert and command, each an enum from `arcane_host/host_signals.py`
+  (city ABI 10). Zero in each means nothing sent, and without
+  `--host-signals` all six are zero.
 - Signals `StatusChanged` and `WorldChanged` carry the same values when they
-  change.
+  change. `HostSignalsChanged` does the same for `HostSignals`, and only while
+  the service runs with `--host-signals`.
 
 ## Using another keyboard
 

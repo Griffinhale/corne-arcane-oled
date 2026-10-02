@@ -17,6 +17,9 @@ from .dbus_contract import (
     EVENTS_XML,
     FOCUS_INTERFACE,
     FOCUS_XML,
+    HOST_SIGNALS,
+    HOST_SIGNALS_CHANGED,
+    HOST_SIGNALS_SIGNATURE,
     INJECT_SYNTHETIC,
     KWIN_SERVICE,
     OBJECT_PATH,
@@ -207,7 +210,8 @@ def owner_label(text: str) -> str:
 
 class ControlService:
     """Status, Pause and Resume for the keyboard link, without stopping the unit,
-    and World for views that draw what the keyboard is sent.
+    World for views that draw what the keyboard is sent, and HostSignals for a
+    desktop city that takes the opt-in host signals at finer detail.
 
     A pause belongs to the caller's bus connection. If that connection goes
     away -- the client exited, crashed or was killed -- the link resumes by
@@ -226,6 +230,7 @@ class ControlService:
         )
         runtime.add_status_listener(self._emit)
         runtime.add_world_listener(self._emit_world)
+        runtime.add_host_listener(self._emit_host_signals)
 
     def _signal(self, name: str, signature: str, value: tuple) -> None:
         if not self.registration_id:
@@ -246,6 +251,10 @@ class ControlService:
 
     def _emit_world(self, world: tuple[int, ...]) -> None:
         self._signal(WORLD_CHANGED, WORLD_SIGNATURE, world)
+
+    def _emit_host_signals(self, signals: tuple[int, ...]) -> None:
+        # The runtime publishes these only with --host-signals.
+        self._signal(HOST_SIGNALS_CHANGED, HOST_SIGNALS_SIGNATURE, signals)
 
     def _unwatch(self) -> None:
         if self.watch_id:
@@ -283,6 +292,11 @@ class ControlService:
             return
         if method == WORLD:
             invocation.return_value(self.GLib.Variant(WORLD_SIGNATURE, self.runtime.world()))
+            return
+        if method == HOST_SIGNALS:
+            invocation.return_value(
+                self.GLib.Variant(HOST_SIGNALS_SIGNATURE, self.runtime.host_signals())
+            )
             return
         if method == RESUME:
             self._unwatch()

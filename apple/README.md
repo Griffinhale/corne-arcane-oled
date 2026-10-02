@@ -173,6 +173,16 @@ post the tallies on an almanac board in the square, a stroke at 1, 4, 16, 64
 and 255; an empty day draws no board. Nothing draws the season yet. A season
 is not weather.
 
+## Host signals
+
+ABI 10 appends six enums after the tallies: presence, load, strain, call,
+alert and command. They are the Linux desktop service's opt-in host signals
+(`--host-signals`) at finer detail than the keyboard wire carries, and only
+that service has a producer for them. CityKit carries them as
+`CitySemantics.host` so every shell agrees on the layout; an Apple shell
+leaves them at `HostSignals()`, all none, which is what "nothing sent" means.
+Nothing draws them yet.
+
 ## Landscape
 
 ABI 7 adds `LANDSCAPE`, a 400x240 drawing layer with more world on either side

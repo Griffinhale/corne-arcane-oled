@@ -19,8 +19,11 @@ Two ways to run it:
 
 The window is a client of corne-arcane-host.service, never a second daemon: it
 reads the service's Control interface for the keyboard link and the world the
-keyboard is being sent, and it never opens the keyboard. With no service on
-the bus it shows the city offline and says so under the image.
+keyboard is being sent, and it never opens the keyboard. A service run with
+--host-signals also reports the desktop's presence, load, strain, call, alert
+and running commands as enums (HostSignalsChanged), which fill the city's host
+signal fields at finer detail than the wire; without it they stay none. With
+no service on the bus it shows the city offline and says so under the image.
 
 The default layout is the town, the view the phone and the watch open on: one
 wizard tower at the centre of a small city. `--layout city` shows the

@@ -10,6 +10,15 @@ from enum import IntEnum
 from typing import Callable
 
 from .dbus_contract import RepositoryState
+from .host_signals import (
+    AlertState,
+    CallState,
+    CommandState,
+    HostSignals,
+    LoadLevel,
+    Presence,
+    StrainKind,
+)
 from .policy import NotificationPolicy
 from .protocol import Category, Intensity, Priority, Secondary
 from .semantic import SemanticResolver
@@ -77,6 +86,7 @@ class SemanticAdapters:
         self._terminal_starts: list[float] = []
         self._load_sampler = load_sampler
         self._load_next = 0.0
+        self._load_detail: tuple[LoadLevel, StrainKind] = (LoadLevel.NONE, StrainKind.NONE)
         self._call_sampler = call_sampler
         self._call_joined = False
         # notification id -> (expiry, is a call)
@@ -146,14 +156,21 @@ class SemanticAdapters:
     def _urgent_update(self) -> None:
         if self.resolver.update(urgent=bool(self._urgent)):
             self._changed()
+        else:
+            # A ring and a critical notice share URGENT; the host signals tell
+            # them apart, so a change the wire cannot see still wakes the tick.
+            self.changed()
 
     def _call_update(self, joined: bool) -> None:
+        moved = joined != self._call_joined
         self._call_joined = joined
         if joined:
             # Answering ends the ring: the call goes QUIET for its length.
             self._drop_calls()
         if self.resolver.update(call_joined=joined, urgent=bool(self._urgent)):
             self._changed()
+        elif moved:
+            self.changed()
 
     def terminal_started(self) -> None:
         """A shell says a command has run for ten seconds and has not ended.
@@ -174,6 +191,9 @@ class SemanticAdapters:
     def _terminal_update(self) -> None:
         if self.resolver.update(terminal_running=bool(self._terminal_starts)):
             self._changed()
+        else:
+            # One running command or several is the same on the wire.
+            self.changed()
 
     def pomodoro(
         self,
@@ -265,8 +285,13 @@ class SemanticAdapters:
             except Exception:
                 self.counters.errors += 1
             else:
+                detail = self._read_load_detail()
                 if self.resolver.update(intensity=Intensity(intensity), strain=bool(strain)):
                     self._changed()
+                elif detail != self._load_detail:
+                    # Finer than the wire: only the desktop's host signals move.
+                    self.changed()
+                self._load_detail = detail
         if self._call_sampler is not None and samplers_due:
             try:
                 joined = bool(self._call_sampler())
@@ -294,6 +319,50 @@ class SemanticAdapters:
                 ):
                     self.pomodoro(True, remaining)
         return before != (self.resolver.state.revision, self.counters.events)
+
+    def _read_load_detail(self) -> tuple[LoadLevel, StrainKind]:
+        """The load sampler's finer reading, or none from a sampler without one."""
+        detail = getattr(self._load_sampler, "detail", None)
+        if detail is None:
+            return LoadLevel.NONE, StrainKind.NONE
+        try:
+            level, kind = detail
+            return LoadLevel(level), StrainKind(kind)
+        except (TypeError, ValueError):
+            self.counters.errors += 1
+            return LoadLevel.NONE, StrainKind.NONE
+
+    def host_signals(self) -> HostSignals:
+        """The desktop's own state at the detail a desktop city takes (city ABI 10).
+
+        Read from the same state that feeds the wire's mode and intensity, so
+        the two never disagree; only enums, and only counts of commands.
+        """
+        resolver = self.resolver
+        ringing = any(is_call for _, is_call in self._urgent.values())
+        critical = any(not is_call for _, is_call in self._urgent.values())
+        running = len(self._terminal_starts)
+        level, kind = self._load_detail
+        return HostSignals(
+            presence=Presence.LOCKED
+            if resolver.locked
+            else Presence.IDLE
+            if resolver.idle
+            else Presence.ACTIVE,
+            load=level,
+            strain=kind,
+            call=CallState.JOINED
+            if self._call_joined
+            else CallState.RINGING
+            if ringing
+            else CallState.CLEAR,
+            alert=AlertState.CRITICAL if critical else AlertState.CLEAR,
+            command=CommandState.SEVERAL
+            if running > 1
+            else CommandState.RUNNING
+            if running
+            else CommandState.IDLE,
+        )
 
     def browser(self, kind: Secondary, intensity: Intensity) -> None:
         if kind not in {Secondary.SCROLL, Secondary.TAB, Secondary.PAGE}:

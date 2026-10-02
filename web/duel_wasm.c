@@ -73,8 +73,8 @@ static duel_city_input_t city_input;
 #define WASM_PIXELS_MAX (400 * 240)
 static uint8_t pixel_buffer[WASM_PIXELS_MAX];
 
-_Static_assert(sizeof(city_input) == 21,
-               "input struct is the payload, unpacked, plus signals, season and tallies");
+_Static_assert(sizeof(city_input) == 27,
+               "input struct is the payload, unpacked, plus the shell-only fields");
 _Static_assert(sizeof(city_state) == 32, "city state size changed under the shim");
 _Static_assert(sizeof(ambient_world) == 512, "ambient world size changed under the shim");
 

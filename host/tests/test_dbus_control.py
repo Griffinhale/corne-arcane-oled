@@ -25,9 +25,12 @@ from arcane_host.dbus_contract import (
     CONTROL_BUSY,
     CONTROL_INTERFACE,
     EVENTS_INTERFACE,
+    HOST_SIGNALS,
+    HOST_SIGNALS_CHANGED,
     INJECT_SYNTHETIC,
     OBJECT_PATH,
     PAUSE,
+    REPORT_TERMINAL_START,
     RESUME,
     STATUS,
     STATUS_CHANGED,
@@ -104,10 +107,16 @@ def wait_until(condition, timeout: float) -> bool:
     return condition()
 
 
-@unittest.skipUnless(
+needs_bus = unittest.skipUnless(
     Gio is not None and shutil.which("dbus-daemon"), "needs PyGObject and dbus-daemon"
 )
-class ControlTests(unittest.TestCase):
+
+
+class DaemonOnPrivateBus(unittest.TestCase):
+    """A real daemon on a private bus, with DAEMON_ARGUMENTS added to its command."""
+
+    DAEMON_ARGUMENTS: tuple[str, ...] = ()
+
     def setUp(self) -> None:
         bus = subprocess.Popen(
             ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
@@ -130,6 +139,8 @@ class ControlTests(unittest.TestCase):
             # Never the real service manager: if the guard ever fell back to
             # systemctl here, it would fail loudly instead.
             CORNE_ARCANE_SYSTEMCTL="false",
+            # Off unless a test class asks for it, whatever the caller's setting.
+            CORNE_ARCANE_HOST_SIGNALS="0",
             PYTHONDONTWRITEBYTECODE="1",
         )
         self.daemon = subprocess.Popen(
@@ -140,6 +151,7 @@ class ControlTests(unittest.TestCase):
                 "--device",
                 self.keyboard.path,
                 "--no-desktop-notifications",
+                *self.DAEMON_ARGUMENTS,
             ],
             cwd=HOST_DIR,
             env=self.env,
@@ -200,6 +212,9 @@ class ControlTests(unittest.TestCase):
         except GLib.Error:
             return None
 
+
+@needs_bus
+class ControlTests(DaemonOnPrivateBus):
     def test_status_fields(self) -> None:
         self.assertEqual(self.status(), ("connected", self.keyboard.path, False, ""))
         self.assertTrue(holds(self.daemon.pid, self.keyboard.path))
@@ -354,6 +369,94 @@ class ControlTests(unittest.TestCase):
             wait_until(lambda: self.status()[0] == "connected", 5.0),
             f"pause outlived a killed guard: {self.status()}",
         )
+
+
+class HostSignalsCase(DaemonOnPrivateBus):
+    """HostSignals and HostSignalsChanged on a real daemon (city ABI 10, SH8)."""
+
+    def collect(self, name: str) -> list[tuple]:
+        received: list[tuple] = []
+        self.client.signal_subscribe(
+            BUS_NAME,
+            CONTROL_INTERFACE,
+            name,
+            OBJECT_PATH,
+            None,
+            Gio.DBusSignalFlags.NONE,
+            lambda *args: received.append(args[-1].unpack()),
+        )
+        return received
+
+    def pump_until(self, condition, timeout: float) -> bool:
+        context = GLib.MainContext.default()
+
+        def pumped() -> bool:
+            while context.iteration(False):
+                pass
+            return condition()
+
+        return wait_until(pumped, timeout)
+
+    def terminal_start(self) -> None:
+        self.client.call_sync(
+            BUS_NAME,
+            OBJECT_PATH,
+            EVENTS_INTERFACE,
+            REPORT_TERMINAL_START,
+            None,
+            None,
+            Gio.DBusCallFlags.NO_AUTO_START,
+            1000,
+            None,
+        )
+
+    def host_signals(self) -> tuple:
+        return self.call(HOST_SIGNALS, reply="(yyyyyy)")
+
+
+@needs_bus
+class HostSignalsOffTests(HostSignalsCase):
+    def test_nothing_is_emitted_and_the_method_reports_none(self) -> None:
+        hosts = self.collect(HOST_SIGNALS_CHANGED)
+        worlds = self.collect(WORLD_CHANGED)
+        self.assertEqual(self.host_signals(), (0,) * 6)
+        # A long command reaches the daemon and moves the wire's intensity...
+        self.terminal_start()
+        self.terminal_start()
+        self.assertTrue(self.pump_until(lambda: bool(worlds), 2.0), "no WorldChanged")
+        # ...and no host signal follows it, however long one waits for a tick.
+        self.pump_until(lambda: bool(hosts), 1.5)
+        self.assertEqual(hosts, [])
+        self.assertEqual(self.host_signals(), (0,) * 6)
+
+
+@needs_bus
+class HostSignalsOnTests(HostSignalsCase):
+    DAEMON_ARGUMENTS = ("--host-signals",)
+
+    def test_signals_follow_the_desktop_inside_their_enums(self) -> None:
+        # Imported here so the module needs no city binding to load.
+        from arcane_host.host_signals import CommandState, HostSignals, Presence
+
+        hosts = self.collect(HOST_SIGNALS_CHANGED)
+        first = HostSignals.from_bytes(self.host_signals())
+        # No logind on a private bus: the session reads as present. Load and
+        # call come from this machine's /proc, so only their bounds are checked.
+        self.assertEqual(first.presence, Presence.ACTIVE)
+        self.assertEqual(first.command, CommandState.IDLE)
+        self.terminal_start()
+        self.assertTrue(
+            self.pump_until(lambda: bool(hosts) and hosts[-1][5] == CommandState.RUNNING, 2.0),
+            f"no HostSignalsChanged for one command: {hosts}",
+        )
+        self.terminal_start()
+        self.assertTrue(
+            self.pump_until(lambda: hosts[-1][5] == CommandState.SEVERAL, 2.0),
+            f"no HostSignalsChanged for two commands: {hosts}",
+        )
+        for signals in hosts:
+            HostSignals.from_bytes(signals)
+        self.assertEqual(self.host_signals(), hosts[-1])
 
 
 if __name__ == "__main__":

@@ -15,8 +15,8 @@
     "page takes no input, but the harness writes the same bounded bytes into",
     "the module's input struct that the daemon and CityKit pack.",
     "signals: the off-keyboard fields (typing summary, health buckets, the",
-    "season and the day's tallies), every one away from none; a row without",
-    "them leaves all of them at none.",
+    "season and the day's tallies, the host signals), every one away from",
+    "none; a row without them leaves all of them at none.",
     "town_*: the civic states the TOWN and LANDSCAPE layers read, one row per",
     "district the tour does not reach, plus QUIET, URGENT, a courier and",
     "offline. The input names a (floor, scene) pair; the district is derived."
@@ -74,7 +74,13 @@
         "season": 4,
         "tally_casts": 12,
         "tally_impacts": 30,
-        "tally_knockdowns": 2
+        "tally_knockdowns": 2,
+        "presence": 3,
+        "load": 5,
+        "strain": 4,
+        "call": 2,
+        "alert": 2,
+        "command": 3
       }
     },
     {

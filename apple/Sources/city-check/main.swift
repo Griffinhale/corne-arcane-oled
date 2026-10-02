@@ -52,7 +52,8 @@ struct SemanticRow: Decodable {
     }
 
     /// The off-keyboard signals; a row without them leaves every one at none.
-    /// ABI 9's season and tallies are optional so an older row still reads.
+    /// ABI 9's season and tallies and ABI 10's host signals are optional so an
+    /// older row still reads.
     struct Signals: Decodable {
         let tempo: UInt8
         let spread: UInt8
@@ -65,6 +66,12 @@ struct SemanticRow: Decodable {
         let tally_casts: UInt8?
         let tally_impacts: UInt8?
         let tally_knockdowns: UInt8?
+        let presence: UInt8?
+        let load: UInt8?
+        let strain: UInt8?
+        let call: UInt8?
+        let alert: UInt8?
+        let command: UInt8?
     }
 
     let name: String
@@ -103,7 +110,13 @@ struct SemanticRow: Decodable {
                 let body = BodyActivity(rawValue: signals.body),
                 let heart = HeartMood(rawValue: signals.heart),
                 let sleep = SleepMood(rawValue: signals.sleep),
-                let season = CitySeason(rawValue: signals.season ?? 0)
+                let season = CitySeason(rawValue: signals.season ?? 0),
+                let presence = HostPresence(rawValue: signals.presence ?? 0),
+                let load = HostLoad(rawValue: signals.load ?? 0),
+                let strain = HostStrain(rawValue: signals.strain ?? 0),
+                let call = HostCall(rawValue: signals.call ?? 0),
+                let alert = HostAlert(rawValue: signals.alert ?? 0),
+                let command = HostCommand(rawValue: signals.command ?? 0)
             else { fail("semantic row \(name) names a signal CityKit has no case for") }
             semantics.tempo = tempo
             semantics.spread = spread
@@ -116,6 +129,9 @@ struct SemanticRow: Decodable {
             semantics.tallies = DayTallies(
                 casts: signals.tally_casts ?? 0, impacts: signals.tally_impacts ?? 0,
                 knockdowns: signals.tally_knockdowns ?? 0)
+            semantics.host = HostSignals(
+                presence: presence, load: load, strain: strain, call: call, alert: alert,
+                command: command)
         }
         return semantics
     }
@@ -485,6 +501,16 @@ func runSemanticInvariants() {
     vary("tallies saturated") {
         $0.tallies = DayTallies(casts: 255, impacts: 255, knockdowns: 255)
     }
+    for presence in HostPresence.allCases {
+        vary("presence \(presence)") { $0.host.presence = presence }
+    }
+    for load in HostLoad.allCases { vary("load \(load)") { $0.host.load = load } }
+    for strain in HostStrain.allCases { vary("strain \(strain)") { $0.host.strain = strain } }
+    for call in HostCall.allCases { vary("call \(call)") { $0.host.call = call } }
+    for alert in HostAlert.allCases { vary("alert \(alert)") { $0.host.alert = alert } }
+    for command in HostCommand.allCases {
+        vary("command \(command)") { $0.host.command = command }
+    }
     vary("everything at once") {
         $0 = CitySemantics(
             scene: .focus, floor: .special, mode: .urgent, intensity: .busy, activity: .scroll,
@@ -520,6 +546,12 @@ func runSemanticInvariants() {
             && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
             && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
             && CitySeason.allCases.count == Int(DUEL_CITY_SEASON_COUNT)
+            && HostPresence.allCases.count == Int(DUEL_CITY_PRESENCE_COUNT)
+            && HostLoad.allCases.count == Int(DUEL_CITY_LOAD_COUNT)
+            && HostStrain.allCases.count == Int(DUEL_CITY_STRAIN_COUNT)
+            && HostCall.allCases.count == Int(DUEL_CITY_CALL_COUNT)
+            && HostAlert.allCases.count == Int(DUEL_CITY_ALERT_COUNT)
+            && HostCommand.allCases.count == Int(DUEL_CITY_COMMAND_COUNT)
     )
     // ABI 9's season is carried before anything draws it: every shell accepts
     // it, and no layout changes a pixel for it yet.
@@ -531,6 +563,21 @@ func runSemanticInvariants() {
         "season_draws_nothing_yet",
         dated.count == CitySeason.allCases.count - 1 && drawn.isEmpty,
         "\(dated.count) variants; moved a frame: \(drawn.joined(separator: ", "))")
+    // ABI 10's host signals are carried before anything draws them (SH11):
+    // every shell accepts every value, and no layout changes a pixel for them.
+    let hosted = variants.filter { $0.1.host != HostSignals() }
+    let hostDrawn = hosted.filter {
+        frame($0.1, layout: .town) != frame(base, layout: .town)
+            || frame($0.1, layout: .landscape) != frame(base, layout: .landscape)
+            || frame($0.1) != frame(base)
+    }.map(\.0)
+    let hostCases =
+        HostPresence.allCases.count + HostLoad.allCases.count + HostStrain.allCases.count
+        + HostCall.allCases.count + HostAlert.allCases.count + HostCommand.allCases.count - 6
+    check(
+        "host_signals_draw_nothing_yet",
+        hosted.count == hostCases && hostDrawn.isEmpty,
+        "\(hosted.count) variants; moved a frame: \(hostDrawn.joined(separator: ", "))")
     // The day's tallies go up on the almanac board in the town, and the
     // panels, which are the keyboard's own screens, draw none of them.
     let tallied = variants.filter { $0.1.tallies != DayTallies() }
@@ -577,6 +624,12 @@ func runSemanticInvariants() {
         ("heart", \.heart, Int(DUEL_CITY_HEART_COUNT)),
         ("sleep", \.sleep, Int(DUEL_CITY_SLEEP_COUNT)),
         ("season", \.season, Int(DUEL_CITY_SEASON_COUNT)),
+        ("presence", \.presence, Int(DUEL_CITY_PRESENCE_COUNT)),
+        ("load", \.load, Int(DUEL_CITY_LOAD_COUNT)),
+        ("strain", \.strain, Int(DUEL_CITY_STRAIN_COUNT)),
+        ("call", \.call, Int(DUEL_CITY_CALL_COUNT)),
+        ("alert", \.alert, Int(DUEL_CITY_ALERT_COUNT)),
+        ("command", \.command, Int(DUEL_CITY_COMMAND_COUNT)),
     ]
     var width: Int32 = 0
     var height: Int32 = 0

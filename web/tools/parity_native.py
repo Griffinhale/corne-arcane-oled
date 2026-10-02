@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "host"))
 
 from arcane_host.city import (  # noqa: E402
+    HOST_SIGNAL_FIELDS,
     OFF_KEYBOARD_COUNTERS,
     OFF_KEYBOARD_FIELDS,
     CityInput,
@@ -96,6 +97,7 @@ def semantic_input(row: dict) -> CityInput:
         seed=row["seed"],
         **{name: int(kind(signals.get(name, 0))) for name, kind in OFF_KEYBOARD_FIELDS},
         **{name: int(signals.get(name, 0)) for name in OFF_KEYBOARD_COUNTERS},
+        **{name: int(kind(signals.get(name, 0))) for name, kind in HOST_SIGNAL_FIELDS},
     )
 
 

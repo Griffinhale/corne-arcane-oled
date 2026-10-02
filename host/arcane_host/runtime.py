@@ -13,6 +13,7 @@ from .dbus_contract import OWNER_LABEL_MAX
 from .focus import FocusArbiter
 from .heartbeat import HidHeartbeat
 from .hid_ownership import OpenWatch, holds_node, node_openers
+from .host_signals import NO_HOST_SIGNALS
 from .policy import NotificationPolicy
 from .protocol import NotificationSummary
 from .semantic import SemanticResolver, world_bytes
@@ -38,6 +39,7 @@ class DaemonRuntime:
         clock: Callable[[], float] = time.monotonic,
         lend_check: Callable[[Path], bool] | None = None,
         lend_scan_window: float = 5.0,
+        host_signals: bool = False,
     ) -> None:
         self.Gio = Gio
         self.GLib = GLib
@@ -61,6 +63,11 @@ class DaemonRuntime:
         self._status_listeners: list[Callable[[tuple[str, str, bool, str]], None]] = []
         self._last_status: tuple[str, str, bool, str] | None = None
         self._world_listeners: list[Callable[[tuple[int, ...]], None]] = []
+        # The opt-in host signals at desktop detail (HostSignalsChanged). Off,
+        # none is ever published and the Control method reports none.
+        self.host_signals_enabled = host_signals
+        self._host_listeners: list[Callable[[tuple[int, ...]], None]] = []
+        self._last_host: tuple[int, ...] | None = None
         self._owned: list[Any] = []
         self._closed = False
         # Lending to a program that opened the keyboard without the guard (Vial
@@ -120,6 +127,25 @@ class DaemonRuntime:
 
     def add_world_listener(self, listener: Callable[[tuple[int, ...]], None]) -> None:
         self._world_listeners.append(listener)
+
+    def host_signals(self) -> tuple[int, ...]:
+        """The six host-signal bytes HostSignals reports; all none unless --host-signals."""
+        if not self.host_signals_enabled or self.adapters is None:
+            return NO_HOST_SIGNALS.as_bytes()
+        return self.adapters.host_signals().as_bytes()
+
+    def add_host_listener(self, listener: Callable[[tuple[int, ...]], None]) -> None:
+        self._host_listeners.append(listener)
+
+    def _publish_host_signals(self) -> None:
+        if not self.host_signals_enabled:
+            return
+        signals = self.host_signals()
+        if signals == self._last_host:
+            return
+        self._last_host = signals
+        for listener in tuple(self._host_listeners):
+            listener(signals)
 
     def pause(self, owner: str) -> None:
         """Close the keyboard now and keep it closed until resume()."""
@@ -236,6 +262,7 @@ class DaemonRuntime:
                 world = self.world()
                 for listener in tuple(self._world_listeners):
                     listener(world)
+            self._publish_host_signals()
             sent = False if self.paused else self.heartbeat.tick(now)
             self._check_openers(now)
             self._publish_status()

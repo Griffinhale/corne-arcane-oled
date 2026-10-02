@@ -176,6 +176,83 @@ public struct DayTallies: Equatable, Sendable {
     }
 }
 
+/// DUEL_CITY_PRESENCE_*: presence at the desk, from a desktop session's idle
+/// and lock hints (ABI 10). Like every host signal, only the Linux desktop
+/// service sends it; an Apple shell has no such producer and sends none.
+public enum HostPresence: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case active = 1
+    case idle = 2
+    case locked = 3
+}
+
+/// DUEL_CITY_LOAD_*: system load in six steps where the wire has four (ABI 10).
+public enum HostLoad: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case idle = 1
+    case light = 2
+    case steady = 3
+    case busy = 4
+    case heavy = 5
+    case saturated = 6
+}
+
+/// DUEL_CITY_STRAIN_*: which resource is near full (ABI 10).
+public enum HostStrain: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case clear = 1
+    case cpu = 2
+    case memory = 3
+    case disk = 4
+}
+
+/// DUEL_CITY_CALL_*: a call or meeting, ringing or joined (ABI 10).
+public enum HostCall: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case clear = 1
+    case ringing = 2
+    case joined = 3
+}
+
+/// DUEL_CITY_ALERT_*: a critical notification holding URGENT (ABI 10).
+public enum HostAlert: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case clear = 1
+    case critical = 2
+}
+
+/// DUEL_CITY_COMMAND_*: long commands still running, counted (ABI 10).
+public enum HostCommand: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case idle = 1
+    case running = 2
+    case several = 3
+}
+
+/// The desktop service's opt-in host signals at finer detail than the wire
+/// (ABI 10). Each is an enum whose zero is "nothing sent"; no caller, title or
+/// command text exists at this level. Nothing draws them yet.
+public struct HostSignals: Equatable, Sendable {
+    public var presence: HostPresence
+    public var load: HostLoad
+    public var strain: HostStrain
+    public var call: HostCall
+    public var alert: HostAlert
+    public var command: HostCommand
+
+    public init(
+        presence: HostPresence = .none, load: HostLoad = .none, strain: HostStrain = .none,
+        call: HostCall = .none, alert: HostAlert = .none, command: HostCommand = .none
+    ) {
+        self.presence = presence
+        self.load = load
+        self.strain = strain
+        self.call = call
+        self.alert = alert
+        self.command = command
+    }
+}
+
 /// A non-empty notification summary. The counters are plain integers, so a
 /// count above 15, an age above 7, or a persistent summary below critical
 /// reaches the C check and is refused there.
@@ -217,6 +294,7 @@ public struct CitySemantics: Equatable, Sendable {
     public var sleep: SleepMood
     public var season: CitySeason
     public var tallies: DayTallies
+    public var host: HostSignals
 
     public init(
         scene: HostScene = .duel, floor: CivicFloor = .commons, mode: CivicMode = .normal,
@@ -225,7 +303,7 @@ public struct CitySemantics: Equatable, Sendable {
         tempo: TypingTempo = .none, spread: TypingSpread = .none, row: TypingRow = .none,
         rowSpread: TypingRowSpread = .none, body: BodyActivity = .none,
         heart: HeartMood = .none, sleep: SleepMood = .none, season: CitySeason = .none,
-        tallies: DayTallies = DayTallies()
+        tallies: DayTallies = DayTallies(), host: HostSignals = HostSignals()
     ) {
         self.scene = scene
         self.floor = floor
@@ -243,6 +321,7 @@ public struct CitySemantics: Equatable, Sendable {
         self.sleep = sleep
         self.season = season
         self.tallies = tallies
+        self.host = host
     }
 
     /// duel_city_input_t, packed as DUEL_CIVIC_PACK and DUEL_SECONDARY_PACK pack it.
@@ -271,6 +350,12 @@ public struct CitySemantics: Equatable, Sendable {
         input.tally_casts = tallies.casts
         input.tally_impacts = tallies.impacts
         input.tally_knockdowns = tallies.knockdowns
+        input.presence = host.presence.rawValue
+        input.load = host.load.rawValue
+        input.strain = host.strain.rawValue
+        input.call = host.call.rawValue
+        input.alert = host.alert.rawValue
+        input.command = host.command.rawValue
         return input
     }
 }

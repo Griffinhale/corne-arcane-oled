@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 9
+#define DUEL_CITY_ABI 10
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -170,13 +170,85 @@ enum {
  * almanac draws each as a level, a stroke at 1, 4, 16, 64 and 255. */
 
 /*
+ * The desktop's own state, from the service's opt-in host signals (ABI 10).
+ * The keyboard wire folds these into the civic mode and intensity it already
+ * carries; a desktop shell hears them at finer detail over the service's
+ * Control interface (HostSignalsChanged), and only while the service runs with
+ * --host-signals. Each is a small enum: no caller, title, command text,
+ * process or stream name exists at this level. Zero is "this shell sends
+ * nothing": what the service sends with host signals off, and what every shell
+ * without the service (the phone, the watch, the browser) sends. Nothing draws
+ * them yet.
+ */
+/* Presence at the desk, from the session's idle and lock hints. */
+enum {
+    DUEL_CITY_PRESENCE_NONE = 0,
+    DUEL_CITY_PRESENCE_ACTIVE = 1,
+    DUEL_CITY_PRESENCE_IDLE = 2,
+    DUEL_CITY_PRESENCE_LOCKED = 3,
+    DUEL_CITY_PRESENCE_COUNT = 4,
+};
+
+/* System load in six steps where the wire has four: CPU pressure cut at 5, 10,
+ * 30, 60 and 80 percent. The wire's CALM is IDLE or LIGHT, ACTIVE is STEADY,
+ * BUSY is BUSY, and SATURATED is HEAVY or SATURATED. */
+enum {
+    DUEL_CITY_LOAD_NONE = 0,
+    DUEL_CITY_LOAD_IDLE = 1,
+    DUEL_CITY_LOAD_LIGHT = 2,
+    DUEL_CITY_LOAD_STEADY = 3,
+    DUEL_CITY_LOAD_BUSY = 4,
+    DUEL_CITY_LOAD_HEAVY = 5,
+    DUEL_CITY_LOAD_SATURATED = 6,
+    DUEL_CITY_LOAD_COUNT = 7,
+};
+
+/* Which resource is near full, where the wire has one STRAIN mode. With more
+ * than one, disk is named before memory and memory before CPU. */
+enum {
+    DUEL_CITY_STRAIN_NONE = 0,
+    DUEL_CITY_STRAIN_CLEAR = 1,
+    DUEL_CITY_STRAIN_CPU = 2,
+    DUEL_CITY_STRAIN_MEMORY = 3,
+    DUEL_CITY_STRAIN_DISK = 4,
+    DUEL_CITY_STRAIN_COUNT = 5,
+};
+
+/* A call or meeting: ringing is the wire's URGENT, joined its QUIET. */
+enum {
+    DUEL_CITY_CALL_NONE = 0,
+    DUEL_CITY_CALL_CLEAR = 1,
+    DUEL_CITY_CALL_RINGING = 2,
+    DUEL_CITY_CALL_JOINED = 3,
+    DUEL_CITY_CALL_COUNT = 4,
+};
+
+/* A critical desktop notification holding URGENT, apart from a ringing call. */
+enum {
+    DUEL_CITY_ALERT_NONE = 0,
+    DUEL_CITY_ALERT_CLEAR = 1,
+    DUEL_CITY_ALERT_CRITICAL = 2,
+    DUEL_CITY_ALERT_COUNT = 3,
+};
+
+/* Long commands still running, where the wire only lifts intensity to ACTIVE. */
+enum {
+    DUEL_CITY_COMMAND_NONE = 0,
+    DUEL_CITY_COMMAND_IDLE = 1,
+    DUEL_CITY_COMMAND_RUNNING = 2,
+    DUEL_CITY_COMMAND_SEVERAL = 3,
+    DUEL_CITY_COMMAND_COUNT = 4,
+};
+
+/*
  * The Raw HID v3 semantic payload, unpacked, plus the two values the firmware
  * supplies locally rather than receiving, plus the off-keyboard signals above.
  * Every field is a bounded integer: no window title, URL, path, notification
  * text, keycode, timestamp or raw sample can reach this struct, and there is no
  * field one could be smuggled through. The off-keyboard fields follow the
- * first ten bytes so those keep their offsets, and ABI 9's calendar and tally
- * fields follow the ABI 8 signals for the same reason.
+ * first ten bytes so those keep their offsets, ABI 9's calendar and tally
+ * fields follow the ABI 8 signals, and ABI 10's host signals follow the
+ * tallies, for the same reason.
  */
 typedef struct {
     uint8_t scene;            /* payload[0]: DUEL_HOST_SCENE_* */
@@ -200,9 +272,15 @@ typedef struct {
     uint8_t tally_casts;      /* spells cast today, saturating */
     uint8_t tally_impacts;    /* pips of health lost today, saturating */
     uint8_t tally_knockdowns; /* champions felled today, saturating */
+    uint8_t presence;         /* DUEL_CITY_PRESENCE_* */
+    uint8_t load;             /* DUEL_CITY_LOAD_* */
+    uint8_t strain;           /* DUEL_CITY_STRAIN_* */
+    uint8_t call;             /* DUEL_CITY_CALL_* */
+    uint8_t alert;            /* DUEL_CITY_ALERT_* */
+    uint8_t command;          /* DUEL_CITY_COMMAND_* */
 } duel_city_input_t;
 
-_Static_assert(sizeof(duel_city_input_t) == 21, "city input layout changed");
+_Static_assert(sizeof(duel_city_input_t) == 27, "city input layout changed");
 
 /*
  * Opaque carry-over between frames — currently the floor-transition policy,

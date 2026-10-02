@@ -28,6 +28,9 @@ from .city import CityInput, resting_input
 from .dbus_contract import (
     BUS_NAME,
     CONTROL_INTERFACE,
+    HOST_SIGNALS,
+    HOST_SIGNALS_CHANGED,
+    HOST_SIGNALS_SIGNATURE,
     OBJECT_PATH,
     PAUSE,
     RESUME,
@@ -48,6 +51,7 @@ from .flash import (
     suggest_image,
 )
 from .hid_ownership import lock_path, remote_error_text
+from .host_signals import NO_HOST_SIGNALS, HostSignals
 
 APP_LABEL = "Corne Arcane app"
 OBSERVE_MINUTES = (1, 5, 15, 30)
@@ -170,6 +174,9 @@ class ServiceView:
         self.connection = connection
         self.status: tuple[str, str, bool, str] | None = None
         self.world: tuple[int, ...] | None = None
+        # The opt-in host signals at desktop detail; none until a service run
+        # with --host-signals reports them, and none again when it leaves.
+        self.host_signals: HostSignals = NO_HOST_SIGNALS
         # Called after status or world changes; the tray redraws its icon here.
         self.listeners: list[Callable[[], None]] = []
         self._subscriptions = [
@@ -185,6 +192,7 @@ class ServiceView:
             for name, handler in (
                 (STATUS_CHANGED, self._status_changed),
                 (WORLD_CHANGED, self._world_changed),
+                (HOST_SIGNALS_CHANGED, self._host_signals_changed),
             )
         ]
         self._watch_id = Gio.bus_watch_name_on_connection(
@@ -203,13 +211,27 @@ class ServiceView:
         self.world = tuple(args[-1].unpack())
         self._changed()
 
+    def _host_signals_changed(self, *args) -> None:
+        if args[-1].get_type_string() == HOST_SIGNALS_SIGNATURE:
+            self._take_host_signals(args[-1].unpack())
+
+    def _take_host_signals(self, values) -> None:
+        """Keep six host-signal bytes as enums; a value outside its enum is dropped."""
+        try:
+            self.host_signals = HostSignals.from_bytes(tuple(values))
+        except ValueError:
+            return
+        self._changed()
+
     def _appeared(self, _connection, _name, _owner) -> None:
         self._fetch(STATUS, STATUS_SIGNATURE, "status")
         self._fetch(WORLD, WORLD_SIGNATURE, "world")
+        self._fetch(HOST_SIGNALS, HOST_SIGNALS_SIGNATURE, "host_signals")
 
     def _vanished(self, _connection, _name) -> None:
         self.status = None
         self.world = None
+        self.host_signals = NO_HOST_SIGNALS
         self._changed()
 
     def _fetch(self, method: str, signature: str, attribute: str) -> None:
@@ -219,6 +241,9 @@ class ServiceView:
             except self.GLib.Error:
                 # A service older than World still reports its link; the city
                 # then rests until a WorldChanged arrives.
+                return
+            if attribute == "host_signals":
+                self._take_host_signals(value)
                 return
             setattr(self, attribute, tuple(value))
             self._changed()
@@ -245,7 +270,10 @@ class ServiceView:
     def city(self, seed: int) -> CityInput:
         if self.world is None:
             return resting_input(online=self.status is not None, seed=seed)
-        return CityInput(*self.world, online=1, seed=seed & 0xFF)
+        city = CityInput(*self.world, online=1, seed=seed & 0xFF)
+        for name, value in zip(HostSignals._fields, self.host_signals):
+            setattr(city, name, int(value))
+        return city
 
     def caption(self) -> str:
         return link_caption(self.status)

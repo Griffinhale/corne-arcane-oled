@@ -81,7 +81,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         default=os.environ.get("CORNE_ARCANE_HOST_SIGNALS", "") not in ("", "0"),
         help="read idle and lock state, system load and call state into the city mode "
-        "and intensity; booleans and levels only (service setting: CORNE_ARCANE_HOST_SIGNALS=1)",
+        "and intensity, and publish them as enums on Control.HostSignalsChanged for the "
+        "desktop city; booleans and levels only (service setting: CORNE_ARCANE_HOST_SIGNALS=1)",
     )
     parser.add_argument(
         "--no-lend",
@@ -223,6 +224,7 @@ def run(args: argparse.Namespace) -> int:
         once=args.once,
         verbose=args.verbose,
         lend_check=lend_check(args),
+        host_signals=args.host_signals,
     )
     adapters = SemanticAdapters(
         resolver,
