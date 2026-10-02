@@ -62,9 +62,22 @@ typedef struct {
     uint8_t sleep; /* DUEL_CITY_SLEEP_*: who is on the roof ridge, and who sits down */
 } town_health_t;
 
+/*
+ * The day so far, as the shell remembers it: the three ABI 9 tallies and
+ * nothing else. The library keeps none of it; the shell counts and passes it
+ * back in. Only this layer draws it, on the almanac board in the square, and
+ * all zero is a day with nothing in it yet, which draws no board at all.
+ */
+typedef struct {
+    uint8_t casts;      /* spells cast today, saturating at 255 */
+    uint8_t impacts;    /* pips of health lost today, saturating */
+    uint8_t knockdowns; /* champions felled today, saturating */
+} town_day_t;
+
 /* One frame of the town from one projection. `frame` is the animation phase;
  * everything else is read from the render, exactly as the panel compositor
- * reads it, except the typing summary and the health buckets, which only the
- * town draws. `typing` and `health` may be NULL, which is the same as none. */
+ * reads it, except the typing summary, the health buckets and the day's
+ * tallies, which only the town draws. `typing`, `health` and `day` may be
+ * NULL, which is the same as none. */
 void duel_town_draw(town_fb_t *fb, const duel_render_t *render, const town_typing_t *typing,
-                    const town_health_t *health, uint32_t frame);
+                    const town_health_t *health, const town_day_t *day, uint32_t frame);

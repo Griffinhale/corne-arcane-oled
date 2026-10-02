@@ -219,10 +219,9 @@ class CityRendererTests(unittest.TestCase):
                 with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
                     self.render(packed)
 
-    def test_season_and_tallies_are_accepted_and_draw_nothing_yet(self) -> None:
-        # ABI 9's calendar and memory fields are accepted by every shell before
-        # any art reads them: a season takes its four values, a tally takes any
-        # byte, and none of them changes a frame in any layout yet.
+    def test_the_season_is_accepted_and_draws_nothing_yet(self) -> None:
+        # ABI 9's calendar is accepted by every shell before any art reads it:
+        # a season takes its four values and changes no frame in any layout.
         for layout in Layout:
             renderer = CityRenderer(scale=1, layout=layout)
             base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
@@ -230,12 +229,58 @@ class CityRendererTests(unittest.TestCase):
                 packed = resting_input(seed=0x5A)
                 packed.season = int(season)
                 self.assertEqual(digest(renderer.render(packed, 400_000, 12)), base, season)
+
+    @staticmethod
+    def day(**tallies: int) -> CityInput:
+        packed = resting_input(seed=0x5A)
+        for field, value in tallies.items():
+            setattr(packed, field, value)
+        return packed
+
+    def test_the_days_tallies_draw_the_almanac_in_the_town_only(self) -> None:
+        # DC9: the town and landscape keep the day on a notice board in the
+        # square. The four panel layouts are the keyboard's own screens, and
+        # the keyboard has no day to keep.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = renderer.render(resting_input(seed=0x5A), 400_000, 12)
             for field in OFF_KEYBOARD_COUNTERS:
                 for value in (1, 128, 255):
-                    packed = resting_input(seed=0x5A)
-                    setattr(packed, field, value)
-                    frame = digest(renderer.render(packed, 400_000, 12))
-                    self.assertEqual(frame, base, f"{layout} {field}={value}")
+                    frame = renderer.render(self.day(**{field: value}), 400_000, 12)
+                    if layout in self.TYPING_LAYOUTS:
+                        self.assertNotEqual(frame, base, f"{layout} {field}={value}")
+                    else:
+                        self.assertEqual(frame, base, f"{layout} {field}={value}")
+
+    def test_the_almanac_counts_in_steps_on_one_board(self) -> None:
+        # A stroke per step, at 1, 4, 16, 64 and a full byte: a level, never a
+        # reading. Counts inside one step draw the same board, the first count
+        # of the next step draws another, and every pixel the day moves is on
+        # the board, not elsewhere in the town.
+        for layout in self.TYPING_LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            width = renderer.width
+
+            def pixels(packed: CityInput) -> bytes:
+                return renderer.render(packed, 400_000, 12).partition(b"255\n")[2]
+
+            base = pixels(resting_input(seed=0x5A))
+            for field in OFF_KEYBOARD_COUNTERS:
+                boards = [
+                    pixels(self.day(**{field: n})) for n in (1, 3, 4, 15, 16, 63, 64, 254, 255)
+                ]
+                self.assertEqual(boards[1], boards[0], f"{layout} {field} 1..3")
+                self.assertEqual(boards[3], boards[2], f"{layout} {field} 4..15")
+                self.assertEqual(boards[5], boards[4], f"{layout} {field} 16..63")
+                self.assertEqual(boards[7], boards[6], f"{layout} {field} 64..254")
+                steps = [boards[0], boards[2], boards[4], boards[6], boards[8]]
+                self.assertEqual(len(set(steps)), 5, f"{layout} {field}")
+            full = pixels(self.day(tally_casts=255, tally_impacts=255, tally_knockdowns=255))
+            moved = [i for i, (a, b) in enumerate(zip(base, full, strict=True)) if a != b]
+            xs = [i % width for i in moved]
+            ys = [i // width for i in moved]
+            self.assertLessEqual(max(xs) - min(xs) + 1, 25, layout)
+            self.assertLessEqual(max(ys) - min(ys) + 1, 28, layout)
 
     # Today's resting frame in each layout with every off-keyboard field at
     # none. The panels are as the renderer drew them before those fields

@@ -2504,6 +2504,80 @@ static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
 }
 
 /*
+ * The almanac: a notice board at the back of the square that keeps the day.
+ * The shell counts the day's casts, impacts and knockdowns and passes them
+ * back in; the library remembers none of it. Each tally is a row of strokes
+ * under its own mark -- a spark, a heart, a fallen figure -- and the strokes
+ * are steps, not counts: one at the first, then at 4, 16 and 64, and the
+ * fifth crosses the gate when the shell's byte is full. The world casts
+ * hundreds of spells an hour, so a stroke per spell would read full by mid
+ * morning; a step per fourfold fills the board over the first hours instead.
+ * Like the other off-keyboard signals it is a level, never a reading, and a
+ * day with nothing in it draws no board at all.
+ */
+static int almanac_strokes(uint8_t count) {
+    static const uint8_t steps[] = {1u, 4u, 16u, 64u, 255u};
+    int strokes = 0;
+    for (size_t i = 0; i < sizeof steps; i++)
+        strokes += count >= steps[i];
+    return strokes;
+}
+
+static void draw_almanac(town_fb_t *fb, const town_day_t *day) {
+    if (day->casts == 0u && day->impacts == 0u && day->knockdowns == 0u)
+        return;
+    /* Between the left-hand stall and the next lamp, standing back with the
+     * stalls so the residents cross in front of it. */
+    int cx = CANVAS_W == LANDSCAPE_W ? 137 : 76;
+    int x0 = cx - 10, x1 = cx + 10;
+    int y0 = GROUND_Y + 5, y1 = y0 + 20;
+    fill_rect(fb, x0, y0, x1, y1, false);
+    frame_rect(fb, x0, y0, x1, y1);
+    hline(fb, x0 - 2, x1 + 2, y0 - 2); /* the rail the notices hang from */
+    px(fb, x0 - 2, y0 - 1, true);
+    px(fb, x1 + 2, y0 - 1, true);
+    vline(fb, x0 + 2, y1 + 1, y1 + 5); /* two legs on the stones */
+    vline(fb, x1 - 2, y1 + 1, y1 + 5);
+
+    const uint8_t counts[3] = {day->casts, day->impacts, day->knockdowns};
+    for (int row = 0; row < 3; row++) {
+        int ry = y0 + 2 + row * 6; /* each row is five pixels tall */
+        int ix = x0 + 4;           /* the centre of its mark */
+        if (row == 0) {
+            /* A spark: the spells cast. */
+            vline(fb, ix, ry, ry + 4);
+            hline(fb, ix - 2, ix + 2, ry + 2);
+            px(fb, ix - 1, ry + 1, true);
+            px(fb, ix + 1, ry + 3, true);
+        } else if (row == 1) {
+            /* A heart: the health it cost. */
+            px(fb, ix - 1, ry, true);
+            px(fb, ix + 1, ry, true);
+            hline(fb, ix - 2, ix + 2, ry + 1);
+            hline(fb, ix - 2, ix + 2, ry + 2);
+            hline(fb, ix - 1, ix + 1, ry + 3);
+            px(fb, ix, ry + 4, true);
+        } else {
+            /* A figure laid flat, head to the left, one foot up: the
+             * champions felled. */
+            fill_rect(fb, ix - 2, ry + 3, ix - 1, ry + 4, true);
+            hline(fb, ix, ix + 2, ry + 4);
+            px(fb, ix + 2, ry + 3, true);
+        }
+
+        int strokes = almanac_strokes(counts[row]);
+        int mx = x0 + 9;
+        for (int i = 0; i < strokes && i < 4; i++)
+            vline(fb, mx + i * 2, ry, ry + 4);
+        if (strokes == 5) {
+            /* The gate closed: the day's byte is full. */
+            for (int k = 0; k <= 8; k++)
+                px(fb, mx - 1 + k, ry + 4 - (k * 4 + 4) / 8, true);
+        }
+    }
+}
+
+/*
  * Residents cross the plaza on the civic clock, the same clock that paces the
  * occupation on the panels. There are more of them than there were, they walk
  * at their own depths, and the ones nearest the front are drawn a little
@@ -2593,13 +2667,16 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, const town_typ
 }
 
 void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
-                    const town_health_t *health, uint32_t frame) {
+                    const town_health_t *health, const town_day_t *day, uint32_t frame) {
     static const town_typing_t no_typing;
     static const town_health_t no_health;
+    static const town_day_t no_day;
     if (!typing)
         typing = &no_typing;
     if (!health)
         health = &no_health;
+    if (!day)
+        day = &no_day;
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
     uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
 
@@ -2623,5 +2700,6 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_spells(fb, r, frame);
     draw_outcome(fb, r);
     draw_plaza(fb, r, frame);
+    draw_almanac(fb, day);
     draw_residents(fb, r, typing, health, frame);
 }

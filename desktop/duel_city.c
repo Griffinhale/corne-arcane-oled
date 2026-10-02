@@ -322,7 +322,8 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         town_fb_clear(&town, plan.width, plan.height);
         town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
         town_health_t health = {input->body, input->heart, input->sleep};
-        duel_town_draw(&town, &render, &typing, &health, frame);
+        town_day_t day = {input->tally_casts, input->tally_impacts, input->tally_knockdowns};
+        duel_town_draw(&town, &render, &typing, &health, &day, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }

@@ -161,7 +161,8 @@ public enum CitySeason: UInt8, CaseIterable, Sendable {
 /// felled today, as `City.stats` counts them. The shell keeps them and passes
 /// them in; the library stores nothing, so the same seed and inputs still give
 /// the same world. Each saturates at 255 and any byte is a count. Zero is an
-/// empty day. Nothing draws them yet.
+/// empty day. The town and landscape post them on an almanac board in the
+/// square, a stroke at 1, 4, 16, 64 and 255; the panels never draw them.
 public struct DayTallies: Equatable, Sendable {
     public var casts: UInt8
     public var impacts: UInt8

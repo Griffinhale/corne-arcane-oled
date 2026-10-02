@@ -149,8 +149,8 @@ enum {
  * A calendar and a memory, which only a shell has (ABI 9). The keyboard has no
  * date and remembers nothing past a session; the apps have both, and pass them
  * in here so the library stays a pure function of its inputs: same seed, same
- * inputs, same world. Nothing draws these yet. The fields exist so that every
- * shell agrees on them before any art does.
+ * inputs, same world. The town and landscape draw the tallies on an almanac board in
+ * the square; nothing draws the season yet.
  */
 /* The season, from the shell's calendar. A season is not weather. */
 enum {
@@ -166,7 +166,8 @@ enum {
  * world cast today, the pips of health they cost, and the champions that
  * fell, as duel_ambient_stats_t counts them. A shell saturates each at 255.
  * Zero is a day with nothing in it yet, which is what a shell that keeps no
- * tally sends. Any byte is accepted; there is no enum to fall outside. */
+ * tally sends. Any byte is accepted; there is no enum to fall outside. The
+ * almanac draws each as a level, a stroke at 1, 4, 16, 64 and 255. */
 
 /*
  * The Raw HID v3 semantic payload, unpacked, plus the two values the firmware

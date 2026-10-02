@@ -521,16 +521,28 @@ func runSemanticInvariants() {
             && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
             && CitySeason.allCases.count == Int(DUEL_CITY_SEASON_COUNT)
     )
-    // ABI 9's season and tallies are carried before anything draws them: every
-    // shell accepts them, and no layout changes a pixel for them yet.
-    let dated = variants.filter { $0.1.season != .none || $0.1.tallies != DayTallies() }
+    // ABI 9's season is carried before anything draws it: every shell accepts
+    // it, and no layout changes a pixel for it yet.
+    let dated = variants.filter { $0.1.season != .none }
     let drawn = dated.filter {
         frame($0.1, layout: .town) != frame(base, layout: .town) || frame($0.1) != frame(base)
     }.map(\.0)
     check(
-        "season_and_tallies_draw_nothing_yet",
-        dated.count == CitySeason.allCases.count - 1 + 2 && drawn.isEmpty,
+        "season_draws_nothing_yet",
+        dated.count == CitySeason.allCases.count - 1 && drawn.isEmpty,
         "\(dated.count) variants; moved a frame: \(drawn.joined(separator: ", "))")
+    // The day's tallies go up on the almanac board in the town, and the
+    // panels, which are the keyboard's own screens, draw none of them.
+    let tallied = variants.filter { $0.1.tallies != DayTallies() }
+    let unposted = tallied.filter {
+        frame($0.1, layout: .town) == frame(base, layout: .town)
+    }.map(\.0)
+    let posted = tallied.filter { frame($0.1) != frame(base) }.map(\.0)
+    check(
+        "tallies_draw_the_almanac_in_the_town_only",
+        tallied.count == 2 && unposted.isEmpty && posted.isEmpty,
+        "\(tallied.count) variants; town unchanged: \(unposted.joined(separator: ", ")); "
+            + "panel moved: \(posted.joined(separator: ", "))")
     // The town draws every typing and health value, and the panels, which
     // are the keyboard's own screens, draw none of them.
     let plain = frame(base, layout: .town)

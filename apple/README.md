@@ -168,8 +168,10 @@ ABI 9 appends four bytes that only a shell can fill: the season from its own
 calendar, and the day's casts, impacts and knockdowns as `City.stats` counts
 them, kept by the app and passed back in. CityKit carries them as
 `CitySemantics.season` and `CitySemantics.tallies`. The library stores nothing,
-so the same seed and inputs still give the same world, and nothing draws them
-yet. A season is not weather.
+so the same seed and inputs still give the same world. The town and landscape
+post the tallies on an almanac board in the square, a stroke at 1, 4, 16, 64
+and 255; an empty day draws no board. Nothing draws the season yet. A season
+is not weather.
 
 ## Landscape
 

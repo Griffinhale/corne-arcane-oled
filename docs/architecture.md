@@ -88,7 +88,8 @@ activity, heart mood and sleep mood reduced on a watch. Each is a small enum
 whose zero means none. After them come the season from the shell's calendar
 and three day tallies the shell keeps and passes back in, the casts, impacts
 and knockdowns its world has counted today; the library stores none of it, so
-the same seed and inputs still give the same world, and nothing draws them yet.
+the same seed and inputs still give the same world. Nothing draws the season
+yet.
 They pass only from a shell to its renderer; neither
 wire protocol carries them. The town and landscape layouts draw the typing
 four: tempo is the spire's pennant, spread the chimney smoke, top row the
@@ -100,6 +101,11 @@ night's sleep is who sits on the roof ridge, a cockerel or a sleeping cat.
 Three of them reach the square as well: body activity sets how many residents
 are out, tempo how fast they walk, and a short night sits some of them down
 while a full one quickens everyone's step.
+The day's tallies go up on an almanac board in the square: a spark for casts,
+a heart for impacts and a fallen figure for knockdowns, each with a stroke at
+1, 4, 16 and 64 and a fifth across the gate when the byte is full. They are
+steps, not counts, because the world casts hundreds of spells an hour. A day
+with nothing in it draws no board.
 The four panel layouts are the keyboard's own screens and draw none of them.
 
 Every Raw HID write is a request/response exchange. A valid VIA echo must arrive
