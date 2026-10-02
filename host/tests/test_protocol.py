@@ -134,6 +134,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(CivicState(floor=Floor.WORKSHOP).civic_byte(), 0x02)
         self.assertEqual(CivicState(mode=Mode.QUIET).civic_byte(), 0x04)
         self.assertEqual(CivicState(mode=Mode.URGENT).civic_byte(), 0x08)
+        self.assertEqual(CivicState(mode=Mode.STRAIN).civic_byte(), 0x0C)
         self.assertEqual(CivicState(intensity=Intensity.BUSY).civic_byte(), 0x20)
         # All three subfields at once (WORKSHOP|URGENT|BUSY) -> 2|8|32 = 0x2A.
         civic = CivicState(Floor.WORKSHOP, Mode.URGENT, Intensity.BUSY, Secondary.SYSTEM)

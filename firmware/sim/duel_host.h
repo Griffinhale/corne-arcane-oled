@@ -140,12 +140,13 @@ enum {
     DUEL_CIVIC_FLOOR_COUNT = 4,
 };
 // Civic mode (civic byte bits 2-3): quiets or emphasises the current floor
-// without changing which floor is shown.
+// without changing which floor is shown. STRAIN is the host near the end of
+// its disk, memory or CPU: a warning, unlike intensity, which is how busy it is.
 enum {
     DUEL_CIVIC_MODE_NORMAL = 0,
     DUEL_CIVIC_MODE_QUIET = 1,
     DUEL_CIVIC_MODE_URGENT = 2,
-    DUEL_CIVIC_MODE_RESERVED = 3,
+    DUEL_CIVIC_MODE_STRAIN = 3,
 };
 // Secondary host-activity intensity (civic byte bits 4-5): background host
 // workload; local typing intensity stays firmware-derived.

@@ -68,7 +68,7 @@ class Mode(IntEnum):
     NORMAL = 0
     QUIET = 1
     URGENT = 2
-    RESERVED = 3
+    STRAIN = 3  # disk, memory or CPU near full: a warning, not a busy city
 
 
 class Intensity(IntEnum):

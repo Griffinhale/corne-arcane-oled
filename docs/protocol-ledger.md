@@ -26,7 +26,9 @@ revel `3`; receivers reject `4` and above. Raw HID spends a whole byte on it,
 but the split snapshot does not, so `3` is the last value the enum can hold --
 see the external byte below. The firmware never renders a scene by name: it
 pairs the scene with the civic floor to derive one of eight districts. Civic bits are floor 0–1, mode 2–3,
-intensity 4–5, and reserved-zero 6–7. Secondary bits 0–2 are none `0`, media
+intensity 4–5, and reserved-zero 6–7. Mode is normal `0`, quiet `1`, urgent
+`2`, or strain `3`: disk, memory or CPU near full. Strain was once an unnamed
+value that every receiver already accepted, so naming it moved no version. Secondary bits 0–2 are none `0`, media
 `1`, transfer `2`, system `3`, calendar `4`, browser scroll `5`, tab selection
 `6`, or page event `7`; bits 3–7 are zero. The firmware rejects Raw HID v2.
 

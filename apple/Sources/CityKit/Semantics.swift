@@ -40,12 +40,13 @@ public enum CivicFloor: UInt8, CaseIterable, Sendable {
     case special = 3
 }
 
-/// DUEL_CIVIC_MODE_* (civic byte bits 2-3). The fourth value is reserved and
-/// has no case.
+/// DUEL_CIVIC_MODE_* (civic byte bits 2-3). Strain is the host near the end of
+/// its disk, memory or CPU: a warning, unlike intensity, which is how busy it is.
 public enum CivicMode: UInt8, CaseIterable, Sendable {
     case normal = 0
     case quiet = 1
     case urgent = 2
+    case strain = 3
 }
 
 /// DUEL_CIVIC_INTENSITY_*: background host workload (civic byte bits 4-5).
