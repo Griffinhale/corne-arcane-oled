@@ -20,6 +20,7 @@
 		B10000000000000000000005 /* CityKit in Frameworks */ = {isa = PBXBuildFile; productRef = B90000000000000000000002 /* CityKit */; };
 		B10000000000000000000006 /* WatchCityDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000006 /* WatchCityDriver.swift */; };
 		B10000000000000000000007 /* WatchCityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000007 /* WatchCityView.swift */; };
+		B10000000000000000000008 /* HealthReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000008 /* HealthReducer.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +79,7 @@
 		B20000000000000000000005 /* CorneArcaneWatchWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CorneArcaneWatchWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000006 /* WatchCityDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCityDriver.swift; sourceTree = "<group>"; };
 		B20000000000000000000007 /* WatchCityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchCityView.swift; sourceTree = "<group>"; };
+		B20000000000000000000008 /* HealthReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthReducer.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -162,6 +164,7 @@
 				B20000000000000000000001 /* CorneArcaneWatchApp.swift */,
 				B20000000000000000000006 /* WatchCityDriver.swift */,
 				B20000000000000000000007 /* WatchCityView.swift */,
+				B20000000000000000000008 /* HealthReducer.swift */,
 			);
 			path = WatchApp;
 			sourceTree = "<group>";
@@ -367,6 +370,7 @@
 				B10000000000000000000001 /* CorneArcaneWatchApp.swift in Sources */,
 				B10000000000000000000006 /* WatchCityDriver.swift in Sources */,
 				B10000000000000000000007 /* WatchCityView.swift in Sources */,
+				B10000000000000000000008 /* HealthReducer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -617,6 +621,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Corne Arcane";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKWatchOnly = YES;
+				CODE_SIGN_ENTITLEMENTS = WatchApp/CorneArcaneWatch.entitlements;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Your activity, heart rate and sleep give the city its moods. Only coarse levels stay in memory on this watch; nothing is sent elsewhere.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -644,6 +650,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Corne Arcane";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKWatchOnly = YES;
+				CODE_SIGN_ENTITLEMENTS = WatchApp/CorneArcaneWatch.entitlements;
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Your activity, heart rate and sleep give the city its moods. Only coarse levels stay in memory on this watch; nothing is sent elsewhere.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

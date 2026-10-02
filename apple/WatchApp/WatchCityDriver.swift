@@ -3,8 +3,8 @@
  *
  * A timer is only a wake-up. Every image is named by the current whole
  * renderer tick since local midnight, so skipped presentation callbacks do
- * not slow the city down and reopening the app returns to the same seed-0x5A
- * world as the complication.
+ * not slow the city down. Reopening replays seed 0x5A with the current health
+ * levels; the complication keeps its separate self-playing input.
  */
 
 import CityKit
@@ -14,14 +14,15 @@ import Observation
 
 private let watchCityCrop = CityPixelRect(x: 47, y: 13, width: 162, height: 197)
 
-private struct WatchWorldMoment: Sendable {
+struct WatchWorldMoment: Sendable {
     let anchor: Date
     let worldMs: UInt32
 }
 
-private struct WatchRenderedMoment: Sendable {
+struct WatchRenderedMoment: Sendable {
     let moment: WatchWorldMoment
     let frame: CityFrame
+    let health: HealthBuckets
 }
 
 private enum WatchCityRenderError: Error {
@@ -37,21 +38,28 @@ private enum WatchPresentationState {
 /// Own the mutable C renderer on one serial executor. A cold local-midnight
 /// replay can take long enough to notice in Debug builds, so it must never
 /// block SwiftUI's main actor.
-private actor WatchCityRenderer {
+actor WatchCityRenderer {
     private var city: City?
     private var worldAnchor: Date?
     private var worldMs: UInt32 = 0
 
-    func render(_ moment: WatchWorldMoment) throws -> WatchRenderedMoment {
+    private var health: HealthBuckets?
+
+    func render(_ moment: WatchWorldMoment, health: HealthBuckets) throws -> WatchRenderedMoment {
         do {
             let needsNewWorld =
-                city == nil || worldAnchor != moment.anchor
+                city == nil || worldAnchor != moment.anchor || self.health != health
                 || moment.worldMs < worldMs
             if needsNewWorld {
                 let city = try City(seed: 0x5A, layout: .town)
+                try city.set(
+                    CitySemantics(
+                        floor: .special, body: health.body,
+                        heart: health.heart, sleep: health.sleep))
                 try city.seek(to: moment.worldMs) { try Task.checkCancellation() }
                 self.city = city
                 worldAnchor = moment.anchor
+                self.health = health
             } else {
                 try city?.seek(to: moment.worldMs) { try Task.checkCancellation() }
             }
@@ -78,7 +86,7 @@ private actor WatchCityRenderer {
         else { throw WatchCityRenderError.invalidCrop }
 
         worldMs = moment.worldMs
-        return WatchRenderedMoment(moment: moment, frame: crop)
+        return WatchRenderedMoment(moment: moment, frame: crop, health: health)
     }
 }
 
@@ -92,6 +100,9 @@ final class WatchCityDriver {
 
     @ObservationIgnored private let calendar: Calendar
     @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let health: HealthReducer
+    @ObservationIgnored private var healthTask: Task<Void, Never>?
+    @ObservationIgnored private var healthGeneration: UInt64 = 0
     @ObservationIgnored private let renderer = WatchCityRenderer()
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private var renderTask: Task<Void, Never>?
@@ -108,7 +119,18 @@ final class WatchCityDriver {
 
     init(calendar: Calendar = .autoupdatingCurrent, now: @escaping () -> Date = Date.init) {
         self.calendar = calendar
-        self.now = now
+        #if DEBUG && targetEnvironment(simulator)
+            let arguments = ProcessInfo.processInfo.arguments
+            health = HealthReducer.preview(arguments: arguments) ?? .live()
+            if arguments.contains("--health-fixed-time") {
+                self.now = { calendar.startOfDay(for: now()).addingTimeInterval(120) }
+            } else {
+                self.now = now
+            }
+        #else
+            health = .live()
+            self.now = now
+        #endif
         image = Self.standaloneImage(worldMs: 0)
     }
 
@@ -122,6 +144,7 @@ final class WatchCityDriver {
         let activationGeneration = presentationGeneration
         activationStartedAt = ProcessInfo.processInfo.systemUptime
         scheduleFrame()
+        startHealthUpdates()
 
         let timer = Timer(
             timeInterval: Self.presentationInterval,
@@ -146,6 +169,7 @@ final class WatchCityDriver {
     func pause() {
         let wasPlaying = presentationState == .active
         presentationState = .paused
+        stopHealthUpdates()
         activationStartedAt = nil
         timer?.invalidate()
         timer = nil
@@ -170,6 +194,7 @@ final class WatchCityDriver {
     func stop() {
         let wasPlaying = presentationState == .active
         presentationState = .stopped
+        stopHealthUpdates()
         pendingPausedStill = false
         presentationGeneration &+= 1
         activationStartedAt = nil
@@ -183,15 +208,40 @@ final class WatchCityDriver {
         #endif
     }
 
+    private func startHealthUpdates() {
+        healthGeneration &+= 1
+        let generation = healthGeneration
+        healthTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.healthGeneration == generation else { return }
+                let previous = self.health.buckets
+                await self.health.refresh(at: self.now(), calendar: self.calendar)
+                guard !Task.isCancelled, self.healthGeneration == generation else { return }
+                if previous != self.health.buckets {
+                    self.renderTask?.cancel()
+                    self.scheduleFrame()
+                }
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            }
+        }
+    }
+
+    private func stopHealthUpdates() {
+        healthGeneration &+= 1
+        healthTask?.cancel()
+        healthTask = nil
+    }
+
     private func scheduleFrame() {
         guard !isRendering else { return }
         isRendering = true
         let moment = Self.worldMoment(at: now(), calendar: calendar)
         let renderer = self.renderer
+        let health = self.health.buckets
 
         renderTask = Task { @MainActor [weak self] in
             do {
-                let rendered = try await renderer.render(moment)
+                let rendered = try await renderer.render(moment, health: health)
                 guard let self else { return }
                 self.finishRendering(rendered, wasCancelled: Task.isCancelled)
             } catch is CancellationError {
@@ -215,9 +265,19 @@ final class WatchCityDriver {
             !wasCancelled
             && (presentationState == .active
                 || (presentationState == .paused && pendingPausedStill))
-        if mayPublish, let rendered, let image = rendered.frame.image {
+        if mayPublish, let rendered, rendered.health == health.buckets,
+            let image = rendered.frame.image
+        {
             worldMs = rendered.moment.worldMs
             self.image = image
+            #if DEBUG
+                if activationStartedAt != nil {
+                    print(
+                        "CORNE_WATCH_HEALTH body=\(rendered.health.body.rawValue) "
+                            + "heart=\(rendered.health.heart.rawValue) sleep=\(rendered.health.sleep.rawValue)"
+                    )
+                }
+            #endif
             hasRenderedCurrentMoment = true
             pendingPausedStill = false
             if presentationState == .active, activationStartedAt != nil {
@@ -275,6 +335,7 @@ final class WatchCityDriver {
 
     private static func standaloneImage(worldMs: UInt32) -> CGImage? {
         guard let city = try? City(seed: seed, layout: .town),
+            (try? city.set(CitySemantics(floor: .special))) != nil,
             (try? city.seek(to: worldMs)) != nil,
             let pixels = try? city.render(frame: worldMs / City.frameIntervalMs)
         else { return nil }

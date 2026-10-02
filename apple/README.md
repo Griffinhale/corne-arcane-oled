@@ -117,12 +117,13 @@ swift run -c release city-check watch-captures /tmp/corne-watch-captures
 ```
 
 With a watchOS simulator runtime installed, build the `CorneArcaneWatch`
-scheme for an available Apple Watch destination. A target-level SDK compile,
-which is useful even when no watch runtime is installed, is:
+scheme for an available Apple Watch destination. A scheme build includes the
+local Swift package, even without a watch runtime installed:
 
 ```sh
 xcodebuild -project apple/CorneArcane.xcodeproj \
-  -target CorneArcaneWatch -sdk watchsimulator -configuration Debug \
+  -scheme CorneArcaneWatch -sdk watchsimulator -configuration Debug \
+  -destination 'generic/platform=watchOS Simulator' \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
@@ -206,6 +207,40 @@ keeps nothing between calls and does not import HealthKit, so
 `city-check watch_health_buckets` tests every cut-off on Linux. The levels are
 moods for the picture, not medical readings.
 
-The watch does not read HealthKit yet. When it does, it will read only on the
-watch, pass these few numbers to `HealthBuckets`, and keep only the latest
-levels. No health data leaves the watch.
+The foreground watch app requests read access to steps, activity summaries,
+heart rate, resting heart rate and sleep. It queries on activation and once a
+minute while active. Steps, rings and heart readings are from the local day;
+sleep covers yesterday at noon through today at noon, capped at the current
+time. Only asleep stages count. Overlapping records count once. A missing or
+unset ring goal falls back to steps.
+
+The adapter passes temporary numbers to `HealthBuckets` and keeps only the
+latest levels in memory. It writes no HealthKit data, files or preferences,
+and sends no health data over a network or to another device. Queries stop
+when the scene pauses. There is no background delivery or shared widget store.
+The complications keep their existing self-playing timeline.
+
+The foreground city uses the Observatory floor. Body, heart and sleep have
+their own fields; health does not change civic intensity or request urgency.
+A changed level rebuilds and seeks the city from local midnight through the
+same C-validated setter as other inputs. Empty, denied or failed reads clear
+the affected levels, leaving the Observatory city playing without health marks.
+HealthKit hides read denial, so authorization success is never treated as proof
+that a reading exists. These are picture moods, not medical advice.
+
+On macOS, check the adapter, missing/denied readings, sleep overlap and renderer
+replay without reading the health store:
+
+```sh
+bash apple/tools/watch-health-check.sh
+```
+
+For a repeatable simulator comparison, Debug watch builds accept
+`--health-sample --health-fixed-time` (three closed rings, lively heart, rested)
+and `--health-empty --health-fixed-time` (all readings missing). Both use the
+production reducer and renderer; neither writes samples into HealthKit.
+`--health-fixed-time` freezes the picture two minutes after local midnight.
+Launch with only that flag to exercise the real HealthKit permission sheet;
+leave all read switches off and finish it to check the denied fallback.
+Dismissing the sheet also keeps the fallback; relaunch to request access again.
+These fixtures are compiled out of device and Release builds.
