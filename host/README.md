@@ -184,6 +184,13 @@ Nothing below is auto-enabled by the package.
   your home: CPU waiting sets the city's intensity, and memory or disk under
   5 % free, or a CPU queued most of the last minute, sets STRAIN. Only these
   machine-wide figures are read, never a process or file name.
+  A critical notification, or one the app marks `call.incoming`, makes the
+  city URGENT, even under do-not-disturb; it holds until the notification
+  closes, the call is answered or ended, or 45 s (60 s for a ring) pass. While
+  a microphone is capturing, as in a joined call, the city is QUIET. That reads
+  ALSA's capture state in `/proc/asound`, running or not, so no app, stream or
+  caller name is involved. A Bluetooth headset microphone and the camera are not
+  seen.
 
 Shell hooks report only monotonic duration, integer status, normalized
 repository state, and a bare "still running" call once a command passes ten

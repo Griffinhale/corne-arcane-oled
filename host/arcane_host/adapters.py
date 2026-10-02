@@ -6,6 +6,7 @@ import hashlib
 import secrets
 import time
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import Callable
 
 from .dbus_contract import RepositoryState
@@ -19,6 +20,19 @@ TERMINAL_SLOTS = 16
 TERMINAL_LEASE = 4 * 3600.0
 # How often the opt-in load sampler reads /proc and statvfs.
 LOAD_INTERVAL = 5.0
+# How long URGENT holds for a critical notification, and for an incoming call
+# that is neither answered, ended nor closed.
+URGENT_LAPSE = 45.0
+RING_LAPSE = 60.0
+
+
+class UrgentKind(IntEnum):
+    """What one desktop notification says about urgency; no text, only this."""
+
+    CLOSED = 0
+    CRITICAL = 1
+    INCOMING_CALL = 2
+    CALL_ENDED = 3
 
 
 @dataclass(slots=True)
@@ -40,6 +54,7 @@ class SemanticAdapters:
         token_key: bytes | None = None,
         pomodoro_duration: float = 1500.0,
         load_sampler: Callable[[], tuple[Intensity, bool]] | None = None,
+        call_sampler: Callable[[], bool] | None = None,
     ) -> None:
         self.resolver = resolver
         self.policy = policy
@@ -62,6 +77,10 @@ class SemanticAdapters:
         self._terminal_starts: list[float] = []
         self._load_sampler = load_sampler
         self._load_next = 0.0
+        self._call_sampler = call_sampler
+        self._call_joined = False
+        # notification id -> (expiry, is a call)
+        self._urgent: dict[int, tuple[float, bool]] = {}
 
     def _changed(self, policy_changed: bool = False) -> None:
         self.counters.updates += 1
@@ -97,6 +116,43 @@ class SemanticAdapters:
             idle=None if idle is None else bool(idle),
             locked=None if locked is None else bool(locked),
         ):
+            self._changed()
+
+    def urgent_alert(self, key: int, kind: UrgentKind) -> None:
+        """A desktop notification raised, ended or closed an urgent state.
+
+        The key is the notification server's id, used only to pair a close
+        with its notification. A critical notification and a ringing call hold
+        URGENT for a bounded time; a call already joined does not ring.
+        """
+        now = self.clock()
+        if kind == UrgentKind.CRITICAL:
+            self._urgent[key] = (now + URGENT_LAPSE, False)
+        elif kind == UrgentKind.INCOMING_CALL:
+            if self._call_joined:
+                self._urgent.pop(key, None)
+            else:
+                self._urgent[key] = (now + RING_LAPSE, True)
+        elif kind == UrgentKind.CALL_ENDED:
+            self._drop_calls()
+            self._urgent.pop(key, None)
+        else:
+            self._urgent.pop(key, None)
+        self._urgent_update()
+
+    def _drop_calls(self) -> None:
+        self._urgent = {key: item for key, item in self._urgent.items() if not item[1]}
+
+    def _urgent_update(self) -> None:
+        if self.resolver.update(urgent=bool(self._urgent)):
+            self._changed()
+
+    def _call_update(self, joined: bool) -> None:
+        self._call_joined = joined
+        if joined:
+            # Answering ends the ring: the call goes QUIET for its length.
+            self._drop_calls()
+        if self.resolver.update(call_joined=joined, urgent=bool(self._urgent)):
             self._changed()
 
     def terminal_started(self) -> None:
@@ -176,8 +232,10 @@ class SemanticAdapters:
             deadlines.append(max(now, self._browser_next_emit))
         if self._browser_expiry is not None:
             deadlines.append(max(now, self._browser_expiry))
-        if self._load_sampler is not None:
+        if self._load_sampler is not None or self._call_sampler is not None:
             deadlines.append(max(now, self._load_next))
+        if self._urgent:
+            deadlines.append(max(now, min(expiry for expiry, _ in self._urgent.values())))
         if self._terminal_starts:
             deadlines.append(max(now, self._terminal_starts[0] + TERMINAL_LEASE))
         return min(deadlines) if deadlines else None
@@ -198,8 +256,10 @@ class SemanticAdapters:
             self._browser_next_emit = now + 0.25
             if self.resolver.update(browser_activity=kind, browser_intensity=intensity):
                 self._changed()
-        if self._load_sampler is not None and now >= self._load_next:
+        samplers_due = now >= self._load_next
+        if samplers_due and (self._load_sampler or self._call_sampler):
             self._load_next = now + LOAD_INTERVAL
+        if self._load_sampler is not None and samplers_due:
             try:
                 intensity, strain = self._load_sampler()
             except Exception:
@@ -207,6 +267,16 @@ class SemanticAdapters:
             else:
                 if self.resolver.update(intensity=Intensity(intensity), strain=bool(strain)):
                     self._changed()
+        if self._call_sampler is not None and samplers_due:
+            try:
+                joined = bool(self._call_sampler())
+            except Exception:
+                self.counters.errors += 1
+            else:
+                self._call_update(joined)
+        if self._urgent and any(expiry <= now for expiry, _ in self._urgent.values()):
+            self._urgent = {key: item for key, item in self._urgent.items() if item[0] > now}
+            self._urgent_update()
         if self._terminal_starts and now >= self._terminal_starts[0] + TERMINAL_LEASE:
             self._terminal_starts = [t for t in self._terminal_starts if now < t + TERMINAL_LEASE]
             self._terminal_update()

@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .adapters import UrgentKind
 from .policy import NotificationPolicy
 from .profiles import canonical_identifier, resolve_profile
 from .protocol import Category, Priority
@@ -32,6 +33,16 @@ def normalize_category(value: str | None) -> Category:
     return Category.OTHER
 
 
+def normalize_call(value: str | None) -> UrgentKind:
+    """The call categories of the notification spec: ringing, or over."""
+    category = (value or "").strip().lower()
+    if category == "call.incoming":
+        return UrgentKind.INCOMING_CALL
+    if category in {"call.ended", "call.unanswered"}:
+        return UrgentKind.CALL_ENDED
+    return UrgentKind.CLOSED
+
+
 def normalize_urgency(value: Any) -> Priority:
     try:
         urgency = int(value)
@@ -48,6 +59,7 @@ class _Pending:
     priority: Priority
     persistent: bool
     replaces_id: int
+    urgent: UrgentKind = UrgentKind.CLOSED
 
 
 @dataclass
@@ -79,12 +91,16 @@ class DesktopNotificationAdapter:
         *,
         max_pending: int = 64,
         max_tracked: int = 128,
+        urgent: Callable[[int, UrgentKind], None] | None = None,
     ) -> None:
         self.policy = policy
         self._salt = salt
         self._focused_match = focused_match
         self.max_pending = max_pending
         self.max_tracked = max_tracked
+        # Opt-in (--host-signals): critical notifications and ringing calls
+        # reach the city mode as an id and a UrgentKind, nothing else.
+        self._urgent = urgent
         # D-Bus serials are scoped to the sending connection, so correlation
         # must include the client peer. Hash the unique bus name to keep that
         # identifier inside the same redaction boundary as application IDs.
@@ -129,7 +145,9 @@ class DesktopNotificationAdapter:
         sender: str = "",
     ) -> bool:
         """Redact a Notify call immediately and retain only salted digests."""
-        category = normalize_category(_hint_value(hints, "category", ""))
+        category_hint = _hint_value(hints, "category", "")
+        category = normalize_category(category_hint)
+        call = normalize_call(category_hint)
         priority = normalize_urgency(_hint_value(hints, "urgency", 1))
         transient = bool(_hint_value(hints, "transient", False))
         persistent = priority == Priority.CRITICAL and not transient
@@ -162,6 +180,11 @@ class DesktopNotificationAdapter:
             priority,
             persistent,
             int(replaces_id),
+            call
+            if call != UrgentKind.CLOSED
+            else UrgentKind.CRITICAL
+            if priority == Priority.CRITICAL
+            else UrgentKind.CLOSED,
         )
         self.counters.pending_high_water = max(self.counters.pending_high_water, len(self._pending))
         return True
@@ -209,9 +232,15 @@ class DesktopNotificationAdapter:
             policy_key, pending.digest, pending.persistent
         )
         self._bound_tracked()
+        if self._urgent is not None:
+            if pending.replaces_id and pending.replaces_id != int(notification_id):
+                self._urgent(pending.replaces_id, UrgentKind.CLOSED)
+            self._urgent(int(notification_id), pending.urgent)
         return changed
 
     def handle_closed(self, notification_id: int) -> bool:
+        if self._urgent is not None:
+            self._urgent(int(notification_id), UrgentKind.CLOSED)
         tracked = self._tracked.pop(int(notification_id), None)
         if tracked is None:
             return False

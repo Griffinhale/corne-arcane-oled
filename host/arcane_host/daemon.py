@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from .adapters import SemanticAdapters
+from .call_state import capture_sampler
 from .dbus_adapters import DBusAdapterHub
 from .dbus_contract import BUS_NAME
 from .dbus_services import ControlService, EventService, FocusService, KWinBridgeLoader
@@ -229,6 +230,7 @@ def run(args: argparse.Namespace) -> int:
         runtime.wake,
         pomodoro_duration=args.pomodoro_duration,
         load_sampler=load_sampler() if args.host_signals else None,
+        call_sampler=capture_sampler() if args.host_signals else None,
     )
     runtime.bind_adapters(adapters)
 
@@ -238,7 +240,12 @@ def run(args: argparse.Namespace) -> int:
     runtime.own(ControlService(Gio, GLib, connection, runtime))
 
     if not args.no_desktop_notifications:
-        desktop_adapter = DesktopNotificationAdapter(policy, salt, arbiter.matches_focused)
+        desktop_adapter = DesktopNotificationAdapter(
+            policy,
+            salt,
+            arbiter.matches_focused,
+            urgent=adapters.urgent_alert if args.host_signals else None,
+        )
         desktop_monitor = runtime.own(
             DesktopMonitor(
                 Gio,
