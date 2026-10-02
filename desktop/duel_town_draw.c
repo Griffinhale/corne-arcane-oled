@@ -1480,6 +1480,122 @@ static void draw_ridge_sleeper(town_fb_t *fb, uint8_t sleep, uint32_t frame) {
 
 /* ---- the wizard on the balcony ------------------------------------------- */
 
+/*
+ * The champion's status, on the balcony beside the figure, as the panels hang
+ * it beside the tower: burning flames, a frost star, disruption's zigzags, the
+ * mark's chevrons and scald's rising wisps. Each grows with the level, as the
+ * panel icons do -- more flames, frost diagonals and then crossbars, a second
+ * and third zigzag or chevron. The ground is cleared first so the mark owns
+ * its pixels against the lit study behind it.
+ */
+static void draw_status_mark(town_fb_t *fb, const duel_view_wizard_t *wz, int cx, int feet,
+                             uint32_t frame) {
+    if (!wz->status || !wz->status_intensity)
+        return;
+    int level = wz->status_intensity;
+    int sx = cx - 13, sy = feet - 14; /* clear of the tower wall at cx - 19 */
+    fill_rect(fb, sx - 5, sy - 8, sx + 5, sy + 6, false);
+    switch (wz->status) {
+        case STATUS_BURNING:
+            for (int i = 0; i < level; i++) {
+                int fx = sx - 3 + i * 3;
+                int h = 5 + (int)((frame + (uint32_t)i * 3u) % 3u);
+                vline(fb, fx, sy + 5 - h, sy + 5);
+                px(fb, fx + ((int)(frame >> 1) + i) % 2, sy + 4 - h, true);
+            }
+            break;
+        case STATUS_FROZEN:
+            hline(fb, sx - 4, sx + 4, sy);
+            vline(fb, sx, sy - 4, sy + 4);
+            if (level >= 2)
+                for (int d = 1; d <= 3; d++)
+                    for (int q = 0; q < 4; q++)
+                        px(fb, sx + (q & 1 ? d : -d), sy + (q & 2 ? d : -d), true);
+            if (level >= 3) {
+                hline(fb, sx - 1, sx + 1, sy - 4);
+                hline(fb, sx - 1, sx + 1, sy + 4);
+                vline(fb, sx - 4, sy - 1, sy + 1);
+                vline(fb, sx + 4, sy - 1, sy + 1);
+            }
+            break;
+        case STATUS_DISRUPTED:
+            for (int k = 0; k < level; k++) {
+                int zy = sy + 3 - k * 4;
+                for (int x = -5; x <= 5; x++)
+                    px(fb, sx + x, zy - ((x + 5) / 2 % 2), true);
+            }
+            break;
+        case STATUS_MARKED:
+            for (int k = 0; k < level; k++) {
+                int vy = sy + 4 - k * 4;
+                for (int d = 0; d <= 3; d++) {
+                    px(fb, sx - d, vy - d, true);
+                    px(fb, sx + d, vy - d, true);
+                }
+            }
+            break;
+        default: /* scalded: three wisps sway as they rise, the last out of step */
+            for (int w = 0; w < 3; w++)
+                for (int k = 0; k < 7; k++)
+                    px(fb, sx - 4 + w * 4 + (((int)(frame >> 1) + k / 2 + (w == 2)) & 1),
+                       sy + 4 - k, true);
+            break;
+    }
+}
+
+/*
+ * The spell flavor of the city's aftermath, as a sigil hung in the sky beside
+ * the spire while the aftermath lasts: the panels' marks, doubled. Rune and
+ * bloom share a diamond, familiar and echo a cup, a wall stands a bar, a
+ * vortex hooks round, and a combination crosses.
+ */
+static void draw_flavor_sigil(town_fb_t *fb, const duel_render_t *r) {
+    if (!(r->revision & INCANTATION_AFTERMATH_WIRE) ||
+        INCANTATION_AFTER_KIND(r->shared_pres, SIM_SIDE_L) == AFTER_NONE)
+        return;
+    uint8_t flavor = INCANTATION_AFTERMATH_FLAVOR(r->revision);
+    if (flavor == AFTER_FLAVOR_BASE)
+        return;
+    int mx = TOWER_CX - 32, my = 26;
+    disc(fb, mx, my, 8, false);
+    switch (flavor) {
+        case AFTER_FLAVOR_RUNE:
+        case AFTER_FLAVOR_BLOOM:
+            for (int d = 0; d <= 5; d++) {
+                px(fb, mx - 5 + d, my - d, true);
+                px(fb, mx + 5 - d, my - d, true);
+                px(fb, mx - 5 + d, my + d, true);
+                px(fb, mx + 5 - d, my + d, true);
+            }
+            px(fb, mx, my, true);
+            break;
+        case AFTER_FLAVOR_FAMILIAR:
+        case AFTER_FLAVOR_ECHO:
+            for (int d = 0; d <= 5; d++)
+                for (int t = 0; t < 2; t++) {
+                    px(fb, mx - 5 + d, my - 2 + t + d * 4 / 5, true);
+                    px(fb, mx + 5 - d, my - 2 + t + d * 4 / 5, true);
+                }
+            break;
+        case AFTER_FLAVOR_WALL:
+            fill_rect(fb, mx - 1, my - 6, mx + 1, my + 6, true);
+            hline(fb, mx + 2, mx + 3, my);
+            break;
+        case AFTER_FLAVOR_VORTEX:
+            hline(fb, mx - 5, mx + 5, my - 5);
+            vline(fb, mx + 5, my - 5, my + 5);
+            hline(fb, mx - 2, mx + 5, my + 5);
+            vline(fb, mx - 2, my, my + 5);
+            break;
+        default: /* combo */
+            for (int d = -5; d <= 5; d++) {
+                px(fb, mx + d, my + d, true);
+                px(fb, mx + d, my - d, true);
+            }
+            break;
+    }
+}
+
 static void draw_wizard(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     duel_view_wizard_t wz = duel_view_wizard(&r->view, SIM_SIDE_L);
     int feet = BALCONY_Y - 1;
@@ -1572,6 +1688,7 @@ static void draw_wizard(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
         vline(fb, staff_x, feet - 17, feet - 1);
         px(fb, staff_x, feet - 19, true);
     }
+    draw_status_mark(fb, &wz, cx, feet, frame);
 
     /* Charging a big cast lights the shaft below the balcony. */
     if (wz.rearm_lock && (wz.inc_state == INC_WINDUP || wz.inc_state == INC_PREPARED)) {
@@ -2453,6 +2570,7 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_residue(fb, r, frame);
     draw_tower(fb, r, typing, frame);
     draw_lanterns(fb, typing);
+    draw_flavor_sigil(fb, r);
     draw_wizard(fb, r, frame);
     draw_ward(fb, r, frame);
     draw_fields(fb, r, frame);
