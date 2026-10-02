@@ -228,6 +228,31 @@ int duel_combat_spell_lane_y(uint8_t kind) {
     }
 }
 
+// Static element shapes, [element * 4 + tier], drawn by spell_glyph. Each
+// glyph is 7 rows (y-3..y+3) of 8 columns; the MSB is 4 px behind the head and
+// the LSB 3 px ahead of it, so the travel direction mirrors the shape. Force:
+// a block that grows with tier. Frost: a solid core with cross arms and
+// diagonal spikes. Void: a ring whose core spell_glyph clears. Ember: a
+// teardrop head with a nose and a flame tail near it.
+static const uint8_t spell_glyph_rows[16][7] = {
+    {0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}, // force short
+    {0x00, 0x00, 0x1C, 0x1C, 0x1C, 0x00, 0x00}, // force medium
+    {0x00, 0x08, 0x3E, 0x3E, 0x3E, 0x08, 0x00}, // force long
+    {0x00, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x00}, // force saturated
+    {0x00, 0x00, 0x28, 0x1C, 0x08, 0x00, 0x00}, // ember short
+    {0x00, 0x00, 0x4C, 0xFE, 0x0C, 0x00, 0x00}, // ember medium
+    {0x00, 0x00, 0x4C, 0xFE, 0x8C, 0x20, 0x00}, // ember long
+    {0x00, 0x00, 0x4C, 0xFE, 0x8C, 0x20, 0x00}, // ember saturated
+    {0x00, 0x00, 0x1C, 0x1C, 0x1C, 0x00, 0x00}, // frost short
+    {0x00, 0x2A, 0x1C, 0x3E, 0x1C, 0x2A, 0x00}, // frost medium
+    {0x08, 0x2A, 0x1C, 0x7F, 0x1C, 0x2A, 0x08}, // frost long
+    {0x49, 0x2A, 0x1C, 0x7F, 0x1C, 0x2A, 0x49}, // frost saturated
+    {0x00, 0x00, 0x14, 0x14, 0x1C, 0x00, 0x00}, // void short
+    {0x00, 0x08, 0x1C, 0x36, 0x1C, 0x08, 0x00}, // void medium
+    {0x00, 0x3E, 0x3E, 0x36, 0x3E, 0x3E, 0x00}, // void long
+    {0x00, 0x7F, 0x5D, 0x55, 0x5D, 0x7F, 0x00}, // void saturated
+};
+
 static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool lift) {
     int back = dir > 0 ? -1 : +1;
     int tier = DUEL_KIND_TIER(kind);
@@ -242,118 +267,23 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
     // Element identity stays primary while the capped recipe tier controls the
     // carrier's footprint. Short is deliberately compact; medium is the
     // standard scale; long/saturated add bounded mass and trail complexity.
-    switch (DUEL_KIND_ELEMENT(kind)) {
-        case ELEM_FORCE: {
-            int rx = tier == SPELL_TIER_SHORT ? 0 : (tier >= SPELL_TIER_LONG ? 2 : 1);
-            int ry = tier == SPELL_TIER_SHORT ? 0 : (tier == SPELL_TIER_SATURATED ? 2 : 1);
-            for (int dx = -rx; dx <= rx; dx++)
-                for (int dy = -ry; dy <= ry; dy++)
-                    duel_fb_px(fb, x + dx, y + dy, true);
-            if (tier == SPELL_TIER_LONG) {
-                duel_fb_px(fb, x, y - 2, true);
-                duel_fb_px(fb, x, y + 2, true);
-            }
-            break;
-        }
-        case ELEM_FROST: {
-            // Presentation weight: a solid 3x3 core so the flake registers at desk
-            // distance; cross arms and diagonal spikes keep the star identity.
-            if (tier == SPELL_TIER_SHORT) {
-                for (int d = -1; d <= 1; d++) {
-                    duel_fb_px(fb, x + d, y, true);
-                    duel_fb_px(fb, x, y + d, true);
-                }
-                duel_fb_px(fb, x - 1, y - 1, true);
-                duel_fb_px(fb, x + 1, y - 1, true);
-                duel_fb_px(fb, x - 1, y + 1, true);
-                duel_fb_px(fb, x + 1, y + 1, true);
-                break;
-            }
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dy = -1; dy <= 1; dy++)
-                    duel_fb_px(fb, x + dx, y + dy, true);
-            int arm = tier >= SPELL_TIER_LONG ? 3 : 2;
-            for (int d = 2; d <= arm; d++) {
-                duel_fb_px(fb, x - d, y, true);
-                duel_fb_px(fb, x + d, y, true);
-                duel_fb_px(fb, x, y - d, true);
-                duel_fb_px(fb, x, y + d, true);
-            }
-            duel_fb_px(fb, x - 2, y - 2, true);
-            duel_fb_px(fb, x + 2, y - 2, true);
-            duel_fb_px(fb, x - 2, y + 2, true);
-            duel_fb_px(fb, x + 2, y + 2, true);
-            if (tier == SPELL_TIER_SATURATED) {
-                duel_fb_px(fb, x - 3, y - 3, true);
-                duel_fb_px(fb, x + 3, y - 3, true);
-                duel_fb_px(fb, x - 3, y + 3, true);
-                duel_fb_px(fb, x + 3, y + 3, true);
-            }
-            break;
-        }
-        case ELEM_VOID: {
-            // Presentation weight: a solid ring (donut) instead of a 1-px outline;
-            // the dark centre stays the void signature at every tier.
-            if (tier == SPELL_TIER_SHORT) {
-                for (int dx = -1; dx <= 1; dx++) {
-                    duel_fb_px(fb, x + dx, y - 1, true);
-                    duel_fb_px(fb, x + dx, y + 1, true);
-                }
-                duel_fb_px(fb, x - 1, y, true);
-                duel_fb_px(fb, x + 1, y, true);
-                duel_fb_px(fb, x, y - 1, false); // diamond-like, hollow core
-                break;
-            }
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dy = -1; dy <= 1; dy++)
-                    duel_fb_px(fb, x + dx, y + dy, dx || dy);
-            if (tier == SPELL_TIER_MEDIUM) {
-                duel_fb_px(fb, x - 2, y, true);
-                duel_fb_px(fb, x + 2, y, true);
-                duel_fb_px(fb, x, y - 2, true);
-                duel_fb_px(fb, x, y + 2, true);
-            } else {
-                int rx = 2 + (tier == SPELL_TIER_SATURATED);
-                for (int dx = -rx; dx <= rx; dx++) {
-                    duel_fb_px(fb, x + dx, y - 2, true);
-                    duel_fb_px(fb, x + dx, y + 2, true);
-                }
-                duel_fb_px(fb, x - rx, y - 1, true);
-                duel_fb_px(fb, x + rx, y - 1, true);
-                duel_fb_px(fb, x - rx, y, true);
-                duel_fb_px(fb, x + rx, y, true);
-                duel_fb_px(fb, x - rx, y + 1, true);
-                duel_fb_px(fb, x + rx, y + 1, true);
-            }
-            break;
-        }
-        case ELEM_EMBER: {
-            // Presentation weight: a solid teardrop head (back corners clipped so
-            // the mass points forward) with a 2-row flame tail near the head.
-            if (tier == SPELL_TIER_SHORT) {
-                for (int d = -1; d <= 1; d++) {
-                    duel_fb_px(fb, x + d, y, true);
-                    duel_fb_px(fb, x, y + d, true);
-                }
-                duel_fb_px(fb, x + 2 * back, y - 1, true);
-                break;
-            }
-            for (int dx = -1; dx <= 1; dx++)
-                for (int dy = -1; dy <= 1; dy++)
-                    if (!(dx == back && dy))
-                        duel_fb_px(fb, x + dx, y + dy, true);
-            duel_fb_px(fb, x - 2 * back, y, true); // nose
-            int tail = 2 + tier * 2;
-            for (int d = 2; d <= tail; d++)
-                duel_fb_px(fb, x + d * back, y - (d & 1), true);
-            duel_fb_px(fb, x + 2 * back, y, true);
-            duel_fb_px(fb, x + 3 * back, y, true);
-            if (tier >= SPELL_TIER_LONG) {
-                duel_fb_px(fb, x + 2 * back, y + 2, true);
-                duel_fb_px(fb, x + 4 * back, y + 1, true);
-            }
-            break;
-        }
+    int elem = DUEL_KIND_ELEMENT(kind);
+    const uint8_t *rows = spell_glyph_rows[elem * 4 + tier];
+    for (int r = 0; r < 7; r++) {
+        uint8_t bits = rows[r];
+        for (int f = -4; bits; f++, bits = (uint8_t)(bits << 1))
+            if (bits & 0x80)
+                duel_fb_px(fb, x - f * back, y + r - 3, true);
+    }
+    if (elem == ELEM_EMBER) {
+        // The long/saturated flame tail runs past the table's 4 columns behind
+        // the head.
+        for (int d = 5; d <= 2 + tier * 2; d++)
+            duel_fb_px(fb, x + d * back, y - (d & 1), true);
+    } else if (elem == ELEM_VOID) {
+        // The dark core is cleared, so the void reads hollow over anything
+        // drawn beneath it.
+        duel_fb_px(fb, x, y - (tier == SPELL_TIER_SHORT), false);
     }
 
     switch (DUEL_KIND_MODIFIER(kind)) {
