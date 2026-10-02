@@ -1442,6 +1442,32 @@ static void build_catalog(void) {
         add_case(reaction_name[i], &world, (uint32_t)i, reaction_kind[i]);
     }
 
+    /* Tempo modifier art in flight, per element at a medium and a saturated
+     * tier: the left spell is rapid (speed streak), the right deliberate
+     * (heavy casing). Flowing spells, elsewhere in the catalog, carry
+     * neither. */
+    static const char *const tempo_element[] = {"force", "ember", "frost", "void"};
+    static const uint8_t tempo_magnitude[] = {2u, 4u};
+    for (uint8_t element = 0; element < 4u; element++)
+        for (size_t m = 0; m < sizeof tempo_magnitude; m++) {
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            uint8_t interaction = element == ELEM_VOID ? INTERACT_PHASE : INTERACT_SOLID;
+            for (uint8_t side = 0; side < 2u; side++) {
+                uint8_t tempo = side == SIM_SIDE_L ? TEMPO_RAPID : TEMPO_DELIBERATE;
+                world.spell[side] = (sim_spell_t){
+                    .active = 1,
+                    .progress = 60u,
+                    .dir = side ? -4 : 4,
+                    .descriptor = SPELL_DESC_PACK(SPELL_PROJECTILE, element, PAY_DAMAGE, TRAJ_MID,
+                                                  tempo_magnitude[m], STATUS_NONE, interaction,
+                                                  tempo, TREND_STEADY, 0)};
+            }
+            snprintf(name, sizeof name, "spell_tempo_%s_%s", tempo_element[element],
+                     m ? "saturated" : "medium");
+            add_case(name, &world, 6u, 0);
+        }
+
     /* Pin the entire scenario gallery under the golden determinism check.
      * Each renders at its declared frame with its declared diagnostics flag. */
     for (size_t i = 0; i < duel_scenario_count(); i++) {

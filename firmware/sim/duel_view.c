@@ -21,11 +21,6 @@ static uint8_t duration_bucket(uint8_t ticks) {
     return ticks == 0 ? 0u : ticks <= 50u ? 1u : ticks <= 100u ? 2u : 3u;
 }
 
-static uint8_t display_kind(uint32_t desc) {
-    return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(SPELL_DESC_ELEMENT(desc), MOD_NONE, PAY_IMPACT),
-                               SPELL_DESC_MAGNITUDE(desc) - 1u);
-}
-
 uint32_t duel_spell_descriptor_compress(uint32_t desc) {
     if (!SPELL_DESC_VALID(desc))
         return 0;
@@ -175,7 +170,7 @@ duel_view_spell_t duel_view_spell(const duel_view_t *view, uint8_t side, uint8_t
         .active = desc != 0,
         .pos = side == SIM_SIDE_L ? progress : (uint8_t)(255u - progress),
         .dir = side == SIM_SIDE_L ? 4 : -4,
-        .kind = desc ? display_kind(desc) : 0,
+        .kind = desc ? spell_desc_display_kind(desc) : 0,
         .descriptor = desc,
         .progress = progress,
     };

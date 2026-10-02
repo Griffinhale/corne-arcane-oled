@@ -53,12 +53,6 @@ static uint8_t residue_zone_for_u(uint8_t u) {
                       : SIM_RESIDUE_DOORSTEP_R;
 }
 
-static uint8_t desc_display_kind(uint32_t desc) {
-    uint8_t tier = (uint8_t)(SPELL_DESC_MAGNITUDE(desc) - 1u);
-    return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(SPELL_DESC_ELEMENT(desc), MOD_NONE, PAY_IMPACT),
-                               tier);
-}
-
 static uint32_t desc_set_magnitude(uint32_t desc, uint8_t magnitude) {
     return (desc & ~(3u << 10)) | ((uint32_t)(magnitude - 1u) << 10);
 }
@@ -404,7 +398,7 @@ static void spell_spawn(sim_world_t *w, uint8_t side, uint32_t desc) {
     sp->pos = side == SIM_SIDE_L ? SIM_SPAWN_L : SIM_SPAWN_R;
     sp->dir = side == SIM_SIDE_L ? 1 : -1;
     sp->descriptor = desc;
-    sp->kind = desc_display_kind(desc);
+    sp->kind = spell_desc_display_kind(desc);
     if (SPELL_DESC_FORM(desc) == SPELL_SWARM) {
         sp->aux = (uint8_t)(2u + SPELL_DESC_MAGNITUDE(desc));
         sp->progress = (uint8_t)(sp->aux << 5);

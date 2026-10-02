@@ -716,6 +716,33 @@ static void test_v13_spell_outcome_wire(void) {
     CHECK(ok, "v13_outcome_bit4_range_scalded_status_and_combine_flag_rebuilds_echo");
 }
 
+/* Tempo picks the in-flight modifier art: rapid and frantic spells trail a
+ * speed streak, deliberate ones wear a heavy casing, flowing ones neither.
+ * Element and magnitude tier are unchanged, and both halves derive the kind
+ * from the same descriptor bits. */
+static void test_display_kind_modifier(void) {
+    bool ok = true;
+    static const uint8_t expected_mod[4] = {MOD_HEAVY, MOD_NONE, MOD_SWIFT, MOD_SWIFT};
+    for (uint8_t tempo = 0; tempo < 4u; tempo++)
+        for (uint8_t element = 0; element < 4u; element++)
+            for (uint8_t magnitude = 1u; magnitude <= 4u; magnitude++) {
+                uint32_t desc =
+                    SPELL_DESC_PACK(SPELL_PROJECTILE, element, PAY_DAMAGE, TRAJ_MID, magnitude,
+                                    STATUS_NONE, INTERACT_SOLID, tempo, TREND_STEADY, 0);
+                sim_world_t w;
+                sim_init(&w, SIMF_AUTHORITATIVE, 0);
+                install_spell(&w, SIM_SIDE_R, desc, 70u);
+                duel_view_t view;
+                duel_view_from_world(&w, &view);
+                uint8_t kind = duel_view_spell(&view, SIM_SIDE_R, 3u).kind;
+                EXPECT(kind == spell_desc_display_kind(desc) &&
+                       DUEL_KIND_MODIFIER(kind) == expected_mod[tempo] &&
+                       DUEL_KIND_ELEMENT(kind) == element &&
+                       DUEL_KIND_TIER(kind) == magnitude - 1u);
+            }
+    CHECK(ok, "display_kind_modifier_follows_tempo_swift_heavy_none");
+}
+
 void run_protocol_view_tests(void) {
     test_layout_and_protocol();
     test_v12_repack_and_sky_subphase();
@@ -726,4 +753,5 @@ void run_protocol_view_tests(void) {
     test_v12_descriptor_compression_domain();
     test_v12_field_projection_and_reconnect();
     test_v13_spell_outcome_wire();
+    test_display_kind_modifier();
 }
