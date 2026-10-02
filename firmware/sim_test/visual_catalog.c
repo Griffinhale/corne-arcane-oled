@@ -1611,6 +1611,145 @@ static void build_catalog(void) {
     world.world_state = WORLD_RECOVERY;
     add_case("after_flavor_combo", &world, 0u, 0);
 
+    /* RS8: the richer-spells catalog. Each distinct aftermath flavor mark
+     * over an inspecting city (bloom shares rune's mark and echo familiar's;
+     * combo is after_flavor_combo above). */
+    static const char *const flavor_name[] = {"", "rune", "familiar", "wall", "vortex"};
+    for (uint8_t flavor = AFTER_FLAVOR_RUNE; flavor <= AFTER_FLAVOR_VORTEX; flavor++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.aftermath[0].kind = AFTER_INSPECT;
+        world.aftermath[0].ticks = 75u;
+        world.aftermath[0].intensity = 1u;
+        world.aftermath_flavor = flavor;
+        world.world_state = WORLD_RECOVERY;
+        snprintf(name, sizeof name, "spell_flavor_%s", flavor_name[flavor]);
+        add_case(name, &world, flavor, 0);
+    }
+
+    /* Echo and familiar carriers beside their base forms, as the signature
+     * carriers above. The echo combines, so its halo blinks between samples. */
+    static const struct {
+        const char *name;
+        uint32_t signature, base;
+        uint8_t progress[2];
+    } more_carriers[] = {
+        {"echo",
+         SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FROST, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                         INTERACT_COMBINE, TEMPO_FLOWING, TREND_IRREGULAR, 0),
+         SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FROST, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         {205u, 205u}},
+        {"familiar",
+         SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE, TRAJ_RETURNING, 3, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         {60u, 150u}},
+    };
+    for (size_t i = 0; i < sizeof more_carriers / sizeof more_carriers[0]; i++)
+        for (uint8_t sample = 0; sample < 2u; sample++) {
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            for (uint8_t side = 0; side < 2u; side++)
+                world.spell[side] =
+                    (sim_spell_t){.active = 1,
+                                  .progress = more_carriers[i].progress[sample],
+                                  .dir = side ? -4 : 4,
+                                  .descriptor = side == SIM_SIDE_L ? more_carriers[i].signature
+                                                                   : more_carriers[i].base};
+            snprintf(name, sizeof name, "spell_carrier_%s_%u", more_carriers[i].name, sample);
+            add_case(name, &world, sample * 2u, 0);
+        }
+
+    /* The combine halo on the other carrier forms, lit, mid-flight. Beam,
+     * chain, swarm and conjure draw their own shapes and return before the
+     * halo, so they are left out. */
+    static const struct {
+        const char *name;
+        uint8_t form;
+    } halo_form[] = {{"fireball", SPELL_FIREBALL},
+                     {"singularity", SPELL_SINGULARITY},
+                     {"ground_wave", SPELL_GROUND_WAVE}};
+    for (size_t i = 0; i < sizeof halo_form / sizeof halo_form[0]; i++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.spell[SIM_SIDE_L] =
+            (sim_spell_t){.active = 1,
+                          .progress = 205u,
+                          .dir = 4,
+                          .descriptor = SPELL_DESC_PACK(halo_form[i].form, ELEM_FROST, PAY_DAMAGE,
+                                                        TRAJ_MID, 2, STATUS_NONE, INTERACT_COMBINE,
+                                                        TEMPO_FLOWING, TREND_STEADY, 0)};
+        snprintf(name, sizeof name, "spell_combine_halo_%s", halo_form[i].name);
+        add_case(name, &world, 2u, 0);
+    }
+
+    /* Combination moments as the sim leaves them: shatter (frost gone, one
+     * more window dark, the defender's city panics), thaw (scalded, steam at
+     * the doorstep, a complaint), and the field meetings, where a singularity
+     * swallowed a rune or a wall outground a trap (both cities inspect). */
+    for (uint8_t moment = 0; moment < 4u; moment++) {
+        static const char *const moment_name[] = {"shatter", "thaw", "swallow", "grind"};
+        static const uint8_t moment_fx[] = {FX_SHATTER_R, FX_THAW, FX_FIELD_CLASH, FX_FIELD_CLASH};
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.aftermath_flavor = AFTER_FLAVOR_COMBO;
+        world.world_state = WORLD_RECOVERY;
+        if (moment < 2u) {
+            world.wiz[SIM_SIDE_R].hp = moment ? 5u : 3u;
+            world.aftermath[SIM_SIDE_R] = (sim_aftermath_t){
+                .kind = moment ? AFTER_COMPLAINT : AFTER_PANIC, .ticks = 75u, .intensity = 1u};
+        } else {
+            for (uint8_t side = 0; side < 2u; side++)
+                world.aftermath[side] =
+                    (sim_aftermath_t){.kind = AFTER_INSPECT, .ticks = 75u, .intensity = 1u};
+        }
+        if (moment == 1u) {
+            world.wiz[SIM_SIDE_R].status = STATUS_SCALDED;
+            world.wiz[SIM_SIDE_R].status_intensity = 1u;
+            world.wiz[SIM_SIDE_R].status_ticks = 90u;
+            world.field[0] = (sim_field_t){.kind = FIELD_STEAM,
+                                           .zone = SIM_RESIDUE_DOORSTEP_R,
+                                           .owner = SIM_SIDE_L,
+                                           .timer = 70u};
+        } else if (moment == 2u) {
+            world.field[0] = (sim_field_t){.kind = FIELD_SINGULARITY,
+                                           .zone = SIM_RESIDUE_MID_L,
+                                           .owner = SIM_SIDE_L,
+                                           .timer = 40u,
+                                           .aux = 1u};
+        } else if (moment == 3u) {
+            world.field[1] = (sim_field_t){.kind = FIELD_WALL,
+                                           .zone = SIM_RESIDUE_MID_R,
+                                           .owner = SIM_SIDE_R,
+                                           .timer = 120u,
+                                           .aux = 3u};
+        }
+        snprintf(name, sizeof name, "spell_combo_%s", moment_name[moment]);
+        add_case_flash(name, &world, moment, moment_fx[moment], 6u);
+    }
+
+    /* Scalded on the left half; the other statuses' left-half level 3 is
+     * frozen/disrupted/marked above. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.wiz[SIM_SIDE_L].status = STATUS_SCALDED;
+    world.wiz[SIM_SIDE_L].status_intensity = 1u;
+    world.wiz[SIM_SIDE_L].status_ticks = 100u;
+    add_case("status_l_scalded", &world, 1u, 0);
+
+    /* Swift and heavy on the fireball, which wears the same modifier art. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++)
+        world.spell[side] = (sim_spell_t){
+            .active = 1,
+            .progress = 60u,
+            .dir = side ? -4 : 4,
+            .descriptor = SPELL_DESC_PACK(
+                SPELL_FIREBALL, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE, INTERACT_SOLID,
+                side == SIM_SIDE_L ? TEMPO_RAPID : TEMPO_DELIBERATE, TREND_STEADY, 0)};
+    add_case("spell_tempo_fireball", &world, 6u, 0);
+
     /* Pin the entire scenario gallery under the golden determinism check.
      * Each renders at its declared frame with its declared diagnostics flag. */
     for (size_t i = 0; i < duel_scenario_count(); i++) {
