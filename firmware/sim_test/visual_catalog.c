@@ -20,7 +20,8 @@ typedef struct {
     char name[48];
     uint64_t hash;
 } visual_case_t;
-static visual_case_t cases[768];
+/* Headroom for two ~100-scene review rounds past the current catalog. */
+static visual_case_t cases[1024];
 static size_t ncases;
 
 static uint64_t fnv1a(uint64_t hash, const void *data, size_t size) {

@@ -4,11 +4,14 @@
 Usage:
     firmware/sim_test/visual_runner --dump-pgm /tmp/frames
     python3 tools/contact_sheet.py /tmp/frames out_prefix [--only name ...]
+    python3 tools/contact_sheet.py /tmp/frames out_prefix --family spell
 
 Reads every *.pgm in the directory (67x128: left canvas, 3-px gap, right
 canvas), scales them up, labels each with its case name, and writes one or
 more out_prefix_NN.png sheets. --only filters by substring so a re-baseline
-review can sheet just the changed scenes.
+review can sheet just the changed scenes. --family picks a named review
+family by case-name prefix; "spell" is every scene that shows a spell being
+cast, in flight, landing, or leaving a field, status, ward or residue.
 
 This is the reproducible visual-review tool for the committed scene catalog.
 """
@@ -25,17 +28,62 @@ COLS = 8
 ROWS = 8
 LABEL_H = 12
 
+FAMILIES = {
+    "spell": (
+        "spell_",
+        "side_",
+        "gap_",
+        "after_",
+        "windup_",
+        "prepared_",
+        "bigcast_",
+        "collecting_",
+        "beam_",
+        "fireball_",
+        "swarm_",
+        "return_",
+        "homing_",
+        "ground_wave",
+        "chain_arc",
+        "trap_set",
+        "low_carrier",
+        "void_",
+        "combine_",
+        "duel_",
+        "field_",
+        "ward_",
+        "status_",
+        "burning",
+        "frozen",
+        "disrupted",
+        "marked",
+        "residue_",
+        "scenario_recipe-",
+        "scenario_short-cast",
+        "scenario_long-cast",
+        "scenario_impact",
+        "scenario_deflect",
+        "scenario_fizzle",
+        "scenario_void-pierce",
+    ),
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("frames_dir", type=Path)
     parser.add_argument("out_prefix")
     parser.add_argument("--only", nargs="*", default=None, help="substring filters on case names")
+    parser.add_argument(
+        "--family", choices=sorted(FAMILIES), help="named review family by name prefix"
+    )
     args = parser.parse_args()
 
     paths = sorted(args.frames_dir.glob("*.pgm"))
     if args.only:
         paths = [p for p in paths if any(s in p.stem for s in args.only)]
+    if args.family:
+        paths = [p for p in paths if p.stem.startswith(FAMILIES[args.family])]
     if not paths:
         print("no PGM frames matched", file=sys.stderr)
         return 1
