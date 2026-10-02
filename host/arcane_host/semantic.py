@@ -71,11 +71,14 @@ class SemanticResolver:
         self.idle = False
         self.locked = False
         self.terminal_running = False
+        self.strain = False
         self.state = SemanticState()
 
     def _resolve_mode(self) -> Mode:
         # Ruled precedence (SH-D4p): URGENT > STRAIN > QUIET > NORMAL. Idle and
         # a locked screen are both "away", and away shares QUIET.
+        if self.strain:
+            return Mode.STRAIN
         if self.dnd or self.pomodoro or self.idle or self.locked:
             return Mode.QUIET
         return Mode.NORMAL
@@ -117,6 +120,7 @@ class SemanticResolver:
         idle: bool | None = None,
         locked: bool | None = None,
         terminal_running: bool | None = None,
+        strain: bool | None = None,
     ) -> bool:
         if focus_scene is not None:
             self.focus_scene = focus_scene
@@ -148,6 +152,8 @@ class SemanticResolver:
             self.locked = locked
         if terminal_running is not None:
             self.terminal_running = terminal_running
+        if strain is not None:
+            self.strain = strain
         current_summary = self.state.summary if summary is None else summary
         # Media is a fallback, not an override. It fills in ARCHIVE only when no
         # profile claimed the focused window, so playing something in the

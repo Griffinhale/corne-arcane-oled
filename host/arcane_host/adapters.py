@@ -17,6 +17,8 @@ from .semantic import SemanticResolver
 # without its completion before it is dropped.
 TERMINAL_SLOTS = 16
 TERMINAL_LEASE = 4 * 3600.0
+# How often the opt-in load sampler reads /proc and statvfs.
+LOAD_INTERVAL = 5.0
 
 
 @dataclass(slots=True)
@@ -37,6 +39,7 @@ class SemanticAdapters:
         clock: Callable[[], float] = time.monotonic,
         token_key: bytes | None = None,
         pomodoro_duration: float = 1500.0,
+        load_sampler: Callable[[], tuple[Intensity, bool]] | None = None,
     ) -> None:
         self.resolver = resolver
         self.policy = policy
@@ -57,6 +60,8 @@ class SemanticAdapters:
         self._network_status: str | None = None
         self._vpn = False
         self._terminal_starts: list[float] = []
+        self._load_sampler = load_sampler
+        self._load_next = 0.0
 
     def _changed(self, policy_changed: bool = False) -> None:
         self.counters.updates += 1
@@ -171,6 +176,8 @@ class SemanticAdapters:
             deadlines.append(max(now, self._browser_next_emit))
         if self._browser_expiry is not None:
             deadlines.append(max(now, self._browser_expiry))
+        if self._load_sampler is not None:
+            deadlines.append(max(now, self._load_next))
         if self._terminal_starts:
             deadlines.append(max(now, self._terminal_starts[0] + TERMINAL_LEASE))
         return min(deadlines) if deadlines else None
@@ -191,6 +198,15 @@ class SemanticAdapters:
             self._browser_next_emit = now + 0.25
             if self.resolver.update(browser_activity=kind, browser_intensity=intensity):
                 self._changed()
+        if self._load_sampler is not None and now >= self._load_next:
+            self._load_next = now + LOAD_INTERVAL
+            try:
+                intensity, strain = self._load_sampler()
+            except Exception:
+                self.counters.errors += 1
+            else:
+                if self.resolver.update(intensity=Intensity(intensity), strain=bool(strain)):
+                    self._changed()
         if self._terminal_starts and now >= self._terminal_starts[0] + TERMINAL_LEASE:
             self._terminal_starts = [t for t in self._terminal_starts if now < t + TERMINAL_LEASE]
             self._terminal_update()

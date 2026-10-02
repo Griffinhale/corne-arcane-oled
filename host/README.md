@@ -179,7 +179,11 @@ Nothing below is auto-enabled by the package.
 - Host signals: run the daemon with `--host-signals`, or set
   `CORNE_ARCANE_HOST_SIGNALS=1` for the service. While your session is idle or
   its screen is locked, the city goes QUIET. It reads logind's idle and lock
-  hints for your own session, two booleans.
+  hints for your own session, two booleans. Every five seconds it also reads
+  CPU pressure (or load average), available memory and free space on `/` and
+  your home: CPU waiting sets the city's intensity, and memory or disk under
+  5 % free, or a CPU queued most of the last minute, sets STRAIN. Only these
+  machine-wide figures are read, never a process or file name.
 
 Shell hooks report only monotonic duration, integer status, normalized
 repository state, and a bare "still running" call once a command passes ten

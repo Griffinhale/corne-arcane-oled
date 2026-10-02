@@ -19,6 +19,7 @@ from .desktop import DesktopMonitor, DesktopNotificationAdapter
 from .focus import FocusArbiter
 from .heartbeat import DryRunTransport, HidHeartbeat, HidTransport
 from .hidraw import Device, choose_device
+from .host_load import load_sampler
 from .policy import NotificationPolicy
 from .protocol import EMPTY_SUMMARY, Category, NotificationSummary, Priority, Scene
 from .runtime import DaemonRuntime
@@ -223,7 +224,11 @@ def run(args: argparse.Namespace) -> int:
         lend_check=lend_check(args),
     )
     adapters = SemanticAdapters(
-        resolver, policy, runtime.wake, pomodoro_duration=args.pomodoro_duration
+        resolver,
+        policy,
+        runtime.wake,
+        pomodoro_duration=args.pomodoro_duration,
+        load_sampler=load_sampler() if args.host_signals else None,
     )
     runtime.bind_adapters(adapters)
 
