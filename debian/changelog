@@ -1,3 +1,24 @@
+corne-arcane-host (0.7.0) unstable; urgency=low
+
+  * Opt-in host signals (--host-signals): presence, system load, resource
+    strain, calls and meetings, critical alerts and long-running commands.
+    An idle or locked session quiets the city, load sets its intensity, a
+    ringing call or critical notification makes it URGENT and a joined call
+    QUIET. All of it is enums; no title, text or command line is read.
+  * Civic mode 3 is STRAIN: the host near the end of its disk, memory or
+    CPU. Firmware from fw-v0.2.0 draws it; older firmware shows mode 3 as
+    before.
+  * Opt-in focus producers for Sway and Hyprland (0.56 or later, Lua config)
+    report the focused app class without seeing window titles.
+  * The desktop city takes the season, the day's tallies, the host signals
+    and the residents' town life (city ABI 9 to 11). The town layers draw
+    couriers, rare events and aftermath residents on the street, one room
+    per district in the tower, residents with needs on the square, the
+    champion's status, a spell's flavor in the sky, URGENT in bursts and a
+    STRAIN sign that names the resource.
+
+ -- Griffin Hale <griffinhale.3@gmail.com>  Fri, 02 Oct 2026 12:00:00 -0700
+
 corne-arcane-host (0.6.0) unstable; urgency=low
 
   * Report the new revel scene for games and launchers. The firmware pairs it
