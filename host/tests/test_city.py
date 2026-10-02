@@ -45,6 +45,7 @@ from arcane_host.dbus_contract import (
     REPORT_ACTIVE_WINDOW,
     TYPING_SIGNATURE,
 )
+from arcane_host.host_signals import StrainKind
 from arcane_host.protocol import (
     REPORT_SIZE,
     Category,
@@ -1378,6 +1379,32 @@ class TownModeTests(unittest.TestCase):
                 for mode in (Mode.NORMAL, Mode.QUIET, Mode.URGENT, Mode.STRAIN)
             }
             self.assertEqual(len(set(frames.values())), 4, (layout, frames))
+
+    def test_strain_sign_names_the_resource(self) -> None:
+        """SH13: the desktop service says which resource is near full (ABI 10),
+        and the sign's post carries a plaque for it. The wire's mode alone
+        (NONE) and a CLEAR signal draw the bare sign; outside STRAIN the
+        signal draws nothing."""
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+
+            def frame(mode: Mode, strain: StrainKind) -> bytes:
+                city = self.city(mode)
+                city.strain = int(strain)
+                return renderer.render(city, 400_000, 12)
+
+            bare = frame(Mode.STRAIN, StrainKind.NONE)
+            self.assertEqual(frame(Mode.STRAIN, StrainKind.CLEAR), bare, layout)
+            named = {
+                kind: digest(frame(Mode.STRAIN, kind))
+                for kind in (StrainKind.CPU, StrainKind.MEMORY, StrainKind.DISK)
+            }
+            self.assertNotIn(digest(bare), named.values(), layout)
+            self.assertEqual(len(set(named.values())), 3, (layout, named))
+            # The plaque is on the sign, so it goes with the sign.
+            normal = frame(Mode.NORMAL, StrainKind.NONE)
+            for kind in StrainKind:
+                self.assertEqual(frame(Mode.NORMAL, kind), normal, (layout, kind))
 
 
 class WindowLayoutTests(unittest.TestCase):

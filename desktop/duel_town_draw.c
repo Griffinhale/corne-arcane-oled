@@ -1356,8 +1356,35 @@ static bool town_urgent_flash(uint8_t phase) {
  * stands on the balcony's far end, solid with its mark cut dark, as the panels
  * stand theirs: steady, so it reads as a warning and not as the busy marks the
  * intensity drives, and nothing about it moves with the frame.
+ *
+ * The wire has one STRAIN mode; the desktop service also says which resource
+ * (ABI 10), and a plaque on the sign's post names it: a chip for the CPU, a
+ * stack of bars for memory, a platter for the disk. NONE and CLEAR leave the
+ * post bare, which is the sign as the keyboard's mode alone shows it.
  */
-static void draw_strain_sign(town_fb_t *fb) {
+static void draw_strain_plaque(town_fb_t *fb, int sx, int top, uint8_t strain) {
+    if (strain < DUEL_CITY_STRAIN_CPU)
+        return;
+    fill_rect(fb, sx - 5, top, sx + 5, top + 8, false);
+    frame_rect(fb, sx - 5, top, sx + 5, top + 8);
+    if (strain == DUEL_CITY_STRAIN_CPU) {
+        frame_rect(fb, sx - 2, top + 2, sx + 2, top + 6);
+        for (int d = -1; d <= 1; d += 2) {
+            px(fb, sx + d, top + 1, true);
+            px(fb, sx + d, top + 7, true);
+            px(fb, sx - 4, top + 4 + d, true);
+            px(fb, sx + 4, top + 4 + d, true);
+        }
+    } else if (strain == DUEL_CITY_STRAIN_MEMORY) {
+        for (int y = top + 2; y <= top + 6; y += 2)
+            hline(fb, sx - 3, sx + 3, y);
+    } else {
+        ring(fb, sx, top + 4, 3, true);
+        px(fb, sx, top + 4, true);
+    }
+}
+
+static void draw_strain_sign(town_fb_t *fb, uint8_t strain) {
     int sx = TOWER_CX + 19;
     int apex = BALCONY_Y - 22;
     fill_rect(fb, sx - 7, apex - 1, sx + 7, apex + 11, false);
@@ -1368,10 +1395,11 @@ static void draw_strain_sign(town_fb_t *fb) {
     px(fb, sx, apex + 8, false);
     fill_rect(fb, sx - 1, apex + 11, sx + 1, BALCONY_Y - 1, false);
     vline(fb, sx, apex + 11, BALCONY_Y - 1);
+    draw_strain_plaque(fb, sx, apex + 12, strain);
 }
 
 static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
-                       uint32_t frame) {
+                       const town_signals_t *signals, uint32_t frame) {
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
 
     fill_rect(fb, TOWER_X0 - 6, TOWER_TOP_Y, TOWER_X1 + 6, GROUND_Y, false);
@@ -1462,7 +1490,7 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
             hline(fb, cx - 2 + s, cx + 2 - s, BALCONY_Y + 2 + s);
     }
     if (mode == DUEL_CIVIC_MODE_STRAIN)
-        draw_strain_sign(fb);
+        draw_strain_sign(fb, signals->strain);
 
     /*
      * The storeys. A course of brick, then a room seen through one wide
@@ -3585,16 +3613,19 @@ static void draw_town_life(town_fb_t *fb, const duel_render_t *r, const town_hea
 
 void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
                     const town_health_t *health, const town_day_t *day,
-                    const duel_town_life_t *life, uint32_t frame) {
+                    const town_signals_t *signals, const duel_town_life_t *life, uint32_t frame) {
     static const town_typing_t no_typing;
     static const town_health_t no_health;
     static const town_day_t no_day;
+    static const town_signals_t no_signals;
     if (!typing)
         typing = &no_typing;
     if (!health)
         health = &no_health;
     if (!day)
         day = &no_day;
+    if (!signals)
+        signals = &no_signals;
     uint8_t phase = DUEL_SECONDARY_SKY_PHASE(r->secondary);
     uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
 
@@ -3611,7 +3642,7 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_kites(fb, health->body, frame);
     draw_residue(fb, r, frame);
     draw_street_event(fb, r, frame);
-    draw_tower(fb, r, typing, frame);
+    draw_tower(fb, r, typing, signals, frame);
     draw_tower_event(fb, r);
     draw_lanterns(fb, typing);
     draw_street(fb, r);

@@ -74,12 +74,22 @@ typedef struct {
     uint8_t knockdowns; /* champions felled today, saturating */
 } town_day_t;
 
+/*
+ * The host signals the town draws at finer detail than the wire carries: the
+ * ABI 10 enums whose wire form is one civic mode. Only this layer reads them,
+ * and all zero draws the town from the mode alone, as it did before.
+ */
+typedef struct {
+    uint8_t strain; /* DUEL_CITY_STRAIN_*: which resource the STRAIN sign names */
+} town_signals_t;
+
 /* One frame of the town from one projection. `frame` is the animation phase;
  * everything else is read from the render, exactly as the panel compositor
- * reads it, except the typing summary, the health buckets, the day's tallies
- * and the residents' town life, which only the town draws. `typing`, `health`
- * and `day` may be NULL, which is the same as none; a NULL `life` draws the
- * square's hashed walkers, as the town did before it had residents. */
+ * reads it, except the typing summary, the health buckets, the day's tallies,
+ * the host signals and the residents' town life, which only the town draws.
+ * `typing`, `health`, `day` and `signals` may be NULL, which is the same as
+ * none; a NULL `life` draws the square's hashed walkers, as the town did
+ * before it had residents. */
 void duel_town_draw(town_fb_t *fb, const duel_render_t *render, const town_typing_t *typing,
                     const town_health_t *health, const town_day_t *day,
-                    const duel_town_life_t *life, uint32_t frame);
+                    const town_signals_t *signals, const duel_town_life_t *life, uint32_t frame);

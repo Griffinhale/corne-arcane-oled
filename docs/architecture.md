@@ -135,7 +135,10 @@ the watch the intensity follows the body bucket, so the stage moves through the
 day. URGENT lights the beacon over the spire twice, 300 ms apart, then rests
 about fifteen seconds, on the same civic-clock schedule as the panels' beacon,
 so the town and the keyboard flash together. STRAIN stands a steady hazard sign
-on the balcony. QUIET darkens the near row's windows and thins the square.
+on the balcony; when the desktop service also says which resource is near full
+(the ABI 10 strain signal), a plaque on the sign's post names it, a chip for the
+CPU, a stack of bars for memory, a platter for the disk. QUIET darkens the near
+row's windows and thins the square.
 
 The street at the foot of the near row reads the civic bytes the panels read.
 A notification's courier walks in from its own city's edge of the town, left or

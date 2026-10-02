@@ -381,7 +381,8 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
         town_health_t health = {input->body, input->heart, input->sleep};
         town_day_t day = {input->tally_casts, input->tally_impacts, input->tally_knockdowns};
-        duel_town_draw(&town, &render, &typing, &health, &day, life, frame);
+        town_signals_t signals = {input->strain};
+        duel_town_draw(&town, &render, &typing, &health, &day, &signals, life, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }
