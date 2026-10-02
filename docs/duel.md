@@ -240,7 +240,8 @@ size as an **echo** or a **bloom**.
 **Aftermath** is what the city does about it. Fire, panic, complaint, repair,
 inspection, cheering, and the wonder arc after a maximum cast each run on their
 own timer, from 175 ticks (7 s) for a fire to 150 (6 s) for a maximum cast, and
-drive what the residents in the room below are doing.
+drive what the residents in the room below are doing. For the first half of a
+cheer, a wonder, a panic or a fire, two bystanders join the room's resident.
 
 ## Between casts
 

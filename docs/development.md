@@ -79,11 +79,18 @@ same matrix -- every layout, three seeds, 240 frames each -- twice, once
 through the WebAssembly module and once through the native library the desktop
 window loads, and fails unless every byte of all 4 320 frames agrees.
 
-Both sides drive the self-playing world, so a divergence in the simulation
-shows up as well as one in the renderer: the run's hashes stop matching partway
-through instead of at the first frame. The matrix lives in
+Both sides drive the self-playing world and the town's residents beside it, so
+a divergence in the simulation shows up as well as one in the renderer: the
+run's hashes stop matching partway through instead of at the first frame. Each
+case also compares the world's tallies and a hash of the residents' handle, so
+a divergence there shows even where no frame draws it. A second set of rows
+sets the host semantics and every off-keyboard signal away from its default,
+432 frames more, and a last check confirms that seeking to a moment, as a link
+does, arrives at the same world as watching into it. The matrix lives in
 `web/tools/parity_matrix.json` and is read by both sides, so the two cannot
-drift apart.
+drift apart. `make swift-parity` runs the same matrix a third time, through the
+Swift package the Apple apps are built on, and diffs it against the same native
+reference.
 
 ## Golden review
 
