@@ -440,6 +440,16 @@ static bool incantation_draw_gap_cue(duel_fb_t *fb, uint32_t desc, uint8_t form,
     return true;
 }
 
+// A combining spell blinks a bar either side of its head, 2h + 1 rows tall.
+// Only the view's combine flag yields INTERACT_COMBINE here, and void never
+// carries it.
+static void draw_combine_halo(duel_fb_t *fb, uint32_t desc, uint32_t frame, int x, int y, int h) {
+    if (SPELL_DESC_INTERACTION(desc) != INTERACT_COMBINE || !(frame & 2u))
+        return;
+    duel_fb_line(fb, x - 4, y - h, x - 4, y + h);
+    duel_fb_line(fb, x + 4, y - h, x + 4, y + h);
+}
+
 void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8_t caster_side,
                             uint8_t variant, bool is_left, uint32_t frame) {
     uint8_t form = SPELL_DESC_FORM(spell->descriptor);
@@ -516,6 +526,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
             incantation_draw_inner_flare(fb, spell->descriptor, is_left, yb,
                                          (uint8_t)(progress & 3u),
                                          (uint8_t)(2u + (progress - DUEL_U_GAP_LO) / 21u));
+        draw_combine_halo(fb, spell->descriptor, frame, (x0 + x1) / 2, yb, 3);
         return;
     }
 
@@ -539,6 +550,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
             incantation_draw_inner_flare(fb, spell->descriptor, is_left, y,
                                          (uint8_t)(progress & 3u),
                                          (uint8_t)(2u + (progress - DUEL_U_GAP_LO) / 21u));
+        draw_combine_halo(fb, spell->descriptor, frame, px, y, 3);
         return;
     }
 
@@ -558,6 +570,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         if (!duel_combat_battlefield_to_x(u, is_left, &x))
             return;
         spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
+        draw_combine_halo(fb, spell->descriptor, frame, x, y, 1);
         return;
     }
 
@@ -594,6 +607,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
             duel_fb_px(fb, x, y, true);
             duel_fb_px(fb, x - travel_dir, y - 1, true);
         }
+        draw_combine_halo(fb, spell->descriptor, frame, x, y, 1);
         return;
     }
     if (!duel_combat_battlefield_to_x(u, is_left, &x))
@@ -690,13 +704,7 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         }
     }
 
-    // A combining spell blinks a bracket halo either side of its head. Only
-    // the view's combine flag yields INTERACT_COMBINE here, and void never
-    // carries it.
-    if (SPELL_DESC_INTERACTION(spell->descriptor) == INTERACT_COMBINE && (frame & 2u)) {
-        duel_fb_line(fb, x - 4, y - 1, x - 4, y + 1);
-        duel_fb_line(fb, x + 4, y - 1, x + 4, y + 1);
-    }
+    draw_combine_halo(fb, spell->descriptor, frame, x, y, 1);
 
     /* Roster voice accents are recipe-cosmetic only. */
     if (variant == 1u)

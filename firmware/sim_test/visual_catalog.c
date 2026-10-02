@@ -1662,15 +1662,18 @@ static void build_catalog(void) {
             add_case(name, &world, sample * 2u, 0);
         }
 
-    /* The combine halo on the other carrier forms, lit, mid-flight. Beam,
-     * chain, swarm and conjure draw their own shapes and return before the
-     * halo, so they are left out. */
+    /* The combine halo on every other form, lit, mid-flight. Beam and chain
+     * wear taller bars across their middle and head. */
     static const struct {
         const char *name;
         uint8_t form;
     } halo_form[] = {{"fireball", SPELL_FIREBALL},
                      {"singularity", SPELL_SINGULARITY},
-                     {"ground_wave", SPELL_GROUND_WAVE}};
+                     {"ground_wave", SPELL_GROUND_WAVE},
+                     {"beam", SPELL_BEAM},
+                     {"chain", SPELL_CHAIN},
+                     {"swarm", SPELL_SWARM},
+                     {"conjure", SPELL_CONJURE}};
     for (size_t i = 0; i < sizeof halo_form / sizeof halo_form[0]; i++) {
         char name[48];
         sim_init(&world, SIMF_AUTHORITATIVE, 0);
