@@ -4,10 +4,11 @@
 #include <string.h>
 
 #define INCANTATION_STATUS_BASE_TICKS 100u
-/* Burning bites once, 25 ticks (~1 s) into the status — i.e. when the
- * countdown falls to this value. Distinct from CONJURE_TRAP_FUSE_TICKS,
- * which happens to share the number 75. */
-#define STATUS_BURN_AT_TICKS (INCANTATION_STATUS_BASE_TICKS - 25u)
+/* Burning bites when its countdown falls to 75 (25, 50 or 75 ticks in for
+ * level 1, 2 or 3); level 3 bites again at 25. Distinct from
+ * CONJURE_TRAP_FUSE_TICKS, which happens to share the number 75. */
+#define STATUS_BURN_AT_TICKS       (INCANTATION_STATUS_BASE_TICKS - 25u)
+#define STATUS_BURN_AGAIN_AT_TICKS 25u
 
 static uint8_t sat_inc(uint8_t v) { return v == 0xffu ? v : (uint8_t)(v + 1u); }
 static uint8_t min_u8(uint8_t a, uint8_t b) { return a < b ? a : b; }
@@ -284,8 +285,9 @@ static bool ward_covers(const sim_wizard_t *wz, uint32_t desc) {
         return false;
     uint8_t strength = wz->ward_strength;
     uint8_t trajectory = SPELL_DESC_TRAJECTORY(desc);
-    if (wz->status == STATUS_MARKED && (trajectory == TRAJ_HOMING || trajectory == TRAJ_AREA) &&
-        strength)
+    /* Marked strips a pip against homing and area spells; level 3, on every lane. */
+    if (wz->status == STATUS_MARKED && strength &&
+        (trajectory == TRAJ_HOMING || trajectory == TRAJ_AREA || wz->status_intensity >= 3u))
         strength--;
     if (!strength || SPELL_DESC_INTERACTION(desc) == INTERACT_PHASE)
         return false;
@@ -311,7 +313,7 @@ static void set_outcome(sim_world_t *w, uint8_t kind) {
  * is an enforced contract, not a coincidence. */
 _Static_assert(FX_IMPACT_R == FX_IMPACT_L + 1 && FX_DEFLECT_R == FX_DEFLECT_L + 1 &&
                    FX_FIZZLE_R == FX_FIZZLE_L + 1 && FX_HEAL_R == FX_HEAL_L + 1 &&
-                   FX_WARD_SHATTER_R == FX_WARD_SHATTER_L + 1,
+                   FX_WARD_SHATTER_R == FX_WARD_SHATTER_L + 1 && FX_SHATTER_R == FX_SHATTER_L + 1,
                "FX_* L/R pairs must stay adjacent");
 static inline uint8_t fx_for(uint8_t fx_l, uint8_t side) { return (uint8_t)(fx_l + side); }
 
@@ -367,26 +369,34 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
 
     /* Combinations with the defender's status and the caster's next spell.
      * Shatter: force cracks frost for one more point. Thaw: ember and frost
-     * cancel into steam at the doorstep instead of trading statuses.
-     * Follow-through: a landed hit feeds a prepared spell of its element. */
+     * cancel into steam at the doorstep and leave the defender scalded
+     * instead of trading statuses. Follow-through: a landed hit feeds a
+     * prepared spell of its element. Each one marks the city as a combo. */
     uint8_t element = SPELL_DESC_ELEMENT(desc);
     bool thaw = (element == ELEM_EMBER && def->status == STATUS_FROZEN) ||
                 (element == ELEM_FROST && def->status == STATUS_BURNING);
     bool shatter = direct && element == ELEM_FORCE && def->status == STATUS_FROZEN;
+    bool combo = shatter || thaw;
     if (shatter)
         direct = min_u8((uint8_t)(direct + 1u), 4u);
     if (thaw)
         field_add(w, FIELD_STEAM, residue_doorstep_zone(opponent), caster, desc, 0u);
-    if (shatter || thaw) {
+    if (combo) {
         def->status = STATUS_NONE;
         def->status_intensity = 0;
         def->status_ticks = 0;
+        if (thaw)
+            apply_status(def, STATUS_SCALDED, 1u);
     }
     sim_wizard_t *cz = &w->wiz[caster];
     uint8_t next = SPELL_DESC_MAGNITUDE(cz->prepared_desc);
     if (direct && cz->inc_state == INC_PREPARED && next < 4u &&
-        SPELL_DESC_ELEMENT(cz->prepared_desc) == element)
+        SPELL_DESC_ELEMENT(cz->prepared_desc) == element) {
         cz->prepared_desc = desc_set_magnitude(cz->prepared_desc, (uint8_t)(next + 1u));
+        combo = true;
+    }
+    if (combo)
+        w->aftermath_flavor = AFTER_FLAVOR_COMBO;
 
     wizard_interrupt(def);
     if (direct) {
@@ -405,6 +415,8 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
     else if (direct > 1u)
         aftermath_start(w, opponent, AFTER_PANIC, direct);
     set_outcome(w, shattered      ? fx_for(FX_WARD_SHATTER_L, opponent)
+                   : shatter      ? fx_for(FX_SHATTER_L, opponent)
+                   : thaw         ? FX_THAW
                    : direct == 1u ? FX_COMPLAINT
                                   : fx_for(FX_IMPACT_L, opponent));
     if (!def->hp)
@@ -414,9 +426,10 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
 static void spell_spawn(sim_world_t *w, uint8_t side, uint32_t desc) {
     sim_wizard_t *wz = &w->wiz[side];
     if (wz->status == STATUS_DISRUPTED) {
+        /* Level 3 takes two magnitude, never below 1. */
         uint8_t mag = SPELL_DESC_MAGNITUDE(desc);
-        if (mag > 1u)
-            desc = desc_set_magnitude(desc, (uint8_t)(mag - 1u));
+        uint8_t cut = wz->status_intensity >= 3u ? 2u : 1u;
+        desc = desc_set_magnitude(desc, mag > cut ? (uint8_t)(mag - cut) : 1u);
         wz->status = STATUS_NONE;
         wz->status_intensity = 0;
         wz->status_ticks = 0;
@@ -448,7 +461,7 @@ static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
                 desc = desc_set_magnitude(desc, (uint8_t)(mag + 1u));
             wz->echo_desc = 0;
             wz->echo_ticks = 0;
-            w->aftermath_flavor = AFTER_FLAVOR_ECHO;
+            w->aftermath_flavor = AFTER_FLAVOR_COMBO;
             aftermath_start(w, side, AFTER_INSPECT, 1u);
         }
     } else if (desc_is_echo(desc)) {
@@ -1364,7 +1377,8 @@ static void field_meet(sim_world_t *w) {
         aftermath_start(w, SIM_SIDE_L, AFTER_INSPECT, 1u);
         aftermath_start(w, SIM_SIDE_R, AFTER_INSPECT, 1u);
     }
-    set_outcome(w, FX_RESIDUE);
+    w->aftermath_flavor = AFTER_FLAVOR_COMBO;
+    set_outcome(w, FX_FIELD_CLASH);
 }
 
 void duel_combat_field_step(sim_world_t *w) {
@@ -1439,9 +1453,12 @@ static void status_step(sim_world_t *w, uint8_t side) {
     sim_wizard_t *wz = &w->wiz[side];
     if (!wz->status_ticks || wz->status == STATUS_NONE)
         return;
-    if (wz->status == STATUS_BURNING && !wz->status_burned &&
-        wz->status_ticks <= STATUS_BURN_AT_TICKS) {
-        wz->status_burned = 1;
+    /* status_burned counts bites: level 3 bites again 50 ticks later. */
+    uint8_t bites = wz->status_intensity >= 3u ? 2u : 1u;
+    if (wz->status == STATUS_BURNING && wz->status_burned < bites &&
+        wz->status_ticks <=
+            (wz->status_burned ? STATUS_BURN_AGAIN_AT_TICKS : STATUS_BURN_AT_TICKS)) {
+        wz->status_burned++;
         if (wz->hp) {
             wz->hp--;
             wz->regen_ticks = SIM_REGEN_TICKS;
@@ -1683,7 +1700,9 @@ void duel_combat_collect_side(sim_world_t *w, sim_inputs_t in, uint8_t side, uin
 void duel_combat_regeneration_step(sim_world_t *w) {
     for (uint8_t side = 0; side < 2; side++) {
         sim_wizard_t *wz = &w->wiz[side];
-        if (wz->life != LIFE_ACTIVE || wz->hp >= SIM_MAX_HP || !wz->regen_ticks)
+        /* A scalded wizard does not regenerate until the scald ends. */
+        if (wz->life != LIFE_ACTIVE || wz->hp >= SIM_MAX_HP || !wz->regen_ticks ||
+            wz->status == STATUS_SCALDED)
             continue;
         uint16_t burn = wz->stance == DUEL_STANCE_MEDITATE ? 2u : 1u;
         wz->regen_ticks = wz->regen_ticks > burn ? (uint16_t)(wz->regen_ticks - burn) : 0u;

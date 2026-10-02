@@ -351,19 +351,19 @@ static void test_combo_thaw(void) {
     put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 3u);
     land_spell(&world, SIM_SIDE_L,
                carrier(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 1u, STATUS_BURNING));
-    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_NONE &&
-           world.wiz[SIM_SIDE_R].status_intensity == 0u && world.field[0].kind == FIELD_STEAM &&
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_SCALDED &&
+           world.wiz[SIM_SIDE_R].status_intensity == 1u && world.field[0].kind == FIELD_STEAM &&
            world.field[0].zone == SIM_RESIDUE_DOORSTEP_R);
 
     sim_init(&world, SIMF_AUTHORITATIVE, 0u);
     put_status(&world.wiz[SIM_SIDE_L], STATUS_BURNING, 1u);
     land_spell(&world, SIM_SIDE_R,
                carrier(SPELL_PROJECTILE, ELEM_FROST, PAY_HYBRID, TRAJ_MID, 2u, STATUS_FROZEN));
-    EXPECT(world.wiz[SIM_SIDE_L].status == STATUS_NONE &&
+    EXPECT(world.wiz[SIM_SIDE_L].status == STATUS_SCALDED &&
            world.wiz[SIM_SIDE_L].hp == SIM_MAX_HP - 1u && world.field[0].kind == FIELD_STEAM &&
            world.field[0].zone == SIM_RESIDUE_DOORSTEP_L);
 
-    /* Both slots full: the status still clears, but no third field appears. */
+    /* Both slots full: the scald still lands, but no third field appears. */
     sim_init(&world, SIMF_AUTHORITATIVE, 0u);
     uint32_t force1 = carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 1u, STATUS_NONE);
     put_field(&world, 0u, FIELD_RUNE, SIM_RESIDUE_DOORSTEP_L, SIM_SIDE_L, force1, 0u, 200u);
@@ -371,7 +371,7 @@ static void test_combo_thaw(void) {
     put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 1u);
     land_spell(&world, SIM_SIDE_L,
                carrier(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 1u, STATUS_BURNING));
-    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_NONE && world.field[0].kind == FIELD_RUNE &&
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_SCALDED && world.field[0].kind == FIELD_RUNE &&
            world.field[1].kind == FIELD_RUNE);
     CHECK(ok, "combo_c2_ember_thaws_frozen_frost_quenches_burning_into_doorstep_steam");
 }
@@ -410,7 +410,7 @@ static void test_combo_singularity_swallows(void) {
     put_field(&world, 1u, FIELD_SINGULARITY, SIM_RESIDUE_MID_L, SIM_SIDE_L, sing, 1u, 50u);
     idle_step(&world);
     EXPECT(world.field[0].kind == FIELD_NONE && world.field[1].kind == FIELD_SINGULARITY &&
-           world.field[1].aux == 2u && world.fx_kind == FX_RESIDUE);
+           world.field[1].aux == 2u && world.fx_kind == FX_FIELD_CLASH);
 
     /* The charge caps at 4, and fields in different zones are left alone. */
     sim_init(&world, SIMF_AUTHORITATIVE, 0u);
@@ -491,12 +491,60 @@ static void test_combo_echo_merge(void) {
             EXPECT(world.spell[SIM_SIDE_L].active &&
                    SPELL_DESC_MAGNITUDE(world.spell[SIM_SIDE_L].descriptor) == 3u &&
                    world.wiz[SIM_SIDE_L].echo_desc == 0u &&
-                   world.aftermath_flavor == AFTER_FLAVOR_ECHO);
+                   world.aftermath_flavor == AFTER_FLAVOR_COMBO);
         else
             EXPECT(SPELL_DESC_MAGNITUDE(world.spell[SIM_SIDE_L].descriptor) == 2u &&
                    world.wiz[SIM_SIDE_L].echo_desc == echo);
     }
     CHECK(ok, "combo_c7_release_folds_a_same_element_pending_echo_into_one_bigger_spell");
+}
+
+/* RS-D4 O4 and O6: each combination names its own outcome and marks the
+ * city with the combo flavor. */
+static void test_combo_outcomes_and_flavor(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 1u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE));
+    EXPECT(world.fx_kind == FX_SHATTER_R && world.aftermath_flavor == AFTER_FLAVOR_COMBO);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_L], STATUS_FROZEN, 1u);
+    land_spell(&world, SIM_SIDE_R,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 1u, STATUS_NONE));
+    EXPECT(world.fx_kind == FX_SHATTER_L);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_BURNING, 1u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FROST, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE));
+    EXPECT(world.fx_kind == FX_THAW && world.aftermath_flavor == AFTER_FLAVOR_COMBO);
+
+    uint32_t wall3 =
+        carrier(SPELL_GROUND_WAVE, ELEM_FROST, PAY_STATUS, TRAJ_GROUND, 3u, STATUS_FROZEN);
+    uint32_t trap2 = carrier(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE, TRAJ_GROUND, 2u, STATUS_NONE);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_L, wall3, 3u, 50u);
+    put_field(&world, 1u, FIELD_TRAP, SIM_RESIDUE_MID_R, SIM_SIDE_R, trap2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.fx_kind == FX_FIELD_CLASH && world.aftermath_flavor == AFTER_FLAVOR_COMBO);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_SINGULARITY, SIM_RESIDUE_MID_R, SIM_SIDE_R,
+              carrier(SPELL_SINGULARITY, ELEM_VOID, PAY_DAMAGE, TRAJ_MID, 1u, STATUS_NONE), 1u,
+              50u);
+    put_field(&world, 1u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_L, wall3, 3u, 50u);
+    idle_step(&world);
+    EXPECT(world.aftermath_flavor == AFTER_FLAVOR_COMBO);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    world.wiz[SIM_SIDE_L].prepared_desc = trap2;
+    world.wiz[SIM_SIDE_L].prepared = 1u;
+    world.wiz[SIM_SIDE_L].inc_state = INC_PREPARED;
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE));
+    EXPECT(world.aftermath_flavor == AFTER_FLAVOR_COMBO);
+    CHECK(ok, "combo_outcomes_shatter_thaw_field_clash_and_combo_flavor");
 }
 
 void run_fields_magic_tests(void) {
@@ -510,4 +558,5 @@ void run_fields_magic_tests(void) {
     test_combo_opposed_fields_grind();
     test_combo_follow_through();
     test_combo_echo_merge();
+    test_combo_outcomes_and_flavor();
 }

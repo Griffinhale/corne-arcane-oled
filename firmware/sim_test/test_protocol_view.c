@@ -716,6 +716,64 @@ static void test_v13_spell_outcome_wire(void) {
     CHECK(ok, "v13_outcome_bit4_range_scalded_status_and_combine_flag_rebuilds_echo");
 }
 
+/* RS-D4 O3-O7 on the wire: what the master sim now produces reaches the
+ * slave half through an accepted packet. */
+static void test_rs6_outcomes_reach_the_slave(void) {
+    bool ok = true;
+    sim_world_t w;
+    duel_snapshot_t packet;
+    duel_rx_state_t receiver = {0};
+
+    /* A thaw: scalded status, the thaw flash and the combo flavor. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[1].status = STATUS_FROZEN;
+    w.wiz[1].status_intensity = 1;
+    w.wiz[1].status_ticks = 100;
+    land_spell(&w, 0,
+               SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 2, STATUS_NONE,
+                               INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0));
+    test_encode_snapshot(&w, 3u, 1u, &packet);
+    EXPECT(duel_rx_accept(&receiver, &packet, false));
+    duel_view_wizard_t slave = duel_view_wizard(&receiver.last.view, 1);
+    EXPECT(slave.status == STATUS_SCALDED && slave.status_intensity == 1 &&
+           VIEW_OVERLAY_FX(receiver.last.view.outcome_overlay) == FX_THAW &&
+           INCANTATION_AFTERMATH_FLAVOR(receiver.last.revision) == AFTER_FLAVOR_COMBO);
+
+    /* A shatter names the defender's side. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[1].status = STATUS_FROZEN;
+    w.wiz[1].status_intensity = 1;
+    w.wiz[1].status_ticks = 100;
+    land_spell(&w, 0,
+               SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2, STATUS_NONE,
+                               INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0));
+    test_encode_snapshot(&w, 3u, 2u, &packet);
+    EXPECT(duel_rx_accept(&receiver, &packet, false) &&
+           VIEW_OVERLAY_FX(receiver.last.view.outcome_overlay) == FX_SHATTER_R &&
+           duel_view_wizard(&receiver.last.view, 1).hp == SIM_MAX_HP - 3u);
+
+    /* A level-3 status reads as level 3 on the slave. */
+    w.wiz[1].status = STATUS_BURNING;
+    w.wiz[1].status_intensity = 3;
+    w.wiz[1].status_ticks = 150;
+    test_encode_snapshot(&w, 3u, 3u, &packet);
+    EXPECT(duel_rx_accept(&receiver, &packet, false) &&
+           duel_view_wizard(&receiver.last.view, 1).status_intensity == 3);
+
+    /* STUDY can turn a combining spell void (variant 3's affinity). Void
+     * spells never carry the combine flag, so the packet stays valid. */
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.spell[0].active = 1;
+    w.spell[0].descriptor =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_VOID, PAY_DAMAGE, TRAJ_MID, 3, STATUS_NONE,
+                        INTERACT_COMBINE, TEMPO_FLOWING, TREND_IRREGULAR, 1);
+    w.spell[0].progress = 40;
+    duel_view_t view;
+    duel_view_from_world(&w, &view);
+    EXPECT(duel_view_valid(&view) && !VIEW_W2_COMBINE(view.wizard[0][2]));
+    CHECK(ok, "rs6_scalded_thaw_shatter_level3_and_void_combine_reach_the_slave");
+}
+
 /* Tempo picks the in-flight modifier art: rapid and frantic spells trail a
  * speed streak, deliberate ones wear a heavy casing, flowing ones neither.
  * Element and magnitude tier are unchanged, and both halves derive the kind
@@ -754,4 +812,5 @@ void run_protocol_view_tests(void) {
     test_v12_field_projection_and_reconnect();
     test_v13_spell_outcome_wire();
     test_display_kind_modifier();
+    test_rs6_outcomes_reach_the_slave();
 }

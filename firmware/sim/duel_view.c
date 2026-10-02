@@ -92,7 +92,10 @@ void duel_view_from_world(const sim_world_t *world, duel_view_t *view) {
         view->wizard[side][0] = VIEW_W0_PACK(wz->hp, ward, wz->rearm_lock);
         view->wizard[side][1] = VIEW_W1_PACK(wz->life, wz->variant, wz->status);
         const sim_spell_t *sp = &world->spell[side];
-        bool combine = sp->active && SPELL_DESC_INTERACTION(sp->descriptor) == INTERACT_COMBINE;
+        /* STUDY can turn a combining spell void (variant 3's affinity), and
+         * the validator refuses a void combine, so void never carries it. */
+        bool combine = sp->active && SPELL_DESC_INTERACTION(sp->descriptor) == INTERACT_COMBINE &&
+                       SPELL_DESC_ELEMENT(sp->descriptor) != ELEM_VOID;
         view->wizard[side][2] = VIEW_W2_PACK(wz->pose, wz->inc_state, wz->ward_focus, combine);
         if (sp->active)
             view_spell_pack(view, side, sp->descriptor, sp->progress);

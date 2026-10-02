@@ -923,6 +923,73 @@ static void test_bilateral_beam_and_aftermath_split_render(void) {
     CHECK(ok, "incantation_bilateral_beam_and_aftermath_split_render_convergence");
 }
 
+/* RS-D4 O3: a level-3 status hurts more than a level-2 one. */
+static void test_level_three_status_effects(void) {
+    bool ok = true;
+    sim_world_t w;
+    uint32_t bolt = SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 1,
+                                    STATUS_NONE, INTERACT_SOLID, TEMPO_RAPID, TREND_STEADY, 0);
+
+    /* Disrupted 3 takes two magnitude off the next spell, never below 1. */
+    static const uint8_t disrupt[][3] = {{3, 2, 2}, {3, 3, 1}, {2, 3, 1}};
+    for (size_t i = 0; i < sizeof disrupt / sizeof disrupt[0]; i++) {
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        w.wiz[0].inc_state = INC_PREPARED;
+        w.wiz[0].prepared = 1;
+        w.wiz[0].prepared_desc = desc_set_magnitude_for_test(bolt, disrupt[i][0]);
+        w.wiz[0].status = STATUS_DISRUPTED;
+        w.wiz[0].status_intensity = disrupt[i][1];
+        w.wiz[0].status_ticks = 100;
+        idle_step(&w);
+        EXPECT(w.spell[0].active && SPELL_DESC_MAGNITUDE(w.spell[0].descriptor) == disrupt[i][2]);
+    }
+
+    /* Marked 3 strips a ward pip on every lane, not only homing and area. */
+    for (uint8_t level = 2; level <= 3; level++) {
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        w.wiz[1].ward_strength = 3;
+        w.wiz[1].ward_focus = 0;
+        w.wiz[1].status = STATUS_MARKED;
+        w.wiz[1].status_intensity = level;
+        w.wiz[1].status_ticks = 100;
+        land_spell(&w, 0, bolt);
+        EXPECT(w.wiz[1].hp == (level == 3 ? SIM_MAX_HP - 1u : SIM_MAX_HP));
+    }
+
+    /* Burning 3 bites twice, 75 and 125 ticks in; burning 2 bites once. */
+    for (uint8_t level = 2; level <= 3; level++) {
+        sim_init(&w, SIMF_AUTHORITATIVE, 0);
+        w.wiz[1].status = STATUS_BURNING;
+        w.wiz[1].status_intensity = level;
+        w.wiz[1].status_ticks = (uint8_t)(100u + (level - 1u) * 25u);
+        wait_ticks(&w, 100);
+        EXPECT(w.wiz[1].hp == SIM_MAX_HP - 1u);
+        wait_ticks(&w, 50);
+        EXPECT(w.wiz[1].status == STATUS_NONE &&
+               w.wiz[1].hp == (level == 3 ? SIM_MAX_HP - 2u : SIM_MAX_HP - 1u));
+    }
+    CHECK(ok, "status_level_three_disrupts_two_marks_every_lane_and_burns_twice");
+}
+
+/* RS-D4 O5: a scalded wizard does not regenerate until the scald ends. */
+static void test_scalded_pauses_regeneration(void) {
+    bool ok = true;
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    w.wiz[0].hp = SIM_MAX_HP - 1u;
+    w.wiz[0].regen_ticks = 1;
+    w.wiz[0].status = STATUS_SCALDED;
+    w.wiz[0].status_intensity = 1;
+    w.wiz[0].status_ticks = 100;
+    idle_step(&w);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP - 1u && w.wiz[0].regen_ticks == 1u);
+    wait_ticks(&w, 99);
+    EXPECT(w.wiz[0].status == STATUS_NONE && w.wiz[0].hp == SIM_MAX_HP - 1u);
+    idle_step(&w);
+    EXPECT(w.wiz[0].hp == SIM_MAX_HP);
+    CHECK(ok, "status_scalded_pauses_regeneration_for_its_duration");
+}
+
 void run_combat_lifecycle_tests(void) {
     test_independent_accumulators_and_commit();
     test_forced_cap_and_rearm();
@@ -948,4 +1015,6 @@ void run_combat_lifecycle_tests(void) {
     test_ground_chain_summon_and_trap();
     test_swarm_gather_launch_and_tempo_motion();
     test_bilateral_beam_and_aftermath_split_render();
+    test_level_three_status_effects();
+    test_scalded_pauses_regeneration();
 }
