@@ -78,6 +78,20 @@ in
         module definitions rather than from the package's unit directory.
       '';
     };
+    waylandFocusProducer = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the Sway and Hyprland focus producers as user services. Each starts
+        only in its own compositor's session, gated on SWAYSOCK or
+        HYPRLAND_INSTANCE_SIGNATURE, which the session must import into the
+        user manager. Hyprland needs 0.56 or later running a Lua config; under
+        a legacy config the producer exits with a message.
+
+        Both report only which profile in profiles.py the focused window
+        matched, never what the application calls itself beyond that.
+      '';
+    };
     typingHelper = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -192,6 +206,36 @@ in
           RestartSec = 2;
         };
       };
+
+    systemd.user.services.corne-arcane-focus-sway = lib.mkIf cfg.waylandFocusProducer {
+      description = "Corne Arcane Sway focus producer";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session-pre.target" "corne-arcane-host.service" ];
+      unitConfig.ConditionEnvironment = "SWAYSOCK";
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${corneArcaneHost}/bin/corne-arcane-focus-sway";
+        Restart = "always";
+        RestartSec = 2;
+      };
+    };
+
+    systemd.user.services.corne-arcane-focus-hyprland = lib.mkIf cfg.waylandFocusProducer {
+      description = "Corne Arcane Hyprland focus producer";
+      wantedBy = [ "graphical-session.target" ];
+      partOf = [ "graphical-session.target" ];
+      after = [ "graphical-session-pre.target" "corne-arcane-host.service" ];
+      unitConfig.ConditionEnvironment = "HYPRLAND_INSTANCE_SIGNATURE";
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${corneArcaneHost}/bin/corne-arcane-focus-hyprland";
+        Restart = "always";
+        RestartSec = 2;
+        # 3: legacy config or a release without repl; retrying cannot help.
+        RestartPreventExitStatus = 3;
+      };
+    };
 
     # Type=dbus: started once it owns its own bus name, which the daemon never
     # listens to. Unplugging the keyboard ends it; Restart brings it back.

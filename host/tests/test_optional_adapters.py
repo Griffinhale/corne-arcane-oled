@@ -291,6 +291,8 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
                 "corne-arcane-vial",
                 "corne-arcane-flash",
                 "corne-arcane-focus-x11",
+                "corne-arcane-focus-sway",
+                "corne-arcane-focus-hyprland",
                 "corne-arcane-typing",
                 "corne-arcane-keymap",
                 "corne-arcane-tray",

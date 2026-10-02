@@ -1,0 +1,16 @@
+[Unit]
+Description=Corne Arcane Sway focus producer
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Opt-in. Only a Sway session has SWAYSOCK, and only once the session has put it
+# into the user manager (systemctl --user import-environment SWAYSOCK).
+ConditionEnvironment=SWAYSOCK
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/corne-arcane-focus-sway
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

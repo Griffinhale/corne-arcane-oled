@@ -28,6 +28,7 @@ Description: privacy-redacted desktop semantics for a Corne Arcane keyboard
  denied permission or absent extension disables only that one adapter.
  .
  Focus reporting needs a producer. GNOME Shell 45 or newer and KWin under
- Plasma 6 are supported; on other desktops focus semantics stay at their
- default and everything else still works. dbus-user-session is required
+ Plasma 6 are supported, and opt-in user services cover plain X11, Sway, and
+ Hyprland 0.56 or later with a Lua config; on other desktops focus semantics
+ stay at their default and everything else still works. dbus-user-session is required
  because the daemon runs as a systemd user service (Type=dbus).

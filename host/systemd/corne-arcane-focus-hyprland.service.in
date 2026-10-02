@@ -1,0 +1,19 @@
+[Unit]
+Description=Corne Arcane Hyprland focus producer
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+# Opt-in. Needs Hyprland 0.56 or later running a Lua config. Only a Hyprland
+# session has HYPRLAND_INSTANCE_SIGNATURE in the user manager.
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/corne-arcane-focus-hyprland
+Restart=always
+RestartSec=2
+# Exit status 3: this Hyprland cannot answer the focus query (legacy
+# config or an older release). Retrying would not change that.
+RestartPreventExitStatus=3
+
+[Install]
+WantedBy=graphical-session.target

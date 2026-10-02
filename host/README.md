@@ -9,8 +9,9 @@ The package provides the `corne-arcane` desktop app and the
 `corne-arcane-vial`, `corne-arcane-flash`, `corne-arcane-keymap` and
 `corne-arcane-tray` commands, the
 `io.github.Griffinhale.CorneArcane` D-Bus name, and the
-`corne-arcane-host.service` user unit. `corne-arcane-focus-x11` is an opt-in
-focus producer for X11 sessions, `corne-arcane-tray` an opt-in tray icon, and
+`corne-arcane-host.service` user unit. `corne-arcane-focus-x11`,
+`corne-arcane-focus-sway` and `corne-arcane-focus-hyprland` are opt-in focus
+producers for X11, Sway and Hyprland sessions, `corne-arcane-tray` an opt-in tray icon, and
 `corne-arcane-typing` an opt-in typing helper for a keyboard without this
 firmware.
 
@@ -141,7 +142,25 @@ everything else still works and focus simply stays at its default.
   `x11-utils` (`services.corne-arcane-host.x11FocusProducer = true;` on NixOS). Use this on XFCE, Cinnamon, i3, or Plasma 5. It reports the
   `WM_CLASS` pair and `_GTK_APPLICATION_ID`, which between them cover the
   spellings the profile table knows.
-- Other Wayland compositors have no producer yet.
+- Sway: enable `corne-arcane-focus-sway.service`
+  (`services.corne-arcane-host.waylandFocusProducer = true;` on NixOS). The
+  unit starts only when the user manager has `SWAYSOCK`, so the Sway config
+  needs `exec systemctl --user import-environment SWAYSOCK` before it starts
+  the units. The producer polls the focused node id and asks Sway, with `nop`
+  commands, which profile's aliases the window's `app_id` (or, under Xwayland,
+  `WM_CLASS`) matches. It never requests the window tree or subscribes to
+  events, because both carry every window's title. An application no profile
+  knows reports as nothing, so unknown applications are not told apart.
+- Hyprland 0.56 or later with a Lua config (`hyprland.lua`): enable
+  `corne-arcane-focus-hyprland.service` (the same NixOS option). It asks the
+  compositor, through `repl`, for the focused window's class and nothing else.
+  Under a legacy `hyprland.conf`, or an older release, it exits with a message
+  and does not fall back to the event socket, which broadcasts titles. As with
+  Sway, the session must import `HYPRLAND_INSTANCE_SIGNATURE` into the user
+  manager.
+- Other Wayland compositors (niri, river, labwc, Wayfire) have no producer:
+  none offers a way to learn the focused application without also receiving
+  window titles.
 
 An application nothing recognizes still works; it just presents as the default
 scene. To find out which ones those are, run the producer in the foreground and
@@ -150,6 +169,9 @@ use the desktop normally:
 ```bash
 corne-arcane-focus-x11 --verbose      # prints each identity and what it matched
 ```
+
+The Sway and Hyprland producers take `--verbose` too, but print only the
+profile matched or `UNMATCHED`, because that is all they report.
 
 Anything printed as `UNMATCHED` is a missing alias in
 `arcane_host/profiles.py`. Profiles draw only from the Scene and Floor values
@@ -260,6 +282,7 @@ Stop the services first, in your own session:
 
 ```bash
 systemctl --user disable --now corne-arcane-host.service corne-arcane-focus-x11.service \
+  corne-arcane-focus-sway.service corne-arcane-focus-hyprland.service \
   corne-arcane-tray.service corne-arcane-typing.service
 ```
 

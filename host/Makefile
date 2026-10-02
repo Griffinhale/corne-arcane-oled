@@ -52,6 +52,8 @@ COMMANDS = \
 	vial:vial_launcher \
 	flash:flash \
 	focus-x11:focus_x11 \
+	focus-sway:focus_sway \
+	focus-hyprland:focus_hyprland \
 	typing:typing_helper \
 	keymap:keymap_profiles \
 	tray:tray
@@ -94,12 +96,13 @@ install-commands:
 		echo "  generated $$name -> arcane_host.$$module"; \
 	done
 
-# Generated from .in templates so ExecStart follows PREFIX. The focus producer
-# is opt-in: it is installed but never enabled, because KWin and GNOME Shell
+# Generated from .in templates so ExecStart follows PREFIX. The focus producers
+# are opt-in: installed but never enabled, because KWin and GNOME Shell
 # report focus from inside the compositor and need no helper. The tray icon is
 # opt-in too: GNOME shows it only with the AppIndicator extension. So is the
 # typing helper, which reads a keyboard and must never run unasked.
-UNITS = corne-arcane-host corne-arcane-focus-x11 corne-arcane-tray corne-arcane-typing
+UNITS = corne-arcane-host corne-arcane-focus-x11 corne-arcane-focus-sway \
+	corne-arcane-focus-hyprland corne-arcane-tray corne-arcane-typing
 
 install-units:
 	install -d "$(DESTDIR)$(UNITDIR)"
