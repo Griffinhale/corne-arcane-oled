@@ -212,12 +212,15 @@ Nothing below is auto-enabled by the package.
   a microphone is capturing, as in a joined call, the city is QUIET. That reads
   ALSA's capture state in `/proc/asound`, running or not, so no app, stream or
   caller name is involved. A Bluetooth headset microphone and the camera are not
-  seen.
+  seen. The keyboard gets all of this folded into the city's mode and
+  intensity; the desktop city gets it at finer detail through `HostSignals`
+  (see [Control interface](#control-interface)).
 
 Shell hooks report only monotonic duration, integer status, normalized
 repository state, and a bare "still running" call once a command passes ten
 seconds, which holds the city at ACTIVE or busier until it ends. GNOME reports only application/desktop identifiers, and the
-X11 producer reads only `WM_CLASS`; neither can reach a window title. Firefox
+X11 producer reads only `WM_CLASS`, and the Sway and Hyprland producers learn
+only which profile the focused app matches; none can reach a window title. Firefox
 sends exactly event kind and intensity; it never reads or sends URLs, titles,
 content, history, forms, referrers, or typed text. An absent bus, denied
 permission, missing native host, or extension restart disables only that

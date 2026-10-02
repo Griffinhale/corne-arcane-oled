@@ -38,6 +38,15 @@ pixels wide because it holds both canvases with a separator between them.
 **Civic**. Everything about the city instead of the duel: districts, rooms,
 residents, couriers, aftermath.
 
+**Civic mode**. How the host wants the city to behave, one of four values in
+the civic byte. NORMAL is the default. QUIET hides the ambient workload, for
+do-not-disturb, a running work timer, an idle or locked session, or a joined
+call. URGENT is a critical notification or an incoming call, even under
+do-not-disturb; the tower's peak flashes twice, 300 ms apart, then rests until
+the burst repeats about every 15 seconds.
+STRAIN is the host near the end of its disk, memory or CPU, drawn as a still
+hazard sign. When several apply, URGENT wins, then STRAIN, then QUIET.
+
 **Complexity**. A 0 to 255 score compiled from a burst of typing: how many
 keys, how many distinct ones, direction changes, layer changes, chords, and
 rhythm changes. Drives spell magnitude, which forms are available, ward
@@ -93,6 +102,12 @@ scene, and they are reviewed as images instead of regenerated on failure.
 **Half**. One side of the keyboard. The **master** is the half connected to
 USB, and it runs the simulation. The **slave** renders what it is sent and
 never recomputes the world.
+
+**Host signals**. The opt-in readings the daemon takes with `--host-signals`:
+idle or locked, system load, calls and critical notifications, and long
+commands still running. The keyboard gets them folded into *civic mode* and
+intensity. The desktop city gets them at finer detail, as six small enums.
+No caller, title, command or process name exists at either level.
 
 **Incantation**. One burst of typing, from the first keypress until it commits.
 The thing that gets compiled into a descriptor.
@@ -168,6 +183,8 @@ and taunting are drawn locally and never cross the link.
 **Status**. A condition carried by a spell: burning, frozen, disrupted, or
 marked, following the element.
 
+**Strain**. See *civic mode*.
+
 **Temperament** (authoritative). A 0 to 7 value, neutral at 4. Taking damage
 heats a wizard, having a spell stopped cools one. Shifts form weights and
 wind-up speed.
@@ -181,6 +198,8 @@ clock inside its mechanics.
 
 **Trajectory**. The path a spell takes: ground, low, mid, high, roof,
 returning, area, or homing.
+
+**Urgent**. See *civic mode*.
 
 **Voice**. One of the two architectural styles the city is drawn in: curved and
 astral on the left canvas, squared and mechanical on the right.

@@ -128,7 +128,12 @@ Zsh, Bash, and Fish hooks emit only monotonic duration, integer exit status,
 normalized repository state, and an argument-free "still running" call for a
 command past ten seconds. KWin, the opt-in GNOME extension, and the
 opt-in X11 producer report only application/desktop identifiers; the X11
-producer reads a single window property and cannot name a title-bearing one. The optional Firefox bridge carries only
+producer reads a single window property and cannot name a title-bearing one.
+The opt-in Sway and Hyprland producers report only the matched profile. Sway's
+sends only a seat query and `nop` probes that answer match or no match, and
+Hyprland's sends one fixed `repl` request that returns the window class. Neither
+can ask for the window tree or open the event stream, which carry titles, so
+compositors that offer nothing narrower get no producer. The optional Firefox bridge carries only
 browser event kind and intensity; it has no URL, title, history, content, form,
 referrer, or typed-text channel. Missing buses, extensions, permissions, or
 native hosts disable only their adapter.
