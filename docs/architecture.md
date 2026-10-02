@@ -93,6 +93,9 @@ They also draw the health three as mood, never as a reading: body activity is
 kites over the town, one up per activity ring closed; heart mood is the
 windmill on the hill, furled when still and turning when lively; and last
 night's sleep is who sits on the roof ridge, a cockerel or a sleeping cat.
+Three of them reach the square as well: body activity sets how many residents
+are out, tempo how fast they walk, and a short night sits some of them down
+while a full one quickens everyone's step.
 The four panel layouts are the keyboard's own screens and draw none of them.
 
 Every Raw HID write is a request/response exchange. A valid VIA echo must arrive

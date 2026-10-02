@@ -351,6 +351,45 @@ class CityRendererTests(unittest.TestCase):
                     else:
                         self.assertEqual(frame, base, f"{layout} {field}={value}")
 
+    # The signals that reach the residents on the square (DC4): body activity
+    # is how many are out, tempo how fast they walk, sleep whether they step
+    # briskly or sit down. The other four keep to their own objects.
+    PLAZA_FIELDS = ("tempo", "body", "sleep")
+
+    def plaza_pixels(self, layout: Layout, packed: CityInput) -> bytes:
+        renderer = CityRenderer(scale=1, layout=layout)
+        _, _, pixels = renderer.render(packed, 400_000, 12).partition(b"255\n")
+        # Everything below the ground line, which is 48 rows up from the bottom
+        # of either town composition.
+        return pixels[(renderer.height - 47) * renderer.width :]
+
+    def test_the_square_answers_to_body_tempo_and_sleep(self) -> None:
+        for layout in self.TYPING_LAYOUTS:
+            base = digest(self.plaza_pixels(layout, resting_input(seed=0x5A)))
+            for field, kind in OFF_KEYBOARD_FIELDS:
+                plazas = {base}
+                for value in kind:
+                    if value == 0:
+                        continue
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, int(value))
+                    plaza = digest(self.plaza_pixels(layout, packed))
+                    if field in self.PLAZA_FIELDS:
+                        self.assertNotIn(plaza, plazas, f"{layout} {field}={value}")
+                        plazas.add(plaza)
+                    else:
+                        self.assertEqual(plaza, base, f"{layout} {field}={value}")
+
+    def test_the_square_is_deterministic_in_its_signals(self) -> None:
+        # Same inputs, same square, in a fresh renderer: nothing on the plaza
+        # reads a clock or a random source.
+        for layout in self.TYPING_LAYOUTS:
+            packed = resting_input(seed=0x5A)
+            packed.tempo, packed.body, packed.sleep = 4, 4, 2
+            first = self.plaza_pixels(layout, packed)
+            self.assertEqual(first, self.plaza_pixels(layout, packed), layout)
+            self.assertGreater(first.count(255), 0, layout)
+
     def test_scale_is_bounded(self) -> None:
         with self.assertRaisesRegex(CityError, "scale"):
             CityRenderer(scale=0)

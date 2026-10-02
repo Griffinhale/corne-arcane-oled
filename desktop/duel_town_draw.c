@@ -2509,11 +2509,27 @@ static void draw_plaza(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
  * at their own depths, and the ones nearest the front are drawn a little
  * larger -- the plaza has forty-eight rows to cross and a single size read as
  * a row of identical tokens.
+ *
+ * The desktop's own signals reach the square as well as the objects above it.
+ * Body activity says how many residents are out, typing tempo how fast they
+ * walk, and last night's sleep whether they step briskly or some of them sit
+ * down on the stones. Every one of them is a level, never a reading, and a
+ * shell that sends none of them gets the square exactly as it was.
  */
-static void draw_residents(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
-    uint8_t mode = DUEL_CIVIC_MODE(r->civic);
+static void draw_residents(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
+                           const town_health_t *health, uint32_t frame) {
+    bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
     bool night = sky_is_night(DUEL_SECONDARY_SKY_PHASE(r->secondary));
-    int walkers = mode == DUEL_CIVIC_MODE_QUIET ? 2 : 6;
+    /* Two out in a quiet town and six otherwise, until a watch says how much
+     * of a day it has been: three on a resting day up to nine on a full one,
+     * and a quiet town keeps to a third of that. */
+    int walkers = quiet ? 2 : 6;
+    if (health->body != DUEL_CITY_BODY_NONE)
+        walkers = quiet ? 1 + (int)health->body / 2 : 1 + (int)health->body * 2;
+    /* A short night sits every third resident down; a full one puts a spring
+     * in everyone's step. */
+    bool tired = health->sleep == DUEL_CITY_SLEEP_TIRED;
+    unsigned step_bit = health->sleep == DUEL_CITY_SLEEP_RESTED ? 1u : 2u;
     /* Somebody is watching the sky whenever there is something in it. */
     bool spell_up = duel_view_spell(&r->view, SIM_SIDE_L, r->seed).active ||
                     duel_view_spell(&r->view, SIM_SIDE_R, r->seed).active;
@@ -2521,14 +2537,29 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, uint32_t frame
     for (int i = 0; i < walkers; i++) {
         uint32_t h = town_hash(r->seed, (uint32_t)i + 40u);
         int span = CANVAS_W + 40;
-        int speed = 1 + (int)(h & 1u);
+        /* Each walks at a pace of their own until the typing summary names
+         * one: a deliberate typist's town strolls, a frantic one's hurries. */
+        int speed = typing->tempo != DUEL_CITY_TEMPO_NONE ? (int)typing->tempo : 1 + (int)(h & 1u);
         int phase = (int)(((uint32_t)r->civic_phase * (uint32_t)speed + (h >> 4)) % (uint32_t)span);
         int x = (h & 2u) ? phase - 20 : span - phase - 20;
         int y = GROUND_Y + 14 + (int)((h >> 6) % 34u);
-        bool stepping = ((r->civic_phase + (uint8_t)i) & 2u) == 0u;
+        bool stepping = ((r->civic_phase + (uint8_t)i) & step_bit) == 0u;
         bool watching = spell_up && ((h >> 11) & 3u) == 0u;
         /* Nearer the bottom of the square is nearer the viewer. */
         int big = y > GROUND_Y + 32 ? 1 : 0;
+
+        if (tired && (i % 3) == 1) {
+            /* Sat down where the paving is, cloak pooled round them, feet out
+             * in front: the one figure on the square that does not cross it. */
+            x = 20 + (int)((h >> 4) % (uint32_t)(CANVAS_W - 40));
+            fill_rect(fb, x - 2 - big, y - 5, x + 2 + big, y - 2, true);
+            fill_rect(fb, x - 1, y - 8 - big, x + 1, y - 6 - big, true);
+            px(fb, x - 3 - big, y - 1, true);
+            px(fb, x + 3 + big, y - 1, true);
+            px(fb, x - 4 - big, y, true);
+            px(fb, x + 4 + big, y, true);
+            continue;
+        }
 
         /* Cloak flaring to the hem, a head above it, and legs that alternate.
          * Four pixels of shoulder is what makes it a person and not a post. */
@@ -2592,5 +2623,5 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_spells(fb, r, frame);
     draw_outcome(fb, r);
     draw_plaza(fb, r, frame);
-    draw_residents(fb, r, frame);
+    draw_residents(fb, r, typing, health, frame);
 }

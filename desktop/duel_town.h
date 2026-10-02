@@ -45,7 +45,7 @@ bool town_fb_get(const town_fb_t *fb, int x, int y);
  * the town exactly as it was before these fields existed.
  */
 typedef struct {
-    uint8_t tempo;      /* DUEL_CITY_TEMPO_*: the pennant */
+    uint8_t tempo;      /* DUEL_CITY_TEMPO_*: the pennant, and the walkers' pace */
     uint8_t spread;     /* DUEL_CITY_SPREAD_*: the chimney smoke */
     uint8_t row;        /* DUEL_CITY_ROW_*: which lantern on the tower is lit */
     uint8_t row_spread; /* DUEL_CITY_ROW_SPREAD_*: how many lanterns hang */
@@ -57,9 +57,9 @@ typedef struct {
  * draws them, and all zero draws the town as it was before they existed.
  */
 typedef struct {
-    uint8_t body;  /* DUEL_CITY_BODY_*: kites over the town */
+    uint8_t body;  /* DUEL_CITY_BODY_*: kites over the town, and how many are out */
     uint8_t heart; /* DUEL_CITY_HEART_*: the windmill on the hill */
-    uint8_t sleep; /* DUEL_CITY_SLEEP_*: who is on the roof ridge */
+    uint8_t sleep; /* DUEL_CITY_SLEEP_*: who is on the roof ridge, and who sits down */
 } town_health_t;
 
 /* One frame of the town from one projection. `frame` is the animation phase;
