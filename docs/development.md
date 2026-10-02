@@ -45,6 +45,7 @@ What each target needs before you run it:
 | `make city-lib` | a C11 compiler |
 | `make web-lib`, `make web-parity` | clang with the `wasm32` target, `wasm-ld`, Node and Python. On Nix, `llvmPackages.clang-unwrapped` (see below). |
 | `make swift-parity` | Swift: `nix-shell apple/shell.nix` on Linux, the system Swift on macOS |
+| `make lint-swift` | the same Swift, plus swift-format at the version in the Makefile. No distribution ships that exact release, so `make swift-format-tool` builds it from its tag into `.scratch/` once; the Swift shell puts it on `PATH`. |
 | `make release-build` | the `qmk` CLI and a Vial-QMK checkout at `VIAL_QMK_REVISION`, found through `QMK_ROOT` |
 | `make release-budget` | `arm-none-eabi-size`, from gcc-arm-embedded |
 | `python3 -m arcane_host.city_window` | tkinter (`python3-tk` on Debian) |

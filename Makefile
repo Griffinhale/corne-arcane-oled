@@ -1,6 +1,6 @@
 .PHONY: test mechanics-test visual-test noalloc-check check-sources city-lib \
 	web-lib web-parity web-clean swift-parity release-build release-budget hygiene \
-	format format-check lint lint-js lint-swift
+	format format-check lint lint-js lint-swift swift-format-tool
 
 # Same rule as C_SOURCES below: a glob, so a new directory of Python has to be
 # named here or it quietly stops being linted.
@@ -16,8 +16,12 @@ C_SOURCES := $(shell find firmware desktop web -type f \( -name '*.c' -o -name '
 JS_SOURCES := $(shell find web host -type f \( -name '*.js' -o -name '*.mjs' \) \
 	! -path 'web/tools/.parity/*' | sort)
 SWIFT_SOURCES := Package.swift $(shell find apple -type f -name '*.swift' | sort)
-# The swift-format release lint-swift is measured against; CI builds this tag.
+# The swift-format release lint-swift is measured against. swift-format-tool
+# builds this tag into .scratch/, for CI and for the Swift shell alike: the
+# nixpkgs package that calls itself 5.10.1 answers `--version` with 508.0.0,
+# so no shell can ship the pinned release.
 SWIFT_FORMAT_VERSION := 510.1.0
+SWIFT_FORMAT_TOOL := .scratch/swift-format
 
 test: check-sources mechanics-test visual-test noalloc-check city-lib
 	cd host && ./run_tests.sh
@@ -103,7 +107,19 @@ lint-js:
 	@echo "PASS lint-js: $(words $(JS_SOURCES)) files"
 
 # Needs a Swift toolchain, so it is not part of lint; the Swift CI job runs it.
+# A swift-format-tool build is preferred over whatever swift-format is on PATH.
+lint-swift: export PATH := $(CURDIR)/$(SWIFT_FORMAT_TOOL)/.build/release:$(PATH)
 lint-swift:
 	@swift-format --version | grep -qx '$(SWIFT_FORMAT_VERSION)' || \
-		{ echo "FAIL lint-swift: swift-format $(SWIFT_FORMAT_VERSION) is required" >&2; exit 1; }
+		{ echo "FAIL lint-swift: swift-format $(SWIFT_FORMAT_VERSION) is required (make swift-format-tool)" >&2; exit 1; }
 	swift-format lint --strict --configuration .swift-format $(SWIFT_SOURCES)
+
+# Builds the pinned swift-format from its tag, once; a build at another
+# version is replaced. Needs the Swift toolchain (nix develop .#apple).
+swift-format-tool:
+	@if ! $(SWIFT_FORMAT_TOOL)/.build/release/swift-format --version 2>/dev/null | grep -qx '$(SWIFT_FORMAT_VERSION)'; then \
+		rm -rf $(SWIFT_FORMAT_TOOL); \
+		git clone --depth 1 --branch $(SWIFT_FORMAT_VERSION) https://github.com/swiftlang/swift-format.git $(SWIFT_FORMAT_TOOL); \
+		swift build -c release --product swift-format --package-path $(SWIFT_FORMAT_TOOL); \
+	fi
+	@$(SWIFT_FORMAT_TOOL)/.build/release/swift-format --version

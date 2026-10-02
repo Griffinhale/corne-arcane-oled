@@ -28,6 +28,13 @@ pkgs.mkShell {
   shellHook = ''
     export CC=clang CXX=clang++
     export LD_LIBRARY_PATH=${pkgs.swiftPackages.Dispatch}/lib:${pkgs.swiftPackages.Foundation}/lib:$LD_LIBRARY_PATH
+    # lint-swift wants the swift-format release pinned in the Makefile. nixpkgs
+    # has no package that answers with that version, so `make swift-format-tool`
+    # builds it from its tag into .scratch/, and this shell puts it first.
+    export PATH="$PWD/.scratch/swift-format/.build/release:$PATH"
     echo "swift $(swift --version 2>/dev/null | head -1 | sed 's/.*version //') — swift build, swift run city-check"
+    if ! swift-format --version 2>/dev/null | grep -qx "$(sed -n 's/^SWIFT_FORMAT_VERSION := //p' Makefile)"; then
+      echo "swift-format: run make swift-format-tool before make lint-swift"
+    fi
   '';
 }

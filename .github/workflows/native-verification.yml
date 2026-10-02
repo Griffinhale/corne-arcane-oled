@@ -177,13 +177,4 @@ jobs:
           key: swift-format-${{ steps.swift-format.outputs.version }}-${{ runner.os }}
 
       - name: Swift lint
-        env:
-          VERSION: ${{ steps.swift-format.outputs.version }}
-        run: |
-          tool=.scratch/swift-format
-          if [ ! -x "$tool/.build/release/swift-format" ]; then
-            rm -rf "$tool"
-            git clone --depth 1 --branch "$VERSION" https://github.com/swiftlang/swift-format.git "$tool"
-            swift build -c release --product swift-format --package-path "$tool"
-          fi
-          PATH="$PWD/$tool/.build/release:$PATH" make lint-swift
+        run: make swift-format-tool lint-swift
