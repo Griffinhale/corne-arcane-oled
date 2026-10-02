@@ -249,6 +249,9 @@ static void apply_status(sim_wizard_t *wz, uint8_t status, uint8_t intensity) {
     /* Clamp both ends: intensity 0 would wrap the duration math below.
      * (All current callers pass magnitude >= 1; this guards refactors.) */
     intensity = intensity ? min_u8(intensity, 3u) : 1u;
+    /* Deepen: the same status again steps one intensity higher. */
+    if (status == wz->status && intensity <= wz->status_intensity)
+        intensity = min_u8((uint8_t)(wz->status_intensity + 1u), 3u);
     if (intensity < wz->status_intensity)
         return;
     wz->status = status;
@@ -312,6 +315,9 @@ _Static_assert(FX_IMPACT_R == FX_IMPACT_L + 1 && FX_DEFLECT_R == FX_DEFLECT_L + 
                "FX_* L/R pairs must stay adjacent");
 static inline uint8_t fx_for(uint8_t fx_l, uint8_t side) { return (uint8_t)(fx_l + side); }
 
+static bool field_add(sim_world_t *w, uint8_t kind, uint8_t zone, uint8_t owner, uint32_t desc,
+                      uint8_t aux);
+
 static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
                             uint8_t damage_override) {
     uint8_t opponent = (uint8_t)(caster ^ 1u);
@@ -359,6 +365,29 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
             direct = direct > absorbed ? (uint8_t)(direct - absorbed) : (uint8_t)0;
     }
 
+    /* Combinations with the defender's status and the caster's next spell.
+     * Shatter: force cracks frost for one more point. Thaw: ember and frost
+     * cancel into steam at the doorstep instead of trading statuses.
+     * Follow-through: a landed hit feeds a prepared spell of its element. */
+    uint8_t element = SPELL_DESC_ELEMENT(desc);
+    bool thaw = (element == ELEM_EMBER && def->status == STATUS_FROZEN) ||
+                (element == ELEM_FROST && def->status == STATUS_BURNING);
+    bool shatter = direct && element == ELEM_FORCE && def->status == STATUS_FROZEN;
+    if (shatter)
+        direct = min_u8((uint8_t)(direct + 1u), 4u);
+    if (thaw)
+        field_add(w, FIELD_STEAM, residue_doorstep_zone(opponent), caster, desc, 0u);
+    if (shatter || thaw) {
+        def->status = STATUS_NONE;
+        def->status_intensity = 0;
+        def->status_ticks = 0;
+    }
+    sim_wizard_t *cz = &w->wiz[caster];
+    uint8_t next = SPELL_DESC_MAGNITUDE(cz->prepared_desc);
+    if (direct && cz->inc_state == INC_PREPARED && next < 4u &&
+        SPELL_DESC_ELEMENT(cz->prepared_desc) == element)
+        cz->prepared_desc = desc_set_magnitude(cz->prepared_desc, (uint8_t)(next + 1u));
+
     wizard_interrupt(def);
     if (direct) {
         def->hp = direct >= def->hp ? 0u : (uint8_t)(def->hp - direct);
@@ -369,7 +398,7 @@ static void resolve_payload(sim_world_t *w, uint8_t caster, uint32_t desc,
         /* A landed hit stains the defender's doorstep. */
         residue_deposit(w, residue_doorstep_zone(opponent), SPELL_DESC_ELEMENT(desc), 1u);
     }
-    if ((payload == PAY_STATUS || payload == PAY_HYBRID) && def->hp)
+    if ((payload == PAY_STATUS || payload == PAY_HYBRID) && def->hp && !thaw)
         apply_status(def, SPELL_DESC_STATUS(desc), magnitude);
     if (direct == 1u)
         aftermath_start(w, opponent, AFTER_COMPLAINT, 1u);
@@ -410,7 +439,19 @@ static void spell_spawn(sim_world_t *w, uint8_t side, uint32_t desc) {
 
 static void spell_release(sim_world_t *w, uint8_t side, uint32_t desc) {
     sim_wizard_t *wz = &w->wiz[side];
-    if (desc_is_echo(desc) && !wz->echo_desc) {
+    if (wz->echo_desc) {
+        /* Echo merge: a same-element release folds the pending repeat into
+         * itself. It consumes the echo and never arms a new one. */
+        if (SPELL_DESC_ELEMENT(wz->echo_desc) == SPELL_DESC_ELEMENT(desc)) {
+            uint8_t mag = SPELL_DESC_MAGNITUDE(desc);
+            if (mag < 4u)
+                desc = desc_set_magnitude(desc, (uint8_t)(mag + 1u));
+            wz->echo_desc = 0;
+            wz->echo_ticks = 0;
+            w->aftermath_flavor = AFTER_FLAVOR_ECHO;
+            aftermath_start(w, side, AFTER_INSPECT, 1u);
+        }
+    } else if (desc_is_echo(desc)) {
         wz->echo_desc = desc_set_magnitude(desc, (uint8_t)(SPELL_DESC_MAGNITUDE(desc) - 1u));
         wz->echo_ticks = 25u;
     }
@@ -1296,7 +1337,38 @@ void duel_combat_spell_step(sim_world_t *w, uint8_t side) {
     }
 }
 
+/* Two fields meeting in one zone, checked once per tick before the timers.
+ * A singularity swallows the other field for one charge. Otherwise opposed
+ * fields grind: the lower magnitude clears, and a tie clears both. Steam
+ * belongs to no side, so it never grinds. Both rules only remove fields. */
+_Static_assert(SIM_FIELD_SLOTS == 2u, "field meetings compare exactly two slots");
+static void field_meet(sim_world_t *w) {
+    sim_field_t *a = &w->field[0], *b = &w->field[1];
+    if (a->kind == FIELD_NONE || b->kind == FIELD_NONE || a->zone != b->zone)
+        return;
+    if ((a->kind == FIELD_SINGULARITY) != (b->kind == FIELD_SINGULARITY)) {
+        sim_field_t *sing = a->kind == FIELD_SINGULARITY ? a : b;
+        field_clear(sing == a ? b : a);
+        sing->aux = min_u8((uint8_t)(sing->aux + 1u), 4u);
+        sing->descriptor = desc_set_magnitude(sing->descriptor, sing->aux);
+        aftermath_start(w, sing->owner, AFTER_INSPECT, sing->aux);
+    } else {
+        if (a->owner == b->owner || a->kind == FIELD_STEAM || b->kind == FIELD_STEAM)
+            return;
+        uint8_t ma = SPELL_DESC_MAGNITUDE(a->descriptor);
+        uint8_t mb = SPELL_DESC_MAGNITUDE(b->descriptor);
+        if (ma <= mb)
+            field_clear(a);
+        if (mb <= ma)
+            field_clear(b);
+        aftermath_start(w, SIM_SIDE_L, AFTER_INSPECT, 1u);
+        aftermath_start(w, SIM_SIDE_R, AFTER_INSPECT, 1u);
+    }
+    set_outcome(w, FX_RESIDUE);
+}
+
 void duel_combat_field_step(sim_world_t *w) {
+    field_meet(w);
     for (uint8_t slot = 0; slot < SIM_FIELD_SLOTS; slot++) {
         sim_field_t *field = &w->field[slot];
         if (field->kind == FIELD_NONE)

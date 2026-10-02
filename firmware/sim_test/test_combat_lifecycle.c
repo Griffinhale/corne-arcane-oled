@@ -333,10 +333,10 @@ static void test_status_dominance_and_effects(void) {
     bool ok = true;
     EXPECT(w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3);
     uint8_t duration = w.wiz[1].status_ticks;
-    uint32_t weak_burn =
-        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_LOW, 1, STATUS_BURNING,
+    uint32_t weak_mark =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_VOID, PAY_STATUS, TRAJ_LOW, 1, STATUS_MARKED,
                         INTERACT_PHASE, TEMPO_FLOWING, TREND_STEADY, 0);
-    land_spell(&w, 0, weak_burn);
+    land_spell(&w, 0, weak_mark);
     EXPECT(w.wiz[1].status == STATUS_FROZEN && w.wiz[1].status_intensity == 3 &&
            w.wiz[1].status_ticks < duration);
 

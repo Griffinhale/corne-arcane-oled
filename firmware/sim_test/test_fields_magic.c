@@ -281,7 +281,10 @@ static void test_field_creation_lifetime_fallback_echo_and_bloom(void) {
     EXPECT(world.spell[0].active && SPELL_DESC_MAGNITUDE(pending_echo) == 2u &&
            world.wiz[0].echo_ticks == 25u);
     world.spell[0] = (sim_spell_t){0};
-    world.wiz[0].pending_desc = desc_set_magnitude_for_test(echo, 4u);
+    /* A different element, so the second cast cannot merge (C7) either. */
+    world.wiz[0].pending_desc =
+        SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 4u, STATUS_NONE,
+                        INTERACT_COMBINE, TEMPO_RAPID, TREND_IRREGULAR, 0u);
     world.wiz[0].inc_state = INC_WINDUP;
     world.wiz[0].cast_windup = 1u;
     idle_step(&world);
@@ -307,8 +310,204 @@ static void test_field_creation_lifetime_fallback_echo_and_bloom(void) {
     CHECK(ok, "fields_transfer_lifetime_slot_exhaustion_fallback_echo_bound_and_bloom_cap");
 }
 
+/* ---- combination rules (RS-D3 C1-C7) ------------------------------------ */
+
+static void put_status(sim_wizard_t *wizard, uint8_t status, uint8_t intensity) {
+    wizard->status = status;
+    wizard->status_intensity = intensity;
+    wizard->status_ticks = 100u;
+}
+
+static void test_combo_shatter(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 1u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE));
+    EXPECT(world.wiz[SIM_SIDE_R].hp == SIM_MAX_HP - 3u &&
+           world.wiz[SIM_SIDE_R].status == STATUS_NONE);
+
+    /* The bonus never lifts a hit past the magnitude cap. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 1u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 4u, STATUS_NONE));
+    EXPECT(world.wiz[SIM_SIDE_R].hp == SIM_MAX_HP - 4u);
+
+    /* A pure status force spell deals no direct damage, so nothing shatters. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 2u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_STATUS, TRAJ_MID, 1u, STATUS_MARKED));
+    EXPECT(world.wiz[SIM_SIDE_R].hp == SIM_MAX_HP && world.wiz[SIM_SIDE_R].status == STATUS_FROZEN);
+    CHECK(ok, "combo_c1_force_hit_shatters_frozen_for_one_extra_capped_damage");
+}
+
+static void test_combo_thaw(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 3u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 1u, STATUS_BURNING));
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_NONE &&
+           world.wiz[SIM_SIDE_R].status_intensity == 0u && world.field[0].kind == FIELD_STEAM &&
+           world.field[0].zone == SIM_RESIDUE_DOORSTEP_R);
+
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_status(&world.wiz[SIM_SIDE_L], STATUS_BURNING, 1u);
+    land_spell(&world, SIM_SIDE_R,
+               carrier(SPELL_PROJECTILE, ELEM_FROST, PAY_HYBRID, TRAJ_MID, 2u, STATUS_FROZEN));
+    EXPECT(world.wiz[SIM_SIDE_L].status == STATUS_NONE &&
+           world.wiz[SIM_SIDE_L].hp == SIM_MAX_HP - 1u && world.field[0].kind == FIELD_STEAM &&
+           world.field[0].zone == SIM_RESIDUE_DOORSTEP_L);
+
+    /* Both slots full: the status still clears, but no third field appears. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    uint32_t force1 = carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 1u, STATUS_NONE);
+    put_field(&world, 0u, FIELD_RUNE, SIM_RESIDUE_DOORSTEP_L, SIM_SIDE_L, force1, 0u, 200u);
+    put_field(&world, 1u, FIELD_RUNE, SIM_RESIDUE_DOORSTEP_L, SIM_SIDE_L, force1, 0u, 200u);
+    put_status(&world.wiz[SIM_SIDE_R], STATUS_FROZEN, 1u);
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_EMBER, PAY_STATUS, TRAJ_MID, 1u, STATUS_BURNING));
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_NONE && world.field[0].kind == FIELD_RUNE &&
+           world.field[1].kind == FIELD_RUNE);
+    CHECK(ok, "combo_c2_ember_thaws_frozen_frost_quenches_burning_into_doorstep_steam");
+}
+
+static void test_combo_deepen(void) {
+    bool ok = true;
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    uint32_t mark = carrier(SPELL_PROJECTILE, ELEM_VOID, PAY_STATUS, TRAJ_MID, 1u, STATUS_MARKED);
+    land_spell(&world, SIM_SIDE_L, mark);
+    EXPECT(world.wiz[SIM_SIDE_R].status_intensity == 1u);
+    land_spell(&world, SIM_SIDE_L, mark);
+    EXPECT(world.wiz[SIM_SIDE_R].status_intensity == 2u &&
+           world.wiz[SIM_SIDE_R].status_ticks > 100u);
+    land_spell(&world, SIM_SIDE_L, mark);
+    land_spell(&world, SIM_SIDE_L, mark);
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_MARKED &&
+           world.wiz[SIM_SIDE_R].status_intensity == 3u &&
+           world.wiz[SIM_SIDE_R].status_ticks <= 150u);
+
+    /* A weaker different status is still ignored. */
+    land_spell(&world, SIM_SIDE_L,
+               carrier(SPELL_PROJECTILE, ELEM_VOID, PAY_STATUS, TRAJ_MID, 1u, STATUS_DISRUPTED));
+    EXPECT(world.wiz[SIM_SIDE_R].status == STATUS_MARKED &&
+           world.wiz[SIM_SIDE_R].status_intensity == 3u);
+    CHECK(ok, "combo_c3_same_status_deepens_one_step_capped_at_three");
+}
+
+static void test_combo_singularity_swallows(void) {
+    bool ok = true;
+    sim_world_t world;
+    uint32_t sing = carrier(SPELL_SINGULARITY, ELEM_VOID, PAY_DAMAGE, TRAJ_MID, 1u, STATUS_NONE);
+    uint32_t force2 = carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_RUNE, SIM_RESIDUE_MID_L, SIM_SIDE_R, force2, 0u, 50u);
+    put_field(&world, 1u, FIELD_SINGULARITY, SIM_RESIDUE_MID_L, SIM_SIDE_L, sing, 1u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].kind == FIELD_NONE && world.field[1].kind == FIELD_SINGULARITY &&
+           world.field[1].aux == 2u && world.fx_kind == FX_RESIDUE);
+
+    /* The charge caps at 4, and fields in different zones are left alone. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_SINGULARITY, SIM_RESIDUE_MID_R, SIM_SIDE_R, sing, 4u, 50u);
+    put_field(&world, 1u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_R, force2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].aux == 4u && world.field[1].kind == FIELD_NONE);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_SINGULARITY, SIM_RESIDUE_MID_R, SIM_SIDE_R, sing, 1u, 50u);
+    put_field(&world, 1u, FIELD_WALL, SIM_RESIDUE_MID_L, SIM_SIDE_L, force2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].aux == 1u && world.field[1].kind == FIELD_WALL);
+    CHECK(ok, "combo_c4_singularity_swallows_a_same_zone_field_for_capped_charge");
+}
+
+static void test_combo_opposed_fields_grind(void) {
+    bool ok = true;
+    sim_world_t world;
+    uint32_t wall3 =
+        carrier(SPELL_GROUND_WAVE, ELEM_FROST, PAY_STATUS, TRAJ_GROUND, 3u, STATUS_FROZEN);
+    uint32_t trap2 = carrier(SPELL_CONJURE, ELEM_FORCE, PAY_DAMAGE, TRAJ_GROUND, 2u, STATUS_NONE);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_L, wall3, 3u, 50u);
+    put_field(&world, 1u, FIELD_TRAP, SIM_RESIDUE_MID_R, SIM_SIDE_R, trap2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].kind == FIELD_WALL && world.field[0].aux == 3u &&
+           world.field[1].kind == FIELD_NONE && world.aftermath[SIM_SIDE_L].kind == AFTER_INSPECT &&
+           world.aftermath[SIM_SIDE_R].kind == AFTER_INSPECT);
+
+    /* A tie clears both; a shared owner leaves both standing. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_L,
+              desc_set_magnitude_for_test(wall3, 2u), 2u, 50u);
+    put_field(&world, 1u, FIELD_TRAP, SIM_RESIDUE_MID_R, SIM_SIDE_R, trap2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].kind == FIELD_NONE && world.field[1].kind == FIELD_NONE);
+    sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+    put_field(&world, 0u, FIELD_WALL, SIM_RESIDUE_MID_R, SIM_SIDE_R, wall3, 3u, 50u);
+    put_field(&world, 1u, FIELD_TRAP, SIM_RESIDUE_MID_R, SIM_SIDE_R, trap2, 2u, 50u);
+    idle_step(&world);
+    EXPECT(world.field[0].kind == FIELD_WALL && world.field[1].kind == FIELD_TRAP);
+    CHECK(ok, "combo_c5_opposed_same_zone_fields_grind_lower_magnitude_clears");
+}
+
+static void test_combo_follow_through(void) {
+    bool ok = true;
+    sim_world_t world;
+    uint32_t ember2 = carrier(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE);
+    static const uint8_t elements[] = {ELEM_EMBER, ELEM_FROST};
+    for (size_t i = 0; i < sizeof elements; i++) {
+        sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+        world.wiz[SIM_SIDE_L].prepared_desc =
+            carrier(SPELL_PROJECTILE, elements[i], PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE);
+        world.wiz[SIM_SIDE_L].prepared = 1u;
+        world.wiz[SIM_SIDE_L].inc_state = INC_PREPARED;
+        land_spell(&world, SIM_SIDE_L, ember2);
+        EXPECT(world.wiz[SIM_SIDE_R].hp == SIM_MAX_HP - 2u && world.spell[SIM_SIDE_L].active &&
+               SPELL_DESC_MAGNITUDE(world.spell[SIM_SIDE_L].descriptor) == (i ? 2u : 3u));
+    }
+    CHECK(ok, "combo_c6_landed_hit_feeds_a_same_element_prepared_spell_one_magnitude");
+}
+
+static void test_combo_echo_merge(void) {
+    bool ok = true;
+    sim_world_t world;
+    uint32_t echo = carrier(SPELL_PROJECTILE, ELEM_FORCE, PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE);
+    static const uint8_t elements[] = {ELEM_FORCE, ELEM_EMBER};
+    for (size_t i = 0; i < sizeof elements; i++) {
+        sim_init(&world, SIMF_AUTHORITATIVE, 0u);
+        world.wiz[SIM_SIDE_L].echo_desc = echo;
+        world.wiz[SIM_SIDE_L].echo_ticks = 10u;
+        world.wiz[SIM_SIDE_L].pending_desc =
+            carrier(SPELL_PROJECTILE, elements[i], PAY_DAMAGE, TRAJ_MID, 2u, STATUS_NONE);
+        world.wiz[SIM_SIDE_L].inc_state = INC_WINDUP;
+        world.wiz[SIM_SIDE_L].cast_windup = 1u;
+        idle_step(&world);
+        if (!i)
+            EXPECT(world.spell[SIM_SIDE_L].active &&
+                   SPELL_DESC_MAGNITUDE(world.spell[SIM_SIDE_L].descriptor) == 3u &&
+                   world.wiz[SIM_SIDE_L].echo_desc == 0u &&
+                   world.aftermath_flavor == AFTER_FLAVOR_ECHO);
+        else
+            EXPECT(SPELL_DESC_MAGNITUDE(world.spell[SIM_SIDE_L].descriptor) == 2u &&
+                   world.wiz[SIM_SIDE_L].echo_desc == echo);
+    }
+    CHECK(ok, "combo_c7_release_folds_a_same_element_pending_echo_into_one_bigger_spell");
+}
+
 void run_fields_magic_tests(void) {
     test_signature_predicates_and_physical_fixtures();
     test_field_collision_table_and_order();
     test_field_creation_lifetime_fallback_echo_and_bloom();
+    test_combo_shatter();
+    test_combo_thaw();
+    test_combo_deepen();
+    test_combo_singularity_swallows();
+    test_combo_opposed_fields_grind();
+    test_combo_follow_through();
+    test_combo_echo_merge();
 }
