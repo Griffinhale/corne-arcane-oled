@@ -219,6 +219,15 @@ uint8_t incantation_tempo_trend(const sim_incantation_t *inc) {
     return INCANTATION_AMBIENCE_PACK(true, tempo, trend);
 }
 
+uint8_t spell_desc_display_kind(uint32_t desc) {
+    uint8_t tempo = SPELL_DESC_TEMPO(desc);
+    uint8_t mod = tempo >= TEMPO_RAPID        ? MOD_SWIFT
+                  : tempo == TEMPO_DELIBERATE ? MOD_HEAVY
+                                              : MOD_NONE;
+    return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(SPELL_DESC_ELEMENT(desc), mod, PAY_IMPACT),
+                               SPELL_DESC_MAGNITUDE(desc) - 1u);
+}
+
 uint8_t incantation_signature(uint32_t desc) {
     if (!SPELL_DESC_VALID(desc))
         return SPELL_SIGNATURE_BASE;

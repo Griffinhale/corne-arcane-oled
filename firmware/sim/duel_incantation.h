@@ -25,14 +25,7 @@
  * Tempo picks the modifier: rapid and frantic spells trail a speed streak,
  * deliberate ones wear a heavy casing. The master's spell spawn and the
  * slave's view both derive it here. */
-static inline uint8_t spell_desc_display_kind(uint32_t desc) {
-    uint8_t tempo = SPELL_DESC_TEMPO(desc);
-    uint8_t mod = tempo >= TEMPO_RAPID        ? MOD_SWIFT
-                  : tempo == TEMPO_DELIBERATE ? MOD_HEAVY
-                                              : MOD_NONE;
-    return DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(SPELL_DESC_ELEMENT(desc), mod, PAY_IMPACT),
-                               SPELL_DESC_MAGNITUDE(desc) - 1u);
-}
+uint8_t spell_desc_display_kind(uint32_t desc);
 
 enum { INC_IDLE = 0, INC_COLLECTING = 1, INC_WINDUP = 2, INC_PREPARED = 3, INC_REARM = 4 };
 #define INCANTATION_IDLE_COMMIT_TICKS  13

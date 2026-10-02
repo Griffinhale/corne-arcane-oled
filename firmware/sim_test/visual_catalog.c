@@ -1214,7 +1214,8 @@ static void build_catalog(void) {
     }
 
     /* Status on the right half, mirrored, and both wizards statused at once.
-     * Only BURNING draws intensity (see above), so the others take one. */
+     * BURNING is pinned per intensity here; the others at intensity 3, and at
+     * 1 and 2 in the status_r_*_1/_2 scenes further down. */
     static const char *status_name[] = {"", "burning", "frozen", "disrupted", "marked"};
     for (uint8_t status = STATUS_BURNING; status <= STATUS_MARKED; status++) {
         uint8_t top = status == STATUS_BURNING ? 3u : 1u;
@@ -1466,6 +1467,68 @@ static void build_catalog(void) {
             snprintf(name, sizeof name, "spell_tempo_%s_%s", tempo_element[element],
                      m ? "saturated" : "medium");
             add_case(name, &world, 6u, 0);
+        }
+
+    /* Status intensity 1 and 2 for the statuses that drew one icon before
+     * intensity art; intensity 3 is status_r_<name> above. */
+    for (uint8_t status = STATUS_FROZEN; status <= STATUS_MARKED; status++)
+        for (uint8_t intensity = 1u; intensity <= 2u; intensity++) {
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            world.wiz[SIM_SIDE_R].status = status;
+            world.wiz[SIM_SIDE_R].status_intensity = intensity;
+            world.wiz[SIM_SIDE_R].status_ticks = 125u;
+            snprintf(name, sizeof name, "status_r_%s_%u", status_name[status], intensity);
+            add_case(name, &world, status, 0);
+        }
+
+    /* Signature carriers in flight: the left spell carries the signature, the
+     * right one is the same form without it. Two samples each: the rune core,
+     * the vortex arms and the bloom petals animate by frame, and the wall
+     * rises with progress. */
+    static const struct {
+        const char *name;
+        uint32_t signature, base;
+        uint8_t progress[2];
+    } carriers[] = {
+        {"rune",
+         SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FROST, PAY_STATUS, TRAJ_GROUND, 2, STATUS_FROZEN,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         SPELL_DESC_PACK(SPELL_CONJURE, ELEM_FROST, PAY_DAMAGE, TRAJ_GROUND, 2, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         {20u, 20u}},
+        {"wall",
+         SPELL_DESC_PACK(SPELL_GROUND_WAVE, ELEM_FORCE, PAY_STATUS, TRAJ_GROUND, 3, STATUS_MARKED,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         SPELL_DESC_PACK(SPELL_GROUND_WAVE, ELEM_FORCE, PAY_DAMAGE, TRAJ_GROUND, 3, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         {30u, 70u}},
+        {"vortex",
+         SPELL_DESC_PACK(SPELL_SINGULARITY, ELEM_VOID, PAY_DAMAGE, TRAJ_HOMING, 3, STATUS_NONE,
+                         INTERACT_ABSORB, TEMPO_FLOWING, TREND_STEADY, 0),
+         SPELL_DESC_PACK(SPELL_SINGULARITY, ELEM_VOID, PAY_DAMAGE, TRAJ_AREA, 3, STATUS_NONE,
+                         INTERACT_ABSORB, TEMPO_FLOWING, TREND_STEADY, 0),
+         {150u, 150u}},
+        {"bloom",
+         SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_HYBRID, TRAJ_AREA, 3, STATUS_BURNING,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         SPELL_DESC_PACK(SPELL_PROJECTILE, ELEM_EMBER, PAY_DAMAGE, TRAJ_AREA, 3, STATUS_NONE,
+                         INTERACT_SOLID, TEMPO_FLOWING, TREND_STEADY, 0),
+         {60u, 60u}},
+    };
+    for (size_t i = 0; i < sizeof carriers / sizeof carriers[0]; i++)
+        for (uint8_t sample = 0; sample < 2u; sample++) {
+            uint32_t frame = sample * 2u;
+            char name[48];
+            sim_init(&world, SIMF_AUTHORITATIVE, 0);
+            for (uint8_t side = 0; side < 2u; side++)
+                world.spell[side] = (sim_spell_t){
+                    .active = 1,
+                    .progress = carriers[i].progress[sample],
+                    .dir = side ? -4 : 4,
+                    .descriptor = side == SIM_SIDE_L ? carriers[i].signature : carriers[i].base};
+            snprintf(name, sizeof name, "spell_carrier_%s_%u", carriers[i].name, sample);
+            add_case(name, &world, frame, 0);
         }
 
     /* Pin the entire scenario gallery under the golden determinism check.

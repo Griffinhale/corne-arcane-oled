@@ -253,6 +253,17 @@ static const uint8_t spell_glyph_rows[16][7] = {
     {0x00, 0x7F, 0x5D, 0x55, 0x5D, 0x7F, 0x00}, // void saturated
 };
 
+// Draws a 7-row, 8-column table glyph: row r at y0 + r, and column c (the MSB
+// is column 0) at x0 + c * step.
+static void draw_row_glyph(duel_fb_t *fb, const uint8_t *rows, int x0, int y0, int step) {
+    for (int r = 0; r < 7; r++) {
+        uint8_t bits = rows[r];
+        for (int x = x0; bits; x += step, bits = (uint8_t)(bits << 1))
+            if (bits & 0x80)
+                duel_fb_px(fb, x, y0 + r, true);
+    }
+}
+
 static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool lift) {
     int back = dir > 0 ? -1 : +1;
     int tier = DUEL_KIND_TIER(kind);
@@ -268,13 +279,7 @@ static void spell_glyph(duel_fb_t *fb, int x, int y, uint8_t kind, int dir, bool
     // carrier's footprint. Short is deliberately compact; medium is the
     // standard scale; long/saturated add bounded mass and trail complexity.
     int elem = DUEL_KIND_ELEMENT(kind);
-    const uint8_t *rows = spell_glyph_rows[elem * 4 + tier];
-    for (int r = 0; r < 7; r++) {
-        uint8_t bits = rows[r];
-        for (int f = -4; bits; f++, bits = (uint8_t)(bits << 1))
-            if (bits & 0x80)
-                duel_fb_px(fb, x - f * back, y + r - 3, true);
-    }
+    draw_row_glyph(fb, spell_glyph_rows[elem * 4 + tier], x + 4 * back, y - 3, -back);
     if (elem == ELEM_EMBER) {
         // The long/saturated flame tail runs past the table's 4 columns behind
         // the head.
@@ -449,6 +454,8 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
     // spell_glyph) so they clear the HP windows they overfly.
     bool low_lane = SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_LOW ||
                     SPELL_DESC_TRAJECTORY(spell->descriptor) == TRAJ_GROUND;
+    // Rune, wall, vortex and bloom add a mark to their base form's carrier.
+    uint8_t signature = incantation_signature(spell->descriptor);
     if (form == SPELL_SWARM) {
         uint8_t interval = draw_tempo_interval(spell->descriptor, 10u, 8u, 6u, 4u);
         flight = phase < 12u
@@ -565,8 +572,17 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
             duel_fb_line(fb, x - 3, y, x + 3, y);
             duel_fb_px(fb, x - 2, y - 1, true);
             duel_fb_px(fb, x + 2, y - 1, true);
-            if ((frame & 3u) == 0u)
+            if (signature == SPELL_SIGNATURE_RUNE) {
+                // A rune diamond hovers over the snare, its core blinking.
+                duel_fb_px(fb, x, y - 5, true);
+                duel_fb_px(fb, x - 1, y - 4, true);
+                duel_fb_px(fb, x + 1, y - 4, true);
                 duel_fb_px(fb, x, y - 3, true);
+                if (frame & 2u)
+                    duel_fb_px(fb, x, y - 4, true);
+            } else if ((frame & 3u) == 0u) {
+                duel_fb_px(fb, x, y - 3, true);
+            }
         } else {
             if (caster_local)
                 draw_orbiting_motes(fb, 1u + (charges > 2u), local_cx - facing * 5,
@@ -587,6 +603,28 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
         duel_fb_px(fb, x - travel_dir, y + 2, true);
         duel_fb_px(fb, x - 2 * travel_dir, y + 3, true);
+    } else if (form == SPELL_SINGULARITY && signature == SPELL_SIGNATURE_VORTEX) {
+        // A hollow eye inside four pinwheel arms that turn every other frame,
+        // riding 3 rows high so the arms clear the caster's arm and staff.
+        int vy = y - 3;
+        static const int8_t arms[2][4] = {{2, -1, 3, -2}, {1, -2, 1, -3}};
+        const int8_t *arm = arms[(frame >> 1) & 1u];
+        int ax = arm[0], ay = arm[1], bx = arm[2], by = arm[3];
+        for (int q = 0; q < 4; q++) {
+            duel_fb_px(fb, x + ax, vy + ay, true);
+            duel_fb_px(fb, x + bx, vy + by, true);
+            int t = ax;
+            ax = -ay;
+            ay = t;
+            t = bx;
+            bx = -by;
+            by = t;
+        }
+        duel_fb_px(fb, x - 1, vy, true);
+        duel_fb_px(fb, x + 1, vy, true);
+        duel_fb_px(fb, x, vy - 1, true);
+        duel_fb_px(fb, x, vy + 1, true);
+        duel_fb_px(fb, x, vy, false);
     } else if (form == SPELL_SINGULARITY) {
         int radius = progress < 128u ? 2 : progress < 192u ? 3 : 2;
         for (int d = -radius; d <= radius; d++) {
@@ -604,6 +642,18 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         int dir = caster_side == SIM_SIDE_L ? 1 : -1;
         for (int i = 0; i < 7; i++)
             duel_fb_px(fb, x - dir * i, y - (i & 1), true);
+        if (signature == SPELL_SIGNATURE_WALL) {
+            // The wall rises as it travels: a 2-px slab under a crenellated top.
+            int h = 3 + progress / 64u;
+            for (int i = 1; i < h; i++) {
+                duel_fb_px(fb, x, y - i, true);
+                duel_fb_px(fb, x - dir, y - i, true);
+            }
+            for (int i = -2; i <= 1; i++)
+                duel_fb_px(fb, x + dir * i, y - h, true);
+            duel_fb_px(fb, x - 2 * dir, y - h - 1, true);
+            duel_fb_px(fb, x + dir, y - h - 1, true);
+        }
     } else {
         spell_glyph(fb, x, y, spell->kind, travel_dir, low_lane);
     }
@@ -630,6 +680,14 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         duel_fb_px(fb, x + 3, y, true);
         duel_fb_px(fb, x, y - 3, true);
         duel_fb_px(fb, x, y + 3, true);
+        if (signature == SPELL_SIGNATURE_BLOOM) {
+            // Petals open and close between the arms.
+            int d = (frame & 2u) ? 2 : 3;
+            duel_fb_px(fb, x - d, y - d, true);
+            duel_fb_px(fb, x + d, y - d, true);
+            duel_fb_px(fb, x - d, y + d, true);
+            duel_fb_px(fb, x + d, y + d, true);
+        }
     }
 
     /* Roster voice accents are recipe-cosmetic only. */
@@ -641,6 +699,22 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
     } else if (variant == 3u)
         duel_fb_px(fb, x, y, false);
 }
+
+// FROZEN, DISRUPTED and MARKED at intensity 1-3, [(status - FROZEN) * 3 +
+// intensity - 1]. Rows run cy-4..cy+2 and column 4 (0x08) sits on cx. Each
+// step adds to the last: frost gains diagonals and then a core, disruption a
+// second zigzag and then a spark, the mark a wider chevron and then a spark.
+static const uint8_t status_rows[9][7] = {
+    {0x00, 0x00, 0x08, 0x00, 0x22, 0x00, 0x08}, // frozen 1
+    {0x00, 0x00, 0x08, 0x14, 0x22, 0x14, 0x08}, // frozen 2
+    {0x00, 0x00, 0x08, 0x14, 0x2A, 0x14, 0x08}, // frozen 3
+    {0x00, 0x00, 0x00, 0x20, 0x08, 0x02, 0x00}, // disrupted 1
+    {0x00, 0x20, 0x08, 0x22, 0x08, 0x02, 0x00}, // disrupted 2
+    {0x08, 0x20, 0x08, 0x22, 0x08, 0x02, 0x00}, // disrupted 3
+    {0x00, 0x00, 0x00, 0x14, 0x08, 0x00, 0x00}, // marked 1
+    {0x00, 0x00, 0x2A, 0x14, 0x08, 0x00, 0x00}, // marked 2
+    {0x08, 0x00, 0x2A, 0x14, 0x08, 0x00, 0x00}, // marked 3
+};
 
 void duel_combat_draw_status(duel_fb_t *fb, const duel_view_wizard_t *wz, int facing,
                              uint32_t frame) {
@@ -659,19 +733,9 @@ void duel_combat_draw_status(duel_fb_t *fb, const duel_view_wizard_t *wz, int fa
     if (wz->status == STATUS_BURNING) {
         for (int i = 0; i < wz->status_intensity; i++)
             duel_fb_px(fb, cx + i - 1, cy - phase - i, true);
-    } else if (wz->status == STATUS_FROZEN) {
-        duel_fb_px(fb, cx - 2, cy, true);
-        duel_fb_px(fb, cx + 2, cy, true);
-        duel_fb_px(fb, cx, cy - 2, true);
-        duel_fb_px(fb, cx, cy + 2, true);
-    } else if (wz->status == STATUS_DISRUPTED) {
-        duel_fb_px(fb, cx - 2, cy - 1, true);
-        duel_fb_px(fb, cx, cy, true);
-        duel_fb_px(fb, cx + 2, cy + 1, true);
-    } else {
-        duel_fb_px(fb, cx, cy, true);
-        duel_fb_px(fb, cx - 1, cy - 1, true);
-        duel_fb_px(fb, cx + 1, cy - 1, true);
+    } else if (wz->status <= STATUS_MARKED) {
+        draw_row_glyph(fb, status_rows[(wz->status - STATUS_FROZEN) * 3 + wz->status_intensity - 1],
+                       cx - 4, cy - 4, 1);
     }
 }
 
