@@ -4,7 +4,9 @@
  * A timer is only a wake-up. Every image is named by the current whole
  * renderer tick since local midnight, so skipped presentation callbacks do
  * not slow the city down. Reopening replays seed 0x5A with the current health
- * levels; the complication keeps its separate self-playing input.
+ * levels, and the body level sets the civic intensity, so the Observatory's
+ * instrument moves through its four stages with the day (R1). The complication
+ * keeps its separate self-playing input.
  */
 
 import CityKit
@@ -54,8 +56,8 @@ actor WatchCityRenderer {
                 let city = try City(seed: 0x5A, layout: .town)
                 try city.set(
                     CitySemantics(
-                        floor: .special, body: health.body,
-                        heart: health.heart, sleep: health.sleep))
+                        floor: .special, intensity: health.body.observatoryIntensity,
+                        body: health.body, heart: health.heart, sleep: health.sleep))
                 try city.seek(to: moment.worldMs) { try Task.checkCancellation() }
                 self.city = city
                 worldAnchor = moment.anchor

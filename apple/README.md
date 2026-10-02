@@ -221,7 +221,10 @@ when the scene pauses. There is no background delivery or shared widget store.
 The complications keep their existing self-playing timeline.
 
 The foreground city uses the Observatory floor. Body, heart and sleep have
-their own fields; health does not change civic intensity or request urgency.
+their own fields. The body level also sets the civic intensity (none or
+resting calm, stirring active, moving busy, full saturated), so the
+Observatory's instrument moves through its four stages with the day; heart and
+sleep keep their own marks, and health never requests urgency.
 A changed level rebuilds and seeks the city from local midnight through the
 same C-validated setter as other inputs. Empty, denied or failed reads clear
 the affected levels, leaving the Observatory city playing without health marks.

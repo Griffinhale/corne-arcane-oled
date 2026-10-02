@@ -804,7 +804,7 @@ static void draw_room_light(town_fb_t *fb, int floor, int y0, int height, uint32
  * on is not merely bigger, it has more in it.
  */
 static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int floor, bool lit,
-                               uint32_t frame, uint8_t phase) {
+                               uint8_t intensity, uint32_t frame, uint8_t phase) {
     int floor_y = y0 + height - 1;
     bool roomy = height >= ROOM_LARGE_H;
 
@@ -885,17 +885,31 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
         }
         case DUEL_CIVIC_FLOOR_SPECIAL: {
             /* The top of a wizard's tower: an orb on its tripod and a glass
-             * pointed at the sky it has all this height for. */
+             * pointed at the sky it has all this height for.
+             *
+             * The glass is the same four-stage instrument the panels draw
+             * from the civic intensity (duel_environment_draw.c): a calm
+             * host leaves it nearly level over an empty sky, and each stage
+             * up tilts it higher and finds one more star. On the keyboard
+             * the stage is the host's workload; on the watch it is the body
+             * bucket (R1), which is how the day shows in the tower. */
+            int stage = intensity & 3;
+            static const int glass_run[4] = {10, 10, 10, 7};
+            static const int glass_rise[4] = {2, 5, 9, 9};
             room_rect(fb, x0 + 6, floor_y - 11, x0 + 12, floor_y - 6, lit);
             room_vline(fb, x0 + 6, floor_y - 5, floor_y, lit);
             room_vline(fb, x0 + 12, floor_y - 5, floor_y, lit);
             room_vline(fb, x0 + 9, floor_y - 5, floor_y, lit);
-            for (int i = 0; i <= 9; i++) {
-                room_px(fb, x0 + 20 + i, floor_y - 4 - i, lit);
-                room_px(fb, x0 + 20 + i, floor_y - 3 - i, lit);
+            for (int i = 0; i < glass_run[stage]; i++) {
+                int y =
+                    floor_y - 4 - (i * glass_rise[stage] + glass_run[stage] / 2) / glass_run[stage];
+                room_px(fb, x0 + 20 + i, y, lit);
+                room_px(fb, x0 + 20 + i, y + 1, lit);
             }
             room_vline(fb, x0 + 24, floor_y - 6, floor_y, lit);
             room_hline(fb, x0 + 22, x0 + 26, floor_y, lit);
+            for (int star = 0; star < stage; star++)
+                room_px(fb, x0 + 14 + star * 2, y0 + 1 + ((star + stage) & 1), lit);
             if (roomy) {
                 /* A chart of the sky pinned to the wall, and a lamp on a
                  * chain over the orb. */
@@ -1260,7 +1274,8 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
 
         fill_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height, false);
         frame_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height);
-        draw_room_contents(fb, ROOM_X0, y0, height, slot_floor[slot], lit, frame, r->civic_phase);
+        draw_room_contents(fb, ROOM_X0, y0, height, slot_floor[slot], lit, intensity, frame,
+                           r->civic_phase);
         if (lit)
             draw_room_light(fb, slot_floor[slot], y0, height, frame);
         /* Mullions, over the top of whatever is behind them. Without them a

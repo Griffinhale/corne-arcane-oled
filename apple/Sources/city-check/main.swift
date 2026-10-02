@@ -637,6 +637,30 @@ func runHealthBucketInvariants() {
     ]
     let wrong = cases.filter { !$0.1 }.map(\.0)
     check("watch_health_buckets", wrong.isEmpty, wrong.joined(separator: ", "))
+
+    /* R1: the body bucket is the watch's civic intensity, and the intensity
+     * is the Observatory's stage, so a day's movement shows in the tower. */
+    let stages: [(String, Bool)] = [
+        ("none is calm", BodyActivity.none.observatoryIntensity == .calm),
+        ("resting is calm", BodyActivity.resting.observatoryIntensity == .calm),
+        ("stirring is active", BodyActivity.stirring.observatoryIntensity == .active),
+        ("moving is busy", BodyActivity.moving.observatoryIntensity == .busy),
+        ("full is saturated", BodyActivity.full.observatoryIntensity == .saturated),
+    ]
+    let wrongStage = stages.filter { !$0.1 }.map(\.0)
+    check(
+        "watch_observatory_stage_follows_body", wrongStage.isEmpty,
+        wrongStage.joined(separator: ", "))
+    var observatories = Set<[UInt8]>()
+    for level in CivicIntensity.allCases {
+        guard let pixels = frame(CitySemantics(floor: .special, intensity: level), layout: .town)
+        else { continue }
+        observatories.insert(pixels)
+    }
+    check(
+        "the_observatory_stage_reaches_the_town",
+        observatories.count == CivicIntensity.allCases.count,
+        "\(observatories.count) distinct town frames for \(CivicIntensity.allCases.count) stages")
 }
 
 func runInvariants() {

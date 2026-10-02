@@ -85,3 +85,19 @@ public struct HealthBuckets: Equatable, Sendable {
         return seconds >= 7 * 3_600 ? .rested : .tired
     }
 }
+
+/// On the watch, the body level also sets the civic intensity, so the
+/// Observatory's four-stage instrument moves through the day instead of
+/// standing calm (owner ruling R1, 2026-10-02). None and resting are calm,
+/// stirring is active, moving is busy, and a full day is saturated. One
+/// bucket to another, never a reading; heart and sleep keep their own marks.
+extension BodyActivity {
+    public var observatoryIntensity: CivicIntensity {
+        switch self {
+        case .none, .resting: return .calm
+        case .stirring: return .active
+        case .moving: return .busy
+        case .full: return .saturated
+        }
+    }
+}

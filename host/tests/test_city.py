@@ -253,6 +253,48 @@ class CityRendererTests(unittest.TestCase):
             shares.append(lit / ((y1 - y0) * (x1 - x0)))
         return shares
 
+    def storey_pixels(self, layout: Layout, packed: CityInput, slot: int) -> bytes:
+        renderer = CityRenderer(scale=1, layout=layout)
+        _, _, pixels = renderer.render(packed, 400_000, 12).partition(b"255\n")
+        offset = (renderer.width - 256) // 2
+        x0, x1 = (x + offset for x in self.TOWER_ROOM_X)
+        y0, y1 = self.TOWER_STOREY_ROWS[slot]
+        return b"".join(
+            pixels[y * renderer.width + x0 : y * renderer.width + x1] for y in range(y0, y1)
+        )
+
+    def test_the_observatory_stage_shows_in_the_town(self) -> None:
+        # DC3: the four-stage instrument the panels draw from the civic
+        # intensity is drawn in the Observatory room too, inside the room and
+        # not only as which landings are lit, so a watch whose intensity
+        # follows its body bucket (R1) shows the stage. The other rooms do not
+        # change between calm and active, which is what makes it the
+        # Observatory's instrument rather than a brighter tower.
+        for layout in self.TYPING_LAYOUTS:
+            rooms = set()
+            for level in Intensity:
+                civic = CivicState(floor=Floor.SPECIAL, intensity=level)
+                state = SemanticState(Scene.FOCUS, NotificationSummary(), civic)
+                rooms.add(self.storey_pixels(layout, city_input(state, seed=0x5A), 1))
+            self.assertEqual(len(rooms), len(Intensity), layout)
+            for floor in (Floor.COMMONS, Floor.RESEARCH, Floor.WORKSHOP):
+                calm, active = (
+                    self.storey_pixels(
+                        layout,
+                        city_input(
+                            SemanticState(
+                                Scene.DUEL,
+                                NotificationSummary(),
+                                CivicState(floor=floor, intensity=level),
+                            ),
+                            seed=0x5A,
+                        ),
+                        1,
+                    )
+                    for level in (Intensity.CALM, Intensity.ACTIVE)
+                )
+                self.assertEqual(calm, active, f"{layout} {floor}")
+
     def test_the_active_storey_is_lamplit_not_inverted(self) -> None:
         # A lit storey is a dark room with its furniture and its own light in
         # white, like the rest of the town, not a white block. It still holds
