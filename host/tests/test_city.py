@@ -314,14 +314,16 @@ class CityRendererTests(unittest.TestCase):
     # existed; the town and landscape moved once, reviewed, when the lit tower
     # storey stopped being drawn inverted (NF22). The resting frame holds a jam
     # in the right city, so the panels that show it moved once, reviewed, when
-    # a rare event began gathering a crowd.
+    # a rare event began gathering a crowd. The town and landscape moved
+    # again, reviewed, when they began drawing that event (DC1): the deck's
+    # damage complaint being put right, a crack and a ladder on the end house.
     RESTING_FRAMES = {
         Layout.DESK: "0b41d7c8dd9fa0b0",
         Layout.CITY: "5e29dc8ca422df26",
         Layout.LEFT: "0693730495095ab7",
         Layout.RIGHT: "5b7fcdb5d8b0fa7e",
-        Layout.TOWN: "68f2b02f5aa97c0a",
-        Layout.LANDSCAPE: "ae88f75233a95e2d",
+        Layout.TOWN: "edd528ea1cf4a040",
+        Layout.LANDSCAPE: "cef39d8431c6ebd2",
     }
     # Only the town layers draw the typing summary and the health buckets. The
     # four panel layouts are the keyboard's own two screens, and the keyboard
@@ -865,6 +867,156 @@ class TownLayoutTests(unittest.TestCase):
         right = b"".join(pixels[y * 400 + 336 : (y + 1) * 400] for y in range(240))
         self.assertGreater(left.count(255), 300)
         self.assertGreater(right.count(255), 300)
+
+
+class CivicEventState(ctypes.Structure):
+    """``civic_event_state_t``: the rare-event deck's state for one civic phase."""
+
+    _fields_ = [
+        ("id_target", ctypes.c_uint8),
+        ("phase", ctypes.c_uint8),
+        ("progress", ctypes.c_uint8),
+    ]
+
+
+@requires_library
+class TownCivicTests(unittest.TestCase):
+    """DC1: couriers, rare events and aftermath residents in the town layers.
+
+    The panels have drawn all three from the civic bytes since the Twin
+    Cities; the town read only the aftermath's spell flavor. These cases say
+    that every civic state now shows in both town compositions.
+    """
+
+    LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
+    SEED = 0x5A
+
+    @staticmethod
+    def courier(category: Category, age: int, count: int, persistent: bool = False) -> CityInput:
+        priority = Priority.CRITICAL if persistent else Priority.NORMAL
+        summary = NotificationSummary(count, category, priority, age, persistent)
+        return city_input(SemanticState(Scene.DUEL, summary, CivicState()), seed=0x5A)
+
+    def test_each_courier_state_changes_the_town(self) -> None:
+        # Kind (by category, and a persistent notice stations a sentinel in
+        # its own city), lifecycle (by age) and density (by count): every
+        # combination is its own frame, and none is the empty street.
+        routes = (
+            (Category.COMMUNICATION, False),  # messenger, left
+            (Category.TRANSFER, False),  # parcel, right
+            (Category.SYSTEM, False),  # beacon, right
+            (Category.SECURITY, False),  # sentinel, left
+            (Category.TRANSFER, True),  # sentinel, right
+        )
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = digest(renderer.render(resting_input(seed=self.SEED), 400_000, 12))
+            frames = {base}
+            for category, persistent in routes:
+                for age in (0, 1, 3, 7):
+                    for count in (1, 3, 5):
+                        packed = self.courier(category, age, count, persistent)
+                        frame = digest(renderer.render(packed, 400_000, 12))
+                        label = f"{layout} {category.name} p={persistent} age={age} n={count}"
+                        self.assertNotIn(frame, frames, label)
+                        frames.add(frame)
+
+    def deck(self) -> dict[int, tuple[int, int, int]]:
+        """The resting town's rare event for every civic phase: (id, phase, target)."""
+        library = ctypes.CDLL(str(city.library_path()))
+        library.civic_event_derive.argtypes = [
+            ctypes.c_uint8,
+            ctypes.c_uint8,
+            ctypes.c_bool,
+            ctypes.c_int8,
+        ]
+        library.civic_event_derive.restype = CivicEventState
+        states = {}
+        for phase in range(256):
+            state = library.civic_event_derive(self.SEED, phase, True, 0)
+            states[phase] = (state.id_target & 7, state.phase & 3, (state.id_target >> 5) & 3)
+        return states
+
+    # 153.6 s is civic phase 512, so phase p is at 153_600 + 300 p; all 256
+    # phases fall inside the first quarter of the day, so the sky is the same
+    # in every one of them. What the civic clock also moves -- the residents
+    # on the square and the tower's rooms -- is masked out.
+    DECK_ORIGIN_MS = 153_600
+
+    def event_view(self, renderer: CityRenderer, phase: int) -> bytes:
+        ms = self.DECK_ORIGIN_MS + 300 * phase + 150
+        frame = renderer.render(resting_input(seed=self.SEED), ms, 12)
+        pixels = bytearray(frame.partition(b"255\n")[2])
+        width, height = renderer.width, renderer.height
+        ground = height - 48
+        centre = width // 2
+        for y in range(height):
+            for x in range(width):
+                if y >= ground + 2 or (104 <= y < ground and centre - 20 <= x <= centre + 20):
+                    pixels[y * width + x] = 0
+        return bytes(pixels)
+
+    def test_each_rare_event_changes_the_town(self) -> None:
+        # Every family in every one of its four phases is its own picture, and
+        # the same state at two different moments is the same picture.
+        deck = self.deck()
+        first: dict[tuple[int, int], int] = {}
+        repeat: dict[tuple[int, int, int], list[int]] = {}
+        for phase, state in deck.items():
+            first.setdefault(state[:2], phase)
+            repeat.setdefault(state, []).append(phase)
+        self.assertEqual({key[0] for key in first}, set(range(1, 7)), "every family is dealt")
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            views: dict[tuple[int, int], str] = {}
+            for key, phase in sorted(first.items()):
+                view = digest(self.event_view(renderer, phase))
+                self.assertNotIn(view, views.values(), f"{layout} event={key} phase={phase}")
+                views[key] = view
+            for state, phases in repeat.items():
+                if len(phases) > 1:
+                    self.assertEqual(
+                        self.event_view(renderer, phases[0]),
+                        self.event_view(renderer, phases[1]),
+                        f"{layout} {state} at {phases[:2]}",
+                    )
+
+    # The street at the tower's foot either side of the door, in town
+    # coordinates: where each half's aftermath resident stands.
+    AFTERMATH_BOX = {0: (88, 108), 1: (148, 168)}
+
+    def test_each_aftermath_kind_puts_a_resident_at_the_tower(self) -> None:
+        renderer = CityRenderer(scale=1, layout=Layout.TOWN)
+        library = renderer._library
+        library.duel_ambient_world.argtypes = [ctypes.c_void_p]
+        library.duel_ambient_world.restype = ctypes.c_void_p
+        for name in ("incantation_aftermath_revision", "incantation_aftermath_shared"):
+            getattr(library, name).argtypes = [ctypes.c_void_p]
+            getattr(library, name).restype = ctypes.c_uint8
+        world = renderer.ambient(self.SEED)
+        ground = 208
+        seen: dict[int, dict[int, bytes]] = {0: {}, 1: {}}
+        for ms in range(0, 120_000, 40):
+            world.advance(ms)
+            handle = library.duel_ambient_world(ctypes.addressof(world._state))
+            if not library.incantation_aftermath_revision(handle) & 0x80:
+                continue
+            shared = library.incantation_aftermath_shared(handle)
+            kinds = (shared & 7, (shared >> 3) & 7)
+            if all(kind in seen[side] for side, kind in enumerate(kinds)):
+                continue
+            frame = renderer.render(resting_input(seed=self.SEED), ms, 12, ambient=world)
+            pixels = frame.partition(b"255\n")[2]
+            for side, kind in enumerate(kinds):
+                x0, x1 = self.AFTERMATH_BOX[side]
+                rows = range(ground - 22, ground)
+                box = b"".join(pixels[y * 256 + x0 : y * 256 + x1] for y in rows)
+                seen[side].setdefault(kind, box)
+        for side, boxes in seen.items():
+            kinds = sorted(boxes)
+            self.assertIn(0, boxes, f"side {side} has a moment with nothing to do")
+            self.assertGreaterEqual(len(boxes), 5, f"side {side} kinds {kinds}")
+            self.assertEqual(len(set(boxes.values())), len(boxes), f"side {side} kinds {kinds}")
 
 
 class WindowLayoutTests(unittest.TestCase):

@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "duel_civic.h"
+#include "duel_courier.h"
 #include "duel_host.h"
 #include "duel_incantation.h"
 #include "duel_runtime.h"
@@ -2418,6 +2419,614 @@ static void draw_residue(town_fb_t *fb, const duel_render_t *r, uint32_t frame) 
     }
 }
 
+/* ---- the civic street -----------------------------------------------------
+ *
+ * The panels draw three civic things the town did not: the courier a
+ * notification sends, the rare event the deck deals, and the resident an
+ * aftermath sets to work. All three come out of the two shared bytes the
+ * panels read, shared_pres and revision, so the town stays an opinion about
+ * one state. While an aftermath lasts it owns both bytes and the courier and
+ * the event stand down, as they do on the keyboard; the aftermath's spell
+ * flavor keeps its sigil by the spire.
+ *
+ * The town has one tower, so the two cities are its two sides. A left-city
+ * courier walks in from the left edge, a right-city event happens to the
+ * right-hand houses, and each champion's aftermath resident stands on its
+ * own side of the door. Nothing here flashes or is drawn as a warning, and a
+ * quiet town drops the motion marks but keeps every figure.
+ */
+
+/* A figure is drawn into its own small bitmap first and stamped with a
+ * one-pixel dark margin, so it reads against a facade without a box cut out
+ * of the street round it. */
+#define FIG_W 32
+#define FIG_H 40
+
+typedef struct {
+    uint32_t row[FIG_H];
+    int x0;
+    int y0;
+} town_fig_t;
+
+static void fig_begin(town_fig_t *f, int cx, int feet) {
+    memset(f, 0, sizeof *f);
+    f->x0 = cx - FIG_W / 2;
+    f->y0 = feet - FIG_H + 4;
+}
+
+static void fig_px(town_fig_t *f, int x, int y) {
+    x -= f->x0;
+    y -= f->y0;
+    if (x < 0 || x >= FIG_W || y < 0 || y >= FIG_H)
+        return;
+    f->row[y] |= 1u << x;
+}
+
+/* Filled, corners in either order: props are authored facing right and
+ * mirrored by multiplying their x offsets by the facing. */
+static void fig_rect(town_fig_t *f, int x0, int y0, int x1, int y1) {
+    if (x0 > x1) {
+        int t = x0;
+        x0 = x1;
+        x1 = t;
+    }
+    if (y0 > y1) {
+        int t = y0;
+        y0 = y1;
+        y1 = t;
+    }
+    for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+            fig_px(f, x, y);
+}
+
+static void fig_box(town_fig_t *f, int x0, int y0, int x1, int y1) {
+    fig_rect(f, x0, y0, x1, y0);
+    fig_rect(f, x0, y1, x1, y1);
+    fig_rect(f, x0, y0, x0, y1);
+    fig_rect(f, x1, y0, x1, y1);
+}
+
+static void fig_stamp(town_fb_t *fb, const town_fig_t *f) {
+    for (int y = 0; y < FIG_H; y++) {
+        uint32_t m = f->row[y];
+        if (y > 0)
+            m |= f->row[y - 1];
+        if (y + 1 < FIG_H)
+            m |= f->row[y + 1];
+        m |= (m << 1) | (m >> 1);
+        for (int x = 0; x < FIG_W; x++)
+            if ((m >> x) & 1u)
+                px(fb, f->x0 + x, f->y0 + y, false);
+    }
+    for (int y = 0; y < FIG_H; y++)
+        for (int x = 0; x < FIG_W; x++)
+            if ((f->row[y] >> x) & 1u)
+                px(fb, f->x0 + x, f->y0 + y, true);
+}
+
+/* A street figure, a size up from the residents on the square because it
+ * stands on the street line in front of the houses: head, cloak, and legs
+ * that stride when it walks. A pixel of nose says which way it faces. */
+static void fig_person(town_fig_t *f, int x, int feet, int face, bool walking) {
+    fig_rect(f, x - 1, feet - 13, x + 1, feet - 11);
+    fig_px(f, x + 2 * face, feet - 12);
+    fig_px(f, x, feet - 10);
+    fig_rect(f, x - 2, feet - 9, x + 2, feet - 3);
+    fig_px(f, x - 3, feet - 3);
+    fig_px(f, x + 3, feet - 3);
+    if (walking) {
+        for (int s = -1; s <= 1; s += 2) {
+            fig_px(f, x + s, feet - 2);
+            fig_px(f, x + 2 * s, feet - 1);
+            fig_px(f, x + 3 * s, feet);
+        }
+    } else {
+        fig_rect(f, x - 1, feet - 2, x - 1, feet);
+        fig_rect(f, x + 1, feet - 2, x + 1, feet);
+    }
+}
+
+/* Where the street is for one city: its edge of the town, and the spot by
+ * the tower door its couriers walk to. */
+static int street_edge(const town_fb_t *fb, bool left) { return left ? 14 : CANVAS_W - 15; }
+static int street_door(const town_fb_t *fb, bool left) {
+    return left ? TOWER_X0 - 16 : TOWER_X1 + 16;
+}
+
+/*
+ * The courier: one visitor, walking the street of its own city. Arriving it
+ * has just come in at the edge of the town; waiting it is most of the way to
+ * the door; an old notice has it standing at the door; and resolving it is
+ * walking back out with its hands empty. The kind is the hat and what it
+ * carries -- a messenger's winged cap and letter, a carter's handcart, a
+ * lamp-bearer's lantern on a pole, a sentinel's crested helm and halberd --
+ * and the count is how much of it: letters in the satchel, crates on the
+ * cart, rays off the lamp, pennants on the halberd. A messenger on the way
+ * out has handed its letter over; the others take their load back with them.
+ */
+static void draw_courier_figure(town_fb_t *fb, const duel_render_t *r) {
+    uint8_t sp = r->shared_pres;
+    uint8_t kind = DUEL_VISITOR_KIND(sp);
+    if (kind == DUEL_CIVIC_COURIER_NONE || kind >= DUEL_CIVIC_COURIER_COUNT)
+        return;
+    bool left = DUEL_VISITOR_CITY(sp) == 0u;
+    uint8_t life = DUEL_VISITOR_LIFECYCLE(sp);
+    int load = (int)DUEL_VISITOR_DENSITY(sp) + 1; /* one, a few, many */
+    if (load > 3)
+        load = 3;
+    bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
+    bool leaving = life == DUEL_CIVIC_VISIT_RESOLVING;
+    bool walking = life == DUEL_CIVIC_VISIT_ARRIVING || leaving;
+
+    static const int route_third[4] = {0, 2, 3, 1};
+    int edge = street_edge(fb, left), door = street_door(fb, left);
+    int x = edge + (door - edge) * route_third[life & 3u] / 3;
+    int inward = left ? 1 : -1;
+    int f = leaving ? -inward : inward;
+    int feet = GROUND_Y - 1;
+
+    town_fig_t fig;
+    fig_begin(&fig, x, feet);
+    fig_person(&fig, x, feet, f, walking);
+    switch (kind) {
+        case DUEL_CIVIC_COURIER_MESSENGER:
+            /* Winged cap; satchel on the back with the letters showing. */
+            fig_rect(&fig, x - 1, feet - 14, x + 1, feet - 14);
+            fig_px(&fig, x - 2 * f, feet - 14);
+            fig_px(&fig, x - 3 * f, feet - 15);
+            fig_px(&fig, x - 4 * f, feet - 16);
+            fig_rect(&fig, x - 4 * f, feet - 8, x - 3 * f, feet - 5);
+            for (int k = 0; k < load; k++)
+                fig_px(&fig, x - 3 * f - (k & 1) * f, feet - 9 - k);
+            if (!leaving) {
+                fig_px(&fig, x + 3 * f, feet - 8);
+                fig_px(&fig, x + 4 * f, feet - 9);
+                fig_box(&fig, x + 5 * f, feet - 12, x + 8 * f, feet - 9);
+                fig_px(&fig, x + 6 * f, feet - 11);
+                fig_px(&fig, x + 7 * f, feet - 11);
+            }
+            break;
+        case DUEL_CIVIC_COURIER_PARCEL:
+            /* Brimmed cap; a handcart pushed ahead, crates stacked on it. */
+            fig_rect(&fig, x - 1, feet - 14, x + 1, feet - 14);
+            fig_px(&fig, x + 2 * f, feet - 14);
+            fig_px(&fig, x + 3 * f, feet - 7);
+            fig_rect(&fig, x + 4 * f, feet - 7, x + 4 * f, feet - 3);
+            fig_rect(&fig, x + 4 * f, feet - 3, x + 11 * f, feet - 3);
+            fig_px(&fig, x + 8 * f, feet - 2);
+            fig_px(&fig, x + 7 * f, feet - 1);
+            fig_px(&fig, x + 9 * f, feet - 1);
+            fig_px(&fig, x + 8 * f, feet);
+            for (int k = 0; k < load; k++) {
+                int bottom = feet - 4 - 4 * k;
+                fig_box(&fig, x + 6 * f, bottom - 3, x + 10 * f, bottom);
+                fig_px(&fig, x + 8 * f, bottom - 2);
+            }
+            break;
+        case DUEL_CIVIC_COURIER_BEACON: {
+            /* Pointed hood; a lantern carried high on a pole. */
+            fig_rect(&fig, x - 1, feet - 14, x + 1, feet - 14);
+            fig_px(&fig, x, feet - 15);
+            fig_rect(&fig, x - 2 * f, feet - 12, x - 2 * f, feet - 11);
+            int pole = x + 4 * f;
+            fig_rect(&fig, pole, feet - 19, pole, feet - 4);
+            fig_px(&fig, x + 3 * f, feet - 8);
+            fig_px(&fig, pole, feet - 23);
+            fig_rect(&fig, pole - 1, feet - 22, pole + 1, feet - 20);
+            static const int8_t ray[3][2][2] = {
+                {{-3, -21}, {3, -21}},
+                {{-3, -24}, {3, -24}},
+                {{0, -26}, {0, -27}},
+            };
+            for (int k = 0; k < load; k++)
+                for (int e = 0; e < 2; e++)
+                    fig_px(&fig, pole + ray[k][e][0], feet + ray[k][e][1]);
+            break;
+        }
+        default: {
+            /* Sentinel: crested helm, shield on the back, halberd carried
+             * upright with a pennant for each notice it stands for. */
+            fig_rect(&fig, x - 2, feet - 14, x + 2, feet - 14);
+            fig_rect(&fig, x, feet - 17, x, feet - 15);
+            int haft = x + 3 * f;
+            fig_rect(&fig, haft, feet - 20, haft, feet);
+            fig_px(&fig, haft, feet - 21);
+            fig_rect(&fig, haft + f, feet - 19, haft + 2 * f, feet - 17);
+            for (int k = 0; k < load; k++)
+                fig_rect(&fig, haft + f, feet - 15 + 2 * k, haft + (3 - k) * f, feet - 15 + 2 * k);
+            fig_box(&fig, x - 5 * f, feet - 10, x - 3 * f, feet - 4);
+            break;
+        }
+    }
+    if (walking && !quiet) {
+        /* Dust kicked up behind a figure on the move. */
+        fig_px(&fig, x - 5 * f, feet);
+        fig_px(&fig, x - 7 * f, feet - 1);
+    }
+    fig_stamp(fb, &fig);
+}
+
+/*
+ * The rare events, on the side of the town their city is. The four local
+ * families happen to the near row's houses: a scroll that has got loose
+ * streams off a roof, the gable clock's gear jams, a bench comes out for a
+ * break, and a crack opens down a wall. Their phase is how far along it is
+ * -- about to happen, happening, being put right, and the trace it leaves.
+ * The diplomatic courier hangs banners off the balcony on the side it
+ * favours, or both, and the civic sky is an aurora behind everything.
+ */
+static void draw_event_scroll(town_fb_t *fb, bool left, uint8_t phase, bool quiet, uint32_t frame) {
+    int ax = left ? TOWN_X(46) : TOWN_X(210);
+    int ay = near_row_roof_y(fb, ax) - 2;
+    int dir = left ? 1 : -1;
+    static const int length[4] = {8, 36, 20, 0};
+    int len = length[phase & 3u];
+    uint32_t wave = quiet ? 0u : frame;
+    for (int t = 1; t <= len; t++) {
+        int x = ax + dir * t;
+        int y = ay - 2 - t * 2 / 5 + isin((uint32_t)t * 14u + wave * 3u) * 2 / 127;
+        px(fb, x, y, true);
+        if (t % 5 != 0) /* the paper, with a gap between its lines */
+            px(fb, x, y - 1, true);
+    }
+    disc(fb, ax, ay - 2, 2, false);
+    ring(fb, ax, ay - 2, 2, true); /* the roll it came off */
+    if (phase == DUEL_CIVIC_EVENT_PHASE_COOLDOWN) {
+        hline(fb, ax - 3, ax + 3, ay - 2); /* tied up again */
+    } else if (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE && !quiet) {
+        int x = ax + dir * (len + 2);
+        int y = ay - 4 - len * 2 / 5;
+        px(fb, x, y, true);
+        px(fb, x + dir, y - 1, true);
+    }
+}
+
+static void draw_event_gear(town_fb_t *fb, bool left, uint8_t phase, bool quiet) {
+    /* The gable clock: in the stepped gable of the nearer gabled house. */
+    int cx = left ? TOWN_X(72) : TOWN_X(223);
+    int cy = left ? GROUND_Y - 32 : GROUND_Y - 51;
+    disc(fb, cx, cy, 6, false);
+    ring(fb, cx, cy, 4, true);
+    px(fb, cx, cy, true);
+    /* Eight teeth; a gear running again has turned half a tooth. */
+    uint32_t turn = phase == DUEL_CIVIC_EVENT_PHASE_COOLDOWN ? 16u : 0u;
+    for (uint32_t i = 0; i < 8u; i++) {
+        uint32_t a = i * 32u + turn;
+        px(fb, cx + isin(a + 64u) * 6 / 127, cy + isin(a) * 6 / 127, true);
+    }
+    switch (phase) {
+        case DUEL_CIVIC_EVENT_PHASE_ARMED:
+            px(fb, cx + 2, cy - 2, true); /* the hand, stopped */
+            break;
+        case DUEL_CIVIC_EVENT_PHASE_ACTIVE:
+            /* Seized: a bent spoke and a puff of something from the works. */
+            px(fb, cx + 1, cy - 1, true);
+            px(fb, cx + 2, cy - 1, true);
+            px(fb, cx + 2, cy - 2, true);
+            if (!quiet)
+                shade_disc(fb, cx + 6, cy - 8, 2, 8);
+            break;
+        case DUEL_CIVIC_EVENT_PHASE_RESOLVING:
+            /* A spanner on it. */
+            line_step(fb, cx + 2, cy + 2, cx + 8, cy + 8, 1, 0);
+            px(fb, cx + 1, cy + 3, true);
+            px(fb, cx + 3, cy + 1, true);
+            break;
+        default:
+            px(fb, cx - 2, cy - 2, true); /* the hand, moving again */
+            break;
+    }
+}
+
+static void draw_event_break(town_fb_t *fb, bool left, uint8_t phase, bool quiet) {
+    /* A bench and a kettle out on the street. */
+    int x = left ? TOWN_X(47) : TOWN_X(238);
+    int feet = GROUND_Y - 1;
+    town_fig_t fig;
+    fig_begin(&fig, x, feet);
+    fig_rect(&fig, x - 6, feet - 4, x + 6, feet - 4);
+    fig_rect(&fig, x - 5, feet - 3, x - 5, feet);
+    fig_rect(&fig, x + 5, feet - 3, x + 5, feet);
+    if (phase != DUEL_CIVIC_EVENT_PHASE_COOLDOWN) {
+        /* The kettle on the bench, a cup either side once it has poured. */
+        fig_rect(&fig, x - 1, feet - 7, x + 1, feet - 5);
+        fig_px(&fig, x + 2, feet - 7);
+        fig_px(&fig, x, feet - 8);
+        if (phase >= DUEL_CIVIC_EVENT_PHASE_ACTIVE) {
+            fig_rect(&fig, x - 5, feet - 6, x - 4, feet - 5);
+            fig_rect(&fig, x + 4, feet - 6, x + 5, feet - 5);
+        }
+    }
+    fig_stamp(fb, &fig);
+    /* Steam off the kettle while it is hot. */
+    if (!quiet && phase < DUEL_CIVIC_EVENT_PHASE_RESOLVING) {
+        int wisps = phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE ? 3 : 1;
+        for (int k = 0; k < wisps; k++) {
+            px(fb, x + (k & 1), feet - 10 - 2 * k, true);
+            px(fb, x + 1 - (k & 1), feet - 11 - 2 * k, true);
+        }
+    }
+}
+
+static void draw_event_crack(town_fb_t *fb, bool left, uint8_t phase, bool quiet) {
+    /* Down the wall of the tall house at the end of the row. */
+    int x = left ? TOWN_X(26) : TOWN_X(230);
+    int top = left ? GROUND_Y - 33 : GROUND_Y - 39;
+    static const int length[4] = {7, 22, 22, 9};
+    int len = length[phase & 3u];
+    for (int t = 0; t < len; t++)
+        px(fb, x + ((t >> 2) & 1), top + t, true);
+    switch (phase) {
+        case DUEL_CIVIC_EVENT_PHASE_ACTIVE:
+            /* What came down, on the street at its foot. */
+            if (!quiet)
+                for (int k = 0; k < 3; k++)
+                    fill_rect(fb, x - 3 + k * 3, GROUND_Y - 2, x - 2 + k * 3, GROUND_Y - 1, true);
+            break;
+        case DUEL_CIVIC_EVENT_PHASE_RESOLVING:
+            /* A ladder up against it. */
+            for (int y = top + 2; y < GROUND_Y; y++) {
+                int lean = (y - top) / 8;
+                px(fb, x + 3 + lean, y, true);
+                px(fb, x + 6 + lean, y, true);
+                if ((y - top) % 4 == 0)
+                    hline(fb, x + 3 + lean, x + 6 + lean, y);
+            }
+            break;
+        case DUEL_CIVIC_EVENT_PHASE_COOLDOWN:
+            /* Patched: a square of new plaster where it opened. */
+            frame_rect(fb, x - 2, top + 1, x + 3, top + 7);
+            break;
+        default:
+            break;
+    }
+}
+
+static void draw_event_banners(town_fb_t *fb, uint8_t target, uint8_t phase) {
+    /* Furled, unfurled with the visiting crest, hanging while it is seen
+     * off, and furled short again. */
+    static const int length[4] = {8, 16, 13, 4};
+    int len = length[phase & 3u];
+    bool open = phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE || phase == DUEL_CIVIC_EVENT_PHASE_RESOLVING;
+    for (int s = -1; s <= 1; s += 2) {
+        if ((s < 0 && target == DUEL_CIVIC_EVENT_TARGET_RIGHT) ||
+            (s > 0 && target == DUEL_CIVIC_EVENT_TARGET_LEFT))
+            continue;
+        int bx = TOWER_CX + s * (BALCONY_HALF - 3);
+        int y0 = BALCONY_Y + 2;
+        int half = open ? 2 : 0;
+        fill_rect(fb, bx - half - 1, y0, bx + half + 1, y0 + len + 2, false);
+        hline(fb, bx - half - 1, bx + half + 1, y0); /* the rod */
+        fill_rect(fb, bx - half, y0 + 1, bx + half, y0 + len, true);
+        if (open) {
+            /* A swallowtail, and the crest left dark on the cloth. */
+            px(fb, bx, y0 + len, false);
+            px(fb, bx, y0 + len - 1, false);
+            if (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE) {
+                px(fb, bx, y0 + 4, false);
+                px(fb, bx - 1, y0 + 5, false);
+                px(fb, bx + 1, y0 + 5, false);
+                px(fb, bx, y0 + 6, false);
+            }
+        }
+    }
+}
+
+static void draw_event_aurora(town_fb_t *fb, const duel_render_t *r, uint8_t phase) {
+    /* A curtain across the sky, passing behind the spire and the roof. Its
+     * line is dotted while it gathers and fades, solid while it burns, and
+     * it hangs streamers while it is at its height. */
+    int base = 46;
+    static const int every[4] = {2, 1, 1, 4};
+    static const int streamer[4] = {0, 3, 6, 0};
+    for (int x = 0; x < CANVAS_W; x++) {
+        int y = base + isin((uint32_t)x * 3u + r->seed) * 4 / 127;
+        int off = x - TOWER_CX < 0 ? TOWER_CX - x : x - TOWER_CX;
+        int span = y >= ROOF_APEX_Y && y <= TOWER_TOP_Y
+                       ? (y - ROOF_APEX_Y) * (TOWER_HALF + 4) / (TOWER_TOP_Y - ROOF_APEX_Y)
+                       : 0;
+        if (off <= span + 2)
+            continue;
+        if (x % every[phase & 3u] == 0)
+            px(fb, x, y, true);
+        int step = streamer[phase & 3u];
+        if (step && x % step == 0)
+            vline(fb, x, y + 2, y + 2 + (step == 3 ? 3 + (x / 3) % 2 : 1));
+    }
+}
+
+/* The local families and the aurora; the banners go on with the tower. */
+static bool civic_event(const duel_render_t *r, uint8_t *id, uint8_t *phase, uint8_t *target) {
+    if (r->revision & INCANTATION_AFTERMATH_WIRE)
+        return false;
+    *id = DUEL_EVENT_ID(r->revision);
+    *phase = DUEL_EVENT_PHASE(r->revision);
+    *target = DUEL_EVENT_TARGET(r->revision);
+    return *id != DUEL_CIVIC_EVENT_NONE && *id < DUEL_CIVIC_EVENT_COUNT;
+}
+
+static void draw_sky_event(town_fb_t *fb, const duel_render_t *r) {
+    uint8_t id, phase, target;
+    if (civic_event(r, &id, &phase, &target) && id == DUEL_CIVIC_EVENT_CIVIC_SKY)
+        draw_event_aurora(fb, r, phase);
+}
+
+static void draw_street_event(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
+    uint8_t id, phase, target;
+    if (!civic_event(r, &id, &phase, &target))
+        return;
+    bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
+    bool left = target != DUEL_CIVIC_EVENT_TARGET_RIGHT;
+    switch (id) {
+        case DUEL_CIVIC_EVENT_RUNAWAY_SCROLL:
+            draw_event_scroll(fb, left, phase, quiet, frame);
+            break;
+        case DUEL_CIVIC_EVENT_JAMMED_GEAR:
+            draw_event_gear(fb, left, phase, quiet);
+            break;
+        case DUEL_CIVIC_EVENT_WORK_BREAK:
+            draw_event_break(fb, left, phase, quiet);
+            break;
+        case DUEL_CIVIC_EVENT_DAMAGE_COMPLAINT:
+            draw_event_crack(fb, left, phase, quiet);
+            break;
+        default:
+            break;
+    }
+}
+
+static void draw_tower_event(town_fb_t *fb, const duel_render_t *r) {
+    uint8_t id, phase, target;
+    if (civic_event(r, &id, &phase, &target) && id == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+        draw_event_banners(fb, target, phase);
+}
+
+/*
+ * The aftermath residents: one each side of the tower door, at what the
+ * champion on that side left them to do. The panels set the room's resident
+ * to the same task; here it comes down to the street. A cheer has both arms
+ * up under a little confetti, a complaint holds a placard at the tower, panic
+ * runs to and fro, a fire is fought with a bucket and then hammered right,
+ * an inspector stoops with a glass over the marks, a repair has a ladder and
+ * a hammer, and a big cast has someone pointing up at the spire before they
+ * cheer. The phase is how far through it they are.
+ */
+static void draw_aftermath_resident(town_fb_t *fb, uint8_t kind, uint8_t phase, bool left,
+                                    bool quiet) {
+    if (kind == AFTER_NONE)
+        return;
+    int f = left ? 1 : -1; /* facing the tower */
+    int x = left ? TOWER_X0 - 12 : TOWER_X1 + 12;
+    int feet = GROUND_Y - 1;
+    if (kind == AFTER_PANIC && (phase & 1u))
+        x -= 4 * f; /* running back from it */
+    bool cheer = kind == AFTER_CHEER || (kind == AFTER_MAX_CAST && phase >= 2u);
+    bool panic = kind == AFTER_PANIC || (kind == AFTER_FIRE && phase == 0u);
+
+    town_fig_t fig;
+    fig_begin(&fig, x, feet);
+    if (kind == AFTER_INSPECT) {
+        /* Stooped: the head dropped and forward, the glass held low. */
+        fig_rect(&fig, x - 1 + f, feet - 11, x + 1 + f, feet - 9);
+        fig_rect(&fig, x - 2, feet - 8, x + 2, feet - 3);
+        fig_px(&fig, x - 3, feet - 3);
+        fig_px(&fig, x + 3, feet - 3);
+        fig_rect(&fig, x - 1, feet - 2, x - 1, feet);
+        fig_rect(&fig, x + 1, feet - 2, x + 1, feet);
+        fig_px(&fig, x + 3 * f, feet - 7);
+        fig_px(&fig, x + 4 * f, feet - 6);
+        fig_box(&fig, x + 5 * f, feet - 7, x + 7 * f, feet - 5);
+        for (int k = 0; k < 4 - (int)phase; k++)
+            fig_px(&fig, x + (6 + 2 * k) * f, feet);
+    } else {
+        fig_person(&fig, x, feet, f, panic);
+    }
+    if (cheer) {
+        fig_px(&fig, x - 3, feet - 10);
+        fig_px(&fig, x - 4, feet - 11);
+        fig_px(&fig, x + 3, feet - 10);
+        fig_px(&fig, x + 4, feet - 11);
+        int pips = kind == AFTER_CHEER ? 4 - (int)phase : 1;
+        for (int k = 0; k < pips; k++)
+            fig_px(&fig, x - 4 + k * 3, feet - 16 - (k & 1) * 2);
+    } else if (panic) {
+        /* Arms flung up and out. */
+        fig_px(&fig, x - 3, feet - 9);
+        fig_px(&fig, x - 4, feet - 10);
+        fig_px(&fig, x - 5, feet - 12);
+        fig_px(&fig, x + 3, feet - 9);
+        fig_px(&fig, x + 4, feet - 10);
+        fig_px(&fig, x + 5, feet - 12);
+    }
+    switch (kind) {
+        case AFTER_COMPLAINT: {
+            /* A placard on a stick, held up at the tower, lowered later. */
+            int lift = phase >= 2u ? 3 : 0;
+            fig_px(&fig, x + 3 * f, feet - 8);
+            fig_rect(&fig, x + 4 * f, feet - 16 + lift, x + 4 * f, feet - 7);
+            fig_box(&fig, x + 2 * f, feet - 21 + lift, x + 7 * f, feet - 17 + lift);
+            fig_rect(&fig, x + 3 * f, feet - 19 + lift, x + 6 * f, feet - 19 + lift);
+            break;
+        }
+        case AFTER_FIRE:
+            if (phase < 3u) {
+                /* Flames on the doorstep, lower each phase. */
+                for (int k = 0; k < 3; k++) {
+                    int fx = x + (7 + 2 * k) * f;
+                    int h = 5 - (int)phase - (k == 1 ? 0 : 1);
+                    fig_rect(&fig, fx, feet - h, fx, feet);
+                }
+            } else {
+                /* Out: the scorch marked, and a hammer on it. */
+                for (int d = -2; d <= 2; d++) {
+                    fig_px(&fig, x + 9 * f + d, feet - 2 + d);
+                    fig_px(&fig, x + 9 * f + d, feet - 2 - d);
+                }
+                fig_px(&fig, x + 3 * f, feet - 8);
+                fig_rect(&fig, x + 4 * f, feet - 12, x + 4 * f, feet - 8);
+                fig_rect(&fig, x + 3 * f, feet - 13, x + 5 * f, feet - 13);
+            }
+            if (phase == 1u || phase == 2u) {
+                /* A bucket, and the water going on. */
+                fig_box(&fig, x + 3 * f, feet - 9, x + 5 * f, feet - 7);
+                if (!quiet)
+                    for (int k = 0; k < 3; k++)
+                        fig_px(&fig, x + (6 + k) * f, feet - 9 + k * k / 2);
+            }
+            break;
+        case AFTER_REPAIR: {
+            /* A ladder against the tower and a hammer, up and then down. */
+            for (int y = feet - 18; y <= feet; y++) {
+                fig_px(&fig, x + 6 * f, y);
+                fig_px(&fig, x + 9 * f, y);
+                if ((feet - y) % 4 == 2)
+                    fig_rect(&fig, x + 6 * f, y, x + 9 * f, y);
+            }
+            int raised = phase < 3u && !(phase & 1u);
+            fig_px(&fig, x + 3 * f, feet - 8);
+            if (raised) {
+                fig_rect(&fig, x + 4 * f, feet - 13, x + 4 * f, feet - 9);
+                fig_rect(&fig, x + 3 * f, feet - 14, x + 5 * f, feet - 14);
+            } else {
+                fig_rect(&fig, x + 4 * f, feet - 8, x + 4 * f, feet - 5);
+                fig_rect(&fig, x + 3 * f, feet - 4, x + 5 * f, feet - 4);
+            }
+            break;
+        }
+        case AFTER_MAX_CAST:
+            if (phase < 2u) {
+                /* Pointing up at the spire, with what is left of the cast
+                 * drifting down. */
+                for (int k = 1; k <= 4; k++)
+                    fig_px(&fig, x + (2 + k) * f, feet - 9 - k);
+                for (int k = 0; k < 3 - (int)phase; k++)
+                    fig_px(&fig, x + (2 + 3 * k) * f, feet - 20 + k);
+            }
+            break;
+        default:
+            break;
+    }
+    if (panic && !quiet) {
+        /* Hurry lines behind. */
+        fig_rect(&fig, x - 6 * f, feet - 7, x - 8 * f, feet - 7);
+        fig_rect(&fig, x - 6 * f, feet - 4, x - 7 * f, feet - 4);
+    }
+    fig_stamp(fb, &fig);
+}
+
+static void draw_street(town_fb_t *fb, const duel_render_t *r) {
+    bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
+    if (r->revision & INCANTATION_AFTERMATH_WIRE) {
+        for (uint8_t side = 0; side < 2u; side++)
+            draw_aftermath_resident(fb, INCANTATION_AFTER_KIND(r->shared_pres, side),
+                                    INCANTATION_AFTER_PHASE(r->revision, side), side == SIM_SIDE_L,
+                                    quiet);
+        return;
+    }
+    draw_courier_figure(fb, r);
+}
+
 /* ---- the plaza ----------------------------------------------------------- */
 
 /*
@@ -2681,6 +3290,7 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     uint8_t sub = DUEL_SECONDARY_SKY_SUBPHASE(r->secondary);
 
     draw_stars(fb, r, phase, frame);
+    draw_sky_event(fb, r);
     draw_celestial(fb, phase, sub, frame);
     draw_clouds(fb, r, phase, frame);
     draw_birds(fb, r, phase, frame);
@@ -2691,8 +3301,11 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_ridge_sleeper(fb, health->sleep, frame);
     draw_kites(fb, health->body, frame);
     draw_residue(fb, r, frame);
+    draw_street_event(fb, r, frame);
     draw_tower(fb, r, typing, frame);
+    draw_tower_event(fb, r);
     draw_lanterns(fb, typing);
+    draw_street(fb, r);
     draw_flavor_sigil(fb, r);
     draw_wizard(fb, r, frame);
     draw_ward(fb, r, frame);
