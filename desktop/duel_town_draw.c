@@ -1727,6 +1727,95 @@ static void draw_spell_body(town_fb_t *fb, int x, int y, uint8_t element, int ra
     }
 }
 
+/*
+ * What the panels add to a carrier, at the town's size.
+ *
+ * Tempo: a swift spell streaks three speed lines behind it, a heavy one wears
+ * a casing of four corner brackets. Signature: a rune hangs a diamond over
+ * the carrier with a blinking core, a wall raises a crenellated slab behind
+ * it, a vortex turns four pinwheel arms round it, and a bloom opens and closes
+ * petals on its diagonals. A combining spell blinks a tall bar either side.
+ * The panels draw the same marks; these are the same words, larger.
+ */
+static void draw_spell_marks(town_fb_t *fb, const duel_view_spell_t *spell, int x, int y,
+                             int radius, int lead, uint32_t frame) {
+    int reach = radius + 3;
+    switch (DUEL_KIND_MODIFIER(spell->kind)) {
+        case MOD_SWIFT:
+            /* Under the body: the trail comes down from above and behind,
+             * and would swallow a line drawn through it. */
+            for (int i = 0; i < 2; i++) {
+                int near = x - lead * (radius - 2 + i * 3);
+                int far = x - lead * (radius + 12 + i * 3);
+                hline(fb, near < far ? near : far, near < far ? far : near, y + reach + i * 3);
+            }
+            break;
+        case MOD_HEAVY:
+            for (int q = 0; q < 4; q++) {
+                int sx = q & 1 ? 1 : -1, sy = q & 2 ? 1 : -1;
+                int cx = x + sx * (reach + 2), cy = y + sy * (reach + 2);
+                for (int d = 0; d < 4; d++) {
+                    px(fb, cx - sx * d, cy, true);
+                    px(fb, cx, cy - sy * d, true);
+                }
+            }
+            break;
+        default:
+            break;
+    }
+    switch (incantation_signature(spell->descriptor)) {
+        case SPELL_SIGNATURE_RUNE: {
+            int ry = y - radius - 9;
+            for (int d = 0; d <= 3; d++) {
+                px(fb, x - 3 + d, ry - d, true);
+                px(fb, x + 3 - d, ry - d, true);
+                px(fb, x - 3 + d, ry + d, true);
+                px(fb, x + 3 - d, ry + d, true);
+            }
+            if (frame & 4u)
+                disc(fb, x, ry, 1, true);
+            break;
+        }
+        case SPELL_SIGNATURE_WALL: {
+            /* An outlined slab cut out of the trail, with a crenellated top. */
+            int wx = x - lead * (reach + 4);
+            int top = y - radius - 7;
+            fill_rect(fb, wx - 3, top, wx + 3, y + radius, false);
+            frame_rect(fb, wx - 3, top, wx + 3, y + radius);
+            for (int c = -3; c <= 3; c += 2)
+                px(fb, wx + c, top - 1, true);
+            break;
+        }
+        case SPELL_SIGNATURE_VORTEX:
+            /* Outside void's own broken ring, and swept hard so they read
+             * as turning. */
+            for (int arm = 0; arm < 4; arm++)
+                for (int d = 0; d < 7; d++) {
+                    uint32_t a = (uint32_t)arm * 64u + (uint32_t)d * 10u + (frame << 2);
+                    int rr = radius + 6 + d;
+                    px(fb, x + isin(a + 64u) * rr / 127, y + isin(a) * rr / 127, true);
+                }
+            break;
+        case SPELL_SIGNATURE_BLOOM: {
+            int d = reach + ((frame & 4u) ? 1 : 3);
+            for (int q = 0; q < 4; q++)
+                disc(fb, x + (q & 1 ? d : -d), y + (q & 2 ? d : -d), 2, true);
+            break;
+        }
+        default:
+            break;
+    }
+    /* Only the view's combine flag yields INTERACT_COMBINE, never on void. */
+    if (SPELL_DESC_INTERACTION(spell->descriptor) == INTERACT_COMBINE && (frame & 4u)) {
+        int bx = reach + 5;
+        for (int s = -1; s <= 1; s += 2) {
+            vline(fb, x + s * bx, y - reach, y + reach);
+            px(fb, x + s * (bx - 1), y - reach, true);
+            px(fb, x + s * (bx - 1), y + reach, true);
+        }
+    }
+}
+
 static void draw_spells(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
     for (uint8_t side = 0; side < 2u; side++) {
         duel_view_spell_t spell = duel_view_spell(&r->view, side, r->seed);
@@ -1779,6 +1868,7 @@ static void draw_spells(town_fb_t *fb, const duel_render_t *r, uint32_t frame) {
         }
 
         draw_spell_body(fb, x, y, element, radius, lead, frame, (uint32_t)side * 977u + r->seed);
+        draw_spell_marks(fb, &spell, x, y, radius, lead, frame);
 
         /* Leaving and arriving are the two moments worth marking: a muzzle
          * flash off the balcony, and a bow wave as it runs out of the town. */
@@ -1822,7 +1912,7 @@ static void draw_outcome(town_fb_t *fb, const duel_render_t *r) {
      * canvas from the flight that caused it.
      */
     bool left = kind == FX_IMPACT_L || kind == FX_DEFLECT_L || kind == FX_FIZZLE_L ||
-                kind == FX_HEAL_L || kind == FX_WARD_SHATTER_L;
+                kind == FX_HEAL_L || kind == FX_WARD_SHATTER_L || kind == FX_SHATTER_L;
     int lead = left ? -1 : 1;
     int age = 12 - (int)r->flash_frames;
     if (age < 0)
@@ -1833,7 +1923,9 @@ static void draw_outcome(town_fb_t *fb, const duel_render_t *r) {
 
     switch (kind) {
         case FX_IMPACT_L:
-        case FX_IMPACT_R: {
+        case FX_IMPACT_R:
+        case FX_SHATTER_L:
+        case FX_SHATTER_R: {
             /*
              * The loudest thing that happens in a run should be the loudest
              * thing on the canvas -- but eight even spokes around two even
@@ -1859,6 +1951,17 @@ static void draw_outcome(town_fb_t *fb, const duel_render_t *r) {
                 uint32_t h = town_hash((uint32_t)i, 17u);
                 px(fb, x + (int)(h % 40u) - 20, y + 12 + age + (int)((h >> 6) % 8u), true);
             }
+            /* A shatter is the same hit through a frozen champion: the frost
+             * goes with it, as six small ice crosses thrown clear of the
+             * burst. */
+            if (kind == FX_SHATTER_L || kind == FX_SHATTER_R)
+                for (int i = 0; i < 6; i++) {
+                    uint32_t a = (uint32_t)i * 43u + 10u;
+                    int d = 14 + age * 4 + (int)(town_hash((uint32_t)i, 23u) % 6u);
+                    int sx = x + isin(a + 64u) * d / 127, sy = y + isin(a) * d / 127;
+                    hline(fb, sx - 2, sx + 2, sy);
+                    vline(fb, sx, sy - 2, sy + 2);
+                }
             break;
         }
         case FX_DEFLECT_L:
@@ -1896,6 +1999,38 @@ static void draw_outcome(town_fb_t *fb, const duel_render_t *r) {
                 px(fb, mx, BALCONY_Y - 6 - age * 2 - i * 2, true);
                 px(fb, mx + 1, BALCONY_Y - 6 - age * 2 - i * 2, true);
             }
+            break;
+        }
+        case FX_THAW: {
+            /* Frost met ember: steam puffs rise off the roofs over the town
+             * and thin as they go. */
+            for (int i = 0; i < 7; i++) {
+                uint32_t h = town_hash((uint32_t)i, 31u);
+                int sx = TOWER_CX - 36 + i * 12 + (int)(h % 5u);
+                int sy = BALCONY_Y - 14 - age * 3 - (int)((h >> 4) % 8u);
+                shade_disc(fb, sx, sy, 3 + age / 3, 12 - age);
+            }
+            break;
+        }
+        case FX_FIELD_CLASH: {
+            /* Two fields met: a bracket from each side closes over the town
+             * and strikes a spark where they meet. The tower behind is cut
+             * dark first, or its walls swallow the brackets. */
+            int gap = 34 - age * 3;
+            int cy = BALCONY_Y - 32; /* clear of the champion's head */
+            fill_rect(fb, TOWER_CX - 26, cy - 10, TOWER_CX + 26, cy + 10, false);
+            for (int s = -1; s <= 1; s += 2) {
+                int bx = TOWER_CX + s * gap;
+                vline(fb, bx, cy - 8, cy + 8);
+                hline(fb, s < 0 ? bx : bx - 3, s < 0 ? bx + 3 : bx, cy - 8);
+                hline(fb, s < 0 ? bx : bx - 3, s < 0 ? bx + 3 : bx, cy + 8);
+            }
+            if (gap < 12)
+                for (int i = 0; i < 8; i++) {
+                    uint32_t a = (uint32_t)i * 32u;
+                    int d = 3 + age;
+                    px(fb, TOWER_CX + isin(a + 64u) * d / 127, cy + isin(a) * d / 127, true);
+                }
             break;
         }
         case FX_RESIDUE:
