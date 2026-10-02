@@ -659,9 +659,12 @@ static void draw_near_row(town_fb_t *fb, const duel_render_t *r, uint8_t spread,
 #define ROOM_X1      (TOWER_X1 - 3)
 #define ROOM_BASE_Y  (ROOM_TOP_Y + 3 * ROOM_BAND_H + 2 * ROOM_SMALL_H + ROOM_LARGE_H)
 
-/* Two storeys that are not civic floors, for the ends of the tower. */
-#define ROOM_LOFT   4
-#define ROOM_CELLAR 5
+/* What a storey shows is a room: one of the eight districts, numbered as
+ * duel_host.h numbers them, or one of the two ends of the tower that are not
+ * districts at all. The four floors are the first four districts, so a
+ * neighbour storey named by its floor is already a room. */
+#define ROOM_LOFT   DUEL_DISTRICT_COUNT
+#define ROOM_CELLAR (DUEL_DISTRICT_COUNT + 1)
 
 /*
  * Drawing inside a room, lit or not.
@@ -701,6 +704,46 @@ static void room_rect(town_fb_t *fb, int x0, int y0, int x1, int y1, bool lit) {
             room_px(fb, x, y, lit);
 }
 
+static void room_line(town_fb_t *fb, int x0, int y0, int x1, int y1, bool lit) {
+    int dx = x1 - x0 < 0 ? x0 - x1 : x1 - x0;
+    int dy = y1 - y0 < 0 ? y0 - y1 : y1 - y0;
+    int sx = x0 < x1 ? 1 : -1;
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx - dy;
+    for (;;) {
+        room_px(fb, x0, y0, lit);
+        if (x0 == x1 && y0 == y1)
+            break;
+        int e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+static void room_box(town_fb_t *fb, int x0, int y0, int x1, int y1, bool lit) {
+    room_hline(fb, x0, x1, y0, lit);
+    room_hline(fb, x0, x1, y1, lit);
+    room_vline(fb, x0, y0, y1, lit);
+    room_vline(fb, x1, y0, y1, lit);
+}
+
+static void room_ring(town_fb_t *fb, int cx, int cy, int radius, bool lit) {
+    int rr = radius * radius;
+    int inner = (radius - 1) * (radius - 1);
+    for (int y = -radius; y <= radius; y++)
+        for (int x = -radius; x <= radius; x++) {
+            int d = x * x + y * y;
+            if (d <= rr && d > inner)
+                room_px(fb, cx + x, cy + y, lit);
+        }
+}
+
 static void room_arch(town_fb_t *fb, int cx, int y, int radius, bool lit) {
     for (int x = -radius; x <= radius; x++) {
         int rise = 0;
@@ -725,22 +768,40 @@ static void draw_brick_band(town_fb_t *fb, int y) {
     }
 }
 
-/* Where each room's own light is: the fire, a candle on the lectern, the
- * still's burner, the orb, and a lantern in the loft and the cellar. */
-static void room_light(int floor, int x0, int y0, int floor_y, int *lx, int *ly) {
-    switch (floor) {
-        case DUEL_CIVIC_FLOOR_COMMONS:
+/* Where each room's own light is: the fire, a lamp on the specimen cabinet,
+ * the still's burner, the orb, a candle on the lectern, the glow over the
+ * prism, a lantern over the ring, the furnace under the pipes, and a lantern
+ * in the loft and the cellar. */
+static void room_light(int room, int x0, int y0, int floor_y, int *lx, int *ly) {
+    switch (room) {
+        case DUEL_DISTRICT_COMMONS:
             *lx = x0 + 6;
             *ly = floor_y - 3;
             break;
-        case DUEL_CIVIC_FLOOR_RESEARCH:
+        case DUEL_DISTRICT_RESEARCH:
+            *lx = x0 + 26;
+            *ly = floor_y - 13;
+            break;
+        case DUEL_DISTRICT_WORKSHOP:
+        case DUEL_DISTRICT_OBSERVATORY:
+            *lx = x0 + 9;
+            *ly = floor_y - 9;
+            break;
+        case DUEL_DISTRICT_SCRIPTORIUM:
             *lx = x0 + 24;
             *ly = floor_y - 10;
             break;
-        case DUEL_CIVIC_FLOOR_WORKSHOP:
-        case DUEL_CIVIC_FLOOR_SPECIAL:
-            *lx = x0 + 9;
-            *ly = floor_y - 9;
+        case DUEL_DISTRICT_STUDIO:
+            *lx = x0 + 26;
+            *ly = floor_y - 11;
+            break;
+        case DUEL_DISTRICT_ARENA:
+            *lx = x0 + 10;
+            *ly = floor_y - 12;
+            break;
+        case DUEL_DISTRICT_UNDERCROFT:
+            *lx = x0 + 17;
+            *ly = floor_y - 3;
             break;
         case ROOM_LOFT:
             *lx = x0 + 16;
@@ -759,10 +820,10 @@ static void room_light(int floor, int x0, int y0, int floor_y, int *lx, int *ly)
  * rather than as a lit box. A dot lands only where nothing is lit next to it,
  * so the light never fills a piece of furniture in.
  */
-static void draw_room_light(town_fb_t *fb, int floor, int y0, int height, uint32_t frame) {
+static void draw_room_light(town_fb_t *fb, int room, int y0, int height, uint32_t frame) {
     int lx;
     int ly;
-    room_light(floor, ROOM_X0, y0, y0 + height - 1, &lx, &ly);
+    room_light(room, ROOM_X0, y0, y0 + height - 1, &lx, &ly);
     int flick = (int)((frame >> 3) & 1u);
     fill_rect(fb, lx - 1, ly - 1 - flick, lx + 1, ly, true);
     px(fb, lx, ly - 2 - flick, true);
@@ -791,12 +852,22 @@ static void draw_room_light(town_fb_t *fb, int floor, int y0, int height, uint32
 }
 
 /*
- * What is in each room, by the floor it is.
+ * What is in each room, by the district it is.
  *
- * The four civic floors are four different rooms rather than four heights of
- * the same one -- a hearth, a library, a workshop, and whatever the top of a
- * wizard's tower is for -- so that switching applications changes the picture
- * and not only which rectangle is bright.
+ * The eight districts are eight different rooms rather than four floors with
+ * a scene nobody can see: a hearth, an observing instrument, a workshop, the
+ * top of the tower, a scriptorium, a music studio, a sparring ring, and the
+ * undercroft the rest of the tower runs on. Each is the panels' district
+ * (duel_environment_draw.c) carried into the town's wider room: the same two
+ * silhouettes that tell it apart on the keyboard -- the rising telescope and
+ * the specimen cabinet, the lectern and the scroll rack, the harp and the
+ * prism stage, the railed ring and the stepped stand, the pipe run high
+ * across the room over the lever bank and the valve -- so the desktop and
+ * the keyboard agree about where the host is. Switching applications changes
+ * the picture and not only which rectangle is bright.
+ *
+ * The storey you are on is the district; the storeys either side are the
+ * floors above and below, read as plainly as the keyboard reads a bare floor.
  *
  * Everything on the floor is measured up from the floor and everything hung
  * from the ceiling is measured down from it, because the same room is drawn
@@ -804,13 +875,13 @@ static void draw_room_light(town_fb_t *fb, int floor, int y0, int height, uint32
  * the extra furniture the tall middle storey has space for: the room you are
  * on is not merely bigger, it has more in it.
  */
-static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int floor, bool lit,
+static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int room, bool lit,
                                uint8_t intensity, uint32_t frame, uint8_t phase) {
     int floor_y = y0 + height - 1;
     bool roomy = height >= ROOM_LARGE_H;
 
-    switch (floor) {
-        case DUEL_CIVIC_FLOOR_COMMONS: {
+    switch (room) {
+        case DUEL_DISTRICT_COMMONS: {
             /* A hearth, alight, and a table laid under the window. */
             room_rect(fb, x0 + 1, floor_y - 8, x0 + 10, floor_y, lit);
             room_hline(fb, x0, x0 + 11, floor_y - 9, lit); /* the mantel */
@@ -834,8 +905,37 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             }
             break;
         }
-        case DUEL_CIVIC_FLOOR_RESEARCH: {
-            /* Shelves of books, and a lectern to read one at. */
+        case DUEL_DISTRICT_RESEARCH: {
+            /* A telescope on its tripod, rising across the room, and the
+             * specimen cabinet that supports it. */
+            room_line(fb, x0 + 4, floor_y - 5, x0 + 14, floor_y - 12, lit);
+            room_line(fb, x0 + 4, floor_y - 4, x0 + 14, floor_y - 11, lit);
+            room_rect(fb, x0 + 13, floor_y - 14, x0 + 16, floor_y - 11, lit);
+            room_vline(fb, x0 + 8, floor_y - 7, floor_y, lit);
+            room_line(fb, x0 + 8, floor_y - 3, x0 + 4, floor_y, lit);
+            room_line(fb, x0 + 8, floor_y - 3, x0 + 12, floor_y, lit);
+            room_box(fb, x0 + 21, floor_y - 11, x0 + 31, floor_y, lit);
+            room_hline(fb, x0 + 21, x0 + 31, floor_y - 6, lit);
+            for (int j = 0; j < 3; j++) {
+                room_rect(fb, x0 + 23 + j * 3, floor_y - 9, x0 + 24 + j * 3, floor_y - 7, lit);
+                room_rect(fb, x0 + 23 + j * 3, floor_y - 3, x0 + 24 + j * 3, floor_y - 1, lit);
+            }
+            if (roomy) {
+                /* An orrery hung from the ceiling, its planets on their
+                 * arcs, and a probe left on the boards. */
+                room_vline(fb, x0 + 6, y0, y0 + 3, lit);
+                room_arch(fb, x0 + 6, y0 + 9, 5, lit);
+                room_px(fb, x0 + 6, y0 + 6, lit);
+                room_px(fb, x0 + 2, y0 + 7, lit);
+                room_px(fb, x0 + 10, y0 + 8, lit);
+                room_ring(fb, x0 + 26, y0 + 4, 3, lit);
+                room_px(fb, x0 + 26, y0 + 4, lit);
+                room_rect(fb, x0 + 16, floor_y - 2, x0 + 18, floor_y, lit);
+            }
+            break;
+        }
+        case DUEL_DISTRICT_SCRIPTORIUM: {
+            /* Shelves of books, and a lectern with a quill to copy one at. */
             int shelves = roomy ? 5 : 3;
             room_vline(fb, x0 + 1, y0 + 1, floor_y, lit);
             room_vline(fb, x0 + 13, y0 + 1, floor_y, lit);
@@ -849,6 +949,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             room_hline(fb, x0 + 20, x0 + 28, floor_y - 6, lit);
             room_vline(fb, x0 + 24, floor_y - 5, floor_y, lit);
             room_hline(fb, x0 + 21, x0 + 27, floor_y, lit);
+            room_line(fb, x0 + 27, floor_y - 8, x0 + 30, floor_y - 12, lit); /* the quill */
             if (roomy) {
                 /* A scroll rack on the far wall and a stack of books left on
                  * the boards. */
@@ -859,7 +960,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             }
             break;
         }
-        case DUEL_CIVIC_FLOOR_WORKSHOP: {
+        case DUEL_DISTRICT_WORKSHOP: {
             /* A bench with an alembic on it, tools on a rail, a barrel. */
             room_hline(fb, x0 + 2, x0 + 19, floor_y - 6, lit);
             room_vline(fb, x0 + 3, floor_y - 5, floor_y, lit);
@@ -884,7 +985,7 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             }
             break;
         }
-        case DUEL_CIVIC_FLOOR_SPECIAL: {
+        case DUEL_DISTRICT_OBSERVATORY: {
             /* The top of a wizard's tower: an orb on its tripod and a glass
              * pointed at the sky it has all this height for.
              *
@@ -924,6 +1025,86 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
             }
             break;
         }
+        case DUEL_DISTRICT_STUDIO: {
+            /* A harp on the stage, its strings fanned to the crown, and a
+             * prism on its plinth that the light is played through. */
+            room_hline(fb, x0 + 1, x0 + 19, floor_y, lit);
+            room_hline(fb, x0 + 3, x0 + 17, floor_y - 1, lit);
+            room_line(fb, x0 + 4, floor_y - 2, x0 + 10, floor_y - 13, lit);
+            room_line(fb, x0 + 16, floor_y - 2, x0 + 10, floor_y - 13, lit);
+            for (int sx = x0 + 7; sx <= x0 + 13; sx += 3)
+                room_line(fb, sx, floor_y - 2, x0 + 10, floor_y - 11, lit);
+            room_rect(fb, x0 + 23, floor_y - 3, x0 + 29, floor_y, lit);
+            for (int i = 0; i <= 4; i++)
+                room_hline(fb, x0 + 26 - i, x0 + 26 + i, floor_y - 8 + i, lit);
+            if (roomy) {
+                /* What the prism throws up the wall, and a reel of the
+                 * evening's music. */
+                for (int k = 0; k < 3; k++)
+                    for (int d = 2; d < 9; d += 2)
+                        room_px(fb, x0 + 25 - k * 2 - d / 2, floor_y - 10 - d - k, lit);
+                room_ring(fb, x0 + 24, y0 + 5, 4, lit);
+                room_px(fb, x0 + 24, y0 + 5, lit);
+                room_hline(fb, x0 + 28, x0 + 31, y0 + 5, lit);
+            }
+            break;
+        }
+        case DUEL_DISTRICT_ARENA: {
+            /* The sparring ring is the one hollow mass -- posts and ropes,
+             * not a block -- and the stand beside it the one staircase. */
+            room_hline(fb, x0 + 1, x0 + 18, floor_y, lit);
+            room_vline(fb, x0 + 2, floor_y - 9, floor_y, lit);
+            room_vline(fb, x0 + 17, floor_y - 9, floor_y, lit);
+            room_hline(fb, x0 + 2, x0 + 17, floor_y - 7, lit);
+            room_hline(fb, x0 + 2, x0 + 17, floor_y - 4, lit);
+            for (int tier = 0; tier < 3; tier++) {
+                int top = floor_y - 3 - tier * 3;
+                int tx = x0 + 21 + tier * 3;
+                room_hline(fb, tx, x0 + 31, top, lit);
+                room_vline(fb, tx, top, top + 3 > floor_y ? floor_y : top + 3, lit);
+            }
+            room_vline(fb, x0 + 31, floor_y - 9, floor_y, lit);
+            if (roomy) {
+                /* A canopy over the stand on its legs, and the tally orbs
+                 * on their rising arc over the ring. */
+                room_hline(fb, x0 + 20, x0 + 31, floor_y - 17, lit);
+                room_arch(fb, x0 + 26, floor_y - 17, 5, lit);
+                room_vline(fb, x0 + 21, floor_y - 16, floor_y - 10, lit);
+                room_vline(fb, x0 + 30, floor_y - 16, floor_y - 10, lit);
+                for (int i = 0; i < 5; i++)
+                    room_rect(fb, x0 + 3 + i * 3, floor_y - 14 - (i * (4 - i)) / 2, x0 + 4 + i * 3,
+                              floor_y - 13 - (i * (4 - i)) / 2, lit);
+            }
+            break;
+        }
+        case DUEL_DISTRICT_UNDERCROFT: {
+            /* Two pipes across the whole room high up, which nothing else
+             * has; the lever bank under them; and the riser broken round a
+             * stop valve. */
+            room_hline(fb, x0, x0 + 31, y0 + 2, lit);
+            room_hline(fb, x0, x0 + 31, y0 + 5, lit);
+            for (int x = x0 + 3; x <= x0 + 29; x += 6)
+                room_vline(fb, x, y0, y0 + 1, lit);
+            room_box(fb, x0 + 2, floor_y - 5, x0 + 14, floor_y, lit);
+            for (int x = x0 + 4; x <= x0 + 12; x += 2)
+                room_vline(fb, x, floor_y - 8, floor_y - 6, lit);
+            int housing = floor_y - 9 < y0 + 7 ? y0 + 7 : floor_y - 9;
+            for (int y = y0 + 6; y <= floor_y; y++)
+                if (y < housing || y > floor_y - 3) {
+                    room_px(fb, x0 + 23, y, lit);
+                    room_px(fb, x0 + 29, y, lit);
+                }
+            room_box(fb, x0 + 21, housing, x0 + 31, floor_y - 3, lit);
+            room_ring(fb, x0 + 26, (housing + floor_y - 3) / 2, 2, lit);
+            if (roomy) {
+                /* A junction plate on the pipes and vapour off the bank. */
+                room_rect(fb, x0 + 22, y0 + 1, x0 + 30, y0 + 6, lit);
+                room_cut_hline(fb, x0 + 23, x0 + 29, y0 + 3);
+                for (int x = x0 + 5; x <= x0 + 13; x += 4)
+                    room_px(fb, x, floor_y - 11 - ((x >> 2) & 1), lit);
+            }
+            break;
+        }
         case ROOM_LOFT: {
             /* Above the top floor: rafters, and what gets put up here. */
             for (int i = 0; i <= 10; i++) {
@@ -952,8 +1133,9 @@ static void draw_room_contents(town_fb_t *fb, int x0, int y0, int height, int fl
 
     /* Whoever is up there, crossing their room on the civic clock. The town
      * is occupied at street level and the tower never was. */
-    if (lit && floor <= DUEL_CIVIC_FLOOR_SPECIAL) {
+    if (lit && room < DUEL_DISTRICT_COUNT) {
         int span = ROOM_X1 - ROOM_X0 - 8;
+        int floor = (int)duel_district_floor((uint8_t)room);
         int step = (int)((phase + (uint8_t)(floor * 37)) % (uint8_t)(2 * span));
         int wx = x0 + 4 + (step < span ? step : 2 * span - step);
         room_rect(fb, wx - 1, floor_y - 6, wx + 1, floor_y, lit);
@@ -1254,10 +1436,12 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
      */
     int active = (int)DUEL_CIVIC_FLOOR(r->civic);
     uint8_t intensity = DUEL_CIVIC_INTENSITY(r->civic);
-    /* Slot 0 is the upper neighbour, 1 the active floor, 2 the lower one. */
-    const int slot_floor[TOWER_SLOTS] = {
+    /* Slot 0 is the upper neighbour, 1 the active floor, 2 the lower one.
+     * The active storey is the district the host scene makes of its floor;
+     * the neighbours are floors, which are the first four rooms. */
+    const int slot_room[TOWER_SLOTS] = {
         active + 1 > DUEL_CIVIC_FLOOR_SPECIAL ? ROOM_LOFT : active + 1,
-        active,
+        (int)duel_civic_district(r->civic, r->external),
         active - 1 < DUEL_CIVIC_FLOOR_COMMONS ? ROOM_CELLAR : active - 1,
     };
     const int slot_height[TOWER_SLOTS] = {ROOM_SMALL_H, ROOM_LARGE_H, ROOM_SMALL_H};
@@ -1275,10 +1459,10 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
 
         fill_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height, false);
         frame_rect(fb, ROOM_X0 - 1, y0 - 1, ROOM_X1 + 1, y0 + height);
-        draw_room_contents(fb, ROOM_X0, y0, height, slot_floor[slot], lit, intensity, frame,
+        draw_room_contents(fb, ROOM_X0, y0, height, slot_room[slot], lit, intensity, frame,
                            r->civic_phase);
         if (lit)
-            draw_room_light(fb, slot_floor[slot], y0, height, frame);
+            draw_room_light(fb, slot_room[slot], y0, height, frame);
         /* Mullions, over the top of whatever is behind them. Without them a
          * lit storey is an opening in the wall rather than a window. */
         for (int m = 1; m < 3; m++) {

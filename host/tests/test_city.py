@@ -317,13 +317,16 @@ class CityRendererTests(unittest.TestCase):
     # a rare event began gathering a crowd. The town and landscape moved
     # again, reviewed, when they began drawing that event (DC1): the deck's
     # damage complaint being put right, a crack and a ladder on the end house.
+    # They moved once more, reviewed, when the storeys became districts (DC2):
+    # the Research floor above the Commons is now the Research district's
+    # telescope and cabinet, the books having gone to the Scriptorium.
     RESTING_FRAMES = {
         Layout.DESK: "0b41d7c8dd9fa0b0",
         Layout.CITY: "5e29dc8ca422df26",
         Layout.LEFT: "0693730495095ab7",
         Layout.RIGHT: "5b7fcdb5d8b0fa7e",
-        Layout.TOWN: "edd528ea1cf4a040",
-        Layout.LANDSCAPE: "cef39d8431c6ebd2",
+        Layout.TOWN: "c4401dbb55dc9646",
+        Layout.LANDSCAPE: "d246b2e8962eced2",
     }
     # Only the town layers draw the typing summary and the health buckets. The
     # four panel layouts are the keyboard's own two screens, and the keyboard
@@ -411,6 +414,36 @@ class CityRendererTests(unittest.TestCase):
                 above, active, below = self.storey_ink(layout, city_input(state, seed=0x5A))
                 self.assertLess(active, 0.5, f"{layout} {floor}")
                 self.assertGreater(active, max(above, below), f"{layout} {floor}")
+
+    # The eight districts, each as the (floor, scene) pair duel_civic_district
+    # in firmware/sim/duel_host.h derives it from.
+    DISTRICTS = {
+        "commons": (Floor.COMMONS, Scene.DUEL),
+        "research": (Floor.RESEARCH, Scene.ARCHIVE),
+        "workshop": (Floor.WORKSHOP, Scene.DUEL),
+        "observatory": (Floor.SPECIAL, Scene.FOCUS),
+        "scriptorium": (Floor.RESEARCH, Scene.DUEL),
+        "studio": (Floor.COMMONS, Scene.ARCHIVE),
+        "arena": (Floor.COMMONS, Scene.REVEL),
+        "undercroft": (Floor.WORKSHOP, Scene.ARCHIVE),
+    }
+
+    def test_each_district_has_its_own_room_in_the_town(self) -> None:
+        # DC2: the active storey is the district's room, not the floor's, so
+        # the three districts on the Commons floor and the two on each of
+        # Research and Workshop are told apart. Every room is still lamplit
+        # rather than inverted, and brighter than its neighbours.
+        for layout in self.TYPING_LAYOUTS:
+            rooms: dict[str, str] = {}
+            for name, (floor, scene) in self.DISTRICTS.items():
+                state = SemanticState(scene, NotificationSummary(), CivicState(floor=floor))
+                packed = city_input(state, seed=0x5A)
+                room = digest(self.storey_pixels(layout, packed, 1))
+                self.assertNotIn(room, rooms.values(), f"{layout} {name}")
+                rooms[name] = room
+                above, active, below = self.storey_ink(layout, packed)
+                self.assertLess(active, 0.5, f"{layout} {name}")
+                self.assertGreater(active, max(above, below), f"{layout} {name}")
 
     def test_typing_values_change_the_frame(self) -> None:
         # Every typing value draws in the town layers, each differently from
