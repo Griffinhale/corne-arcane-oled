@@ -285,12 +285,14 @@ class CityRendererTests(unittest.TestCase):
     # Today's resting frame in each layout with every off-keyboard field at
     # none. The panels are as the renderer drew them before those fields
     # existed; the town and landscape moved once, reviewed, when the lit tower
-    # storey stopped being drawn inverted (NF22).
+    # storey stopped being drawn inverted (NF22). The resting frame holds a jam
+    # in the right city, so the panels that show it moved once, reviewed, when
+    # a rare event began gathering a crowd.
     RESTING_FRAMES = {
-        Layout.DESK: "c0dc264113a523f4",
-        Layout.CITY: "54aee2b5104b1179",
+        Layout.DESK: "0b41d7c8dd9fa0b0",
+        Layout.CITY: "5e29dc8ca422df26",
         Layout.LEFT: "0693730495095ab7",
-        Layout.RIGHT: "8cfadb6b7ec969fe",
+        Layout.RIGHT: "5b7fcdb5d8b0fa7e",
         Layout.TOWN: "68f2b02f5aa97c0a",
         Layout.LANDSCAPE: "ae88f75233a95e2d",
     }

@@ -168,27 +168,74 @@ static uint8_t event_action(uint8_t floor, uint8_t id) {
     }
 }
 
-static void draw_event_floor_mark(duel_fb_t *fb, bool is_left, uint8_t id, uint8_t floor, int x,
+// The event sits on one of its district's own objects, so the same family lands
+// somewhere different in each room.
+static incantation_point_t event_anchor(uint8_t district, uint8_t id) {
+    return incantation_occupation_anchor(district, event_action(duel_district_floor(district), id));
+}
+
+/* Rooms that host rare events, in district order with the Observatory (which
+ * never hosts one) left out. Each room has its own glyph per event family. */
+#define EVENT_ROOMS (DUEL_DISTRICT_COUNT - 1u)
+
+static uint8_t event_room(uint8_t district) {
+    return district > DUEL_DISTRICT_OBSERVATORY ? (uint8_t)(district - 1u) : district;
+}
+
+static void draw_event_floor_mark(duel_fb_t *fb, bool is_left, uint8_t id, uint8_t district, int x,
                                   int y) {
-    /* Compact civic glyph table: dispatch/chart/blueprint; clock/analyzer/press;
-     * tea/log/tool; board/cabinet/rack; seal/specimen/toothed banner. */
-    static const int8_t mark[5][3][3][2] = {
+    /* Three pixels per (family, room), in room order: Commons, Research,
+     * Workshop, Scriptorium, Studio, Arena, Undercroft.
+     * scroll: dispatch/chart/blueprint/loose pages/tape/pennant/drips;
+     * jam: clock/analyzer/press/screw/crackle/stuck tally/steam;
+     * break: tea/log/tool/ink pot/note/bucket/lantern;
+     * complaint: board/cabinet/rack/torn page/snapped string/rope/leak;
+     * diplomat: seal/specimen/toothed banner/ribbon/fanfare/crest/hook. */
+    static const int8_t mark[5][EVENT_ROOMS][3][2] = {
         {{{-2, -1}, {-6, -1}, {-10, -1}},
          {{-2, -1}, {-5, -2}, {-8, -1}},
-         {{-2, -2}, {-6, -2}, {-10, -2}}},
-        {{{1, -1}, {0, -2}, {-1, 1}}, {{4, -4}, {4, -1}, {4, 2}}, {{-3, 4}, {0, 4}, {3, 4}}},
-        {{{-2, -2}, {-1, -2}, {0, -1}}, {{0, -2}, {2, -2}, {0, -3}}, {{0, -3}, {2, -3}, {4, -3}}},
-        {{{-3, -9}, {0, -9}, {3, -9}}, {{-3, -8}, {-3, -4}, {-3, 0}}, {{-3, 1}, {0, 1}, {3, 1}}},
-        {{{1, 1}, {2, 1}, {3, 1}}, {{1, 1}, {2, 2}, {3, 1}}, {{1, 4}, {3, 4}, {5, 4}}},
+         {{-2, -2}, {-6, -2}, {-10, -2}},
+         {{-3, -3}, {-7, -4}, {-11, -2}},
+         {{-3, 1}, {-6, 2}, {-9, 1}},
+         {{-2, -4}, {-3, -5}, {-2, -6}},
+         {{-4, 2}, {-4, 4}, {-8, 3}}},
+        {{{1, -1}, {0, -2}, {-1, 1}},
+         {{4, -4}, {4, -1}, {4, 2}},
+         {{-3, 4}, {0, 4}, {3, 4}},
+         {{0, -5}, {0, -6}, {1, -7}},
+         {{5, -1}, {6, 0}, {5, 1}},
+         {{-5, -5}, {-4, -5}, {-5, -4}},
+         {{0, -5}, {-1, -7}, {1, -8}}},
+        {{{-2, -2}, {-1, -2}, {0, -1}},
+         {{0, -2}, {2, -2}, {0, -3}},
+         {{0, -3}, {2, -3}, {4, -3}},
+         {{3, -1}, {3, -2}, {4, -2}},
+         {{2, -4}, {2, -3}, {3, -5}},
+         {{-3, -1}, {-3, -2}, {-2, -1}},
+         {{1, -3}, {1, -4}, {0, -5}}},
+        {{{-3, -9}, {0, -9}, {3, -9}},
+         {{-3, -8}, {-3, -4}, {-3, 0}},
+         {{-3, 1}, {0, 1}, {3, 1}},
+         {{2, -9}, {3, -8}, {2, -7}},
+         {{-2, -6}, {-3, -5}, {-2, -4}},
+         {{-4, -8}, {-5, -8}, {-6, -7}},
+         {{2, 0}, {2, 2}, {3, 4}}},
+        {{{1, 1}, {2, 1}, {3, 1}},
+         {{1, 1}, {2, 2}, {3, 1}},
+         {{1, 4}, {3, 4}, {5, 4}},
+         {{1, 2}, {2, 3}, {1, 4}},
+         {{1, 1}, {2, 0}, {3, -1}},
+         {{2, 1}, {2, 2}, {3, 3}},
+         {{1, 2}, {1, 3}, {2, 3}}},
     };
-    const int8_t(*pixels)[2] = mark[id - 1u][floor];
+    const int8_t(*pixels)[2] = mark[id - 1u][event_room(district)];
     for (int i = 0; i < 3; i++)
         event_px(fb, is_left, x + pixels[i][0], y + pixels[i][1]);
 }
 
-static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t id, uint8_t phase,
-                             bool quiet) {
-    incantation_point_t at = incantation_occupation_anchor(floor, event_action(floor, id));
+static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t district, uint8_t id,
+                             uint8_t phase, bool quiet) {
+    incantation_point_t at = event_anchor(district, id);
     int x = at.x, y = at.y;
     switch (id) {
         case DUEL_CIVIC_EVENT_RUNAWAY_SCROLL: {
@@ -198,7 +245,7 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t
                 end = 3;
             duel_fb_desk_hline(fb, is_left, end, x, y);
             duel_fb_desk_vline(fb, is_left, x, y - 3, y + 1);
-            draw_event_floor_mark(fb, is_left, id, floor, x, y);
+            draw_event_floor_mark(fb, is_left, id, district, x, y);
             if (!quiet && phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE)
                 event_px(fb, is_left, end - 1, y - 3);
             break;
@@ -214,7 +261,7 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t
             event_px(fb, is_left, x + 2, y - 2);
             event_px(fb, is_left, x - 2, y + 2);
             event_px(fb, is_left, x + 2, y + 2);
-            draw_event_floor_mark(fb, is_left, id, floor, x, y);
+            draw_event_floor_mark(fb, is_left, id, district, x, y);
             if (!quiet && phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE) {
                 event_px(fb, is_left, x + 4, y - 4);
                 event_px(fb, is_left, x + 5, y - 5);
@@ -225,14 +272,14 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t
             duel_fb_desk_hline(fb, is_left, x - 4, x + 4, y);
             event_px(fb, is_left, x - 2, y - 1);
             event_px(fb, is_left, x - 1, y - 1);
-            draw_event_floor_mark(fb, is_left, id, floor, x, y);
+            draw_event_floor_mark(fb, is_left, id, district, x, y);
             if (!quiet && phase < DUEL_CIVIC_EVENT_PHASE_RESOLVING)
                 event_px(fb, is_left, x - 2 + (phase & 1u), y - 5);
             break;
         default: /* DAMAGE_COMPLAINT: damaged board, cabinet, or rack. */
             for (int i = 0; i < 5 + (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE ? 4 : 0); i++)
                 event_px(fb, is_left, x + ((i >> 1) & 1), y - 8 + i);
-            draw_event_floor_mark(fb, is_left, id, floor, x, y);
+            draw_event_floor_mark(fb, is_left, id, district, x, y);
             if (phase == DUEL_CIVIC_EVENT_PHASE_RESOLVING) {
                 event_px(fb, is_left, x - 1, y - 3);
                 event_px(fb, is_left, x + 2, y - 3);
@@ -241,9 +288,10 @@ static void draw_floor_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t
     }
 }
 
-static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_t id, uint8_t phase,
-                              bool quiet) {
-    incantation_point_t at = incantation_occupation_anchor(floor, event_action(floor, id));
+static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t district, uint8_t id,
+                              uint8_t phase, bool quiet) {
+    uint8_t floor = duel_district_floor(district);
+    incantation_point_t at = event_anchor(district, id);
     if (id == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER) {
         int top = at.y - 12;
         static const uint8_t reach[4] = {27, 31, 29, 26};
@@ -251,7 +299,7 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_
         duel_fb_desk_hline(fb, is_left, at.x, reach[phase & 3u], top);
         duel_fb_desk_hline(fb, is_left, at.x, reach[phase & 3u], top + 3);
         /* Dispatch seal, specimen pennant, or toothed workshop banner. */
-        draw_event_floor_mark(fb, is_left, id, floor, at.x, top);
+        draw_event_floor_mark(fb, is_left, id, district, at.x, top);
         event_px(fb, is_left, at.x - 1, at.y - 2);
         duel_fb_desk_vline(fb, is_left, at.x - 1, at.y - 1, at.y);
     } else {
@@ -289,27 +337,47 @@ static void draw_shared_event(duel_fb_t *fb, bool is_left, uint8_t floor, uint8_
     }
 }
 
-void draw_rare_event(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+// The event shown on this half, or NONE, with the district it is shown in. The
+// caller has already ruled out an aftermath and the Special floor; this adds
+// the half's target and the room actually shown, which during the first two
+// transition phases is the outgoing district.
+static uint8_t event_on_half(const duel_render_t *r, bool is_left, uint8_t *district) {
     uint8_t id = DUEL_EVENT_ID(r->revision);
     if (id == DUEL_CIVIC_EVENT_NONE || id >= DUEL_CIVIC_EVENT_COUNT)
-        return;
+        return DUEL_CIVIC_EVENT_NONE;
     uint8_t target = DUEL_EVENT_TARGET(r->revision);
     if (id != DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER &&
         ((target == DUEL_CIVIC_EVENT_TARGET_LEFT && !is_left) ||
          (target == DUEL_CIVIC_EVENT_TARGET_RIGHT && is_left)))
+        return DUEL_CIVIC_EVENT_NONE;
+    *district = incantation_effective_district(r);
+    if (*district >= INCANTATION_OCCUPATION_FLOORS)
+        *district = DUEL_DISTRICT_COMMONS;
+    if (duel_district_floor(*district) == DUEL_CIVIC_FLOOR_SPECIAL)
+        return DUEL_CIVIC_EVENT_NONE;
+    return id;
+}
+
+bool civic_event_gathers(const duel_render_t *r, bool is_left) {
+    uint8_t district = DUEL_DISTRICT_COMMONS;
+    if ((r->revision & INCANTATION_AFTERMATH_WIRE) ||
+        DUEL_CIVIC_FLOOR(r->civic) == DUEL_CIVIC_FLOOR_SPECIAL)
+        return false;
+    uint8_t id = event_on_half(r, is_left, &district);
+    uint8_t phase = DUEL_EVENT_PHASE(r->revision);
+    return id != DUEL_CIVIC_EVENT_NONE && id != DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER &&
+           (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE || phase == DUEL_CIVIC_EVENT_PHASE_RESOLVING);
+}
+
+void draw_rare_event(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+    uint8_t district = DUEL_DISTRICT_COMMONS;
+    uint8_t id = event_on_half(r, is_left, &district);
+    if (id == DUEL_CIVIC_EVENT_NONE)
         return;
-    uint8_t floor = DUEL_CIVIC_FLOOR(r->civic);
-    if (INCANTATION_FLOOR_TRANSITION_ACTIVE(r->floor_transition) &&
-        INCANTATION_FLOOR_TRANSITION_PHASE(r->floor_transition) < 2u)
-        floor = INCANTATION_FLOOR_TRANSITION_SOURCE(r->floor_transition);
-    if (floor == DUEL_CIVIC_FLOOR_SPECIAL)
-        return;
-    if (floor >= INCANTATION_OCCUPATION_FLOORS)
-        floor = DUEL_CIVIC_FLOOR_COMMONS;
     uint8_t phase = DUEL_EVENT_PHASE(r->revision);
     bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
     if (id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
-        draw_shared_event(fb, is_left, floor, id, phase, quiet);
+        draw_shared_event(fb, is_left, district, id, phase, quiet);
     else
-        draw_floor_event(fb, is_left, floor, id, phase, quiet);
+        draw_floor_event(fb, is_left, district, id, phase, quiet);
 }

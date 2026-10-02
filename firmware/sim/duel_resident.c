@@ -24,15 +24,17 @@ uint8_t civic_resident_personality(uint8_t seed, bool is_left) {
 }
 
 // Ambient action weights per personality, ordered by DUEL_CIVIC_ACTION_*:
-// WORK, WALK, INSPECT, REST, WATCH_ROOF, HANDLE_DELIVERY, REACT. Event-driven
-// actions (HANDLE_DELIVERY, REACT) keep a small ambient weight so the vocabulary
-// is exercised; event-driven presentation can force them from couriers/combat.
+// WORK, WALK, INSPECT, REST, WATCH_ROOF, HANDLE_DELIVERY, REACT, GATHER.
+// Event-driven HANDLE_DELIVERY and REACT keep a small ambient weight so the
+// vocabulary is exercised; event-driven presentation can force them from
+// couriers/combat. GATHER has none: a resident only gathers at a rare event,
+// and a zero column leaves every ambient pick where it was.
 static const uint8_t action_weights[DUEL_CIVIC_PERSONALITY_COUNT][DUEL_CIVIC_ACTION_COUNT] = {
-    /* DILIGENT   */ {8, 2, 4, 1, 1, 2, 1},
-    /* CURIOUS    */ {2, 5, 7, 1, 4, 2, 1},
-    /* NERVOUS    */ {2, 4, 2, 1, 6, 2, 3},
-    /* PROUD      */ {6, 2, 3, 1, 5, 1, 1},
-    /* DISTRACTED */ {1, 5, 3, 6, 3, 1, 1},
+    /* DILIGENT   */ {8, 2, 4, 1, 1, 2, 1, 0},
+    /* CURIOUS    */ {2, 5, 7, 1, 4, 2, 1, 0},
+    /* NERVOUS    */ {2, 4, 2, 1, 6, 2, 3, 0},
+    /* PROUD      */ {6, 2, 3, 1, 5, 1, 1, 0},
+    /* DISTRACTED */ {1, 5, 3, 6, 3, 1, 1, 0},
 };
 
 static uint8_t pick_action(uint8_t seed, bool is_left, uint8_t personality, uint8_t slot) {
@@ -59,6 +61,7 @@ static uint8_t quiet_remap(uint8_t action) {
         case DUEL_CIVIC_ACTION_WALK:
             return DUEL_CIVIC_ACTION_REST;
         case DUEL_CIVIC_ACTION_REACT:
+        case DUEL_CIVIC_ACTION_GATHER:
             return DUEL_CIVIC_ACTION_INSPECT;
         case DUEL_CIVIC_ACTION_WATCH_ROOF:
             return DUEL_CIVIC_ACTION_WORK;
@@ -91,6 +94,7 @@ enum {
     INCANTATION_POSE_WATCH,
     INCANTATION_POSE_EXCHANGE,
     INCANTATION_POSE_REACT,
+    INCANTATION_POSE_GATHER,
 };
 
 enum {
@@ -151,6 +155,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_COMMONS_CLOCK},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_COMMONS_BOARD},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_DISPATCH, INCANTATION_OBJECT_COMMONS_BOARD},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_COMMONS_BOARD},
     /* Research: scope, notes/specimen, cabinet, log, reading, transfer, anomaly. */
     {18, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_RESEARCH_SCOPE},
     {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_LOG},
@@ -159,6 +164,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_RESEARCH_SCOPE},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_CABINET},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_RESEARCH_SCOPE},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_RESEARCH_SCOPE},
     /* Workshop: forge/press, parts, rack, bench, gauge, hoist, jam/spark. */
     {18, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_FORGE},
     {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_GAUGE},
@@ -167,6 +173,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_WORKSHOP_GAUGE},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_WORKSHOP_RACK},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_WORKSHOP_FORGE},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_WORKSHOP_FORGE},
     /* Observatory: stargaze, carry chart, inspect scope, log, watch dome. */
     {18, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_OBSERVATORY_SCOPE},
     {16, INCANTATION_POSE_CARRY, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_OBSERVATORY_CHART},
@@ -175,6 +182,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_OBSERVATORY_DOME},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_OBSERVATORY_CHART},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_SPECIMEN, INCANTATION_OBJECT_OBSERVATORY_DOME},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_OBSERVATORY_DOME},
     /* Scriptorium: lectern/quill, scroll rack, index and copy-desk work. */
     {15, INCANTATION_POSE_WORK, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
     {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_LEDGER, INCANTATION_OBJECT_SCRIPTORIUM_RACK},
@@ -183,6 +191,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_SCRIPTORIUM_RACK},
     {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_SCRIPTORIUM_INDEX},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_NOTES, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_SCRIPTORIUM_LECTERN},
     /* Studio: resonance stage, mixer/projector, and reel handling. */
     {15, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_STAGE},
     {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_STUDIO_REEL},
@@ -191,6 +200,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {18, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_STUDIO_STAGE},
     {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_STUDIO_REEL},
     {18, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_STUDIO_STAGE},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_STUDIO_STAGE},
     /* Arena: ring drill, carry gear to the stand, read the tally, rest. */
     {14, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_ARENA_RING},
     {19, INCANTATION_POSE_CARRY, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_ARENA_STAND},
@@ -199,6 +209,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {14, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_TALLY},
     {21, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_ARENA_STAND},
     {14, INCANTATION_POSE_REACT, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_RING},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_ARENA_RING},
     /* Undercroft: throw levers, carry parts, read the valve, log the pipes. */
     {12, INCANTATION_POSE_WORK, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
     {17, INCANTATION_POSE_CARRY, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_PIPES},
@@ -207,6 +218,7 @@ static const incantation_occupation_desc_t incantation_occupations[INCANTATION_O
     {19, INCANTATION_POSE_WATCH, INCANTATION_MARK_NONE, INCANTATION_OBJECT_UNDERCROFT_PIPES},
     {22, INCANTATION_POSE_EXCHANGE, INCANTATION_MARK_PARCEL, INCANTATION_OBJECT_UNDERCROFT_VALVE},
     {12, INCANTATION_POSE_REACT, INCANTATION_MARK_TOOL, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
+    {20, INCANTATION_POSE_GATHER, INCANTATION_MARK_NONE, INCANTATION_OBJECT_UNDERCROFT_LEVERS},
 };
 
 static const incantation_occupation_desc_t *incantation_occupation(uint8_t key) {
@@ -358,6 +370,11 @@ void civic_resident_draw(duel_fb_t *fb, const civic_resident_t *res, bool is_lef
                 duel_fb_px(fb, cx - 3, top + 2, true);
                 duel_fb_px(fb, cx + 3, top + 2, true);
                 duel_fb_px(fb, cx, top - 2, true);
+                break;
+            case INCANTATION_POSE_GATHER: /* a long arm pointing up at the commotion */
+                duel_fb_px(fb, cx + 2 * gapward, shoulders, true);
+                duel_fb_px(fb, cx + 3 * gapward, shoulders - 1, true);
+                duel_fb_px(fb, cx + 4 * gapward, shoulders - 2, true);
                 break;
         }
         incantation_draw_carried(fb, desc->carried, cx, shoulders + 2, gapward);

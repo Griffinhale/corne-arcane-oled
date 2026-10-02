@@ -1,4 +1,5 @@
 #include "duel_draw_internal.h"
+#include "duel_event.h"
 #include "duel_host.h"
 #include "duel_resident.h"
 #include "duel_runtime.h"
@@ -620,7 +621,7 @@ static void duel_environment_draw_floor_transition(duel_fb_t *fb, const duel_ren
 
 static void draw_crowd_moments(duel_fb_t *fb, const duel_render_t *r, bool is_left,
                                uint8_t district, uint8_t mode, uint8_t after_kind,
-                               uint8_t after_phase) {
+                               uint8_t after_phase, bool gathering) {
     if (mode == DUEL_CIVIC_MODE_QUIET || district == DUEL_DISTRICT_OBSERVATORY)
         return;
     bool arrival = !(r->revision & INCANTATION_AFTERMATH_WIRE) &&
@@ -630,12 +631,14 @@ static void draw_crowd_moments(duel_fb_t *fb, const duel_render_t *r, bool is_le
     bool celebration =
         (after_kind == AFTER_CHEER || after_kind == AFTER_MAX_CAST) && after_phase < 2u;
     bool crisis = (after_kind == AFTER_PANIC || after_kind == AFTER_FIRE) && after_phase < 2u;
-    if (!arrival && !celebration && !crisis)
+    if (!arrival && !celebration && !crisis && !gathering)
         return;
     /* The ordinary resident plus these two derived bystanders is the hard
      * three-silhouette maximum. No crowd record or actor pool exists. */
     for (uint8_t i = 0; i < DUEL_CROWD_BYSTANDERS; i++) {
-        int desk_x = 6 + i * 20 + ((r->seed + district + i) & 1u);
+        /* A rare event draws the pair in to either side of the gathered
+         * resident, who always stands at desk x 20. */
+        int desk_x = gathering ? 15 + i * 10 : 6 + i * 20 + (int)((r->seed + district + i) & 1u);
         int x = duel_fb_desk_x(is_left, desk_x);
         int feet = 108 - (int)((r->seed + i + district) & 1u);
         duel_fb_hline(fb, x - 1, x + 1, feet - 5);
@@ -747,6 +750,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
         res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
     }
     uint8_t after_kind = AFTER_NONE, after_phase = 0;
+    bool gathering = civic_event_gathers(r, is_left) && mode != DUEL_CIVIC_MODE_QUIET;
     if (r->revision & INCANTATION_AFTERMATH_WIRE) {
         uint8_t side = is_left ? SIM_SIDE_L : SIM_SIDE_R;
         after_kind = INCANTATION_AFTER_KIND(r->shared_pres, side);
@@ -795,6 +799,9 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
         }
         if (after_kind != AFTER_NONE)
             res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
+    } else if (gathering) {
+        res.action = DUEL_CIVIC_ACTION_GATHER;
+        res.station = INCANTATION_OCCUPATION_KEY(district, res.action);
     } else if (district != DUEL_DISTRICT_OBSERVATORY &&
                DUEL_EVENT_ID(r->revision) == DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER) {
         uint8_t target = DUEL_EVENT_TARGET(r->revision);
@@ -807,7 +814,7 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
                                                                        : RESIDENT_DIPLO_RECEIVING);
     }
     civic_resident_draw(fb, &res, is_left, mode, 0);
-    draw_crowd_moments(fb, r, is_left, district, mode, after_kind, after_phase);
+    draw_crowd_moments(fb, r, is_left, district, mode, after_kind, after_phase, gathering);
 
     /* Lasting room/object consequences. They share the authoritative aftermath
      * phase with the resident task, so reconnecting halves resume mid-arc. All

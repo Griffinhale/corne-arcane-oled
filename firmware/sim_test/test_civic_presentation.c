@@ -166,6 +166,118 @@ static void test_rare_event_floor_phase_mode_target_matrix(void) {
     CHECK(ok, "incantation_rare_event_floor_family_phase_mode_target_routing_and_safety_matrix");
 }
 
+static void set_event_district(duel_render_t *r, uint8_t district, uint8_t mode) {
+    uint8_t floor, scene;
+    district_context(district, &floor, &scene);
+    r->civic = DUEL_CIVIC_PACK(floor, mode, 0);
+    r->external = DUEL_HOST_CONTEXT_PACK(true, scene, 0u, false);
+}
+
+static uint8_t event_target(uint8_t id, bool is_left) {
+    if (id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+        return DUEL_CIVIC_EVENT_TARGET_SHARED;
+    return is_left ? DUEL_CIVIC_EVENT_TARGET_LEFT : DUEL_CIVIC_EVENT_TARGET_RIGHT;
+}
+
+/* Bystander heads the gathered crowd adds on either side of the event. */
+static unsigned gathered_heads(const duel_fb_t *base, const duel_fb_t *moment, bool is_left,
+                               uint8_t seed, uint8_t district) {
+    unsigned added = 0u;
+    for (uint8_t i = 0; i < DUEL_CROWD_BYSTANDERS; i++) {
+        int desk_x = 15 + i * 10;
+        int x = is_left ? desk_x : DUEL_CANVAS_W - 1 - desk_x;
+        int feet = 108 - (int)((seed + i + district) & 1u);
+        for (int dx = -1; dx <= 1; dx++)
+            added += !duel_fb_get(base, x + dx, feet - 5) && duel_fb_get(moment, x + dx, feet - 5);
+    }
+    return added;
+}
+
+static void test_rare_event_districts_and_gathered_crowds(void) {
+    bool ok = true;
+    /* Each family drawn in the room looks different in every district that
+     * hosts events; the Observatory hosts none. */
+    for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL; id <= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER;
+         id++) {
+        duel_fb_t room[DUEL_DISTRICT_COUNT];
+        for (uint8_t district = 0; district < DUEL_DISTRICT_COUNT; district++) {
+            duel_render_t r = {0};
+            set_event_district(&r, district, DUEL_CIVIC_MODE_NORMAL);
+            r.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE, event_target(id, true));
+            duel_fb_clear(&room[district]);
+            draw_rare_event(&room[district], &r, true);
+            if (district == DUEL_DISTRICT_OBSERVATORY)
+                EXPECT(framebuffer_pixels(&room[district]) == 0u);
+            else
+                EXPECT(framebuffer_pixels(&room[district]) >= 4u &&
+                       pixels_within(&room[district], DUEL_FLOOR_BEAM_Y, DUEL_FLOOR_Y1));
+
+            /* Mid-transition the outgoing district still owns the event,
+             * read as a district rather than a floor. */
+            duel_render_t moving = r;
+            set_event_district(&moving, DUEL_DISTRICT_COMMONS, DUEL_CIVIC_MODE_NORMAL);
+            moving.floor_transition = INCANTATION_FLOOR_TRANSITION_PACK(district, 1, true);
+            duel_fb_t outgoing;
+            duel_fb_clear(&outgoing);
+            draw_rare_event(&outgoing, &moving, true);
+            EXPECT(memcmp(&outgoing, &room[district], sizeof outgoing) == 0);
+        }
+        for (uint8_t a = 0; a < DUEL_DISTRICT_COUNT; a++)
+            for (uint8_t b = (uint8_t)(a + 1u); b < DUEL_DISTRICT_COUNT; b++)
+                if (a != DUEL_DISTRICT_OBSERVATORY && b != DUEL_DISTRICT_OBSERVATORY)
+                    EXPECT(memcmp(&room[a], &room[b], sizeof room[a]) != 0);
+    }
+
+    /* A local or sky event gathers the two bystanders beside it while ACTIVE
+     * or RESOLVING, on the half that shows it, and never in QUIET, the
+     * Observatory, an aftermath, or for the diplomatic courier. */
+    sim_world_t world;
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t side = 0; side < 2u; side++)
+        for (uint8_t district = 0; district < DUEL_DISTRICT_COUNT; district++)
+            for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL; id < DUEL_CIVIC_EVENT_COUNT; id++)
+                for (uint8_t phase = DUEL_CIVIC_EVENT_PHASE_ARMED;
+                     phase <= DUEL_CIVIC_EVENT_PHASE_COOLDOWN; phase++) {
+                    bool is_left = side == SIM_SIDE_L;
+                    duel_render_t base = {0};
+                    duel_render_from_world(&base, &world);
+                    base.seed = 0x2du;
+                    base.civic_phase = 11u;
+                    set_event_district(&base, district, DUEL_CIVIC_MODE_NORMAL);
+                    duel_render_t event = base;
+                    event.revision = DUEL_EVENT_PACK(id, phase, event_target(id, is_left));
+                    bool gathered = civic_event_gathers(&event, is_left);
+                    bool gathers = district != DUEL_DISTRICT_OBSERVATORY &&
+                                   id != DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER &&
+                                   (phase == DUEL_CIVIC_EVENT_PHASE_ACTIVE ||
+                                    phase == DUEL_CIVIC_EVENT_PHASE_RESOLVING);
+                    EXPECT(gathered == gathers);
+                    if (!gathers)
+                        continue;
+                    duel_fb_t base_frame, event_frame;
+                    incantation_render(&base_frame, &base, is_left, false);
+                    incantation_render(&event_frame, &event, is_left, false);
+                    EXPECT(gathered_heads(&base_frame, &event_frame, is_left, base.seed,
+                                          district) >= 2u);
+
+                    duel_render_t other = event;
+                    if (id < DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER)
+                        EXPECT(!civic_event_gathers(&other, !is_left));
+                    other.revision = (uint8_t)(INCANTATION_AFTERMATH_WIRE | event.revision);
+                    EXPECT(!civic_event_gathers(&other, is_left));
+
+                    duel_render_t quiet = event;
+                    set_event_district(&quiet, district, DUEL_CIVIC_MODE_QUIET);
+                    duel_render_t quiet_base = base;
+                    set_event_district(&quiet_base, district, DUEL_CIVIC_MODE_QUIET);
+                    incantation_render(&base_frame, &quiet_base, is_left, false);
+                    incantation_render(&event_frame, &quiet, is_left, false);
+                    EXPECT(gathered_heads(&base_frame, &event_frame, is_left, base.seed,
+                                          district) == 0u);
+                }
+    CHECK(ok, "rare_event_district_variants_transition_source_and_gathered_crowd_bounds");
+}
+
 static void test_aftermath_floor_kind_phase_half_matrix(void) {
     bool ok = true;
     sim_world_t world;
@@ -198,7 +310,7 @@ static void test_aftermath_floor_kind_phase_half_matrix(void) {
 static uint8_t quiet_action(uint8_t action) {
     if (action == DUEL_CIVIC_ACTION_WALK)
         return DUEL_CIVIC_ACTION_REST;
-    if (action == DUEL_CIVIC_ACTION_REACT)
+    if (action == DUEL_CIVIC_ACTION_REACT || action == DUEL_CIVIC_ACTION_GATHER)
         return DUEL_CIVIC_ACTION_INSPECT;
     if (action == DUEL_CIVIC_ACTION_WATCH_ROOF)
         return DUEL_CIVIC_ACTION_WORK;
@@ -245,7 +357,7 @@ static void test_resident_occupation_derivation(void) {
             EXPECT(personalities[side][p]);
         for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++)
             for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++)
-                EXPECT(seen[side][floor][action]);
+                EXPECT(seen[side][floor][action] == (action != DUEL_CIVIC_ACTION_GATHER));
     }
 
     /* Authoritative aftermath suppresses personality, progress, carry, and
@@ -383,6 +495,7 @@ void run_civic_presentation_tests(void) {
     test_resident_geometry_and_object_separation();
     test_civic_anchor_and_courier_matrix();
     test_rare_event_floor_phase_mode_target_matrix();
+    test_rare_event_districts_and_gathered_crowds();
     test_aftermath_floor_kind_phase_half_matrix();
     test_district_derivation_matrix();
     test_scene_range_and_context_round_trip();

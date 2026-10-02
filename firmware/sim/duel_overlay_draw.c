@@ -257,7 +257,7 @@ static void scry_city_content(const scry_scroll_t *scroll, const duel_render_t *
     static const char *const modes[] = {"NORMAL", "QUIET", "URGENT", "QUIET"};
     static const char *const levels[] = {"CALM", "ACTIVE", "BUSY", "SAT"};
     static const char *const actions[] = {"WORK",  "WALK",  "CHECK", "REST",
-                                          "WATCH", "DELIV", "REACT"};
+                                          "WATCH", "DELIV", "REACT", "GATHER"};
     static const char *const couriers[] = {"NONE", "MSG", "PARCEL", "BEACON", "GUARD"};
     static const char *const events[] = {"NONE",   "SCROLL", "GEAR", "BREAK",
                                          "DAMAGE", "DIPLO",  "SKY"};

@@ -450,12 +450,15 @@ static void build_catalog(void) {
 
     sim_init(&world, SIMF_AUTHORITATIVE, 0);
     static const char *action_name[DUEL_CIVIC_ACTION_COUNT] = {
-        "work", "walk", "inspect", "rest", "watch", "delivery", "react"};
+        "work", "walk", "inspect", "rest", "watch", "delivery", "react", "gather"};
     for (uint8_t floor = 0; floor < INCANTATION_OCCUPATION_FLOORS; floor++) {
         for (uint8_t action = 0; action < DUEL_CIVIC_ACTION_COUNT; action++) {
             /* Observatory occupation is ritual-stage authoritative, so its
              * one stage-zero occupation replaces the ambient action roster. */
             if (floor == DUEL_DISTRICT_OBSERVATORY && action != DUEL_CIVIC_ACTION_WORK)
+                continue;
+            /* GATHER is never an ambient pick; the event_* cases show it. */
+            if (action == DUEL_CIVIC_ACTION_GATHER)
                 continue;
             char name[48];
             snprintf(name, sizeof name, "occupation_astral_%s_%s", floor_name[floor],
@@ -499,6 +502,25 @@ static void build_catalog(void) {
                 snprintf(name, sizeof name, "diplomacy_balance");
             else
                 snprintf(name, sizeof name, "event_%s_%s", floor_name[floor], event_name[id]);
+            add_render_case(name, &civic, 7u);
+        }
+    }
+
+    /* The districts that share a floor host the same rare events on their own
+     * objects, with their own glyphs and a gathered crowd. */
+    for (uint8_t district = DUEL_DISTRICT_SCRIPTORIUM; district < DUEL_DISTRICT_COUNT; district++) {
+        for (uint8_t id = DUEL_CIVIC_EVENT_RUNAWAY_SCROLL; id < DUEL_CIVIC_EVENT_COUNT; id++) {
+            duel_render_t civic = {0};
+            duel_render_from_world(&civic, &world);
+            civic.seed = 0x5au;
+            civic.civic_phase = 19u;
+            set_district_context(&civic, district, DUEL_CIVIC_MODE_NORMAL, 0u);
+            uint8_t target = id >= DUEL_CIVIC_EVENT_DIPLOMATIC_COURIER
+                                 ? DUEL_CIVIC_EVENT_TARGET_SHARED
+                                 : DUEL_CIVIC_EVENT_TARGET_LEFT;
+            civic.revision = DUEL_EVENT_PACK(id, DUEL_CIVIC_EVENT_PHASE_ACTIVE, target);
+            char name[48];
+            snprintf(name, sizeof name, "event_%s_%s", floor_name[district], event_name[id]);
             add_render_case(name, &civic, 7u);
         }
     }

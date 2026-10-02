@@ -28,6 +28,12 @@ static inline uint8_t civic_event_revision(civic_event_state_t st) {
     return (uint8_t)(st.id_target | ((st.phase & 3u) << 3));
 }
 
+// Whether a rare event gathers a crowd on this half: a local or sky event does
+// while ACTIVE or RESOLVING; the diplomatic courier has its own resident tasks
+// and gathers none. Derived from the revision byte alone, so both halves agree
+// without a wire field.
+bool civic_event_gathers(const duel_render_t *r, bool is_left);
+
 // Draw the active rare event (decoded from r->revision) into or around the
 // floor (local families) or across the desk gap (shared families).
 void draw_rare_event(duel_fb_t *fb, const duel_render_t *r, bool is_left);
