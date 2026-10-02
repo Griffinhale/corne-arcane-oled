@@ -49,6 +49,7 @@ typedef struct {
 typedef struct {
     sim_world_t world;
     duel_flash_policy_t flash;
+    duel_diplomacy_t diplomacy;
     ambient_caster_t caster[2];
     duel_ambient_stats_t stats;
     uint32_t next_tick_ms;
@@ -96,6 +97,11 @@ void duel_ambient_init(duel_ambient_t *ambient, uint8_t seed) {
     /* Any nonzero word; the seed must not be able to stall the generator. */
     state->prng = 0x9E3779B9u ^ ((uint32_t)seed * 0x01000193u);
     sim_init(&state->world, SIMF_AUTHORITATIVE, 0u);
+    /* The master seeds its balance from the first standing pair before any
+     * tick can fell one, so the first fall counts; same here. */
+    duel_diplomacy_init(&state->diplomacy);
+    duel_diplomacy_update(&state->diplomacy, state->world.wiz[SIM_SIDE_L].life,
+                          state->world.wiz[SIM_SIDE_R].life);
     for (uint8_t side = 0; side < 2u; side++) {
         state->prior_hp[side] = state->world.wiz[side].hp;
         state->caster[side].timer = (uint16_t)random_between(state, 0u, AMBIENT_REST_MAX);
@@ -199,6 +205,10 @@ static void run_tick(ambient_state_t *state) {
         count += step_caster(state, side, &inputs, events + count);
     sim_tick(&state->world, inputs, events, count, 0u);
     state->stats.ticks++;
+    /* The master's housekeeping runs this after every tick; a fall is a
+     * life transition, so once per tick cannot miss one. */
+    duel_diplomacy_update(&state->diplomacy, state->world.wiz[SIM_SIDE_L].life,
+                          state->world.wiz[SIM_SIDE_R].life);
     note_outcomes(state);
 }
 
@@ -224,6 +234,10 @@ duel_ambient_stats_t duel_ambient_stats(const duel_ambient_t *ambient) {
 
 const sim_world_t *duel_ambient_world(const duel_ambient_t *ambient) {
     return &readable_state(ambient)->world;
+}
+
+int8_t duel_ambient_diplomacy_balance(const duel_ambient_t *ambient) {
+    return ambient ? readable_state(ambient)->diplomacy.balance : 0;
 }
 
 void duel_ambient_project(duel_ambient_t *ambient, duel_render_t *render, uint32_t now_ms) {

@@ -21,6 +21,7 @@ from arcane_host import city, city_window, typing_helper
 from arcane_host.city import (
     CITY_ABI,
     OFF_KEYBOARD_FIELDS,
+    AmbientState,
     CityError,
     CityInput,
     CityRenderer,
@@ -760,6 +761,28 @@ class AmbientWorldTests(unittest.TestCase):
 
         self.assertEqual(history(0x5A), history(0x5A))
         self.assertNotEqual(history(0x5A), history(0x11))
+
+    def test_ambient_play_moves_the_diplomacy_balance(self) -> None:
+        # The keyboard weights rare events by a session balance that tips
+        # whenever a champion falls. The desktop passed a constant zero, so
+        # its city never leaned. The balance lives behind the ambient handle on
+        # the seam the renderer reads (desktop/duel_ambient.h), not on the city
+        # ABI, so this reads it from the library the same way.
+        renderer = CityRenderer(scale=1, layout=Layout.CITY)
+        balance = renderer._library.duel_ambient_diplomacy_balance
+        balance.argtypes = [ctypes.POINTER(AmbientState)]
+        balance.restype = ctypes.c_int8
+        world = renderer.ambient(0x5A)
+        self.assertEqual(balance(world.handle), 0)
+        seen = {0}
+        for frame in range(300 * 25):
+            world.advance(frame * 40)
+            value = balance(world.handle)
+            # Each point of lean takes one fall, and the lean saturates at 3.
+            self.assertLessEqual(abs(value), min(3, world.stats.knockdowns))
+            seen.add(value)
+        self.assertGreater(world.stats.knockdowns, 0)
+        self.assertNotEqual(seen, {0})
 
     def test_the_clock_paces_the_world_not_the_redraw(self) -> None:
         renderer = CityRenderer(scale=1)

@@ -223,10 +223,13 @@ static void compose(duel_render_t *r, duel_city_state_t *state, const duel_host_
     r->civic_phase = (uint8_t)(elapsed_ms / DUEL_CIVIC_TICK_MS);
 
     /* The master's derivation, over whichever world there is: a live one
-     * gates rare events on a standing champion and lets a lasting aftermath
-     * take the shared bytes, exactly as the keyboard does. */
+     * gates rare events on a standing champion, weights them by the session's
+     * diplomacy balance and lets a lasting aftermath take the shared bytes,
+     * exactly as the keyboard does. The resting city has no duel, so its
+     * balance is zero. */
     duel_civic_shared_t shared = duel_civic_shared_derive(
-        in->seed, elapsed_ms, host, ambient ? duel_ambient_world(ambient) : &resting_world, 0);
+        in->seed, elapsed_ms, host, ambient ? duel_ambient_world(ambient) : &resting_world,
+        ambient ? duel_ambient_diplomacy_balance(ambient) : 0);
     r->shared_pres = shared.shared_pres;
     r->revision = shared.revision;
 
