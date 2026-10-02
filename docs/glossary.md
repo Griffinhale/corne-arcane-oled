@@ -47,6 +47,11 @@ the burst repeats about every 15 seconds.
 STRAIN is the host near the end of its disk, memory or CPU, drawn as a still
 hazard sign. When several apply, URGENT wins, then STRAIN, then QUIET.
 
+**Combination** (authoritative). One of seven rules that join a spell with
+the defender's status, the caster's next spell or another field: shatter,
+thaw, deepen, swallow, grind, follow-through and echo merge. Each marks the
+city with the combo aftermath flavor. [`duel.md`](duel.md) lists them.
+
 **Complexity**. A 0 to 255 score compiled from a burst of typing: how many
 keys, how many distinct ones, direction changes, layer changes, chords, and
 rhythm changes. Drives spell magnitude, which forms are available, ward
@@ -181,7 +186,9 @@ seconds: meditate, study, or fortify. Any keypress ends it instantly. Pacing
 and taunting are drawn locally and never cross the link.
 
 **Status**. A condition carried by a spell: burning, frozen, disrupted, or
-marked, following the element.
+marked, following the element. It lands at a level of 1 to 3 from the spell's
+magnitude; the same status again deepens it. Scalded is the fifth status, made
+only by a thaw, and it stops regeneration. See *combination*.
 
 **Strain**. See *civic mode*.
 

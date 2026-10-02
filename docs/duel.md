@@ -173,7 +173,9 @@ after six or more layer changes, and Solid otherwise.
 **Tempo and trend** come from the gaps between presses. Mean spacing gives
 Deliberate, Flowing, Rapid, or Frantic. The spread and direction of change
 gives Steady, Accelerating, Decelerating, or Irregular. These drive
-presentation and a few interactions, not damage.
+presentation and a few interactions, not damage. A Rapid or Frantic spell
+draws as **swift** and a Deliberate one as **heavy**, and a Combine spell
+blinks a halo in flight; neither changes what the spell does.
 
 ### Wind-up
 
@@ -217,6 +219,45 @@ Only the master half resolves anything. The `SIMF_AUTHORITATIVE` flag is set on
 one side only, so the slave half structurally cannot decide a duel. It has no
 code path that advances combat.
 
+## Statuses
+
+A Status or Hybrid spell that lands puts its status on the defender at a
+**level** equal to the spell's magnitude, capped at 3. A status lasts 100
+ticks (4 s) at level 1 and 25 ticks (1 s) longer per level above it. A weaker
+status never replaces a stronger one; the same status again **deepens** it one
+level and restarts its clock.
+
+| Status | Element | What it does | At level 3 |
+| --- | --- | --- | --- |
+| Burning | Ember | one hit point, 1 s in (later at higher levels) | bites a second time 2 s after the first |
+| Frozen | Frost | wind-up grows by 3 ticks per level | the same, 9 ticks |
+| Disrupted | Void | the next cast loses one magnitude and spends the status | loses two, never below 1 |
+| Marked | Force | the ward loses a pip against homing and area spells | against every spell |
+| Scalded | none | regeneration stops while it lasts | never cast; only a thaw makes it (4 s, level 1) |
+
+Each status has its own art at each level, on the keyboard and in the desktop
+town.
+
+## Combinations
+
+Seven rules combine a spell with the defender's status, the caster's next
+spell, or another field. Each one marks the city with the **combo** aftermath
+flavor, so the room shows that something unusual happened.
+
+| Rule | When | Effect |
+| --- | --- | --- |
+| Shatter | a Force spell with direct damage hits a Frozen wizard | one more point of damage (cap 4); Frozen is cleared, and the spell's own status still applies |
+| Thaw | Ember hits a Frozen wizard, or Frost hits a Burning one | the status is cleared and the spell's own is not applied; steam rises at the defender's doorstep if a field slot is free; the defender is Scalded |
+| Deepen | the same status lands again | one level higher, cap 3, clock restarted |
+| Swallow | a singularity shares a zone with another field | the other field is gone, and the singularity gains a charge (cap 4) |
+| Grind | two opposed fields share a zone | the lower magnitude clears; a tie clears both; steam belongs to nobody and never grinds |
+| Follow-through | a direct hit lands while the caster holds a prepared spell of the same element | the prepared spell gains a magnitude (cap 4) |
+| Echo merge | a spell is released while an echo of the same element is pending | the echo folds in for one magnitude (cap 4) and is consumed; no new echo is armed |
+
+Shatter, thaw and a field clash each have their own outcome flash. Fields
+meet once per tick, before their timers run, and the meeting only ever
+removes fields.
+
 ## What outlasts the cast
 
 **Residue** collects in zones along the battlefield. Each zone holds one
@@ -235,7 +276,9 @@ singularity to 150 ticks (6 s) for a rune or a wall.
 Conjure with a status payload along the ground reads as a **rune**, a returning
 Conjure as a **familiar**, a status Ground wave as a **wall**, a homing or
 returning Singularity as a **vortex**, and irregular combining casts of some
-size as an **echo** or a **bloom**.
+size as an **echo** or a **bloom**. An echo repeats itself one magnitude
+down, 25 ticks (1 s) after release or as soon as the battlefield is clear,
+unless a same-element cast merges it first.
 
 **Aftermath** is what the city does about it. Fire, panic, complaint, repair,
 inspection, cheering, and the wonder arc after a maximum cast each run on their

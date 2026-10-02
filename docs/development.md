@@ -141,8 +141,8 @@ clean pinned-QMK build, `arm-none-eabi-gcc 15.2.rel1`:
 
 | Image | Flash | Static RAM | Reserve below 96 KiB |
 |---|---:|---:|---:|
-| release | 85,356 B | 13,552 B | 12,948 B |
-| diagnostic | 86,736 B | 13,680 B | 11,568 B |
+| release | 87,408 B | 13,552 B | 10,896 B |
+| diagnostic | 88,780 B | 13,680 B | 9,524 B |
 
 Record the compiler alongside any figure you compare against: it moves these
 numbers more than most changes do. The binding constraint is the 88 KiB flash
