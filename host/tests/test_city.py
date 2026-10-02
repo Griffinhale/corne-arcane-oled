@@ -1296,6 +1296,90 @@ class TownLifeTests(unittest.TestCase):
             )
 
 
+@requires_library
+class TownModeTests(unittest.TestCase):
+    """SH11: URGENT is a burst, not a state, and STRAIN is a steady warning.
+
+    Owner rule SH-D4: URGENT flashes a couple of times, rests about fifteen
+    seconds, and repeats. The cadence is the civic clock's (one phase is
+    300 ms, so phase p is at 153_600 + 300 p within the first quarter of the
+    day), the same clock the panels' own bursts run on, so the town reads no
+    clock and every shell draws the same frame.
+    """
+
+    LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
+    ORIGIN_MS = 153_600
+    # The panels' schedule (urgent_flash in duel_environment_draw.c): five
+    # bursts in the byte's 256 phases, each a flash, a dark phase, a flash.
+    BURST_STARTS = (0, 52, 103, 154, 205)
+
+    @staticmethod
+    def city(mode: Mode) -> CityInput:
+        state = SemanticState(Scene.DUEL, NotificationSummary(), CivicState(mode=mode))
+        return city_input(state, seed=0x5A)
+
+    def beacon(self, renderer: CityRenderer, mode: Mode, phase: int) -> bytes:
+        """The air over the spire tip, at a civic phase, at the shells' frame cadence."""
+        ms = self.ORIGIN_MS + 300 * phase + 150
+        frame = renderer.render(self.city(mode), ms, ms // 40).partition(b"255\n")[2]
+        centre = renderer.width // 2
+        return b"".join(
+            frame[y * renderer.width + centre - 9 : y * renderer.width + centre + 10]
+            for y in range(0, 10)
+        )
+
+    def test_urgent_flashes_twice_then_rests_fifteen_seconds(self) -> None:
+        expected = {start + k for start in self.BURST_STARTS for k in (0, 2)}
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            dark = self.beacon(renderer, Mode.NORMAL, 0)
+            lit = {
+                phase for phase in range(256) if self.beacon(renderer, Mode.URGENT, phase) != dark
+            }
+            self.assertEqual(sorted(lit), sorted(expected), layout)
+            # Every rest is at least 14.4 s of dark, and the next burst comes.
+            starts = sorted(self.BURST_STARTS) + [256]
+            for a, b in zip(starts, starts[1:], strict=False):
+                self.assertGreaterEqual((b - a - 3) * 300, 14_400, (layout, a, b))
+                self.assertFalse(any(p in lit for p in range(a + 3, b)), (layout, a))
+
+    def test_urgent_repeats_with_the_civic_clock(self) -> None:
+        # The byte wraps every 76.8 s; the schedule repeats with it, so a
+        # burst a cycle later is the same burst.
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            for phase in (0, 2, 30, 52, 54, 205):
+                self.assertEqual(
+                    self.beacon(renderer, Mode.URGENT, phase),
+                    self.beacon(renderer, Mode.URGENT, phase + 256),
+                    (layout, phase),
+                )
+
+    def test_strain_is_a_steady_warning(self) -> None:
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            masks = set()
+            for frame in (0, 8, 16, 40, 77):
+                normal = renderer.render(self.city(Mode.NORMAL), 400_000, frame)
+                strain = renderer.render(self.city(Mode.STRAIN), 400_000, frame)
+                self.assertNotEqual(digest(strain), digest(normal), (layout, frame))
+                masks.add(bytes(a ^ b for a, b in zip(normal, strain, strict=True)))
+            # What STRAIN adds does not move with the animation: it is a sign,
+            # not a signal.
+            self.assertEqual(len(masks), 1, layout)
+
+    def test_strain_is_not_urgent_or_quiet(self) -> None:
+        for layout in self.LAYOUTS:
+            renderer = CityRenderer(scale=1, layout=layout)
+            # At a burst's first flash (civic phase 52), so URGENT is lit.
+            ms = self.ORIGIN_MS + 300 * 52 + 150
+            frames = {
+                mode: digest(renderer.render(self.city(mode), ms, 0))
+                for mode in (Mode.NORMAL, Mode.QUIET, Mode.URGENT, Mode.STRAIN)
+            }
+            self.assertEqual(len(set(frames.values())), 4, (layout, frames))
+
+
 class WindowLayoutTests(unittest.TestCase):
     def test_a_fixed_size_centres_the_city(self) -> None:
         window = city_window.CityWindow(

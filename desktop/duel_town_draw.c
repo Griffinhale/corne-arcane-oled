@@ -1336,6 +1336,40 @@ static void draw_lanterns(town_fb_t *fb, const town_typing_t *typing) {
     draw_lantern(fb, busiest, true, typing->row_spread == DUEL_CITY_ROW_SPREAD_FOCUSED);
 }
 
+/*
+ * URGENT is a burst, not a state (owner rule SH-D4): the beacon flashes twice,
+ * 300 ms apart, then rests about fifteen seconds, and repeats for as long as
+ * the mode holds. The schedule is the panels' own (urgent_flash in
+ * duel_environment_draw.c) read from the same civic phase, so the town and the
+ * keyboard's screens flash together and the draw reads no clock. The byte's
+ * 256 phases hold five bursts of 51 or 52 phases: a flash on the burst's first
+ * and third phase, then 14.4 to 14.7 s of rest, with no pair cut at the wrap.
+ */
+static bool town_urgent_flash(uint8_t phase) {
+    static const uint8_t burst_start[5] = {0u, 52u, 103u, 154u, 205u};
+    uint8_t at = (uint8_t)(phase - burst_start[((unsigned)phase * 5u) >> 8]);
+    return at == 0u || at == 2u;
+}
+
+/*
+ * STRAIN: disk, memory or CPU near full (owner rule SH-D4). A hazard sign
+ * stands on the balcony's far end, solid with its mark cut dark, as the panels
+ * stand theirs: steady, so it reads as a warning and not as the busy marks the
+ * intensity drives, and nothing about it moves with the frame.
+ */
+static void draw_strain_sign(town_fb_t *fb) {
+    int sx = TOWER_CX + 19;
+    int apex = BALCONY_Y - 22;
+    fill_rect(fb, sx - 7, apex - 1, sx + 7, apex + 11, false);
+    for (int i = 0; i <= 10; i++)
+        hline(fb, sx - i / 2, sx + i / 2, apex + i);
+    for (int y = apex + 3; y <= apex + 6; y++)
+        px(fb, sx, y, false);
+    px(fb, sx, apex + 8, false);
+    fill_rect(fb, sx - 1, apex + 11, sx + 1, BALCONY_Y - 1, false);
+    vline(fb, sx, apex + 11, BALCONY_Y - 1);
+}
+
 static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
                        uint32_t frame) {
     uint8_t mode = DUEL_CIVIC_MODE(r->civic);
@@ -1394,9 +1428,8 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
         }
     }
 
-    /* An urgent town lights its beacon; the pulse is the only thing on the
-     * tower that moves without the world moving. */
-    if (mode == DUEL_CIVIC_MODE_URGENT && ((frame >> 3) & 1u) == 0u) {
+    /* An urgent town lights its beacon, in bursts (town_urgent_flash). */
+    if (mode == DUEL_CIVIC_MODE_URGENT && town_urgent_flash(r->civic_phase)) {
         disc(fb, TOWER_CX, SPIRE_TIP_Y - 6, 3, true);
         ring(fb, TOWER_CX, SPIRE_TIP_Y - 6, 5 + (int)((frame >> 2) & 3u), true);
     }
@@ -1428,6 +1461,8 @@ static void draw_tower(town_fb_t *fb, const duel_render_t *r, const town_typing_
         for (int s = 0; s < 3; s++)
             hline(fb, cx - 2 + s, cx + 2 - s, BALCONY_Y + 2 + s);
     }
+    if (mode == DUEL_CIVIC_MODE_STRAIN)
+        draw_strain_sign(fb);
 
     /*
      * The storeys. A course of brick, then a room seen through one wide
