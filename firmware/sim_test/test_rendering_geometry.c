@@ -646,7 +646,84 @@ static void test_aftermath_split_loss_and_reconnect(void) {
     CHECK(ok, "incantation_aftermath_split_loss_corruption_and_reconnect");
 }
 
+static void render_host_marks(uint8_t mode, uint8_t secondary, uint8_t phase, bool is_left,
+                              duel_fb_t *fb) {
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    duel_render_t r = {0};
+    duel_render_from_world(&r, &w);
+    r.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, mode, DUEL_CIVIC_INTENSITY_ACTIVE);
+    r.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 0u, false);
+    r.secondary = DUEL_SECONDARY_PACK(secondary);
+    r.seed = 0x42u;
+    r.civic_phase = phase;
+    duel_fb_clear(fb);
+    duel_scene_draw(fb, &r, is_left, 7u, false);
+}
+
+/* SH6: URGENT is two flashes and a rest drawn from civic_phase alone; STRAIN
+ * is a steady sign; the four non-browser secondaries share the sky sign. The
+ * negative controls: NORMAL draws no mark, URGENT in its rest is the NORMAL
+ * frame, quiet hides the sign, and a browser secondary leaves the sky alone. */
+static void test_host_marks_urgent_strain_and_signs(void) {
+    bool ok = true;
+    duel_fb_t normal, marked;
+    for (uint8_t city = 0; city < 2u; city++) {
+        bool is_left = city == 0u;
+        unsigned flashes = 0, last_flash = 0, shortest_rest = 255u, first_flash = 256u;
+        for (unsigned phase = 0; phase < 256u; phase++) {
+            render_host_marks(DUEL_CIVIC_MODE_NORMAL, 0u, (uint8_t)phase, is_left, &normal);
+            render_host_marks(DUEL_CIVIC_MODE_URGENT, 0u, (uint8_t)phase, is_left, &marked);
+            unsigned beacon = band_difference(&normal, &marked, 0, 8);
+            EXPECT(band_difference(&normal, &marked, 9, DUEL_CANVAS_H - 1) == 0u);
+            if (!beacon)
+                continue;
+            if (flashes && phase - last_flash > 2u && phase - last_flash - 1u < shortest_rest)
+                shortest_rest = phase - last_flash - 1u;
+            if (first_flash == 256u)
+                first_flash = phase;
+            flashes++;
+            last_flash = phase;
+        }
+        /* Five bursts of two flashes; the rest across the byte's wrap counts too. */
+        unsigned wrap_rest = 255u - last_flash + first_flash;
+        EXPECT(flashes == 10u);
+        EXPECT(shortest_rest >= 48u && wrap_rest >= 48u); /* 48 x 300 ms = 14.4 s */
+        render_host_marks(DUEL_CIVIC_MODE_NORMAL, 0u, 1u, is_left, &normal);
+        render_host_marks(DUEL_CIVIC_MODE_URGENT, 0u, 1u, is_left, &marked);
+        EXPECT(band_difference(&normal, &marked, 0, DUEL_CANVAS_H - 1) == 0u);
+
+        for (uint8_t phase = 19u; phase <= 20u; phase++) {
+            render_host_marks(DUEL_CIVIC_MODE_NORMAL, 0u, phase, is_left, &normal);
+            render_host_marks(DUEL_CIVIC_MODE_STRAIN, 0u, phase, is_left, &marked);
+            EXPECT(band_difference(&normal, &marked, 14, 29) > 20u);
+            EXPECT(band_difference(&normal, &marked, 0, 13) == 0u);
+            EXPECT(band_difference(&normal, &marked, 30, DUEL_CANVAS_H - 1) == 0u);
+        }
+
+        duel_fb_t sign[DUEL_CIVIC_SECONDARY_CALENDAR + 1];
+        render_host_marks(DUEL_CIVIC_MODE_NORMAL, 0u, 19u, is_left, &normal);
+        for (uint8_t activity = DUEL_CIVIC_SECONDARY_MEDIA;
+             activity <= DUEL_CIVIC_SECONDARY_CALENDAR; activity++) {
+            render_host_marks(DUEL_CIVIC_MODE_NORMAL, activity, 19u, is_left, &sign[activity]);
+            EXPECT(band_difference(&normal, &sign[activity], 0, 12) > 10u);
+            EXPECT(band_difference(&normal, &sign[activity], 13, DUEL_CANVAS_H - 1) == 0u);
+            for (uint8_t other = DUEL_CIVIC_SECONDARY_MEDIA; other < activity; other++)
+                EXPECT(band_difference(&sign[other], &sign[activity], 0, 12) > 0u);
+            render_host_marks(DUEL_CIVIC_MODE_QUIET, 0u, 19u, is_left, &normal);
+            render_host_marks(DUEL_CIVIC_MODE_QUIET, activity, 19u, is_left, &marked);
+            EXPECT(band_difference(&normal, &marked, 0, DUEL_CANVAS_H - 1) == 0u);
+            render_host_marks(DUEL_CIVIC_MODE_NORMAL, 0u, 19u, is_left, &normal);
+        }
+        render_host_marks(DUEL_CIVIC_MODE_NORMAL, DUEL_CIVIC_SECONDARY_SCROLL, 19u, is_left,
+                          &marked);
+        EXPECT(band_difference(&normal, &marked, 0, DUEL_CANVAS_H - 1) == 0u);
+    }
+    CHECK(ok, "host_marks_urgent_bursts_strain_sign_and_secondaries");
+}
+
 void run_rendering_geometry_tests(void) {
+    test_host_marks_urgent_strain_and_signs();
     test_render_interaction_combine_solid_parity();
     test_render_v13_status_and_outcome_values();
     test_health_grid_geometry_and_lifecycles();

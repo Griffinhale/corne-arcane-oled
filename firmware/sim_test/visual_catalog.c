@@ -330,6 +330,44 @@ static void build_catalog(void) {
         }
     }
 
+    /* The other four secondaries share the sky sign by the peak. CALENDAR is
+     * the work timer, whose intensity is its quarter, so it shows all four. */
+    static const char *sign_name[] = {"media", "transfer", "system"};
+    for (uint8_t activity = DUEL_CIVIC_SECONDARY_MEDIA; activity <= DUEL_CIVIC_SECONDARY_CALENDAR;
+         activity++) {
+        uint8_t stages = activity == DUEL_CIVIC_SECONDARY_CALENDAR ? 4u : 1u;
+        for (uint8_t stage = 0; stage < stages; stage++) {
+            duel_render_t sign = {0};
+            duel_render_from_world(&sign, &world);
+            sign.seed = 0x5au;
+            sign.civic_phase = 19u;
+            sign.secondary = DUEL_SECONDARY_PACK(activity);
+            set_district_context(&sign, DUEL_DISTRICT_COMMONS, DUEL_CIVIC_MODE_NORMAL, stage);
+            char name[48];
+            if (activity == DUEL_CIVIC_SECONDARY_CALENDAR)
+                snprintf(name, sizeof name, "host_sign_calendar_q%u", stage + 1u);
+            else
+                snprintf(name, sizeof name, "host_sign_%s",
+                         sign_name[activity - DUEL_CIVIC_SECONDARY_MEDIA]);
+            add_render_case(name, &sign, 7u);
+        }
+    }
+
+    /* URGENT flashes at the start of each burst and is the NORMAL frame in the
+     * rest between (the district matrix pins that at phase 35); STRAIN is a
+     * steady plate. Phase 52 opens the second of the byte's five bursts. */
+    {
+        duel_render_t mode = {0};
+        duel_render_from_world(&mode, &world);
+        mode.seed = 0x5au;
+        mode.civic_phase = 52u;
+        set_district_context(&mode, DUEL_DISTRICT_COMMONS, DUEL_CIVIC_MODE_URGENT, 0u);
+        add_render_case("mode_urgent_flash", &mode, 7u);
+        mode.civic_phase = 19u;
+        set_district_context(&mode, DUEL_DISTRICT_COMMONS, DUEL_CIVIC_MODE_STRAIN, 0u);
+        add_render_case("mode_strain", &mode, 7u);
+    }
+
     /* Seven stationary field silhouettes at every canonical battlefield
      * zone. Slot, age and owner are varied without changing the kind/zone
      * identity under review. */

@@ -65,6 +65,79 @@ void duel_environment_draw_sky(duel_fb_t *fb, const duel_render_t *r, bool is_le
     }
 }
 
+/* URGENT is a burst, not a state: the beacon flashes twice, 300 ms apart, then
+ * rests about fifteen seconds (owner rule SH-D4). The cadence comes from
+ * civic_phase, the local 300 ms presentation clock, so it needs no wire bit and
+ * the draw reads no clock. The byte's 256 phases split into five bursts of 51
+ * or 52 phases, a rest of 14.4 to 14.7 s, so no pair is cut short at the wrap. */
+static bool urgent_flash(uint8_t phase) {
+    static const uint8_t burst_start[5] = {0u, 52u, 103u, 154u, 205u};
+    uint8_t at = (uint8_t)(phase - burst_start[((unsigned)phase * 5u) >> 8]);
+    return at == 0u || at == 2u;
+}
+
+/* One-bit glyphs: a row count with an opaque flag in bit 7, a width, then one
+ * byte per row, bit i the i-th column from x0 in the direction of step. An
+ * opaque glyph also clears its unset cells, cutting it out of the sky. */
+static void host_glyph(duel_fb_t *fb, int x0, int step, int y0, const uint8_t *g) {
+    for (int j = 0; j < (g[0] & 0x7f); j++)
+        for (int i = 0; i < g[1]; i++) {
+            bool on = (g[2 + j] >> i) & 1u;
+            if (on || (g[0] & 0x80))
+                duel_fb_px(fb, x0 + i * step, y0 + j, on);
+        }
+}
+
+/* Draws a glyph stored as its right half around a centre column. */
+static void host_glyph_pair(duel_fb_t *fb, int cx, int y0, const uint8_t *g) {
+    host_glyph(fb, cx, 1, y0, g);
+    host_glyph(fb, cx, -1, y0, g);
+}
+
+/* Host state the keyboard already receives, drawn on and beside the tower.
+ * URGENT lights the peak. STRAIN stands a solid hazard sign on the balcony:
+ * steady, so it reads as a warning rather than as the busy marks intensity
+ * drives. The four host secondaries without a Research instrument share one
+ * sign in the sky by the peak, and quiet mode suppresses it with the rest of
+ * the ambient workload. The sign stays unmirrored on the right canvas so the
+ * notes still read as notes; only the parcel runs toward the gap. */
+static void draw_host_marks(duel_fb_t *fb, const duel_render_t *r, bool is_left) {
+    static const uint8_t urgent[] = {7, 8, 0x03, 0xfb, 0x03, 0x08, 0x10, 0x20, 0x40};
+    static const uint8_t strain[] = {0x80 | 16, 5,    0x00, 0x00, 0x01, 0x01, 0x03, 0x02, 0x06,
+                                     0x06,      0x0e, 0x0f, 0x1e, 0x1f, 0x1f, 0x01, 0x01, 0x01};
+    static const uint8_t parcel[] = {5, 3, 0x02, 0x07, 0x07, 0x07, 0x07};
+    static const uint8_t sand[] = {1, 3, 0x07};
+    /* MEDIA notes, TRANSFER line, SYSTEM cog, CALENDAR hourglass. */
+    static const uint8_t sign[4][15] = {
+        {0x80 | 13, 8, 0, 0, 0xf8, 0xf8, 0x88, 0x88, 0x88, 0x88, 0x88, 0xee, 0x66, 0, 0},
+        {0x80 | 13, 8, 0, 0, 0, 0xff, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {0x80 | 13, 8, 0, 0, 0x24, 0x7e, 0xc3, 0x5a, 0x5a, 0xc3, 0x7e, 0x24, 0, 0, 0},
+        {0x80 | 13, 8, 0, 0x7f, 0x22, 0x22, 0x14, 0x14, 0x08, 0x14, 0x14, 0x22, 0x22, 0x7f, 0},
+    };
+    uint8_t mode = DUEL_CIVIC_MODE(r->civic);
+    uint8_t phase = r->civic_phase;
+    if (mode == DUEL_CIVIC_MODE_URGENT && urgent_flash(phase))
+        host_glyph_pair(fb, duel_fb_desk_x(is_left, 6), 1, urgent);
+    else if (mode == DUEL_CIVIC_MODE_STRAIN)
+        host_glyph_pair(fb, duel_fb_desk_x(is_left, 16), 14, strain);
+
+    uint8_t activity = DUEL_SECONDARY_ACTIVITY(r->secondary);
+    if (mode == DUEL_CIVIC_MODE_QUIET || activity == DUEL_CIVIC_SECONDARY_NONE ||
+        activity >= DUEL_CIVIC_SECONDARY_SCROLL)
+        return;
+    int x0 = is_left ? 14 : 10;
+    host_glyph(fb, x0, 1, 0, sign[activity - DUEL_CIVIC_SECONDARY_MEDIA]);
+    if (activity == DUEL_CIVIC_SECONDARY_TRANSFER) {
+        /* A parcel running out along the line from the peak toward the gap. */
+        host_glyph(fb, duel_fb_desk_x(is_left, 14 + phase % 6u), is_left ? 1 : -1, 4, parcel);
+    } else if (activity == DUEL_CIVIC_SECONDARY_CALENDAR) {
+        /* The work timer's quarter is its intensity: sand falls a row a quarter. */
+        uint8_t stage = DUEL_CIVIC_INTENSITY(r->civic);
+        for (int i = 0; i < 4; i++)
+            host_glyph(fb, x0 + 2, 1, i <= stage ? 10 - i : 5 - i, sand);
+    }
+}
+
 /* Wizard tower: a half-width shaft on the outer side of each canvas
  * rising from the rooftop deck into a full architectural peak — astral
  * (left): taper, dome, and finial; mechanical (right): crenellated cap and
@@ -152,6 +225,7 @@ void duel_environment_draw_tower(duel_fb_t *fb, const duel_render_t *r, bool is_
     duel_fb_px(fb, TWR_X(13), 32, true);
     duel_fb_px(fb, TWR_X(12), 33, true);
 #undef TWR_X
+    draw_host_marks(fb, r, is_left);
 }
 
 static void draw_typing_ambience(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint8_t floor,
