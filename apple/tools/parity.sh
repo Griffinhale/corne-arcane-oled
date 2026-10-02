@@ -32,9 +32,9 @@ fi
 frames=$(grep -cv ' stats ' "$out/native.hashes")
 echo "PASS parity: $frames frames byte-identical, native and Swift"
 
-# The cases that set host semantics through CityKit's setter. The browser takes
-# no input, so these have no WASM leg; the native side packs them with the
-# daemon's own encoder.
+# The cases that set host semantics through CityKit's setter. The native side
+# packs them with the daemon's own encoder, and the WASM leg writes the same
+# bytes into the module's input struct, so all three shells run these rows.
 if ! diff -u "$out/native-semantic.hashes" "$out/swift-semantic.hashes" \
     > "$out/semantic.diff"; then
     echo "FAIL parity: native and Swift disagree on the semantic cases; first differences:" >&2

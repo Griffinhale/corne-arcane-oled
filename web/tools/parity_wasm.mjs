@@ -8,7 +8,8 @@
  *
  * Writes a hash per frame and the raw pixels of one frame per layout, in the
  * same format as parity_native.py, so the comparison is a plain diff of two
- * files and a cmp of two buffers.
+ * files and a cmp of two buffers. The semantic rows follow, written into the
+ * module's input struct by offset, in the format of native-semantic.hashes.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -85,3 +86,69 @@ for (const layout of matrix.layouts) {
 
 writeFileSync(join(out, "wasm.hashes"), lines.join("\n") + "\n");
 console.error(`wasm: ${lines.length} lines`);
+
+/*
+ * The semantic rows. The page has no way to set these -- it takes no input --
+ * but the module's input struct is in linear memory for the page's loader to
+ * reach, so the harness writes the same bounded bytes the daemon's CivicState
+ * and CityKit's setter pack. duel_city_render then puts them through the
+ * firmware's own acceptance path, which is the point: a row the firmware would
+ * reject fails here as it does on the other two legs.
+ *
+ * The byte order and the two pack macros are duel_city.h's and duel_host.h's,
+ * restated. If either moves, this leg disagrees with the native one and the
+ * diff says so, which is the same guard the matrix gives the page.
+ */
+const INPUT_SIZE = 17;
+const SIGNAL_ORDER = ["tempo", "spread", "row", "row_spread", "body", "heart", "sleep"];
+
+function semanticBytes(row) {
+  const f = row.input;
+  const s = row.signals ?? {};
+  const civic = (f.floor & 3) | ((f.mode & 3) << 2) | ((f.intensity & 3) << 4);
+  const secondary = f.activity & 7;
+  return Uint8Array.from([
+    f.scene,
+    f.count,
+    f.category,
+    f.priority,
+    f.age,
+    f.persistent ? 1 : 0,
+    civic,
+    secondary,
+    f.online ? 1 : 0,
+    row.seed,
+    ...SIGNAL_ORDER.map((name) => s[name] ?? 0),
+  ]);
+}
+
+const semantic = [];
+for (const row of matrix.semantic) {
+  const packed = api.duel_wasm_geometry(row.layout);
+  if (packed < 0) throw new Error(`geometry(${row.layout}) returned ${packed}`);
+  const length = (packed >> 16) * (packed & 0xffff);
+
+  const started = api.duel_wasm_init(row.seed);
+  if (started !== 0) throw new Error(`init(${row.seed}) returned ${started}`);
+  const bytes = semanticBytes(row);
+  if (bytes.length !== INPUT_SIZE) throw new Error(`input is ${bytes.length} bytes, not ${INPUT_SIZE}`);
+  heap().set(bytes, api.duel_wasm_input_ptr());
+  const pixelsPtr = api.duel_wasm_pixels_ptr();
+
+  for (let frame = 0; frame < row.frames; frame++) {
+    const now = frame * matrix.tick_ms;
+    api.duel_wasm_advance(now);
+    const code = api.duel_wasm_render(now, frame, row.layout, 1);
+    if (code !== 0) throw new Error(`semantic ${row.name} frame ${frame}: render returned ${code}`);
+    const pixels = heap().slice(pixelsPtr, pixelsPtr + length);
+    const digest = createHash("sha256").update(pixels).digest("hex");
+    semantic.push(`${row.name} ${row.layout} ${row.seed} ${frame} ${length} ${digest}`);
+  }
+
+  api.duel_wasm_stats();
+  const stats = new Uint32Array(api.memory.buffer, api.duel_wasm_stats_ptr(), 4);
+  semantic.push(`${row.name} ${row.layout} ${row.seed} stats ${stats[0]} ${stats[1]} ${stats[2]} ${stats[3]}`);
+}
+
+writeFileSync(join(out, "wasm-semantic.hashes"), semantic.join("\n") + "\n");
+console.error(`wasm: ${semantic.length} semantic lines`);

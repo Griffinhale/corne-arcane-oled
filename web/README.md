@@ -35,7 +35,10 @@ for the missing MIME type.
   WebAssembly module and by the native library the desktop window loads. All
   4 320 frames must agree byte for byte. Both sides drive the self-playing
   world, so a divergence in the simulation shows up as well as one in the
-  renderer.
+  renderer. The semantic rows of the matrix, the ones that set host state and
+  the off-keyboard signals instead of starting from a tour stop, run here too:
+  the page takes no input, but the harness writes the same bounded bytes into
+  the module's input struct that the daemon and CityKit pack.
 - **share** -- arriving at a moment by link must equal having watched the world
   into it. This is the URL's promise, and it is a separate code path
   (`City.seek`) from the one a tab left open takes (`City.advance`).

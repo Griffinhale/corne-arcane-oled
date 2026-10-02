@@ -42,6 +42,19 @@ done
 
 echo "PASS parity: $frames frames byte-identical, native and WASM"
 
+# The cases that set host semantics and the off-keyboard signals. The page
+# cannot express these, but the harness writes them into the module's input
+# struct, so the browser build is held to the same rows as the daemon and the
+# Swift package.
+if ! diff -u "$out/native-semantic.hashes" "$out/wasm-semantic.hashes" \
+    > "$out/semantic.diff"; then
+    echo "FAIL parity: native and WASM disagree on the semantic cases; first differences:" >&2
+    head -40 "$out/semantic.diff" >&2
+    exit 1
+fi
+frames=$(grep -cv ' stats ' "$out/native-semantic.hashes")
+echo "PASS parity: $frames semantic frames byte-identical, native and WASM"
+
 # The second half of the promise. The first says the browser's renderer agrees
 # with the desktop's; this says that arriving at a moment by link is the same
 # as having watched the world into it, which is what the URL claims.
