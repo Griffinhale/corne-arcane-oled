@@ -181,8 +181,9 @@ Nothing below is auto-enabled by the package.
   its screen is locked, the city goes QUIET. It reads logind's idle and lock
   hints for your own session, two booleans.
 
-Shell hooks report only monotonic duration, integer status, and normalized
-repository state. GNOME reports only application/desktop identifiers, and the
+Shell hooks report only monotonic duration, integer status, normalized
+repository state, and a bare "still running" call once a command passes ten
+seconds, which holds the city at ACTIVE or busier until it ends. GNOME reports only application/desktop identifiers, and the
 X11 producer reads only `WM_CLASS`; neither can reach a window title. Firefox
 sends exactly event kind and intensity; it never reads or sends URLs, titles,
 content, history, forms, referrers, or typed text. An absent bus, denied

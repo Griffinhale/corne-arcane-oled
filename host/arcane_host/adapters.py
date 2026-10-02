@@ -13,6 +13,11 @@ from .policy import NotificationPolicy
 from .protocol import Category, Intensity, Priority, Secondary
 from .semantic import SemanticResolver
 
+# Running commands the city counts at once, and how long one start holds
+# without its completion before it is dropped.
+TERMINAL_SLOTS = 16
+TERMINAL_LEASE = 4 * 3600.0
+
 
 @dataclass(slots=True)
 class AdapterCounters:
@@ -51,6 +56,7 @@ class SemanticAdapters:
         self._network_offline = False
         self._network_status: str | None = None
         self._vpn = False
+        self._terminal_starts: list[float] = []
 
     def _changed(self, policy_changed: bool = False) -> None:
         self.counters.updates += 1
@@ -86,6 +92,26 @@ class SemanticAdapters:
             idle=None if idle is None else bool(idle),
             locked=None if locked is None else bool(locked),
         ):
+            self._changed()
+
+    def terminal_started(self) -> None:
+        """A shell says a command has run for ten seconds and has not ended.
+
+        Starts carry nothing, so they are counted, not matched: each holds a
+        slot until a completion takes the oldest or its lease runs out, which
+        covers a shell closed mid-command.
+        """
+        self._terminal_starts.append(self.clock())
+        del self._terminal_starts[:-TERMINAL_SLOTS]
+        self._terminal_update()
+
+    def terminal_finished(self) -> None:
+        if self._terminal_starts:
+            self._terminal_starts.pop(0)
+        self._terminal_update()
+
+    def _terminal_update(self) -> None:
+        if self.resolver.update(terminal_running=bool(self._terminal_starts)):
             self._changed()
 
     def pomodoro(
@@ -145,6 +171,8 @@ class SemanticAdapters:
             deadlines.append(max(now, self._browser_next_emit))
         if self._browser_expiry is not None:
             deadlines.append(max(now, self._browser_expiry))
+        if self._terminal_starts:
+            deadlines.append(max(now, self._terminal_starts[0] + TERMINAL_LEASE))
         return min(deadlines) if deadlines else None
 
     def poll(self, now: float) -> bool:
@@ -163,6 +191,9 @@ class SemanticAdapters:
             self._browser_next_emit = now + 0.25
             if self.resolver.update(browser_activity=kind, browser_intensity=intensity):
                 self._changed()
+        if self._terminal_starts and now >= self._terminal_starts[0] + TERMINAL_LEASE:
+            self._terminal_starts = [t for t in self._terminal_starts if now < t + TERMINAL_LEASE]
+            self._terminal_update()
         if self._pomodoro_active and self._pomodoro_deadline is not None:
             remaining = self._pomodoro_deadline - now
             if remaining <= 0:

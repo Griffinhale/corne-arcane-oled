@@ -118,7 +118,8 @@ beforehand. Their separate diagnostics-only v2 protocol does not accept or
 provide compatibility with the prior production Raw HID v2.
 
 Zsh, Bash, and Fish hooks emit only monotonic duration, integer exit status,
-and normalized repository state. KWin, the opt-in GNOME extension, and the
+normalized repository state, and an argument-free "still running" call for a
+command past ten seconds. KWin, the opt-in GNOME extension, and the
 opt-in X11 producer report only application/desktop identifiers; the X11
 producer reads a single window property and cannot name a title-bearing one. The optional Firefox bridge carries only
 browser event kind and intensity; it has no URL, title, history, content, form,

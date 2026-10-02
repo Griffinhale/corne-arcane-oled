@@ -26,6 +26,7 @@ from .dbus_contract import (
     REPORT_BROWSER_ACTIVITY,
     REPORT_REPOSITORY_STATE,
     REPORT_TERMINAL_COMPLETION,
+    REPORT_TERMINAL_START,
     RESUME,
     STATUS,
     STATUS_CHANGED,
@@ -100,7 +101,12 @@ class EventService:
             OBJECT_PATH, info.interfaces[0], self._method_call, None, None
         )
 
+    def report_terminal_start(self) -> None:
+        self.adapters.terminal_started()
+
     def report_terminal_completion(self, duration_ms: int, exit_status: int) -> bool:
+        # Every completion ends a running command, alerted or not.
+        self.adapters.terminal_finished()
         if duration_ms < 10_000 or self.focus.terminal_focused:
             return False
         priority = Priority.LOW if exit_status == 0 else Priority.NORMAL
@@ -131,6 +137,10 @@ class EventService:
         del connection, sender, path, interface
         if method == REPORT_TERMINAL_COMPLETION:
             self.report_terminal_completion(*parameters.unpack())
+            invocation.return_value(None)
+            return
+        if method == REPORT_TERMINAL_START:
+            self.report_terminal_start()
             invocation.return_value(None)
             return
         if method == REPORT_REPOSITORY_STATE:

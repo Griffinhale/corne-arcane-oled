@@ -20,6 +20,7 @@ from arcane_host.dbus_contract import (
     INJECT_SYNTHETIC,
     KWIN_SERVICE,
     REPORT_REPOSITORY_STATE,
+    REPORT_TERMINAL_START,
     RepositoryState,
 )
 from arcane_host.dbus_services import EventService, KWinBridgeLoader
@@ -30,6 +31,7 @@ from arcane_host.protocol import (
     Category,
     CivicState,
     Floor,
+    Intensity,
     Message,
     Mode,
     NotificationSummary,
@@ -277,6 +279,21 @@ class EventServiceTests(unittest.TestCase):
         self.assertTrue(service.report_terminal_completion(11000, 3))
         self.assertEqual(policy.summary(20).priority, Priority.NORMAL)
 
+    def test_terminal_start_holds_until_its_completion_even_when_focused(self) -> None:
+        policy = NotificationPolicy()
+        focus = FocusArbiter(settle_seconds=0)
+        service = self.make_service(focus, policy)
+        resolver = service.adapters.resolver
+        service._method_call(
+            None, None, None, None, REPORT_TERMINAL_START, FakeVariant(()), FakeInvocation()
+        )
+        self.assertEqual(resolver.state.civic.intensity, Intensity.ACTIVE)
+        # The terminal is focused, so no alert, but the command still ended.
+        focus.report("org.kde.konsole", "org.kde.konsole", 20)
+        focus.poll(20)
+        self.assertFalse(service.report_terminal_completion(11000, 0))
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+
     def test_repository_state_is_enum_only(self) -> None:
         policy = NotificationPolicy()
         focus = FocusArbiter(settle_seconds=0)
@@ -324,6 +341,11 @@ class EventServiceTests(unittest.TestCase):
             notification.error,
             (f"{EVENTS_INTERFACE}.InvalidArguments", "invalid notification fields"),
         )
+
+
+class FakeInvocation:
+    def return_value(self, value) -> None:
+        self.value = value
 
 
 class FakeVariant:

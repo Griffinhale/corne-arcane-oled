@@ -3,15 +3,19 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import os
 import re
 import shlex
+import shutil
 import struct
 import subprocess
+import tempfile
+import time
 import unittest
 from collections import Counter
 from pathlib import Path
 
-from arcane_host.adapters import SemanticAdapters
+from arcane_host.adapters import TERMINAL_LEASE, SemanticAdapters
 from arcane_host.browser_bridge import decode_message, read_message, write_reply
 from arcane_host.policy import NotificationPolicy
 from arcane_host.profiles import _ALIASES, PROFILES, normalize_identifier, resolve_profile
@@ -73,6 +77,35 @@ class BrowserActivityTests(unittest.TestCase):
         self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
         self.assertGreaterEqual(len(changes), 3)
 
+    def test_running_commands_are_counted_and_leased(self) -> None:
+        now = [100.0]
+        resolver = SemanticResolver()
+        adapters = SemanticAdapters(resolver, NotificationPolicy(), lambda: None, lambda: now[0])
+        # A completion with no start leaves nothing behind.
+        adapters.terminal_finished()
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        adapters.terminal_started()
+        self.assertEqual(resolver.state.civic.intensity, Intensity.ACTIVE)
+        adapters.terminal_started()
+        adapters.terminal_finished()
+        # Two shells started, one ended: still running.
+        self.assertEqual(resolver.state.civic.intensity, Intensity.ACTIVE)
+        adapters.terminal_finished()
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        # A browser burst outranks the floor while it lasts.
+        adapters.terminal_started()
+        adapters.browser(Secondary.SCROLL, Intensity.SATURATED)
+        self.assertEqual(resolver.state.civic.intensity, Intensity.SATURATED)
+        now[0] += 2.0
+        adapters.poll(now[0])
+        self.assertEqual(resolver.state.civic.intensity, Intensity.ACTIVE)
+        # A shell closed mid-command never completes; the lease drops it.
+        self.assertEqual(adapters.next_deadline(now[0]), 100.0 + TERMINAL_LEASE)
+        now[0] = 100.0 + TERMINAL_LEASE
+        adapters.poll(now[0])
+        self.assertEqual(resolver.state.civic.intensity, Intensity.CALM)
+        self.assertIsNone(adapters.next_deadline(now[0]))
+
     def test_native_messages_are_exact_bounded_enums(self) -> None:
         self.assertEqual(
             decode_message(b'{"kind":"scroll","intensity":3}'),
@@ -131,6 +164,48 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
         started = next(line for line in result.stdout.splitlines() if line.startswith("started="))
         self.assertGreater(int(started.removeprefix("started=")), 0)
 
+    def _run_hook(self, shell: str, program: str) -> list[str]:
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            log = work / "events"
+            stub = work / "corne-arcane-event"
+            stub.write_text(f'#!/bin/sh\necho "$@" >> {shlex.quote(str(log))}\n')
+            stub.chmod(0o755)
+            env = {**os.environ, "PATH": f"{work}:{os.environ['PATH']}", "HOME": directory}
+            subprocess.run(
+                [
+                    shell,
+                    *({"bash": ["--noprofile", "--norc"], "zsh": ["-f"]}[shell]),
+                    "-c",
+                    program,
+                ],
+                check=True,
+                cwd=directory,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            time.sleep(0.6)
+            return log.read_text().splitlines() if log.exists() else []
+
+    @unittest.skipUnless(shutil.which("bash"), "bash is not installed")
+    def test_bash_reports_running_only_past_the_delay(self) -> None:
+        hook = shlex.quote(str(ROOT / "bash" / "corne-arcane.bash"))
+        start = '_corne_arcane_running_after=0.3\nsource {hook}\n: "${{PS0@P}}"\n'
+        slow = self._run_hook("bash", start.format(hook=hook) + "sleep 0.8\n_corne_arcane_precmd\n")
+        self.assertEqual(slow, ["terminal-start"])
+        quick = self._run_hook("bash", start.format(hook=hook) + "_corne_arcane_precmd\n")
+        self.assertEqual(quick, [])
+
+    @unittest.skipUnless(shutil.which("zsh"), "zsh is not installed")
+    def test_zsh_reports_running_only_past_the_delay(self) -> None:
+        hook = shlex.quote(str(ROOT / "zsh" / "corne-arcane.zsh"))
+        start = "_corne_arcane_running_after=0.3\nsource {hook}\n_corne_arcane_preexec\n"
+        slow = self._run_hook("zsh", start.format(hook=hook) + "sleep 0.8\n_corne_arcane_precmd\n")
+        self.assertEqual(slow, ["terminal-start"])
+        quick = self._run_hook("zsh", start.format(hook=hook) + "_corne_arcane_precmd\n")
+        self.assertEqual(quick, [])
+
     def test_shell_hooks_transmit_only_normalized_values(self) -> None:
         for relative in (
             "zsh/corne-arcane.zsh",
@@ -141,6 +216,8 @@ printf 'started=%s\\n' "$_corne_arcane_started_ms"
             with self.subTest(relative=relative):
                 self.assertIn("/proc/uptime", text)
                 self.assertIn("corne-arcane-event terminal", text)
+                self.assertIn("corne-arcane-event terminal-start", text)
+                self.assertIn("kill", text)
                 self.assertIn("corne-arcane-event git", text)
                 self.assertIn("--porcelain", text)
                 for forbidden in ("BASH_COMMAND", "history", "$PWD", "commandline"):

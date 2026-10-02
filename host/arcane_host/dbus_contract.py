@@ -10,6 +10,7 @@ KWIN_SERVICE = "org.kde.KWin"
 
 REPORT_ACTIVE_WINDOW = "ReportActiveWindow"
 REPORT_TERMINAL_COMPLETION = "ReportTerminalCompletion"
+REPORT_TERMINAL_START = "ReportTerminalStart"
 REPORT_REPOSITORY_STATE = "ReportRepositoryState"
 REPORT_BROWSER_ACTIVITY = "ReportBrowserActivity"
 INJECT_SYNTHETIC = "InjectSynthetic"
@@ -41,6 +42,7 @@ EVENTS_XML = f"""
       <arg type='u' name='durationMilliseconds' direction='in'/>
       <arg type='i' name='exitStatus' direction='in'/>
     </method>
+    <method name='{REPORT_TERMINAL_START}'/>
     <method name='{REPORT_REPOSITORY_STATE}'>
       <arg type='y' name='state' direction='in'/>
       <arg type='b' name='success' direction='in'/>

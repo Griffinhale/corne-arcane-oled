@@ -70,6 +70,7 @@ class SemanticResolver:
         self.browser_intensity = Intensity.CALM
         self.idle = False
         self.locked = False
+        self.terminal_running = False
         self.state = SemanticState()
 
     def _resolve_mode(self) -> Mode:
@@ -115,6 +116,7 @@ class SemanticResolver:
         browser_intensity: Intensity | None = None,
         idle: bool | None = None,
         locked: bool | None = None,
+        terminal_running: bool | None = None,
     ) -> bool:
         if focus_scene is not None:
             self.focus_scene = focus_scene
@@ -144,6 +146,8 @@ class SemanticResolver:
             self.idle = idle
         if locked is not None:
             self.locked = locked
+        if terminal_running is not None:
+            self.terminal_running = terminal_running
         current_summary = self.state.summary if summary is None else summary
         # Media is a fallback, not an override. It fills in ARCHIVE only when no
         # profile claimed the focused window, so playing something in the
@@ -161,12 +165,17 @@ class SemanticResolver:
             else self.focus_scene
         )
         mode = self._resolve_mode()
+        # A long command still running holds the city at ACTIVE or above; it
+        # rides the intensity the wire already carries (ruling A2).
+        base_intensity = (
+            max(self.intensity, Intensity.ACTIVE) if self.terminal_running else self.intensity
+        )
         intensity = (
             self.pomodoro_stage
             if self.pomodoro
             else self.browser_intensity
             if self.browser_activity != Secondary.NONE
-            else self.intensity
+            else base_intensity
         )
         civic = CivicState(
             floor=Floor.SPECIAL if self.pomodoro else self.focus_floor,

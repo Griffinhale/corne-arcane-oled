@@ -1,8 +1,11 @@
 # Corne Arcane earlier command-completion and repository-state hook for Zsh.
-# Only monotonic duration and integer exit status leave the shell. Command
-# text, paths, environment, and terminal content are never transmitted.
+# Only monotonic duration and integer exit status leave the shell, plus one
+# bare "still running" call for a command past ten seconds. Command text,
+# paths, environment, and terminal content are never transmitted.
 
 typeset -gF _corne_arcane_started=0
+typeset -gi _corne_arcane_running_pid=0
+typeset -g _corne_arcane_running_after=${_corne_arcane_running_after:-10}
 typeset -g _corne_arcane_git_state=""
 
 _corne_arcane_uptime() {
@@ -13,10 +16,19 @@ _corne_arcane_uptime() {
 _corne_arcane_preexec() {
   _corne_arcane_uptime
   _corne_arcane_started=$REPLY
+  # Armed per command and disarmed at the next prompt, so only a command that
+  # outlives the delay reports that it is running.
+  command sh -c "sleep $_corne_arcane_running_after; exec corne-arcane-event terminal-start" \
+    >/dev/null 2>&1 &!
+  _corne_arcane_running_pid=$!
 }
 
 _corne_arcane_precmd() {
   local _status=$? _now _elapsed_ms _state
+  if (( _corne_arcane_running_pid > 0 )); then
+    command kill $_corne_arcane_running_pid 2>/dev/null
+    _corne_arcane_running_pid=0
+  fi
   if (( _corne_arcane_started > 0 )); then
     _corne_arcane_uptime
     _now=$REPLY

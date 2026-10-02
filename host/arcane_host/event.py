@@ -14,6 +14,7 @@ from .dbus_contract import (
     REPORT_BROWSER_ACTIVITY,
     REPORT_REPOSITORY_STATE,
     REPORT_TERMINAL_COMPLETION,
+    REPORT_TERMINAL_START,
     RepositoryState,
 )
 from .protocol import Category, Intensity, Priority, Secondary
@@ -32,6 +33,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     terminal = commands.add_parser("terminal", help=argparse.SUPPRESS)
     terminal.add_argument("duration_ms", type=int)
     terminal.add_argument("exit_status", type=int)
+    commands.add_parser("terminal-start", help=argparse.SUPPRESS)
     repository = commands.add_parser("git", help="report a redacted repository state")
     repository.add_argument("state", choices=("clean", "dirty", "operation", "completion"))
     repository.add_argument("--failed", action="store_true")
@@ -68,6 +70,9 @@ def run(args: argparse.Namespace) -> int:
             return 2
         method = REPORT_TERMINAL_COMPLETION
         parameters = GLib.Variant("(ui)", (args.duration_ms, args.exit_status))
+    elif args.command == "terminal-start":
+        method = REPORT_TERMINAL_START
+        parameters = None
     elif args.command == "git":
         method = REPORT_REPOSITORY_STATE
         state = {
