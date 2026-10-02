@@ -52,6 +52,7 @@ struct SemanticRow: Decodable {
     }
 
     /// The off-keyboard signals; a row without them leaves every one at none.
+    /// ABI 9's season and tallies are optional so an older row still reads.
     struct Signals: Decodable {
         let tempo: UInt8
         let spread: UInt8
@@ -60,6 +61,10 @@ struct SemanticRow: Decodable {
         let body: UInt8
         let heart: UInt8
         let sleep: UInt8
+        let season: UInt8?
+        let tally_casts: UInt8?
+        let tally_impacts: UInt8?
+        let tally_knockdowns: UInt8?
     }
 
     let name: String
@@ -97,7 +102,8 @@ struct SemanticRow: Decodable {
                 let rowSpread = TypingRowSpread(rawValue: signals.row_spread),
                 let body = BodyActivity(rawValue: signals.body),
                 let heart = HeartMood(rawValue: signals.heart),
-                let sleep = SleepMood(rawValue: signals.sleep)
+                let sleep = SleepMood(rawValue: signals.sleep),
+                let season = CitySeason(rawValue: signals.season ?? 0)
             else { fail("semantic row \(name) names a signal CityKit has no case for") }
             semantics.tempo = tempo
             semantics.spread = spread
@@ -106,6 +112,10 @@ struct SemanticRow: Decodable {
             semantics.body = body
             semantics.heart = heart
             semantics.sleep = sleep
+            semantics.season = season
+            semantics.tallies = DayTallies(
+                casts: signals.tally_casts ?? 0, impacts: signals.tally_impacts ?? 0,
+                knockdowns: signals.tally_knockdowns ?? 0)
         }
         return semantics
     }
@@ -470,6 +480,11 @@ func runSemanticInvariants() {
     for body in BodyActivity.allCases { vary("body \(body)") { $0.body = body } }
     for heart in HeartMood.allCases { vary("heart \(heart)") { $0.heart = heart } }
     for sleep in SleepMood.allCases { vary("sleep \(sleep)") { $0.sleep = sleep } }
+    for season in CitySeason.allCases { vary("season \(season)") { $0.season = season } }
+    vary("tallies at 1") { $0.tallies = DayTallies(casts: 1, impacts: 1, knockdowns: 1) }
+    vary("tallies saturated") {
+        $0.tallies = DayTallies(casts: 255, impacts: 255, knockdowns: 255)
+    }
     vary("everything at once") {
         $0 = CitySemantics(
             scene: .focus, floor: .special, mode: .urgent, intensity: .busy, activity: .scroll,
@@ -504,7 +519,18 @@ func runSemanticInvariants() {
             && BodyActivity.allCases.count == Int(DUEL_CITY_BODY_COUNT)
             && HeartMood.allCases.count == Int(DUEL_CITY_HEART_COUNT)
             && SleepMood.allCases.count == Int(DUEL_CITY_SLEEP_COUNT)
+            && CitySeason.allCases.count == Int(DUEL_CITY_SEASON_COUNT)
     )
+    // ABI 9's season and tallies are carried before anything draws them: every
+    // shell accepts them, and no layout changes a pixel for them yet.
+    let dated = variants.filter { $0.1.season != .none || $0.1.tallies != DayTallies() }
+    let drawn = dated.filter {
+        frame($0.1, layout: .town) != frame(base, layout: .town) || frame($0.1) != frame(base)
+    }.map(\.0)
+    check(
+        "season_and_tallies_draw_nothing_yet",
+        dated.count == CitySeason.allCases.count - 1 + 2 && drawn.isEmpty,
+        "\(dated.count) variants; moved a frame: \(drawn.joined(separator: ", "))")
     // The town draws every typing and health value, and the panels, which
     // are the keyboard's own screens, draw none of them.
     let plain = frame(base, layout: .town)
@@ -538,6 +564,7 @@ func runSemanticInvariants() {
         ("body", \.body, Int(DUEL_CITY_BODY_COUNT)),
         ("heart", \.heart, Int(DUEL_CITY_HEART_COUNT)),
         ("sleep", \.sleep, Int(DUEL_CITY_SLEEP_COUNT)),
+        ("season", \.season, Int(DUEL_CITY_SEASON_COUNT)),
     ]
     var width: Int32 = 0
     var height: Int32 = 0

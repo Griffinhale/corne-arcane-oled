@@ -162,6 +162,15 @@ pair are not wanted.
   is the browser's `image-rendering: pixelated`. `duel_city_fit_scale(TOWN,
   390, 844)` returns 1 on a phone in logical points anyway.
 
+## Calendar and tallies
+
+ABI 9 appends four bytes that only a shell can fill: the season from its own
+calendar, and the day's casts, impacts and knockdowns as `City.stats` counts
+them, kept by the app and passed back in. CityKit carries them as
+`CitySemantics.season` and `CitySemantics.tallies`. The library stores nothing,
+so the same seed and inputs still give the same world, and nothing draws them
+yet. A season is not weather.
+
 ## Landscape
 
 ABI 7 adds `LANDSCAPE`, a 400x240 drawing layer with more world on either side

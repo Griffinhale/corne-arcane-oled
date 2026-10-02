@@ -147,6 +147,33 @@ public enum SleepMood: UInt8, CaseIterable, Sendable {
     case tired = 2
 }
 
+/// DUEL_CITY_SEASON_*: the season, from the shell's own calendar (ABI 9). The
+/// keyboard has no date; a season is not weather. Nothing draws it yet.
+public enum CitySeason: UInt8, CaseIterable, Sendable {
+    case none = 0
+    case spring = 1
+    case summer = 2
+    case autumn = 3
+    case winter = 4
+}
+
+/// The day's tallies (ABI 9): spells cast, pips of health lost and champions
+/// felled today, as `City.stats` counts them. The shell keeps them and passes
+/// them in; the library stores nothing, so the same seed and inputs still give
+/// the same world. Each saturates at 255 and any byte is a count. Zero is an
+/// empty day. Nothing draws them yet.
+public struct DayTallies: Equatable, Sendable {
+    public var casts: UInt8
+    public var impacts: UInt8
+    public var knockdowns: UInt8
+
+    public init(casts: UInt8 = 0, impacts: UInt8 = 0, knockdowns: UInt8 = 0) {
+        self.casts = casts
+        self.impacts = impacts
+        self.knockdowns = knockdowns
+    }
+}
+
 /// A non-empty notification summary. The counters are plain integers, so a
 /// count above 15, an age above 7, or a persistent summary below critical
 /// reaches the C check and is refused there.
@@ -186,6 +213,8 @@ public struct CitySemantics: Equatable, Sendable {
     public var body: BodyActivity
     public var heart: HeartMood
     public var sleep: SleepMood
+    public var season: CitySeason
+    public var tallies: DayTallies
 
     public init(
         scene: HostScene = .duel, floor: CivicFloor = .commons, mode: CivicMode = .normal,
@@ -193,7 +222,8 @@ public struct CitySemantics: Equatable, Sendable {
         notification: NotificationSummary? = nil, online: Bool = true,
         tempo: TypingTempo = .none, spread: TypingSpread = .none, row: TypingRow = .none,
         rowSpread: TypingRowSpread = .none, body: BodyActivity = .none,
-        heart: HeartMood = .none, sleep: SleepMood = .none
+        heart: HeartMood = .none, sleep: SleepMood = .none, season: CitySeason = .none,
+        tallies: DayTallies = DayTallies()
     ) {
         self.scene = scene
         self.floor = floor
@@ -209,6 +239,8 @@ public struct CitySemantics: Equatable, Sendable {
         self.body = body
         self.heart = heart
         self.sleep = sleep
+        self.season = season
+        self.tallies = tallies
     }
 
     /// duel_city_input_t, packed as DUEL_CIVIC_PACK and DUEL_SECONDARY_PACK pack it.
@@ -233,6 +265,10 @@ public struct CitySemantics: Equatable, Sendable {
         input.body = body.rawValue
         input.heart = heart.rawValue
         input.sleep = sleep.rawValue
+        input.season = season.rawValue
+        input.tally_casts = tallies.casts
+        input.tally_impacts = tallies.impacts
+        input.tally_knockdowns = tallies.knockdowns
         return input
     }
 }

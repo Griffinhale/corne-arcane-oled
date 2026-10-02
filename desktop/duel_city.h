@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 8
+#define DUEL_CITY_ABI 9
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -146,34 +146,62 @@ enum {
 };
 
 /*
+ * A calendar and a memory, which only a shell has (ABI 9). The keyboard has no
+ * date and remembers nothing past a session; the apps have both, and pass them
+ * in here so the library stays a pure function of its inputs: same seed, same
+ * inputs, same world. Nothing draws these yet. The fields exist so that every
+ * shell agrees on them before any art does.
+ */
+/* The season, from the shell's calendar. A season is not weather. */
+enum {
+    DUEL_CITY_SEASON_NONE = 0,
+    DUEL_CITY_SEASON_SPRING = 1,
+    DUEL_CITY_SEASON_SUMMER = 2,
+    DUEL_CITY_SEASON_AUTUMN = 3,
+    DUEL_CITY_SEASON_WINTER = 4,
+    DUEL_CITY_SEASON_COUNT = 5,
+};
+
+/* The day's tallies, kept by the shell and never by the library: spells its
+ * world cast today, the pips of health they cost, and the champions that
+ * fell, as duel_ambient_stats_t counts them. A shell saturates each at 255.
+ * Zero is a day with nothing in it yet, which is what a shell that keeps no
+ * tally sends. Any byte is accepted; there is no enum to fall outside. */
+
+/*
  * The Raw HID v3 semantic payload, unpacked, plus the two values the firmware
  * supplies locally rather than receiving, plus the off-keyboard signals above.
  * Every field is a bounded integer: no window title, URL, path, notification
  * text, keycode, timestamp or raw sample can reach this struct, and there is no
  * field one could be smuggled through. The off-keyboard fields follow the
- * first ten bytes so those keep their offsets.
+ * first ten bytes so those keep their offsets, and ABI 9's calendar and tally
+ * fields follow the ABI 8 signals for the same reason.
  */
 typedef struct {
-    uint8_t scene;       /* payload[0]: DUEL_HOST_SCENE_* */
-    uint8_t notif_count; /* payload[1]: 0..15 */
-    uint8_t category;    /* payload[2]: DUEL_HOST_CATEGORY_* */
-    uint8_t priority;    /* payload[3]: DUEL_HOST_PRIORITY_* */
-    uint8_t age;         /* payload[4]: 0..7 */
-    uint8_t persistent;  /* payload[5]: 0 or 1 */
-    uint8_t civic;       /* payload[6]: DUEL_CIVIC_PACK(floor, mode, intensity) */
-    uint8_t secondary;   /* payload[7]: DUEL_SECONDARY_PACK(activity) */
-    uint8_t online;      /* daemon link state, as the firmware's host state sees it */
-    uint8_t seed;        /* presentation seed: the firmware's one-byte session */
-    uint8_t tempo;       /* DUEL_CITY_TEMPO_* */
-    uint8_t spread;      /* DUEL_CITY_SPREAD_* */
-    uint8_t row;         /* DUEL_CITY_ROW_* */
-    uint8_t row_spread;  /* DUEL_CITY_ROW_SPREAD_* */
-    uint8_t body;        /* DUEL_CITY_BODY_* */
-    uint8_t heart;       /* DUEL_CITY_HEART_* */
-    uint8_t sleep;       /* DUEL_CITY_SLEEP_* */
+    uint8_t scene;            /* payload[0]: DUEL_HOST_SCENE_* */
+    uint8_t notif_count;      /* payload[1]: 0..15 */
+    uint8_t category;         /* payload[2]: DUEL_HOST_CATEGORY_* */
+    uint8_t priority;         /* payload[3]: DUEL_HOST_PRIORITY_* */
+    uint8_t age;              /* payload[4]: 0..7 */
+    uint8_t persistent;       /* payload[5]: 0 or 1 */
+    uint8_t civic;            /* payload[6]: DUEL_CIVIC_PACK(floor, mode, intensity) */
+    uint8_t secondary;        /* payload[7]: DUEL_SECONDARY_PACK(activity) */
+    uint8_t online;           /* daemon link state, as the firmware's host state sees it */
+    uint8_t seed;             /* presentation seed: the firmware's one-byte session */
+    uint8_t tempo;            /* DUEL_CITY_TEMPO_* */
+    uint8_t spread;           /* DUEL_CITY_SPREAD_* */
+    uint8_t row;              /* DUEL_CITY_ROW_* */
+    uint8_t row_spread;       /* DUEL_CITY_ROW_SPREAD_* */
+    uint8_t body;             /* DUEL_CITY_BODY_* */
+    uint8_t heart;            /* DUEL_CITY_HEART_* */
+    uint8_t sleep;            /* DUEL_CITY_SLEEP_* */
+    uint8_t season;           /* DUEL_CITY_SEASON_* */
+    uint8_t tally_casts;      /* spells cast today, saturating */
+    uint8_t tally_impacts;    /* pips of health lost today, saturating */
+    uint8_t tally_knockdowns; /* champions felled today, saturating */
 } duel_city_input_t;
 
-_Static_assert(sizeof(duel_city_input_t) == 17, "city input layout changed");
+_Static_assert(sizeof(duel_city_input_t) == 21, "city input layout changed");
 
 /*
  * Opaque carry-over between frames — currently the floor-transition policy,

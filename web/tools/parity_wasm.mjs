@@ -99,8 +99,20 @@ console.error(`wasm: ${lines.length} lines`);
  * restated. If either moves, this leg disagrees with the native one and the
  * diff says so, which is the same guard the matrix gives the page.
  */
-const INPUT_SIZE = 17;
-const SIGNAL_ORDER = ["tempo", "spread", "row", "row_spread", "body", "heart", "sleep"];
+const INPUT_SIZE = 21;
+const SIGNAL_ORDER = [
+  "tempo",
+  "spread",
+  "row",
+  "row_spread",
+  "body",
+  "heart",
+  "sleep",
+  "season",
+  "tally_casts",
+  "tally_impacts",
+  "tally_knockdowns",
+];
 
 function semanticBytes(row) {
   const f = row.input;

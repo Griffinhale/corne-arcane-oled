@@ -47,7 +47,7 @@ public enum Layout: CaseIterable, Sendable, RawRepresentable {
 
 /// The DUEL_CITY_ABI this file was written against. A library built from
 /// another revision is refused when a City is made.
-public let expectedCityABI = 8
+public let expectedCityABI = 9
 
 public struct CityABIMismatch: Error, CustomStringConvertible {
     public let found: Int

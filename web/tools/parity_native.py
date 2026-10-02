@@ -22,7 +22,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "host"))
 
-from arcane_host.city import OFF_KEYBOARD_FIELDS, CityInput, CityRenderer, Layout  # noqa: E402
+from arcane_host.city import (  # noqa: E402
+    OFF_KEYBOARD_COUNTERS,
+    OFF_KEYBOARD_FIELDS,
+    CityInput,
+    CityRenderer,
+    Layout,
+)
 from arcane_host.protocol import CivicState, Floor, Intensity, Mode, Secondary  # noqa: E402
 
 MATRIX = json.loads((Path(__file__).parent / "parity_matrix.json").read_text())
@@ -89,6 +95,7 @@ def semantic_input(row: dict) -> CityInput:
         online=int(fields["online"]),
         seed=row["seed"],
         **{name: int(kind(signals.get(name, 0))) for name, kind in OFF_KEYBOARD_FIELDS},
+        **{name: int(signals.get(name, 0)) for name in OFF_KEYBOARD_COUNTERS},
     )
 
 

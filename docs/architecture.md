@@ -81,11 +81,15 @@ dependencies, acquires the bus, and starts the runtime.
 The desktop city app (`city_window.py`, installed as `corne-arcane`) is a client
 of the running service: it reads the Control interface's link status and the
 world bytes the heartbeat carries, and never opens the keyboard.
-The renderer's input (`duel_city_input_t` in `desktop/duel_city.h`, ABI 8) is
+The renderer's input (`duel_city_input_t` in `desktop/duel_city.h`, ABI 9) is
 those payload bytes unpacked, then seven off-keyboard signals: typing tempo,
 spread, top row and row share from the opt-in typing summary, and body
 activity, heart mood and sleep mood reduced on a watch. Each is a small enum
-whose zero means none. They pass only from a shell to its renderer; neither
+whose zero means none. After them come the season from the shell's calendar
+and three day tallies the shell keeps and passes back in, the casts, impacts
+and knockdowns its world has counted today; the library stores none of it, so
+the same seed and inputs still give the same world, and nothing draws them yet.
+They pass only from a shell to its renderer; neither
 wire protocol carries them. The town and landscape layouts draw the typing
 four: tempo is the spire's pennant, spread the chimney smoke, top row the
 height of a lit lantern on the tower, and row share how many lanterns hang.

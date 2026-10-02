@@ -20,11 +20,13 @@ from unittest import mock
 from arcane_host import city, city_window, typing_helper
 from arcane_host.city import (
     CITY_ABI,
+    OFF_KEYBOARD_COUNTERS,
     OFF_KEYBOARD_FIELDS,
     AmbientState,
     CityError,
     CityInput,
     CityRenderer,
+    CitySeason,
     Layout,
     candidate_paths,
     city_input,
@@ -74,19 +76,25 @@ requires_library = unittest.skipUnless(
 
 
 class CityInputTests(unittest.TestCase):
-    def test_struct_is_seventeen_bounded_bytes(self) -> None:
+    def test_struct_is_twenty_one_bounded_bytes(self) -> None:
         # The privacy boundary is structural: every field is a small integer
         # and there is nowhere a title, URL, or notification body could ride.
-        self.assertEqual(ctypes.sizeof(CityInput), 17)
+        # ABI 9 appended the season and three day tallies to ABI 8's seventeen.
+        self.assertEqual(ctypes.sizeof(CityInput), 21)
         self.assertTrue(all(kind is ctypes.c_uint8 for _, kind in CityInput._fields_))
 
     def test_off_keyboard_fields_follow_the_payload(self) -> None:
         # The first ten bytes keep their offsets; the off-keyboard signals
         # are appended, so nothing that wrote the old struct by offset moves.
+        # The tallies follow the signals for the same reason.
         names = [name for name, _ in CityInput._fields_]
         self.assertEqual(names[8:10], ["online", "seed"])
-        self.assertEqual(names[10:], [field for field, _ in OFF_KEYBOARD_FIELDS])
+        self.assertEqual(
+            names[10:], [field for field, _ in OFF_KEYBOARD_FIELDS] + list(OFF_KEYBOARD_COUNTERS)
+        )
         self.assertEqual(CityInput.tempo.offset, 10)
+        self.assertEqual(CityInput.season.offset, 17)
+        self.assertEqual(CityInput.tally_casts.offset, 18)
 
     def test_off_keyboard_fields_start_at_none(self) -> None:
         packed = city_input(SemanticState(), seed=0x5A)
@@ -94,6 +102,8 @@ class CityInputTests(unittest.TestCase):
             self.assertEqual(getattr(packed, field), 0, field)
         for field, kind in OFF_KEYBOARD_FIELDS:
             self.assertEqual(kind(0).name, "NONE", field)
+        for field in OFF_KEYBOARD_COUNTERS:
+            self.assertEqual(getattr(packed, field), 0, field)
 
     def test_carries_the_raw_hid_payload_in_payload_order(self) -> None:
         summary = NotificationSummary(3, Category.COMMUNICATION, Priority.CRITICAL, 5, True)
@@ -209,6 +219,24 @@ class CityRendererTests(unittest.TestCase):
                 with self.assertRaisesRegex(CityError, "outside its enum", msg=f"{field}={value}"):
                     self.render(packed)
 
+    def test_season_and_tallies_are_accepted_and_draw_nothing_yet(self) -> None:
+        # ABI 9's calendar and memory fields are accepted by every shell before
+        # any art reads them: a season takes its four values, a tally takes any
+        # byte, and none of them changes a frame in any layout yet.
+        for layout in Layout:
+            renderer = CityRenderer(scale=1, layout=layout)
+            base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
+            for season in CitySeason:
+                packed = resting_input(seed=0x5A)
+                packed.season = int(season)
+                self.assertEqual(digest(renderer.render(packed, 400_000, 12)), base, season)
+            for field in OFF_KEYBOARD_COUNTERS:
+                for value in (1, 128, 255):
+                    packed = resting_input(seed=0x5A)
+                    setattr(packed, field, value)
+                    frame = digest(renderer.render(packed, 400_000, 12))
+                    self.assertEqual(frame, base, f"{layout} {field}={value}")
+
     # Today's resting frame in each layout with every off-keyboard field at
     # none. The panels are as the renderer drew them before those fields
     # existed; the town and landscape moved once, reviewed, when the lit tower
@@ -226,6 +254,7 @@ class CityRendererTests(unittest.TestCase):
     # never sees either.
     TYPING_LAYOUTS = (Layout.TOWN, Layout.LANDSCAPE)
     TYPING_FIELDS = ("tempo", "spread", "row", "row_spread")
+    HEALTH_FIELDS = ("body", "heart", "sleep")
 
     def test_none_renders_today_unchanged(self) -> None:
         for layout, pinned in self.RESTING_FRAMES.items():
@@ -336,7 +365,7 @@ class CityRendererTests(unittest.TestCase):
             renderer = CityRenderer(scale=1, layout=layout)
             base = digest(renderer.render(resting_input(seed=0x5A), 400_000, 12))
             for field, kind in OFF_KEYBOARD_FIELDS:
-                if field in self.TYPING_FIELDS:
+                if field not in self.HEALTH_FIELDS:
                     continue
                 frames = {base}
                 for value in kind:

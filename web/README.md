@@ -162,9 +162,10 @@ JavaScript reads them by offset. The module's memory footprint is a
 compile-time constant, and there is nothing to free, grow or leak.
 
 `duel_wasm_input_ptr` exposes the input struct so that a future producer could
-write the seventeen bytes directly rather than going through the tour: the ten
-payload bytes, then the off-keyboard signals (typing summary, health buckets),
-whose zero means none. Neither page uses it -- they have no semantics to
+write the twenty-one bytes directly rather than going through the tour: the ten
+payload bytes, then the off-keyboard signals (typing summary, health buckets,
+the season and the day's tallies), whose zero means none. Neither page uses it
+-- they have no semantics to
 supply -- and it is safe either way, because whatever is written there still
 goes through the firmware's acceptance path, or the same enum check for the
 signals, on the next render and is rejected if any field is out of range.
