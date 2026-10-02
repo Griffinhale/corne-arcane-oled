@@ -382,6 +382,14 @@ the sky phase decides the hour, the civic clock paces the residents crossing
 the plaza, and a spell in flight is the same spell, arcing out over the roofs
 instead of across a desk. It shares the world, not the pixels.
 
+The residents on the square have lives of their own (city ABI 11): each has
+needs -- rest, work, food, company -- and walks to the house, the smithy, the
+tavern, the well, the market, the bench or out of a gate for them, stays, and
+comes back. The window keeps them beside the world, with or without
+`--no-duels`, and only the town layers draw them. They are seeded like the
+world and use no clock but its own, so a seed replays them exactly. Nothing about
+them reaches the keyboard.
+
 The app is a client of `corne-arcane-host.service`, never a second daemon. It
 reads the service's Control interface (below) for the world the keyboard is
 being sent and for the keyboard link, which it names under the image:

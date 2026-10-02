@@ -8,6 +8,11 @@ reached the way the desktop shell actually reaches it.
 Writes a hash per frame for the whole matrix, and the raw pixels of one frame
 per layout so the comparison can be a byte-for-byte ``cmp`` rather than a
 statement about hashes.
+
+Every case runs the town's residents (ABI 11) beside the world, advanced at
+the same moments, as every shell runs them; each case's stats line ends with
+their tick count and a hash of their handle, so a divergence in them shows up
+even where no frame happens to draw it.
 """
 
 from __future__ import annotations
@@ -101,6 +106,11 @@ def semantic_input(row: dict) -> CityInput:
     )
 
 
+def life_fields(life) -> str:
+    """The residents' tick count and the sha256 of their handle's bytes."""
+    return f"life {life.ticks} {hashlib.sha256(life.snapshot()).hexdigest()}"
+
+
 def semantic_lines() -> list[str]:
     """The semantic rows, in the matrix's line format with the row's name in front."""
     lines = []
@@ -108,17 +118,20 @@ def semantic_lines() -> list[str]:
         name, layout, seed = row["name"], row["layout"], row["seed"]
         renderer = CityRenderer(scale=1, layout=Layout(layout))
         world = renderer.ambient(seed)
+        life = renderer.life(seed)
         city = semantic_input(row)
         for frame in range(row["frames"]):
             now = frame * TICK_MS
             world.advance(now)
-            pixels = renderer.render(city, now, frame, ambient=world).split(b"\n", 3)[3]
+            life.advance(city, now, ambient=world)
+            pixels = renderer.render(city, now, frame, ambient=world, life=life)
+            pixels = pixels.split(b"\n", 3)[3]
             digest = hashlib.sha256(pixels).hexdigest()
             lines.append(f"{name} {layout} {seed} {frame} {len(pixels)} {digest}")
         stats = world.stats
         lines.append(
             f"{name} {layout} {seed} stats {stats.ticks} {stats.casts} "
-            f"{stats.impacts} {stats.knockdowns}"
+            f"{stats.impacts} {stats.knockdowns} {life_fields(life)}"
         )
     return lines
 
@@ -137,12 +150,14 @@ def main() -> int:
             # between frames and the WASM side re-inits per case too.
             renderer = CityRenderer(scale=1, layout=Layout(layout))
             world = renderer.ambient(seed)
+            life = renderer.life(seed)
             city = renderer.tour_stop(0, seed)
             pixels = b""
             for frame in range(FRAMES):
                 now = frame * TICK_MS
                 world.advance(now)
-                image = renderer.render(city, now, frame, ambient=world)
+                life.advance(city, now, ambient=world)
+                image = renderer.render(city, now, frame, ambient=world, life=life)
                 # render() returns a PGM; the pixels are everything after the
                 # third newline of the header.
                 pixels = image.split(b"\n", 3)[3]
@@ -151,7 +166,7 @@ def main() -> int:
             stats = world.stats
             lines.append(
                 f"{layout} {seed} stats {stats.ticks} {stats.casts} "
-                f"{stats.impacts} {stats.knockdowns}"
+                f"{stats.impacts} {stats.knockdowns} {life_fields(life)}"
             )
             if seed == SEEDS[0]:
                 (args.out / f"native-layout{layout}.raw").write_bytes(pixels)

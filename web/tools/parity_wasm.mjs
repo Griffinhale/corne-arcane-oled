@@ -49,6 +49,16 @@ if (api.duel_wasm_geometry(layouts.length) !== -5) {
 }
 const heap = () => new Uint8Array(api.memory.buffer);
 
+// The town's residents (ABI 11): their tick count and a hash of their handle,
+// appended to each case's stats line exactly as parity_native.py writes it.
+const LIFE_SIZE = 384;
+function lifeFields() {
+  const ptr = api.duel_wasm_life_ptr();
+  const bytes = heap().slice(ptr, ptr + LIFE_SIZE);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  return `life ${api.duel_wasm_life_ticks()} ${digest}`;
+}
+
 const lines = [];
 for (const layout of matrix.layouts) {
   const packed = api.duel_wasm_geometry(layout);
@@ -77,7 +87,7 @@ for (const layout of matrix.layouts) {
 
     api.duel_wasm_stats();
     const stats = new Uint32Array(api.memory.buffer, api.duel_wasm_stats_ptr(), 4);
-    lines.push(`${layout} ${seed} stats ${stats[0]} ${stats[1]} ${stats[2]} ${stats[3]}`);
+    lines.push(`${layout} ${seed} stats ${stats[0]} ${stats[1]} ${stats[2]} ${stats[3]} ${lifeFields()}`);
     if (seed === matrix.seeds[0]) {
       writeFileSync(join(out, `wasm-layout${layout}.raw`), pixels);
     }
@@ -165,7 +175,9 @@ for (const row of matrix.semantic) {
 
   api.duel_wasm_stats();
   const stats = new Uint32Array(api.memory.buffer, api.duel_wasm_stats_ptr(), 4);
-  semantic.push(`${row.name} ${row.layout} ${row.seed} stats ${stats[0]} ${stats[1]} ${stats[2]} ${stats[3]}`);
+  semantic.push(
+    `${row.name} ${row.layout} ${row.seed} stats ${stats[0]} ${stats[1]} ${stats[2]} ${stats[3]} ${lifeFields()}`,
+  );
 }
 
 writeFileSync(join(out, "wasm-semantic.hashes"), semantic.join("\n") + "\n");

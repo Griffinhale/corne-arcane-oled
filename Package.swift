@@ -34,6 +34,7 @@ let package = Package(
                 "desktop/duel_city.c",
                 "desktop/duel_ambient.c",
                 "desktop/duel_town_draw.c",
+                "desktop/duel_town_life.c",
             ],
             publicHeadersPath: "apple/include",
             cSettings: [

@@ -3,6 +3,7 @@
 
 #include "duel_ambient.h"
 #include "duel_town.h"
+#include "duel_town_life.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -292,6 +293,59 @@ static void fill_panel_row(uint8_t *row, int y, const void *source) {
     }
 }
 
+/*
+ * The residents' side of the seam. Everything the town life reads is filled
+ * here, as bounded bytes, from what the renderer already has: the district,
+ * mode and intensity from the host semantics; whether a spell is in flight
+ * from the ambient world, read and never written; the courier from the same
+ * shared derivation the panels use; and the sky phase per tick. The module
+ * gets this struct and nothing else -- no projection, no host state, no world
+ * -- so it cannot write the civic bytes the keyboard derives (DC-D2).
+ */
+_Static_assert(DUEL_TOWN_LIFE_SKY_NIGHT == DUEL_SKY_NIGHT, "the residents' night is the sky's");
+_Static_assert(DUEL_TOWN_LIFE_TICK_MS == DUEL_CIVIC_TICK_MS, "the residents keep the civic clock");
+
+int duel_city_life_advance(duel_town_life_t *life, const duel_city_input_t *input,
+                           const duel_ambient_t *ambient, uint32_t elapsed_ms) {
+    if (!life || !input)
+        return DUEL_CITY_ERR_ARG;
+    duel_host_state_t host;
+    if (!ingest(&host, input))
+        return DUEL_CITY_ERR_INPUT;
+
+    uint8_t civic = duel_host_civic(&host);
+    const sim_world_t *world = ambient ? duel_ambient_world(ambient) : &resting_world;
+    duel_civic_shared_t shared =
+        duel_civic_shared_derive(input->seed, elapsed_ms, &host, world,
+                                 ambient ? duel_ambient_diplomacy_balance(ambient) : 0);
+
+    duel_town_life_input_t in;
+    memset(&in, 0, sizeof in);
+    in.district = duel_civic_district(civic, duel_host_context(&host));
+    in.mode = DUEL_CIVIC_MODE(civic);
+    in.intensity = DUEL_CIVIC_INTENSITY(civic);
+    in.spell_up = (world->spell[0].active || world->spell[1].active) ? 1u : 0u;
+    in.courier = (shared.revision & INCANTATION_AFTERMATH_WIRE)
+                     ? (uint8_t)DUEL_CIVIC_COURIER_NONE
+                     : DUEL_VISITOR_KIND(shared.shared_pres);
+
+    /* A time behind the last tick re-derives from the seed (the module does
+     * that on any backward call); then one tick at a time, each with the sky
+     * of its own moment, so one long call is the same as many short ones. */
+    uint32_t due = elapsed_ms / DUEL_TOWN_LIFE_TICK_MS;
+    uint32_t at = duel_town_life_ticks(life);
+    if (due < at) {
+        duel_town_life_advance(life, &in, 0u);
+        at = 0u;
+    }
+    uint32_t ran = 0u;
+    for (; at < due; at++, ran++) {
+        in.sky_phase = duel_sky_phase(at * DUEL_TOWN_LIFE_TICK_MS);
+        duel_town_life_advance(life, &in, (at + 1u) * DUEL_TOWN_LIFE_TICK_MS);
+    }
+    return (int)ran;
+}
+
 static void fill_town_row(uint8_t *row, int y, const void *source) {
     const town_fb_t *town = source;
     for (int x = 0; x < town->width; x++)
@@ -299,8 +353,8 @@ static void fill_town_row(uint8_t *row, int y, const void *source) {
 }
 
 int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
-                     duel_ambient_t *ambient, uint32_t elapsed_ms, uint32_t frame, int layout,
-                     int scale, uint8_t *pixels, size_t length) {
+                     duel_ambient_t *ambient, const duel_town_life_t *life, uint32_t elapsed_ms,
+                     uint32_t frame, int layout, int scale, uint8_t *pixels, size_t length) {
     if (!input || !pixels)
         return DUEL_CITY_ERR_ARG;
     city_layout_t plan;
@@ -327,7 +381,7 @@ int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
         town_typing_t typing = {input->tempo, input->spread, input->row, input->row_spread};
         town_health_t health = {input->body, input->heart, input->sleep};
         town_day_t day = {input->tally_casts, input->tally_impacts, input->tally_knockdowns};
-        duel_town_draw(&town, &render, &typing, &health, &day, frame);
+        duel_town_draw(&town, &render, &typing, &health, &day, life, frame);
         expand(&plan, scale, pixels, fill_town_row, &town);
         return DUEL_CITY_OK;
     }

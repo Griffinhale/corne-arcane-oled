@@ -81,7 +81,7 @@ dependencies, acquires the bus, and starts the runtime.
 The desktop city app (`city_window.py`, installed as `corne-arcane`) is a client
 of the running service: it reads the Control interface's link status and the
 world bytes the heartbeat carries, and never opens the keyboard.
-The renderer's input (`duel_city_input_t` in `desktop/duel_city.h`, ABI 10) is
+The renderer's input (`duel_city_input_t` in `desktop/duel_city.h`, ABI 11) is
 those payload bytes unpacked, then seven off-keyboard signals: typing tempo,
 spread, top row and row share from the opt-in typing summary, and body
 activity, heart mood and sleep mood reduced on a watch. Each is a small enum
@@ -108,6 +108,22 @@ night's sleep is who sits on the roof ridge, a cockerel or a sleeping cat.
 Three of them reach the square as well: body activity sets how many residents
 are out, tempo how fast they walk, and a short night sits some of them down
 while a full one quickens everyone's step.
+ABI 11 gives the square's residents lives of their own (`desktop/duel_town_life.c`,
+desktop only by owner ruling DC-D2). Twelve residents with four needs (rest, work,
+food, company) walk a small graph of places on the square -- the doors of the near
+row's houses, the smithy, the tavern, the well, the market, a bench, the tower and
+two gates -- to whichever serves the need that presses most, stay until it is met,
+and decide again; night sends them home and a spell in flight stops the curious.
+The state is a caller-owned 384-byte `duel_town_life_t` beside `duel_ambient_t`,
+integer-only and allocation-free, and the module reads only a small struct of
+bounded bytes the city glue fills from the host semantics, the sky clock and the
+ambient world: it never receives the projection, so nothing it does can reach the
+civic bytes the keyboard derives. Shells advance it with `duel_city_life_advance`
+wherever they advance the world and pass it to `duel_city_render`; the town and
+landscape draw the residents from it, the panels never do, and a NULL handle draws
+the square's hashed walkers as before. With residents, body activity still sets
+how many are out and a short night still sits some down; tempo paces only the
+hashed walkers.
 The day's tallies go up on an almanac board in the square: a spark for casts,
 a heart for impacts and a fallen figure for knockdowns, each with a stroke at
 1, 4, 16 and 64 and a fifth across the gate when the byte is full. They are

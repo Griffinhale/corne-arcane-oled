@@ -26,7 +26,7 @@ SIM_DIR := ../firmware/sim
 include ../firmware/sim_sources.mk
 
 WASM_SRC := duel_wasm.c ../desktop/duel_city.c ../desktop/duel_ambient.c \
-            ../desktop/duel_town_draw.c
+            ../desktop/duel_town_draw.c ../desktop/duel_town_life.c
 HDRS := $(wildcard ../firmware/sim/*.h) $(wildcard ../desktop/*.h)
 WASM := duel_city.wasm
 

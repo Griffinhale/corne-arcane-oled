@@ -161,6 +161,12 @@ func loadMatrix() -> Matrix {
     return matrix
 }
 
+/// The town's residents (ABI 11) at the end of a case: their tick count and
+/// a hash of their handle, as the native and WASM legs write them.
+func lifeFields(_ city: City) -> String {
+    "life \(city.lifeTicks) \(SHA256.hexDigest(city.lifeBytes))"
+}
+
 func parityLines() -> [String] {
     let matrix = loadMatrix()
     var lines: [String] = []
@@ -186,7 +192,7 @@ func parityLines() -> [String] {
             let stats = city.stats
             lines.append(
                 "\(layout) \(seed) stats \(stats.ticks) \(stats.casts) "
-                    + "\(stats.impacts) \(stats.knockdowns)")
+                    + "\(stats.impacts) \(stats.knockdowns) \(lifeFields(city))")
         }
     }
     return lines
@@ -216,7 +222,7 @@ func semanticLines() -> [String] {
         let stats = city.stats
         lines.append(
             "\(row.name) \(row.layout) \(row.seed) stats \(stats.ticks) \(stats.casts) "
-                + "\(stats.impacts) \(stats.knockdowns)")
+                + "\(stats.impacts) \(stats.knockdowns) \(lifeFields(city))")
     }
     return lines
 }
@@ -641,7 +647,8 @@ func runSemanticInvariants() {
         raw[keyPath: field] = UInt8(count)
         let code = scratch.withUnsafeMutableBufferPointer { buffer in
             duel_city_render(
-                nil, &raw, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress, buffer.count)
+                nil, &raw, nil, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress,
+                buffer.count)
         }
         if code != Int32(DUEL_CITY_ERR_INPUT) { unchecked.append("\(name) \(count): \(code)") }
     }

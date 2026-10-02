@@ -183,6 +183,18 @@ that service has a producer for them. CityKit carries them as
 leaves them at `HostSignals()`, all none, which is what "nothing sent" means.
 Nothing draws them yet.
 
+## Town residents
+
+ABI 11 gives the square's residents needs and places to go: twelve of them,
+in a 384-byte `duel_town_life_t` that `City` keeps beside the world. It is
+seeded with the world, brought to each moment in `advance(to:)` from the input
+and the world as they stand, and passed to every render, so `seek(to:)` and a
+widget's forward pass arrive at the same residents as an app left open. Only the
+town and landscape draw them. A watch's body bucket still sets how many are out
+on the square and a short night still sits some down; nothing reaches the
+keyboard. `city-check parity` appends their tick count and a hash of the handle
+to each case's stats line, as the native and WASM legs do.
+
 ## Landscape
 
 ABI 7 adds `LANDSCAPE`, a 400x240 drawing layer with more world on either side

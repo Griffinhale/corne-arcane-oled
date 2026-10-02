@@ -26,7 +26,7 @@ export const RENDER_SCALE = 1;
 /* The duel_city.h DUEL_CITY_ABI this file was written against. A module built
  * from another revision is refused rather than half-understood: the layout
  * numbers and error codes below are only right for this one. */
-export const EXPECTED_ABI = 10;
+export const EXPECTED_ABI = 11;
 
 export const LAYOUT = Object.freeze({
   DESK: 0,

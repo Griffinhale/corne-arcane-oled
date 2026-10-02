@@ -155,8 +155,9 @@ page. It is not a privacy policy; it is the absence of a mechanism.
 ## No allocator, and don't add one
 
 Every buffer is a file-scope static in `duel_wasm.c`, sized by what the header
-fixes: one `duel_city_state_t`, one `duel_ambient_t`, one `duel_city_input_t`,
-and 96,000 bytes of pixels, which is LANDSCAPE at scale 1 and covers every
+fixes: one `duel_city_state_t`, one `duel_ambient_t`, one `duel_town_life_t`
+(the town's residents, ABI 11), one `duel_city_input_t`, and 96,000 bytes of
+pixels, which is LANDSCAPE at scale 1 and covers every
 other layout.
 JavaScript reads them by offset. The module's memory footprint is a
 compile-time constant, and there is nothing to free, grow or leak.
@@ -169,6 +170,17 @@ signals), whose zero means none. Neither page uses it -- they have no
 semantics to supply -- and it is safe either way, because whatever is written
 there still goes through the firmware's acceptance path, or the same enum check
 for the signals, on the next render and is rejected if any field is out of range.
+
+## The town's residents
+
+ABI 11 adds the residents of the square: needs, places and the walks between
+them, in a 384-byte `duel_town_life_t` the module keeps beside the world.
+`duel_wasm_init` seeds them with the world, `duel_wasm_advance` brings them to
+the same moment from the input and the world as they stand, and
+`duel_wasm_render` passes them whenever it passes the world. So `City.seek`,
+which steps `advance`, arrives at the same residents as a page left open. The
+parity legs hash the handle (`duel_wasm_life_ptr`, `duel_wasm_life_ticks`) at the
+end of every case, so a divergence shows up even where no frame draws it.
 
 ## Rendering at scale 1
 

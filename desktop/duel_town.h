@@ -76,8 +76,10 @@ typedef struct {
 
 /* One frame of the town from one projection. `frame` is the animation phase;
  * everything else is read from the render, exactly as the panel compositor
- * reads it, except the typing summary, the health buckets and the day's
- * tallies, which only the town draws. `typing`, `health` and `day` may be
- * NULL, which is the same as none. */
+ * reads it, except the typing summary, the health buckets, the day's tallies
+ * and the residents' town life, which only the town draws. `typing`, `health`
+ * and `day` may be NULL, which is the same as none; a NULL `life` draws the
+ * square's hashed walkers, as the town did before it had residents. */
 void duel_town_draw(town_fb_t *fb, const duel_render_t *render, const town_typing_t *typing,
-                    const town_health_t *health, const town_day_t *day, uint32_t frame);
+                    const town_health_t *health, const town_day_t *day,
+                    const duel_town_life_t *life, uint32_t frame);

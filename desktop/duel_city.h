@@ -22,7 +22,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DUEL_CITY_ABI 10
+#define DUEL_CITY_ABI 11
 
 /* The three columns between the two canvases are world space that neither
  * panel can show: the battlefield axis crosses them (DUEL_U_GAP_* in
@@ -325,6 +325,47 @@ uint8_t duel_ambient_advance(duel_ambient_t *ambient, uint32_t now_ms);
 /* Evidence that the city is alive, for tests and for watching it run. */
 duel_ambient_stats_t duel_ambient_stats(const duel_ambient_t *ambient);
 
+/*
+ * The town's residents (ABI 11). Twelve of them, each with four needs --
+ * rest, work, food and company -- that climb with the hour and their own
+ * temperament; each picks the need that presses most, walks to the nearest
+ * place on the square that serves it, stays until it is met, and decides
+ * again. Night sends them home, a quiet town keeps them in, and a spell in
+ * flight stops the curious to watch.
+ *
+ * Desktop only, by owner ruling (DC-D2): it is drawn by the TOWN and
+ * LANDSCAPE layers alone, never by the panels, and nothing in it reaches the
+ * keyboard. Opaque and caller-owned like the ambient world; 384 bytes, sized
+ * so the pool can grow without another ABI move. The same seed and the same
+ * inputs give the same residents: there is no clock and no randomness that
+ * is not drawn from the seed.
+ */
+typedef struct {
+    uint64_t opaque[48];
+} duel_town_life_t;
+
+/* Start, or restart, from a seed. Every byte of the handle is written. */
+void duel_town_life_init(duel_town_life_t *life, uint8_t seed);
+
+/* Civic ticks the residents have lived, for tests and the parity legs. */
+uint32_t duel_town_life_ticks(const duel_town_life_t *life);
+
+/*
+ * Bring the residents up to `elapsed_ms`, one 300 ms civic tick at a time.
+ * The district, mode and intensity come from `input` and whether a spell is
+ * in flight from `ambient` (which may be NULL: a resting city), both as they
+ * stand at this call; the sky is worked out afresh for every tick from that
+ * tick's own time. So a call that spans many ticks is the same as stepping
+ * through them, provided the input and the world did not change in between
+ * -- and a shell keeps that true by calling this wherever it advances the
+ * ambient world, at the same moments, as every shell in this tree does. A
+ * time behind the last tick run re-derives from the seed and replays.
+ * Returns the ticks run, or a negative DUEL_CITY_ERR_* for a NULL pointer or
+ * an input the renderer would refuse.
+ */
+int duel_city_life_advance(duel_town_life_t *life, const duel_city_input_t *input,
+                           const duel_ambient_t *ambient, uint32_t elapsed_ms);
+
 int duel_city_abi_version(void);
 
 /* A wire constant from duel_host.h or duel_diagnostics.h, by its name without
@@ -411,7 +452,12 @@ int duel_city_tour_stop(int index, uint8_t seed, duel_city_input_t *out);
  *
  * `ambient` is optional. With it, the champions duel and the city reacts to
  * what they do; without it, they rest and only the host's semantics move.
+ *
+ * `life` is optional too, and only read. With it, the TOWN and LANDSCAPE
+ * squares show the residents where duel_city_life_advance left them; without
+ * it, they show the hashed walkers they always have, so a shell that passes
+ * NULL draws exactly what it drew at ABI 10. The panel layouts never draw it.
  */
 int duel_city_render(duel_city_state_t *state, const duel_city_input_t *input,
-                     duel_ambient_t *ambient, uint32_t elapsed_ms, uint32_t frame, int layout,
-                     int scale, uint8_t *pixels, size_t length);
+                     duel_ambient_t *ambient, const duel_town_life_t *life, uint32_t elapsed_ms,
+                     uint32_t frame, int layout, int scale, uint8_t *pixels, size_t length);

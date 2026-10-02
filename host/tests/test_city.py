@@ -7,6 +7,7 @@ import ctypes
 import hashlib
 import io
 import os
+import random
 import select
 import shutil
 import subprocess
@@ -636,12 +637,23 @@ class FakeAmbient:
         return 1
 
 
+class FakeLife:
+    def __init__(self) -> None:
+        self.advanced = []
+
+    def advance(self, city, elapsed_ms, ambient=None) -> int:
+        self.advanced.append((bytes(city), elapsed_ms, ambient))
+        return 1
+
+
 class FakeRenderer:
     def __init__(self, layout: Layout = Layout.CITY) -> None:
         self.layout = layout
         self.calls = []
         self.inputs = []
         self.worlds = []
+        self.lives = []
+        self.drawn_lives = []
         self.backdrop = "#123456"
         self.fps = 25
         self.width = 201
@@ -654,9 +666,15 @@ class FakeRenderer:
         self.worlds.append((seed, world))
         return world
 
-    def render(self, packed, elapsed_ms, frame, ambient=None) -> bytes:
+    def life(self, seed) -> FakeLife:
+        life = FakeLife()
+        self.lives.append((seed, life))
+        return life
+
+    def render(self, packed, elapsed_ms, frame, ambient=None, life=None) -> bytes:
         self.calls.append((packed.civic, elapsed_ms, frame, ambient))
         self.inputs.append(bytes(packed))
+        self.drawn_lives.append(life)
         return b"pixels"
 
 
@@ -1052,6 +1070,232 @@ class TownCivicTests(unittest.TestCase):
             self.assertEqual(len(set(boxes.values())), len(boxes), f"side {side} kinds {kinds}")
 
 
+class TownLifeView(ctypes.Structure):
+    """``duel_town_life_view_t``: one resident, copied out of the opaque state."""
+
+    _fields_ = [
+        ("x", ctypes.c_int16),
+        ("y", ctypes.c_int16),
+        ("state", ctypes.c_uint8),
+        ("place", ctypes.c_uint8),
+        ("goal", ctypes.c_uint8),
+        ("personality", ctypes.c_uint8),
+        ("need_top", ctypes.c_uint8),
+        ("need_level", ctypes.c_uint8),
+        ("visible", ctypes.c_uint8),
+        ("facing", ctypes.c_uint8),
+    ]
+
+
+@requires_library
+class TownLifeTests(unittest.TestCase):
+    """DC8: the town's residents have needs and go places for them.
+
+    The determinism cases are DC-S2's, ported: the same seed gives the same
+    chain of states, one call to a moment equals stepping into it, an irregular
+    cadence equals a regular one, a backward seek re-derives, and init leaves
+    no byte of the handle undefined. The module never reaches the panels, and
+    a shell that passes no life draws today's town.
+    """
+
+    SEED = 0x5A
+    TICK_MS = 300
+    RESIDENTS = 12
+    WALK, STAY = 1, 2
+
+    def setUp(self) -> None:
+        self.renderer = CityRenderer(scale=1, layout=Layout.TOWN)
+
+    def city(self, floor: Floor = Floor.COMMONS, scene: Scene = Scene.DUEL, **civic) -> CityInput:
+        state = SemanticState(scene, NotificationSummary(), CivicState(floor=floor, **civic))
+        return city_input(state, seed=self.SEED)
+
+    def stepped(self, life, city: CityInput, until_ms: int, every_ms: int = TICK_MS) -> None:
+        for t in range(every_ms, until_ms + 1, every_ms):
+            life.advance(city, t)
+
+    def test_the_handle_is_caller_owned_and_sized_for_growth(self) -> None:
+        life = self.renderer.life(self.SEED)
+        self.assertEqual(ctypes.sizeof(life.handle._obj), 384)
+        self.assertEqual(life.ticks, 0)
+
+    def test_same_seed_same_chain(self) -> None:
+        a, b = self.renderer.life(self.SEED), self.renderer.life(self.SEED)
+        city = self.city()
+        chain_a, chain_b = hashlib.sha256(), hashlib.sha256()
+        for t in range(self.TICK_MS, 2000 * self.TICK_MS + 1, self.TICK_MS):
+            a.advance(city, t)
+            b.advance(city, t)
+            chain_a.update(a.snapshot())
+            chain_b.update(b.snapshot())
+        self.assertEqual(chain_a.digest(), chain_b.digest())
+        self.assertEqual((a.ticks, b.ticks), (2000, 2000))
+
+    def test_seeds_give_different_worlds(self) -> None:
+        worlds = set()
+        for seed in range(16):
+            life = self.renderer.life(seed)
+            life.advance(self.city(), 600_000)
+            worlds.add(life.snapshot())
+        self.assertEqual(len(worlds), 16)
+
+    def test_one_call_seek_equals_stepping(self) -> None:
+        # Across the dawn-to-day boundary at 150 s and well into the day: the
+        # sky is re-derived for every tick, so one call is not one input.
+        city = self.city()
+        for target in (60_000, 1_020_000, 3_600_000):
+            once = self.renderer.life(self.SEED)
+            once.advance(city, target)
+            step = self.renderer.life(self.SEED)
+            self.stepped(step, city, target)
+            self.assertEqual(once.ticks, target // self.TICK_MS, target)
+            self.assertEqual(once.snapshot(), step.snapshot(), target)
+
+    def test_irregular_cadence_equals_regular(self) -> None:
+        city = self.city()
+        regular = self.renderer.life(self.SEED)
+        irregular = self.renderer.life(self.SEED)
+        stalls = random.Random(self.SEED)
+        reference = {}
+        for t in range(self.TICK_MS, 600_000 + 1, self.TICK_MS):
+            regular.advance(city, t)
+            reference[t] = regular.snapshot()
+        t, shared = 0, 0
+        while t < 600_000:
+            t += 40 if stalls.random() < 0.95 else stalls.randrange(40, 2400, 40)
+            t = min(t, 600_000)
+            irregular.advance(city, t)
+            if t % self.TICK_MS == 0:
+                self.assertEqual(irregular.snapshot(), reference[t], t)
+                shared += 1
+        # 40 ms meets 300 ms every 600 ms, less what the stalls step over.
+        self.assertGreater(shared, 300)
+
+    def test_backward_seek_rederives_from_the_seed(self) -> None:
+        city = self.city()
+        back = self.renderer.life(self.SEED)
+        back.advance(city, 3_600_000)
+        back.advance(city, 600_000)
+        fresh = self.renderer.life(self.SEED)
+        fresh.advance(city, 600_000)
+        self.assertEqual(back.snapshot(), fresh.snapshot())
+
+    def test_init_over_dirty_storage_defines_every_byte(self) -> None:
+        handles = []
+        for fill in (0xAA, 0x55):
+            life = self.renderer.life(self.SEED)
+            ctypes.memset(life.handle, fill, 384)
+            life.reset(self.SEED)
+            handles.append(life.snapshot())
+        self.assertEqual(handles[0], handles[1])
+
+    def test_inputs_reach_it(self) -> None:
+        def after(city: CityInput) -> bytes:
+            life = self.renderer.life(self.SEED)
+            life.advance(city, 600_000)
+            return life.snapshot()
+
+        commons = after(self.city())
+        self.assertNotEqual(after(self.city(Floor.WORKSHOP)), commons)
+        self.assertNotEqual(after(self.city(mode=Mode.QUIET)), commons)
+
+    def views(self, life) -> list[TownLifeView]:
+        library = self.renderer._library
+        library.duel_town_life_resident.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint8,
+            ctypes.POINTER(TownLifeView),
+        ]
+        library.duel_town_life_resident.restype = ctypes.c_bool
+        out = []
+        for i in range(self.RESIDENTS):
+            view = TownLifeView()
+            self.assertTrue(library.duel_town_life_resident(life.handle, i, ctypes.byref(view)))
+            out.append(view)
+        return out
+
+    def test_residents_go_somewhere_and_come_back(self) -> None:
+        # An hour of the working day: residents stay at places, walk between
+        # them, and come back to where they were; nobody walks for ever, and
+        # the night sends most of them indoors.
+        city = self.city()
+        life = self.renderer.life(self.SEED)
+        stays: list[list[int]] = [[] for _ in range(self.RESIDENTS)]
+        walking = [0] * self.RESIDENTS
+        longest = 0
+        out_by_day, out_by_night, day_ticks, night_ticks = 0, 0, 0, 0
+        for t in range(self.TICK_MS, 3_600_000 + 1, self.TICK_MS):
+            life.advance(city, t)
+            phase = t % 1_800_000
+            night = phase >= 1_500_000
+            day = 150_000 <= phase < 1_350_000
+            visible = 0
+            for i, view in enumerate(self.views(life)):
+                visible += view.visible
+                if view.state == self.WALK:
+                    walking[i] += 1
+                    longest = max(longest, walking[i])
+                else:
+                    walking[i] = 0
+                if view.state == self.STAY and (not stays[i] or stays[i][-1] != view.place):
+                    stays[i].append(view.place)
+            if night:
+                out_by_night += visible
+                night_ticks += 1
+            elif day:
+                out_by_day += visible
+                day_ticks += 1
+        round_trips = sum(
+            1
+            for places in stays
+            if any(places[k] in places[: k - 1] for k in range(2, len(places)))
+        )
+        self.assertGreaterEqual(round_trips, self.RESIDENTS // 2, stays)
+        self.assertLess(longest, 600)
+        self.assertLess(out_by_night / night_ticks, out_by_day / day_ticks)
+
+    def test_the_town_layers_draw_the_residents(self) -> None:
+        for layout in (Layout.TOWN, Layout.LANDSCAPE):
+            renderer = CityRenderer(scale=1, layout=layout)
+            life = renderer.life(self.SEED)
+            city = resting_input(seed=self.SEED)
+            life.advance(city, 400_000)
+            plain = renderer.render(city, 400_000, 12)
+            lived = renderer.render(city, 400_000, 12, life=life)
+            self.assertNotEqual(lived, plain, layout)
+            # Only the square moves: everything above the ground line is the
+            # same town.
+            ground = (renderer.height - 48) * renderer.width
+            header = len(plain) - renderer.width * renderer.height
+            self.assertEqual(lived[: header + ground], plain[: header + ground], layout)
+
+    def test_the_panels_never_draw_it(self) -> None:
+        for layout in (Layout.DESK, Layout.CITY, Layout.LEFT, Layout.RIGHT):
+            renderer = CityRenderer(scale=1, layout=layout)
+            plain_world, lived_world = renderer.ambient(self.SEED), renderer.ambient(self.SEED)
+            life = renderer.life(self.SEED)
+            city = renderer.tour_stop(1, self.SEED)
+            for frame in range(0, 300, 7):
+                now = frame * 40
+                plain_world.advance(now)
+                lived_world.advance(now)
+                life.advance(city, now, ambient=lived_world)
+                self.assertEqual(
+                    renderer.render(city, now, frame, ambient=lived_world, life=life),
+                    renderer.render(city, now, frame, ambient=plain_world),
+                    f"{layout} frame {frame}",
+                )
+
+    def test_no_life_is_todays_town(self) -> None:
+        for layout in (Layout.TOWN, Layout.LANDSCAPE):
+            renderer = CityRenderer(scale=1, layout=layout)
+            city = resting_input(seed=self.SEED)
+            self.assertEqual(
+                renderer.render(city, 400_000, 12, life=None),
+                renderer.render(city, 400_000, 12),
+            )
+
+
 class WindowLayoutTests(unittest.TestCase):
     def test_a_fixed_size_centres_the_city(self) -> None:
         window = city_window.CityWindow(
@@ -1093,6 +1337,21 @@ class AmbientWindowTests(unittest.TestCase):
     def test_duels_are_on_by_default_and_can_be_turned_off(self) -> None:
         self.assertTrue(city_window.parse_args([]).duels)
         self.assertFalse(city_window.parse_args(["--no-duels"]).duels)
+
+    def test_the_residents_live_beside_the_world_by_default(self) -> None:
+        # DC8: the window always has the town's residents, seeded like the
+        # world, advanced at each frame's clock with that frame's input and
+        # world, and handed to the renderer -- with or without a duel.
+        for duels in (True, False):
+            window = build_window(duels=duels)
+            window.draw_state(SemanticState())
+            window.draw_state(SemanticState())
+            seed, life = window.renderer.lives[0]
+            self.assertEqual(seed, 0x5A)
+            self.assertIs(window.life, life)
+            self.assertEqual([call[1] for call in life.advanced], [0, 40])
+            self.assertEqual([call[2] for call in life.advanced], [window.ambient] * 2)
+            self.assertEqual(window.renderer.drawn_lives, [life] * 2)
 
 
 @requires_library

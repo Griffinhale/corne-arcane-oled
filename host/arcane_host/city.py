@@ -25,7 +25,7 @@ from .host_signals import HOST_SIGNAL_FIELDS
 from .protocol import CivicState, NotificationSummary, Scene
 from .semantic import SemanticState, world_bytes
 
-CITY_ABI = 10
+CITY_ABI = 11
 LIBRARY_NAME = "libcornearcane.so"
 
 
@@ -198,6 +198,12 @@ class AmbientState(ctypes.Structure):
     _fields_ = [("opaque", ctypes.c_uint64 * 64)]
 
 
+class TownLifeState(ctypes.Structure):
+    """``duel_town_life_t``: the town's residents, owned by the caller (ABI 11)."""
+
+    _fields_ = [("opaque", ctypes.c_uint64 * 48)]
+
+
 class AmbientStats(ctypes.Structure):
     """``duel_ambient_stats_t``: evidence that the city is alive."""
 
@@ -233,6 +239,50 @@ class AmbientWorld:
     @property
     def stats(self) -> AmbientStats:
         return self._library.duel_ambient_stats(ctypes.byref(self._state))
+
+    @property
+    def handle(self):
+        return ctypes.byref(self._state)
+
+
+class TownLife:
+    """The town's residents: needs, places and the paths between them (ABI 11).
+
+    Desktop only: the town layers draw it and nothing reaches the keyboard.
+    Advance it wherever the ambient world is advanced, at the same moments and
+    with the input current then, and render with it; the same seed and the
+    same calls give the same residents in every shell.
+    """
+
+    def __init__(self, library: ctypes.CDLL, seed: int) -> None:
+        self._library = library
+        self._state = TownLifeState()
+        self.reset(seed)
+
+    def reset(self, seed: int) -> None:
+        """Start over from a seed; every byte of the handle is written."""
+        self.seed = seed & 0xFF
+        self._library.duel_town_life_init(ctypes.byref(self._state), self.seed)
+
+    def advance(self, city: CityInput, elapsed_ms: int, ambient: AmbientWorld | None = None) -> int:
+        """Bring the residents up to `elapsed_ms`. Returns the civic ticks run."""
+        ran = self._library.duel_city_life_advance(
+            ctypes.byref(self._state),
+            ctypes.byref(city),
+            ambient.handle if ambient is not None else None,
+            ctypes.c_uint32(elapsed_ms & 0xFFFFFFFF),
+        )
+        if ran < 0:
+            raise CityError(_ERRORS.get(ran, f"town life returned {ran}"))
+        return ran
+
+    @property
+    def ticks(self) -> int:
+        return self._library.duel_town_life_ticks(ctypes.byref(self._state))
+
+    def snapshot(self) -> bytes:
+        """The handle's bytes, for determinism checks and the parity legs."""
+        return bytes(self._state)
 
     @property
     def handle(self):
@@ -347,6 +397,17 @@ class CityRenderer:
         library.duel_ambient_advance.restype = ctypes.c_uint8
         library.duel_ambient_stats.argtypes = [ctypes.POINTER(AmbientState)]
         library.duel_ambient_stats.restype = AmbientStats
+        library.duel_town_life_init.argtypes = [ctypes.POINTER(TownLifeState), ctypes.c_uint8]
+        library.duel_town_life_init.restype = None
+        library.duel_town_life_ticks.argtypes = [ctypes.POINTER(TownLifeState)]
+        library.duel_town_life_ticks.restype = ctypes.c_uint32
+        library.duel_city_life_advance.argtypes = [
+            ctypes.POINTER(TownLifeState),
+            ctypes.POINTER(CityInput),
+            ctypes.POINTER(AmbientState),
+            ctypes.c_uint32,
+        ]
+        library.duel_city_life_advance.restype = ctypes.c_int
         library.duel_city_geometry.argtypes = [
             ctypes.c_int,
             ctypes.c_int,
@@ -376,6 +437,7 @@ class CityRenderer:
             ctypes.POINTER(CityState),
             ctypes.POINTER(CityInput),
             ctypes.POINTER(AmbientState),
+            ctypes.POINTER(TownLifeState),
             ctypes.c_uint32,
             ctypes.c_uint32,
             ctypes.c_int,
@@ -426,12 +488,17 @@ class CityRenderer:
         """Start a self-playing world this renderer can draw."""
         return AmbientWorld(self._library, seed)
 
+    def life(self, seed: int = 0) -> TownLife:
+        """Start the town's residents from a seed (ABI 11)."""
+        return TownLife(self._library, seed)
+
     def render(
         self,
         city: CityInput,
         elapsed_ms: int,
         frame: int,
         ambient: AmbientWorld | None = None,
+        life: TownLife | None = None,
     ) -> bytes:
         """Render one frame of both halves as a binary PGM image.
 
@@ -443,6 +510,7 @@ class CityRenderer:
                 ctypes.byref(self._state),
                 ctypes.byref(city),
                 ambient.handle if ambient is not None else None,
+                life.handle if life is not None else None,
                 ctypes.c_uint32(elapsed_ms & 0xFFFFFFFF),
                 ctypes.c_uint32(frame & 0xFFFFFFFF),
                 int(self.layout),

@@ -15,7 +15,7 @@ CFLAGS   += -Wall -Wextra -Werror -fPIC -I../firmware/sim -I.
 SIM_DIR := ../firmware/sim
 include ../firmware/sim_sources.mk
 
-LIB_SRC := duel_city.c duel_ambient.c duel_town_draw.c
+LIB_SRC := duel_city.c duel_ambient.c duel_town_draw.c duel_town_life.c
 HDRS := $(wildcard ../firmware/sim/*.h) $(wildcard *.h)
 LIB  := libcornearcane.so
 

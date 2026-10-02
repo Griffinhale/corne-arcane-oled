@@ -61,6 +61,7 @@ void *memset(void *dst, int value, size_t n) {
  */
 static duel_city_state_t city_state;
 static duel_ambient_t ambient_world;
+static duel_town_life_t town_life;
 static duel_city_input_t city_input;
 
 /*
@@ -77,6 +78,7 @@ _Static_assert(sizeof(city_input) == 27,
                "input struct is the payload, unpacked, plus the shell-only fields");
 _Static_assert(sizeof(city_state) == 32, "city state size changed under the shim");
 _Static_assert(sizeof(ambient_world) == 512, "ambient world size changed under the shim");
+_Static_assert(sizeof(town_life) == 384, "town life size changed under the shim");
 
 /* Where the buffers live, so JS can write and read them in place. */
 WASM_EXPORT(duel_wasm_input_ptr) uint32_t duel_wasm_input_ptr(void) {
@@ -92,9 +94,10 @@ WASM_EXPORT(duel_wasm_pixels_capacity) uint32_t duel_wasm_pixels_capacity(void) 
 }
 
 /*
- * Start, or restart, from a seed. One call sets up all three pieces of state
+ * Start, or restart, from a seed. One call sets up all four pieces of state
  * so a shell cannot half-reset the world -- the failure mode where a new seed
- * draws against the previous world's floor policy.
+ * draws against the previous world's floor policy, or the residents of
+ * another town.
  *
  * The input starts at tour stop 0 rather than zeroed. duel_city_render puts
  * the struct through the firmware's own acceptance path and rejects anything
@@ -105,23 +108,42 @@ WASM_EXPORT(duel_wasm_init) int duel_wasm_init(uint32_t seed) {
     uint8_t byte = (uint8_t)(seed & 0xFFu);
     duel_city_state_init(&city_state);
     duel_ambient_init(&ambient_world, byte);
+    duel_town_life_init(&town_life, byte);
     return duel_city_tour_stop(0, byte, &city_input);
 }
 
-/* Run the world up to now_ms at the renderer's own cadence. */
+/* Run the world up to now_ms at the renderer's own cadence, and the town's
+ * residents with it, from the input and the world as they stand: the same
+ * pairing the desktop window and CityKit make, so a seek that steps this is
+ * the same as having watched. Returns the world's ticks, as before. */
 WASM_EXPORT(duel_wasm_advance) uint32_t duel_wasm_advance(uint32_t now_ms) {
-    return duel_ambient_advance(&ambient_world, now_ms);
+    uint32_t ran = duel_ambient_advance(&ambient_world, now_ms);
+    duel_city_life_advance(&town_life, &city_input, &ambient_world, now_ms);
+    return ran;
 }
 
 /*
  * Render one frame into the static buffer at scale 1. `ambient` selects the
- * self-playing world; passing 0 renders the resting city, which is what the
- * parity harness needs to isolate the renderer from the simulation.
+ * living city -- the self-playing world and the town's residents; passing 0
+ * renders the resting city with neither, which is what the parity harness
+ * needs to isolate the renderer from the simulation.
  */
 WASM_EXPORT(duel_wasm_render)
 int duel_wasm_render(uint32_t elapsed_ms, uint32_t frame, int layout, int ambient) {
-    return duel_city_render(&city_state, &city_input, ambient ? &ambient_world : NULL, elapsed_ms,
-                            frame, layout, 1, pixel_buffer, sizeof(pixel_buffer));
+    return duel_city_render(&city_state, &city_input, ambient ? &ambient_world : NULL,
+                            ambient ? &town_life : NULL, elapsed_ms, frame, layout, 1, pixel_buffer,
+                            sizeof(pixel_buffer));
+}
+
+/* The residents' handle and ticks, for the parity harness: it hashes the
+ * bytes on every leg, so a divergence in the town life shows up even in a
+ * frame that happens not to show it. */
+WASM_EXPORT(duel_wasm_life_ptr) uint32_t duel_wasm_life_ptr(void) {
+    return (uint32_t)(uintptr_t)&town_life;
+}
+
+WASM_EXPORT(duel_wasm_life_ticks) uint32_t duel_wasm_life_ticks(void) {
+    return duel_town_life_ticks(&town_life);
 }
 
 /* Geometry at scale 1, packed as (width << 16) | height, or a negative

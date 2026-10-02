@@ -33,6 +33,7 @@
 #include "duel_host.h"
 #include "duel_incantation.h"
 #include "duel_runtime.h"
+#include "duel_town_life.h"
 #include "duel_view.h"
 
 /* ---- the town's geometry, stated once -----------------------------------
@@ -468,9 +469,11 @@ static const town_building_t far_row[] = {
     {2, 18, 16, 0, 0, 0},   {28, 13, 24, 0, 1, 0},  {88, 19, 22, 0, 0, 0},  {148, 16, 18, 0, 2, 0},
     {172, 12, 27, 0, 1, 0}, {196, 15, 14, 0, 0, 0}, {236, 18, 20, 0, 0, 0},
 };
+/* From duel_town_life.h, which the residents' places read too, so a door the
+ * residents walk to is always where its house is drawn. */
 static const town_building_t near_row[] = {
-    {12, 42, 40, 9, 0, 1},   {58, 28, 27, 0, 1, 0},  {88, 18, 20, 0, 2, 0},
-    {166, 33, 33, 24, 0, 1}, {203, 41, 46, 8, 1, 0},
+    {TOWN_ROW_HOUSE_W}, {TOWN_ROW_HOUSE_M}, {TOWN_ROW_SMITHY},
+    {TOWN_ROW_TAVERN},  {TOWN_ROW_HOUSE_E},
 };
 
 static void draw_far_row(town_fb_t *fb) {
@@ -3383,6 +3386,53 @@ static void draw_almanac(town_fb_t *fb, const town_day_t *day) {
  * down on the stones. Every one of them is a level, never a reading, and a
  * shell that sends none of them gets the square exactly as it was.
  */
+/* Sat down where the paving is, cloak pooled round them, feet out in front. */
+static void draw_square_sitter(town_fb_t *fb, int x, int y, int big) {
+    fill_rect(fb, x - 2 - big, y - 5, x + 2 + big, y - 2, true);
+    fill_rect(fb, x - 1, y - 8 - big, x + 1, y - 6 - big, true);
+    px(fb, x - 3 - big, y - 1, true);
+    px(fb, x + 3 + big, y - 1, true);
+    px(fb, x - 4 - big, y, true);
+    px(fb, x + 4 + big, y, true);
+}
+
+/* Cloak flaring to the hem, a head above it, and legs that alternate. Four
+ * pixels of shoulder is what makes it a person and not a post. Watching is
+ * the head tipped back and one arm up: the town notices the duel. Standing
+ * is feet together, for someone who has got where they were going. */
+static void draw_square_walker(town_fb_t *fb, int x, int y, int big, bool stepping, bool watching,
+                               bool standing) {
+    fill_rect(fb, x - 1 - big, y - 8 - big * 2, x + 1 + big, y - 6, true);
+    fill_rect(fb, x - 2 - big, y - 5, x + 2 + big, y - 3, true);
+    px(fb, x - 3 - big, y - 3, true);
+    px(fb, x + 3 + big, y - 3, true);
+    fill_rect(fb, x - 1, y - 11 - big * 2, x + 1, y - 9 - big * 2, true);
+    if (watching) {
+        px(fb, x + 2, y - 12 - big * 2, true);
+        px(fb, x + 3, y - 13 - big * 2, true);
+        px(fb, x - 2, y - 10 - big * 2, true);
+    } else if (!standing) {
+        px(fb, x + (stepping ? 1 : -1), y - 2, true);
+    }
+    px(fb, x - 2 - big, y - 1, true);
+    px(fb, x + 2 + big, y - 1, true);
+    if (standing) {
+        px(fb, x - 1, y, true);
+        px(fb, x + 1, y, true);
+    } else {
+        px(fb, stepping ? x - 3 - big : x - 2, y, true);
+        px(fb, stepping ? x + 2 : x + 3 + big, y, true);
+    }
+}
+
+/* A lantern carried after dark, which is the cheapest way to say the hour
+ * down at street level. */
+static void draw_hand_lantern(town_fb_t *fb, int x, int y, int big) {
+    px(fb, x + 4 + big, y - 5, true);
+    disc(fb, x + 5 + big, y - 4, 1, true);
+    shade_disc(fb, x + 5 + big, y - 4, 5, 3);
+}
+
 static void draw_residents(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
                            const town_health_t *health, uint32_t frame) {
     bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
@@ -3416,51 +3466,91 @@ static void draw_residents(town_fb_t *fb, const duel_render_t *r, const town_typ
         int big = y > GROUND_Y + 32 ? 1 : 0;
 
         if (tired && (i % 3) == 1) {
-            /* Sat down where the paving is, cloak pooled round them, feet out
-             * in front: the one figure on the square that does not cross it. */
+            /* The one figure on the square that does not cross it. */
             x = 20 + (int)((h >> 4) % (uint32_t)(CANVAS_W - 40));
-            fill_rect(fb, x - 2 - big, y - 5, x + 2 + big, y - 2, true);
-            fill_rect(fb, x - 1, y - 8 - big, x + 1, y - 6 - big, true);
-            px(fb, x - 3 - big, y - 1, true);
-            px(fb, x + 3 + big, y - 1, true);
-            px(fb, x - 4 - big, y, true);
-            px(fb, x + 4 + big, y, true);
+            draw_square_sitter(fb, x, y, big);
             continue;
         }
-
-        /* Cloak flaring to the hem, a head above it, and legs that alternate.
-         * Four pixels of shoulder is what makes it a person and not a post. */
-        fill_rect(fb, x - 1 - big, y - 8 - big * 2, x + 1 + big, y - 6, true);
-        fill_rect(fb, x - 2 - big, y - 5, x + 2 + big, y - 3, true);
-        px(fb, x - 3 - big, y - 3, true);
-        px(fb, x + 3 + big, y - 3, true);
-        fill_rect(fb, x - 1, y - 11 - big * 2, x + 1, y - 9 - big * 2, true);
-        if (watching) {
-            /* Head tipped back, one arm up: the town notices the duel. */
-            px(fb, x + 2, y - 12 - big * 2, true);
-            px(fb, x + 3, y - 13 - big * 2, true);
-            px(fb, x - 2, y - 10 - big * 2, true);
-        } else {
-            px(fb, x + (stepping ? 1 : -1), y - 2, true);
-        }
-        px(fb, x - 2 - big, y - 1, true);
-        px(fb, x + 2 + big, y - 1, true);
-        px(fb, stepping ? x - 3 - big : x - 2, y, true);
-        px(fb, stepping ? x + 2 : x + 3 + big, y, true);
-
-        /* A lantern for one of them after dark, which is the cheapest way to
-         * say the hour down at street level. */
-        if (night && ((h >> 13) & 3u) == 0u) {
-            px(fb, x + 4 + big, y - 5, true);
-            disc(fb, x + 5 + big, y - 4, 1, true);
-            shade_disc(fb, x + 5 + big, y - 4, 5, 3);
-        }
+        draw_square_walker(fb, x, y, big, stepping, watching, false);
+        /* A lantern for one of them after dark. */
+        if (night && ((h >> 13) & 3u) == 0u)
+            draw_hand_lantern(fb, x, y, big);
     }
     (void)frame;
 }
 
+/*
+ * The residents of the town life (DC8), where duel_city_life_advance left
+ * them: walking between the places on the square, standing at the well or
+ * the market stall, sat on the bench, stopped to watch a spell, or out of
+ * sight indoors or past a gate. Nobody here is drawn on a hash: each figure
+ * is somewhere because it is going somewhere.
+ *
+ * The square's x is the 256-column town's, mapped onto either composition;
+ * past either end of it the road runs on to a gate just off the canvas, so a
+ * resident heading out walks off the edge rather than vanishing in the
+ * landscape's wings. Several stood at one place stand a little apart.
+ *
+ * A watch's body and sleep buckets keep the meaning they have for the hashed
+ * walkers (DC4): body is how many of the residents are out on the square,
+ * and a short night sits every third one that has stopped. Typing tempo
+ * paces only the hashed walkers; residents walk at their own pace.
+ */
+static int life_column(const town_fb_t *fb, int x) {
+    if (x < 0)
+        return TOWN_X(0) + x * (TOWN_X(0) + 20) / 16;
+    if (x > TOWN_W - 1)
+        return TOWN_X(TOWN_W - 1) + (x - (TOWN_W - 1)) * (CANVAS_W - TOWN_X(TOWN_W - 1) + 20) / 16;
+    return TOWN_X(x);
+}
+
+static void draw_town_life(town_fb_t *fb, const duel_render_t *r, const town_health_t *health,
+                           const duel_town_life_t *life) {
+    bool quiet = DUEL_CIVIC_MODE(r->civic) == DUEL_CIVIC_MODE_QUIET;
+    bool night = sky_is_night(DUEL_SECONDARY_SKY_PHASE(r->secondary));
+    int out = DUEL_TOWN_LIFE_RESIDENTS;
+    if (health->body != DUEL_CITY_BODY_NONE)
+        out = quiet ? 1 + (int)health->body / 2 : 1 + (int)health->body * 2;
+    bool tired = health->sleep == DUEL_CITY_SLEEP_TIRED;
+    uint32_t tick = duel_town_life_ticks(life);
+
+    /* The bench the residents sit on for company: a seat on two legs. */
+    int16_t bx, by;
+    if (duel_town_life_place(DUEL_TOWN_PLACE_BENCH, &bx, &by, NULL, NULL)) {
+        int x = life_column(fb, bx), y = GROUND_Y + by;
+        fill_rect(fb, x - 9, y - 4, x + 9, y, false);
+        hline(fb, x - 8, x + 8, y - 3);
+        vline(fb, x - 7, y - 2, y);
+        vline(fb, x + 7, y - 2, y);
+    }
+
+    int drawn = 0;
+    for (uint8_t i = 0; i < DUEL_TOWN_LIFE_RESIDENTS && drawn < out; i++) {
+        duel_town_life_view_t v;
+        if (!duel_town_life_resident(life, i, &v) || !v.visible)
+            continue;
+        drawn++;
+        bool walking = v.state == DUEL_TOWN_RES_WALK;
+        int x = life_column(fb, v.x);
+        int y = GROUND_Y + v.y;
+        if (!walking && v.state != DUEL_TOWN_RES_WATCH)
+            x += ((int)(i % 3u) - 1) * 5;
+        int big = y > GROUND_Y + 32 ? 1 : 0;
+        bool stopped = v.state == DUEL_TOWN_RES_STAY || v.state == DUEL_TOWN_RES_IDLE;
+        if (stopped && (v.place == DUEL_TOWN_PLACE_BENCH || (tired && (i % 3u) == 1u))) {
+            draw_square_sitter(fb, x, y, big);
+            continue;
+        }
+        bool stepping = ((tick + i) & 1u) == 0u;
+        draw_square_walker(fb, x, y, big, stepping, v.state == DUEL_TOWN_RES_WATCH, !walking);
+        if (night && (i & 3u) == 0u)
+            draw_hand_lantern(fb, x, y, big);
+    }
+}
+
 void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *typing,
-                    const town_health_t *health, const town_day_t *day, uint32_t frame) {
+                    const town_health_t *health, const town_day_t *day,
+                    const duel_town_life_t *life, uint32_t frame) {
     static const town_typing_t no_typing;
     static const town_health_t no_health;
     static const town_day_t no_day;
@@ -3498,5 +3588,8 @@ void duel_town_draw(town_fb_t *fb, const duel_render_t *r, const town_typing_t *
     draw_outcome(fb, r);
     draw_plaza(fb, r, frame);
     draw_almanac(fb, day);
-    draw_residents(fb, r, typing, health, frame);
+    if (life)
+        draw_town_life(fb, r, health, life);
+    else
+        draw_residents(fb, r, typing, health, frame);
 }

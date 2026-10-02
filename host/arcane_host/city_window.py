@@ -118,6 +118,9 @@ class CityWindow:
         self.renderer = renderer
         self.seed = seed & 0xFF
         self.ambient = renderer.ambient(self.seed) if duels else None
+        # The town's residents (ABI 11), always: they live with or without a
+        # duel, and only the town layers draw them.
+        self.life = renderer.life(self.seed)
         self.clock = clock
         self.started = clock()
         self.frames = 0
@@ -178,7 +181,12 @@ class CityWindow:
         # fast it runs.
         if self.ambient is not None:
             self.ambient.advance(elapsed_ms)
-        blob = self.renderer.render(city, elapsed_ms, self.frames, ambient=self.ambient)
+        # The residents at the same moment, from the same input and world, as
+        # every shell advances them.
+        self.life.advance(city, elapsed_ms, ambient=self.ambient)
+        blob = self.renderer.render(
+            city, elapsed_ms, self.frames, ambient=self.ambient, life=self.life
+        )
         self.frames += 1
         self.photo.configure(data=blob)
         self.root.update()

@@ -9,9 +9,10 @@
  * its host is doing can say so with set(_:) (Semantics.swift), in the same
  * bounded values the daemon sends the keyboard.
  *
- * The library never allocates. A City is three caller-owned structs and a
+ * The library never allocates. A City is four caller-owned structs and a
  * pixel buffer, which is why a widget extension's memory ceiling is not a
- * consideration here.
+ * consideration here. The fourth is the town's residents (ABI 11), who live
+ * beside the world and are drawn by the town layers only.
  */
 
 import CCorneArcaneCity
@@ -47,7 +48,7 @@ public enum Layout: CaseIterable, Sendable, RawRepresentable {
 
 /// The DUEL_CITY_ABI this file was written against. A library built from
 /// another revision is refused when a City is made.
-public let expectedCityABI = 10
+public let expectedCityABI = 11
 
 public struct CityABIMismatch: Error, CustomStringConvertible {
     public let found: Int
@@ -132,6 +133,7 @@ public final class City {
 
     private var state = duel_city_state_t()
     private var world = duel_ambient_t()
+    private var life = duel_town_life_t()
     private var input = duel_city_input_t()
     private var pixels: [UInt8]
     /* A second buffer for the run-up, which renders through the cheapest
@@ -153,6 +155,7 @@ public final class City {
         self.warmPixels = [UInt8](repeating: 0, count: warm.width * warm.height)
         duel_city_state_init(&state)
         duel_ambient_init(&world, seed)
+        duel_town_life_init(&life, seed)
         /* Start from a tour stop, which is valid by construction. The input
          * struct goes through the firmware's own acceptance path and a
          * hand-zeroed one is rejected with DUEL_CITY_ERR_INPUT. */
@@ -169,10 +172,16 @@ public final class City {
     /// cap means a long absence resynchronises instead of replaying, and the
     /// world visibly jumps. That is the keyboard's own behaviour across a USB
     /// suspend, and this shell does not paper over it.
+    ///
+    /// The town's residents are brought to the same moment from the input
+    /// and the world as they stand, as the desktop window and the browser
+    /// bring theirs, so a seek that steps this is the same as having watched.
     @discardableResult
     public func advance(to nowMs: UInt32) -> UInt8 {
         worldMs = nowMs
-        return duel_ambient_advance(&world, nowMs)
+        let ran = duel_ambient_advance(&world, nowMs)
+        _ = duel_city_life_advance(&life, &input, &world, nowMs)
+        return ran
     }
 
     /// Render the world as it stands. `frame` is the animation phase and
@@ -184,7 +193,7 @@ public final class City {
         let now = elapsedMs ?? worldMs
         let code = pixels.withUnsafeMutableBufferPointer { buffer in
             duel_city_render(
-                &state, &input, &world, now, frame, layout.rawValue, 1,
+                &state, &input, &world, &life, now, frame, layout.rawValue, 1,
                 buffer.baseAddress, buffer.count)
         }
         try check(code, "render")
@@ -199,7 +208,7 @@ public final class City {
         var candidate = candidate
         let code = warmPixels.withUnsafeMutableBufferPointer { buffer in
             duel_city_render(
-                nil, &candidate, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress,
+                nil, &candidate, nil, nil, 0, 0, Layout.left.rawValue, 1, buffer.baseAddress,
                 buffer.count)
         }
         try check(code, "semantics")
@@ -209,7 +218,7 @@ public final class City {
     func renderWarmUp(_ nowMs: UInt32, _ frame: UInt32) throws {
         let code = warmPixels.withUnsafeMutableBufferPointer { buffer in
             duel_city_render(
-                &state, &input, &world, nowMs, frame, Layout.left.rawValue, 1,
+                &state, &input, &world, &life, nowMs, frame, Layout.left.rawValue, 1,
                 buffer.baseAddress, buffer.count)
         }
         try check(code, "seek warm-up")
@@ -257,6 +266,12 @@ public final class City {
             if t >= warmFrom { try renderWarmUp(t, t / step) }
         }
     }
+
+    /// Civic ticks the town's residents have lived, for the parity leg.
+    public var lifeTicks: UInt32 { duel_town_life_ticks(&life) }
+
+    /// The residents' handle, byte for byte, for the parity leg to hash.
+    public var lifeBytes: [UInt8] { withUnsafeBytes(of: life) { Array($0) } }
 
     public var stats: WorldStats {
         let s = duel_ambient_stats(&world)
