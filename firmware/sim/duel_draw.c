@@ -13,10 +13,10 @@ void duel_scene_draw(duel_fb_t *fb, const duel_render_t *r, bool is_left, uint32
     int facing = is_left ? +1 : -1; // toward the gap (see header)
     bool defender_left = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_DEFLECT_L ||
                          r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_HEAL_L ||
-                         r->flash_kind == FX_WARD_SHATTER_L;
+                         r->flash_kind == FX_WARD_SHATTER_L || r->flash_kind == FX_SHATTER_L;
     bool side_outcome = r->flash_kind <= FX_FIZZLE_R || r->flash_kind == FX_HEAL_L ||
-                        r->flash_kind == FX_HEAL_R || r->flash_kind == FX_WARD_SHATTER_L ||
-                        r->flash_kind == FX_WARD_SHATTER_R;
+                        r->flash_kind == FX_HEAL_R ||
+                        (r->flash_kind >= FX_WARD_SHATTER_L && r->flash_kind <= FX_SHATTER_R);
     bool local_fx = r->flash_frames && side_outcome && defender_left == is_left;
     bool local_impact = local_fx && (r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R);
     duel_view_spell_t piercer;

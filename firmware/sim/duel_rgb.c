@@ -44,9 +44,11 @@ duel_rgb_t duel_rgb_policy(const duel_rgb_world_t *world, uint8_t led_flags, boo
     }
 
     uint8_t affected = 0xffu;
-    if (world->flash_kind == FX_IMPACT_L || world->flash_kind == FX_WARD_SHATTER_L)
+    if (world->flash_kind == FX_IMPACT_L || world->flash_kind == FX_WARD_SHATTER_L ||
+        world->flash_kind == FX_SHATTER_L)
         affected = SIM_SIDE_L;
-    else if (world->flash_kind == FX_IMPACT_R || world->flash_kind == FX_WARD_SHATTER_R)
+    else if (world->flash_kind == FX_IMPACT_R || world->flash_kind == FX_WARD_SHATTER_R ||
+             world->flash_kind == FX_SHATTER_R)
         affected = SIM_SIDE_R;
     uint8_t led_side = led_is_left ? SIM_SIDE_L : SIM_SIDE_R;
     if (world->flash_active && affected == led_side) {

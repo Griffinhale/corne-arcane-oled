@@ -881,6 +881,9 @@ void duel_environment_draw_floor(duel_fb_t *fb, const duel_render_t *r, bool is_
             duel_fb_line(fb, mx - 2, fy - 2, mx + 2, fy - 2);
             duel_fb_line(fb, mx + 2, fy - 2, mx + 2, fy + 2);
             duel_fb_line(fb, mx + 2, fy + 2, mx - 1, fy + 2);
+        } else { /* combo: a cross-sigil over the room */
+            duel_fb_line(fb, mx - 2, fy - 2, mx + 2, fy + 2);
+            duel_fb_line(fb, mx - 2, fy + 2, mx + 2, fy - 2);
         }
     }
 

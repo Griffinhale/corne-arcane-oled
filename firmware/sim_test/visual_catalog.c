@@ -124,6 +124,22 @@ static void add_case(const char *name, sim_world_t *world, uint32_t frame, uint8
                    DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0), 0u);
 }
 
+/* add_case with a chosen flash age, for outcomes that animate as they fade. */
+static void add_case_flash(const char *name, sim_world_t *world, uint32_t frame, uint8_t flash_kind,
+                           uint8_t flash_frames) {
+    duel_render_t render = {0};
+    duel_render_from_world(&render, world);
+    render.seed = 0x5au;
+    render.civic_phase = 19u;
+    render.flash_kind = flash_kind;
+    render.flash_frames = flash_frames;
+    render.flash_spell_kind =
+        DUEL_KIND_WITH_TIER(DUEL_KIND_PACK(ELEM_FORCE, MOD_NONE, PAY_IMPACT), 1u);
+    render.civic = DUEL_CIVIC_PACK(DUEL_CIVIC_FLOOR_COMMONS, DUEL_CIVIC_MODE_NORMAL, 0);
+    render.external = DUEL_HOST_CONTEXT_PACK(true, DUEL_HOST_SCENE_DUEL, 0u, false);
+    record_render(name, &render, frame, false);
+}
+
 static void add_case_district(const char *name, sim_world_t *world, uint32_t frame,
                               uint8_t district, uint8_t mode, uint8_t intensity) {
     duel_render_t render = {0};
@@ -1530,6 +1546,70 @@ static void build_catalog(void) {
             snprintf(name, sizeof name, "spell_carrier_%s_%u", carriers[i].name, sample);
             add_case(name, &world, frame, 0);
         }
+
+    /* Combination outcomes. Shatter breaks the defender's frost (already
+     * cleared, one more hp window dark) into shards that spread as the flash
+     * fades; thaw and field clash are city reactions, early and late. */
+    static const struct {
+        const char *name;
+        uint8_t kind, frames;
+    } combo_fx[] = {
+        {"spell_shatter_r_early", FX_SHATTER_R, 8u},
+        {"spell_shatter_r_late", FX_SHATTER_R, 3u},
+        {"spell_shatter_l_mid", FX_SHATTER_L, 5u},
+        {"spell_thaw_early", FX_THAW, 8u},
+        {"spell_thaw_late", FX_THAW, 2u},
+        {"spell_field_clash_early", FX_FIELD_CLASH, 8u},
+        {"spell_field_clash_late", FX_FIELD_CLASH, 2u},
+    };
+    for (size_t i = 0; i < sizeof combo_fx / sizeof combo_fx[0]; i++) {
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        uint8_t defender = combo_fx[i].kind == FX_SHATTER_L ? SIM_SIDE_L : SIM_SIDE_R;
+        world.wiz[defender].hp = 2u;
+        if (combo_fx[i].kind == FX_THAW) {
+            world.wiz[defender].status = STATUS_SCALDED;
+            world.wiz[defender].status_intensity = 1u;
+            world.wiz[defender].status_ticks = 100u;
+        }
+        add_case_flash(combo_fx[i].name, &world, (uint32_t)i, combo_fx[i].kind, combo_fx[i].frames);
+    }
+
+    /* SCALDED's wisps sway on alternate frames. */
+    for (uint32_t frame = 0; frame < 2u; frame++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        world.wiz[SIM_SIDE_R].status = STATUS_SCALDED;
+        world.wiz[SIM_SIDE_R].status_intensity = 1u;
+        world.wiz[SIM_SIDE_R].status_ticks = 100u;
+        snprintf(name, sizeof name, "status_r_scalded_%u", (unsigned)frame);
+        add_case(name, &world, frame, 0);
+    }
+
+    /* The combine halo blinks: the left spell combines, the right does not. */
+    for (uint8_t sample = 0; sample < 2u; sample++) {
+        char name[48];
+        sim_init(&world, SIMF_AUTHORITATIVE, 0);
+        for (uint8_t side = 0; side < 2u; side++)
+            world.spell[side] = (sim_spell_t){
+                .active = 1,
+                .progress = 205u,
+                .dir = side ? -4 : 4,
+                .descriptor = SPELL_DESC_PACK(
+                    SPELL_PROJECTILE, ELEM_FROST, PAY_DAMAGE, TRAJ_MID, 2, STATUS_NONE,
+                    side == SIM_SIDE_L ? INTERACT_COMBINE : INTERACT_SOLID, TEMPO_FLOWING,
+                    TREND_STEADY, 0)};
+        snprintf(name, sizeof name, "spell_combine_halo_%u", sample);
+        add_case(name, &world, sample * 2u, 0);
+    }
+
+    /* The combo flavor mark over the city room after a combination. */
+    sim_init(&world, SIMF_AUTHORITATIVE, 0);
+    world.aftermath[0].kind = AFTER_INSPECT;
+    world.aftermath[0].ticks = 75u;
+    world.aftermath[0].intensity = 3u;
+    world.aftermath_flavor = AFTER_FLAVOR_COMBO;
+    world.world_state = WORLD_RECOVERY;
+    add_case("after_flavor_combo", &world, 0u, 0);
 
     /* Pin the entire scenario gallery under the golden determinism check.
      * Each renders at its declared frame with its declared diagnostics flag. */

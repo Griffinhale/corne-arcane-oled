@@ -447,7 +447,8 @@ void duel_overlay_draw_health(duel_fb_t *fb, const duel_view_wizard_t *wz, bool 
 // split convergence.
 void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const duel_view_wizard_t *wz,
                                 int facing, bool is_left) {
-    bool is_impact = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R;
+    bool is_shatter = r->flash_kind == FX_SHATTER_L || r->flash_kind == FX_SHATTER_R;
+    bool is_impact = r->flash_kind == FX_IMPACT_L || r->flash_kind == FX_IMPACT_R || is_shatter;
     bool is_fizzle = r->flash_kind == FX_FIZZLE_L || r->flash_kind == FX_FIZZLE_R;
     int tier = DUEL_KIND_TIER(r->flash_spell_kind);
     int fy = duel_combat_spell_lane_y(r->flash_spell_kind);
@@ -490,6 +491,16 @@ void duel_overlay_draw_local_fx(duel_fb_t *fb, const duel_render_t *r, const due
             duel_fb_px(fb, px + 2, py - 1, true);
             duel_fb_px(fb, px - 1, py + 2, true);
             duel_fb_px(fb, px + 2, py + 2, true);
+        }
+        if (is_shatter) {
+            // The frost icon breaks: ice shards fly out from where it hung.
+            int sx = 16 - facing * 5, sy = 55 + DUEL_ROOF_DY;
+            int s = 1 + (8 - r->flash_frames) / 2;
+            for (int q = 0; q < 4; q++)
+                duel_fb_px(fb, sx + (q & 1 ? s : -s), sy + (q & 2 ? s : -s), true);
+            duel_fb_px(fb, sx - s - 2, sy, true);
+            duel_fb_px(fb, sx + s + 2, sy, true);
+            duel_fb_px(fb, sx, sy - s - 2, true);
         }
     } else if (is_fizzle) {
         // Harmless dissipation stays away from the body and contracts from

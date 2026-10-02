@@ -690,6 +690,14 @@ void duel_combat_draw_spell(duel_fb_t *fb, const duel_view_spell_t *spell, uint8
         }
     }
 
+    // A combining spell blinks a bracket halo either side of its head. Only
+    // the view's combine flag yields INTERACT_COMBINE here, and void never
+    // carries it.
+    if (SPELL_DESC_INTERACTION(spell->descriptor) == INTERACT_COMBINE && (frame & 2u)) {
+        duel_fb_line(fb, x - 4, y - 1, x - 4, y + 1);
+        duel_fb_line(fb, x + 4, y - 1, x + 4, y + 1);
+    }
+
     /* Roster voice accents are recipe-cosmetic only. */
     if (variant == 1u)
         duel_fb_px(fb, x - 3 * travel_dir, y + 1, true);
@@ -736,11 +744,17 @@ void duel_combat_draw_status(duel_fb_t *fb, const duel_view_wizard_t *wz, int fa
     } else if (wz->status <= STATUS_MARKED) {
         draw_row_glyph(fb, status_rows[(wz->status - STATUS_FROZEN) * 3 + wz->status_intensity - 1],
                        cx - 4, cy - 4, 1);
+    } else { /* scalded: three wisps sway as they rise, the last out of step */
+        for (int w = 0; w < 3; w++)
+            for (int k = 0; k < 4; k++)
+                duel_fb_px(fb, cx - 3 + w * 3 - (w == 2) + (((phase + k + (w == 2)) >> 1) & 1),
+                           cy - 1 - k, true);
     }
 }
 
 void duel_combat_draw_reaction(duel_fb_t *fb, uint8_t outcome, bool is_left, uint8_t frames) {
-    if (!frames || outcome < FX_HEAL_L || outcome > FX_COLLAPSE)
+    if (!frames || outcome < FX_HEAL_L || outcome > FX_FIELD_CLASH ||
+        (outcome > FX_COLLAPSE && outcome < FX_THAW))
         return;
     int x = is_left ? 5 : DUEL_CANVAS_W - 1 - 5;
     int y = 101;
@@ -777,6 +791,19 @@ void duel_combat_draw_reaction(duel_fb_t *fb, uint8_t outcome, bool is_left, uin
         duel_fb_px(fb, x - 2, y - 1, true);
         duel_fb_px(fb, x + 2, y - 1, true);
         duel_fb_px(fb, x, y, true);
+    } else if (outcome == FX_THAW) { /* steam puffs rise from the city */
+        int rise = (8 - frames) / 2;
+        for (int i = -2; i <= 2; i += 2)
+            duel_fb_px(fb, x + i, y - rise - (i & 2), true);
+        duel_fb_line(fb, x - 2, y + 2, x + 2, y + 2);
+    } else if (outcome == FX_FIELD_CLASH) { /* two brackets close on a spark */
+        int d = 1 + frames / 3;
+        duel_fb_line(fb, x - d, y - 2, x - d, y + 2);
+        duel_fb_line(fb, x + d, y - 2, x + d, y + 2);
+        duel_fb_px(fb, x - d + 1, y - 2, true);
+        duel_fb_px(fb, x + d - 1, y + 2, true);
+        if (d < 3)
+            duel_fb_px(fb, x, y, true);
     } else { /* singularity collapse */
         duel_fb_px(fb, x, y, true);
         duel_fb_px(fb, x - 2, y - 2, true);

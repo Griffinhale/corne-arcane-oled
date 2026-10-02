@@ -34,8 +34,12 @@ static void test_floor_occupations_and_transitions(void) {
     CHECK(ok, "incantation_eight_districts_two_city_voices_and_four_protected_transition_phases");
 }
 
+/* A combining spell draws like a solid one except for its blinking halo:
+ * identical while the halo is off (frame 5), and on void, which never carries
+ * the combine flag; with the halo on (frame 7) some carrier must differ. */
 static void test_render_interaction_combine_solid_parity(void) {
     bool ok = true;
+    bool halo_seen = false;
     static const uint8_t progresses[] = {60u, 200u};
     for (uint8_t elem = 0; elem < 4u; elem++)
         for (uint8_t form = 0; form < 8u; form++) {
@@ -63,15 +67,23 @@ static void test_render_interaction_combine_solid_parity(void) {
                         incantation_render(&fc, &combine, half == 0u, false);
                         incantation_render(&fs, &solid, half == 0u, false);
                         incantation_render(&fn, &none, half == 0u, false);
-                        EXPECT(memcmp(&fc, &fs, sizeof fc) == 0);
+                        bool lit_differs = memcmp(&fc, &fs, sizeof fc) != 0;
+                        EXPECT(elem != ELEM_VOID || !lit_differs);
+                        halo_seen |= lit_differs;
                         spell_drawn |= memcmp(&fc, &fn, sizeof fc) != 0;
+                        duel_fb_clear(&fc);
+                        duel_fb_clear(&fs);
+                        duel_scene_draw(&fc, &combine, half == 0u, 5u, false);
+                        duel_scene_draw(&fs, &solid, half == 0u, 5u, false);
+                        EXPECT(memcmp(&fc, &fs, sizeof fc) == 0);
                     }
                 }
             /* Guard against a vacuous pass: every combo must actually put
              * carrier pixels on at least one canvas. */
             EXPECT(spell_drawn);
         }
-    CHECK(ok, "incantation_render_combine_solid_parity_all_elements_forms");
+    EXPECT(halo_seen);
+    CHECK(ok, "incantation_render_combine_halo_blinks_solid_parity_otherwise");
 }
 
 /* Split v13 makes scalded status and outcomes 16..19 legal on the wire before
