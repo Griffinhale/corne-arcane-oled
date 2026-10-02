@@ -107,12 +107,15 @@ lint-js:
 	@echo "PASS lint-js: $(words $(JS_SOURCES)) files"
 
 # Needs a Swift toolchain, so it is not part of lint; the Swift CI job runs it.
-# A swift-format-tool build is preferred over whatever swift-format is on PATH.
-lint-swift: export PATH := $(CURDIR)/$(SWIFT_FORMAT_TOOL)/.build/release:$(PATH)
+# A swift-format-tool build is used by its path when it exists (make runs
+# commands without a shell lookup, so a PATH set here would not reach it);
+# otherwise whatever swift-format is on PATH, checked for the pinned version.
 lint-swift:
-	@swift-format --version | grep -qx '$(SWIFT_FORMAT_VERSION)' || \
-		{ echo "FAIL lint-swift: swift-format $(SWIFT_FORMAT_VERSION) is required (make swift-format-tool)" >&2; exit 1; }
-	swift-format lint --strict --configuration .swift-format $(SWIFT_SOURCES)
+	@tool=$(SWIFT_FORMAT_TOOL)/.build/release/swift-format; [ -x "$$tool" ] || tool=swift-format; \
+	"$$tool" --version | grep -qx '$(SWIFT_FORMAT_VERSION)' || \
+		{ echo "FAIL lint-swift: swift-format $(SWIFT_FORMAT_VERSION) is required (make swift-format-tool)" >&2; exit 1; }; \
+	echo "$$tool lint --strict --configuration .swift-format $(SWIFT_SOURCES)"; \
+	"$$tool" lint --strict --configuration .swift-format $(SWIFT_SOURCES)
 
 # Builds the pinned swift-format from its tag, once; a build at another
 # version is replaced. Needs the Swift toolchain (nix develop .#apple).
