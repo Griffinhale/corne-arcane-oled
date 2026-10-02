@@ -57,10 +57,13 @@ typedef struct {
 #define DUEL_RENDER_LOCAL_LAYER(v)  ((uint8_t)(((v) >> DUEL_RENDER_LOCAL_SHIFT) & 0x03u))
 #define DUEL_RENDER_LAYER_PACK(global, local)                                                      \
     ((uint8_t)(((global) & 0x03u) | (((local) & 0x03u) << DUEL_RENDER_LOCAL_SHIFT)))
+/* STREAM_PIXELS is the one content loop shared by the three scry pages: the
+ * tallest page (DUEL, whose last row carries two field names) ends on row 114,
+ * then six blank rows, the gap between rows, before the title comes round. */
 #define DUEL_SCRY_EXTENT_MASK   0x07u
 #define DUEL_SCRY_REROLL        0x08u
 #define DUEL_SCRY_EXTENT_FULL   7u
-#define DUEL_SCRY_STREAM_PIXELS 108u
+#define DUEL_SCRY_STREAM_PIXELS 121u
 #define DUEL_SCRY_MOTION_PACK(extent, reroll)                                                      \
     ((uint8_t)(((extent) & DUEL_SCRY_EXTENT_MASK) | ((reroll) ? DUEL_SCRY_REROLL : 0u)))
 #define DUEL_SCRY_MOTION_EXTENT(value) ((uint8_t)((value) & DUEL_SCRY_EXTENT_MASK))

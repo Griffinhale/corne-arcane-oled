@@ -722,7 +722,88 @@ static void test_host_marks_urgent_strain_and_signs(void) {
     CHECK(ok, "host_marks_urgent_bursts_strain_sign_and_secondaries");
 }
 
+/* The scry content is one loop shared by all three pages. Wherever the loop
+ * puts it, each page title and its n/3 fraction must read alone: the row just
+ * above the title (the end of the loop) stays blank, the row between title and
+ * fraction and the row under the fraction stay blank, and the title band is
+ * the same pixels whatever the page's rows say and wherever the scroll has
+ * carried it, so nothing from the rest of the loop lands on it. */
+static bool scry_row_blank(const duel_fb_t *fb, int y) {
+    for (int x = 4; x <= 27; x++)
+        if (duel_fb_get(fb, x, y))
+            return false;
+    return true;
+}
+
+static bool scry_band_shifted_equal(const duel_fb_t *a, int ay, const duel_fb_t *b, int by) {
+    for (int y = 0; y <= 10; y++)
+        for (int x = 4; x <= 27; x++)
+            if (duel_fb_get(a, x, ay + y) != duel_fb_get(b, x, by + y))
+                return false;
+    return true;
+}
+
+static void test_scry_titles_clear_of_content(void) {
+    bool ok = true;
+    /* Screen rows for the title's top; content starts at row 10 and the last
+     * clipped row is 119, so 108 is the lowest whole title plus its blank row. */
+    static const int title_rows[] = {10, 11, 30, 50, 70, 90, 108};
+    sim_world_t w;
+    sim_init(&w, SIMF_AUTHORITATIVE, 0);
+    for (uint8_t page = 0; page < SCRY_SCENES; page++)
+        for (uint8_t side = 0; side < 2u; side++) {
+            duel_fb_t first;
+            int first_y = 0;
+            unsigned failures = 0u;
+            for (size_t t = 0; t < sizeof title_rows / sizeof title_rows[0]; t++)
+                for (uint8_t v = 0; v < 8u; v++) {
+                    int title_y = title_rows[t];
+                    duel_render_t r = {0};
+                    duel_render_from_world(&r, &w);
+                    r.seed = (uint8_t)(v * 37u);
+                    r.civic_phase = (uint8_t)(v * 11u);
+                    r.civic = DUEL_CIVIC_PACK(v, v, 3u - (v & 3u));
+                    r.revision = DUEL_EVENT_PACK(v % 7u, 0u, 0u);
+                    r.shared_pres =
+                        DUEL_VISITOR_PACK(v % 5u, SIM_SIDE_L, DUEL_CIVIC_VISIT_ARRIVING);
+                    r.field[0] = v;
+                    r.field[1] = (uint8_t)(7u - v);
+                    r.secondary = DUEL_SECONDARY_PACK(v);
+                    r.external = DUEL_HOST_CONTEXT_PACK(v & 1u, v, v, v & 2u);
+                    r.alert = DUEL_HOST_ALERT_PACK(v, v, 1u);
+                    r.layer = DUEL_RENDER_LAYER_PACK(page, DUEL_RENDER_LOCAL_NONE);
+                    r.view.outcome_overlay = VIEW_OVERLAY_PACK(0u, true, page);
+                    r.scry_motion = DUEL_SCRY_MOTION_PACK(DUEL_SCRY_EXTENT_FULL, false);
+                    /* Content row 0 lands on screen row 10 + (0 - scroll) mod loop. */
+                    r.scry_scroll = (uint8_t)((DUEL_SCRY_STREAM_PIXELS - (unsigned)(title_y - 10)) %
+                                              DUEL_SCRY_STREAM_PIXELS);
+                    duel_fb_t fb;
+                    incantation_render(&fb, &r, side == 0u, false);
+                    bool above = title_y == 10 || scry_row_blank(&fb, title_y - 1);
+                    bool between = scry_row_blank(&fb, title_y + 5);
+                    bool below = scry_row_blank(&fb, title_y + 11);
+                    bool same = true;
+                    if (t == 0u && v == 0u) {
+                        first = fb;
+                        first_y = title_y;
+                    } else {
+                        same = scry_band_shifted_equal(&first, first_y, &fb, title_y);
+                    }
+                    if (!(above && between && below && same) && failures++ < 4u)
+                        printf("DIAG scry title page=%u side=%u title_y=%d variant=%u: blank "
+                               "above=%d between=%d below=%d, band unchanged=%d\n",
+                               page, side, title_y, v, above, between, below, same);
+                }
+            if (failures)
+                printf("DIAG scry title page=%u side=%u: %u of %zu renders overdraw the title\n",
+                       page, side, failures, 8u * (sizeof title_rows / sizeof title_rows[0]));
+            EXPECT(failures == 0u);
+        }
+    CHECK(ok, "scry_page_titles_clear_of_loop_content_on_every_page");
+}
+
 void run_rendering_geometry_tests(void) {
+    test_scry_titles_clear_of_content();
     test_host_marks_urgent_strain_and_signs();
     test_render_interaction_combine_solid_parity();
     test_render_v13_status_and_outcome_values();

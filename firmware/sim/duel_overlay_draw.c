@@ -97,6 +97,13 @@ void duel_overlay_draw_alert(duel_fb_t *fb, const duel_render_t *r, bool is_left
 #define SCRY_VALUE_ROW_FIRST 13
 #define SCRY_VALUE_ROW_STEP  17
 
+/* The last row pair can carry a third line (DUEL's second field); it and one
+ * blank row must end inside the loop or the next pass overdraws the title. */
+_Static_assert(DUEL_SCRY_STREAM_PIXELS >=
+                   SCRY_VALUE_ROW_FIRST + 5 * SCRY_VALUE_ROW_STEP + 12 + 5 + 1,
+               "scry loop too short: the bottom row wraps into the page title");
+_Static_assert(DUEL_SCRY_STREAM_PIXELS <= 255u, "scry scroll is a uint8_t");
+
 typedef struct {
     duel_fb_t *fb;
     int clip_top;
@@ -188,11 +195,12 @@ static uint16_t scry_glyph(char c) {
     }
 }
 
+/* Content rows are never negative and the scroll is already reduced to one
+ * loop, so adding a loop before the modulo keeps it in unsigned range. */
 static int scry_stream_y(const scry_scroll_t *scroll, int virtual_y) {
-    int y = (virtual_y - scroll->scroll) % DUEL_SCRY_STREAM_PIXELS;
-    if (y < 0)
-        y += DUEL_SCRY_STREAM_PIXELS;
-    return SCRY_CONTENT_TOP + y;
+    unsigned y =
+        ((unsigned)virtual_y + DUEL_SCRY_STREAM_PIXELS - scroll->scroll) % DUEL_SCRY_STREAM_PIXELS;
+    return SCRY_CONTENT_TOP + (int)y;
 }
 
 static void scry_stream_px(const scry_scroll_t *scroll, int x, int virtual_y) {
